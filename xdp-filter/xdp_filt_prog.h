@@ -53,6 +53,7 @@ struct {
 static int __always_inline lookup_verdict_tcp(struct tcphdr *tcphdr)
 {
 	__u32 *value;
+
 	CHECK_MAP(&filter_ports, &tcphdr->dest, DST_MASK | TCP_MASK);
 	CHECK_MAP(&filter_ports, &tcphdr->source, SRC_MASK | TCP_MASK);
 	return XDP_PASS;
@@ -63,6 +64,7 @@ static int __always_inline lookup_verdict_tcp(struct tcphdr *tcphdr)
 static int __always_inline lookup_verdict_udp(struct udphdr *udphdr)
 {
 	__u32 *value;
+
 	CHECK_MAP(&filter_ports, &udphdr->dest, DST_MASK | UDP_MASK);
 	CHECK_MAP(&filter_ports, &udphdr->source, SRC_MASK | UDP_MASK);
 	return XDP_PASS;
@@ -85,7 +87,6 @@ static int __always_inline lookup_verdict_ipv4(struct iphdr *iphdr)
 
 	CHECK_MAP(&filter_ipv4, &iphdr->daddr, DST_MASK);
 	CHECK_MAP(&filter_ipv4, &iphdr->saddr, SRC_MASK);
-
 	return XDP_PASS;
 }
 
@@ -104,6 +105,10 @@ struct {
 
 static int __always_inline lookup_verdict_ipv6(struct ipv6hdr *ipv6hdr)
 {
+	__u32 *value;
+
+	CHECK_MAP(&filter_ipv6, &ipv6hdr->daddr, DST_MASK);
+	CHECK_MAP(&filter_ipv6, &ipv6hdr->saddr, SRC_MASK);
 	return XDP_PASS;
 }
 
@@ -126,15 +131,10 @@ struct {
 
 static int __always_inline lookup_verdict_ethernet(struct ethhdr *eth)
 {
-	struct ethaddr *addr;
 	__u32 *value;
 
-	addr = (void *)eth->h_dest;
-	CHECK_MAP(&filter_ethernet, addr, DST_MASK);
-
-	addr = (void *)eth->h_source;
-	CHECK_MAP(&filter_ethernet, addr, SRC_MASK);
-
+	CHECK_MAP(&filter_ethernet, eth->h_dest, DST_MASK);
+	CHECK_MAP(&filter_ethernet, eth->h_source, SRC_MASK);
 	return XDP_PASS;
 }
 
