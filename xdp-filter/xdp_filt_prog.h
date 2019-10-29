@@ -7,6 +7,16 @@
  */
 
 
+#include <linux/bpf.h>
+#include <linux/in.h>
+#include "bpf_helpers.h"
+#include "bpf_endian.h"
+#include "bpf/parsing_helpers.h"
+
+/* Defines xdp_stats_map */
+#include "bpf/xdp_stats_kern_user.h"
+#include "bpf/xdp_stats_kern.h"
+
 #define CHECK_RET(ret) do {						\
 		if ((ret) < 0) {					\
 			action = XDP_ABORTED;				\
@@ -20,28 +30,129 @@
 			goto out;					\
 	} while (0)
 
-#undef CHECK_VERDICT_ETHERNET
-#ifdef FILT_MODE_ETHERNET
-#define CHECK_VERDICT_ETHERNET(param) CHECK_VERDICT(ethernet, param)
-#else
-#define CHECK_VERDICT_ETHERNET(param)
+#define SRC_MASK (1<<0)
+#define DST_MASK (1<<1)
+#define TCP_MASK (1<<2)
+#define UDP_MASK (1<<3)
+
+#define CHECK_MAP(map, key, mask) do {				\
+	value = bpf_map_lookup_elem(map, key);			\
+	if ((value) && (*(value) & (mask)) == (mask))		\
+		return XDP_DROP;				\
+	} while(0)
+
+
+
+
+
+
+#if defined(FILT_MODE_TCP) || defined(FILT_MODE_UDP)
+struct {
+	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+	__uint(max_entries, 65536);
+	__type(key, __u16);
+	__type(value, __u32);
+} filter_ports SEC(".maps");
+
+#ifdef FILT_MODE_TCP
+int lookup_verdict_tcp(struct tcphdr *tcphdr)
+{
+	__u32 *value;
+	CHECK_MAP(&filter_ports, &tcphdr->dest, DST_MASK | TCP_MASK);
+	CHECK_MAP(&filter_ports, &tcphdr->source, SRC_MASK | TCP_MASK);
+	return XDP_PASS;
+}
 #endif
 
-#undef CHECK_VERDICT_IPV4
+#ifdef FILT_MODE_UDP
+int lookup_verdict_udp(struct udphdr *udphdr)
+{
+	__u32 *value;
+	CHECK_MAP(&filter_ports, &udphdr->dest, DST_MASK | UDP_MASK);
+	CHECK_MAP(&filter_ports, &udphdr->source, SRC_MASK | UDP_MASK);
+	return XDP_PASS;
+}
+#endif
+
+#endif /* TCP || UDP */
+
 #ifdef FILT_MODE_IPV4
+struct {
+	__uint(type, BPF_MAP_TYPE_PERCPU_HASH);
+	__uint(max_entries, 65536);
+	__type(key, __u32);
+	__type(value, __u32);
+} filter_ipv4 SEC(".maps");
+
+int lookup_verdict_ipv4(struct iphdr *iphdr)
+{
+	__u32 *value;
+
+	CHECK_MAP(&filter_ipv4, &iphdr->daddr, DST_MASK);
+	CHECK_MAP(&filter_ipv4, &iphdr->saddr, SRC_MASK);
+
+	return XDP_PASS;
+}
+
 #define CHECK_VERDICT_IPV4(param) CHECK_VERDICT(ipv4, param)
 #else
 #define CHECK_VERDICT_IPV4(param)
-#endif
+#endif /* FILT_MODE_IPV4 */
 
-#undef CHECK_VERDICT_IPV6
 #ifdef FILT_MODE_IPV6
+struct {
+	__uint(type, BPF_MAP_TYPE_PERCPU_HASH);
+	__uint(max_entries, 65536);
+	__type(key, struct in6_addr);
+	__type(value, __u32);
+} filter_ipv6 SEC(".maps");
+
+int lookup_verdict_ipv6(struct ipv6hdr *ipv6hdr)
+{
+	return XDP_PASS;
+}
+
 #define CHECK_VERDICT_IPV6(param) CHECK_VERDICT(ipv6, param)
 #else
 #define CHECK_VERDICT_IPV6(param)
-#endif
+#endif /* FILT_MODE_IPV6 */
 
-int FUNC_NAME (struct xdp_md *ctx)
+#ifdef FILT_MODE_ETHERNET
+struct ethaddr {
+	__u8 addr[ETH_ALEN];
+};
+
+struct {
+	__uint(type, BPF_MAP_TYPE_PERCPU_HASH);
+	__uint(max_entries, 65536);
+	__type(key, struct ethaddr);
+	__type(value, __u32);
+} filter_ethernet SEC(".maps");
+
+int lookup_verdict_ethernet(struct ethhdr *eth)
+{
+	struct ethaddr *addr;
+	__u32 *value;
+
+	addr = (void *)eth->h_dest;
+	CHECK_MAP(&filter_ethernet, addr, DST_MASK);
+
+	addr = (void *)eth->h_source;
+	CHECK_MAP(&filter_ethernet, addr, SRC_MASK);
+
+	return XDP_PASS;
+}
+
+#define CHECK_VERDICT_ETHERNET(param) CHECK_VERDICT(ethernet, param)
+#else
+#define CHECK_VERDICT_ETHERNET(param)
+#endif /* FILT_MODE_ETHERNET */
+
+
+
+
+SEC("xdp_filter")
+int xdp_filter_func(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
@@ -92,3 +203,5 @@ int FUNC_NAME (struct xdp_md *ctx)
 out:
 	return xdp_stats_record_action(ctx, action);
 }
+
+char _license[] SEC("license") = "GPL";
