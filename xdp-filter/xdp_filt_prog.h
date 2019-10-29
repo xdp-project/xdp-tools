@@ -41,11 +41,6 @@
 		return XDP_DROP;				\
 	} while(0)
 
-
-
-
-
-
 #if defined(FILT_MODE_TCP) || defined(FILT_MODE_UDP)
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -55,7 +50,7 @@ struct {
 } filter_ports SEC(".maps");
 
 #ifdef FILT_MODE_TCP
-int lookup_verdict_tcp(struct tcphdr *tcphdr)
+static int __always_inline lookup_verdict_tcp(struct tcphdr *tcphdr)
 {
 	__u32 *value;
 	CHECK_MAP(&filter_ports, &tcphdr->dest, DST_MASK | TCP_MASK);
@@ -65,7 +60,7 @@ int lookup_verdict_tcp(struct tcphdr *tcphdr)
 #endif
 
 #ifdef FILT_MODE_UDP
-int lookup_verdict_udp(struct udphdr *udphdr)
+static int __always_inline lookup_verdict_udp(struct udphdr *udphdr)
 {
 	__u32 *value;
 	CHECK_MAP(&filter_ports, &udphdr->dest, DST_MASK | UDP_MASK);
@@ -84,7 +79,7 @@ struct {
 	__type(value, __u32);
 } filter_ipv4 SEC(".maps");
 
-int lookup_verdict_ipv4(struct iphdr *iphdr)
+static int __always_inline lookup_verdict_ipv4(struct iphdr *iphdr)
 {
 	__u32 *value;
 
@@ -107,7 +102,7 @@ struct {
 	__type(value, __u32);
 } filter_ipv6 SEC(".maps");
 
-int lookup_verdict_ipv6(struct ipv6hdr *ipv6hdr)
+static int __always_inline lookup_verdict_ipv6(struct ipv6hdr *ipv6hdr)
 {
 	return XDP_PASS;
 }
@@ -129,7 +124,7 @@ struct {
 	__type(value, __u32);
 } filter_ethernet SEC(".maps");
 
-int lookup_verdict_ethernet(struct ethhdr *eth)
+static int __always_inline lookup_verdict_ethernet(struct ethhdr *eth)
 {
 	struct ethaddr *addr;
 	__u32 *value;
