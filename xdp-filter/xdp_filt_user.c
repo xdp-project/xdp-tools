@@ -13,6 +13,7 @@
 
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
+#include <arpa/inet.h>
 
 #include <net/if.h>
 #include <linux/if_ether.h>
@@ -20,6 +21,7 @@
 
 #include "params.h"
 #include "common_kern_user.h"
+#include "prog_features.h"
 
 
 struct installopt {
@@ -37,6 +39,20 @@ struct flag_val install_features[] = {
 	{"all", FEAT_ALL},
 	{}
 };
+
+static char *find_progname(__u32 features)
+{
+	struct prog_feature *feat;
+
+	if (!features)
+		return NULL;
+
+	for (feat = prog_features; feat->prog_name; feat++) {
+		if ((ntohl(feat->features) & features) == features)
+			return feat->prog_name;
+	}
+	return NULL;
+}
 
 static const struct option_wrapper install_options[] = {
 	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
@@ -62,6 +78,8 @@ int do_install(int argc, char **argv)
 			   "Install xdp-filter on an interface");
 
 	printf("help: %d dev %s feats %d\n", opt.help, opt.devname, opt.features);
+
+	printf("Found prog for requested features: %s\n", find_progname(opt.features));
 
 	return EXIT_SUCCESS;
 }
