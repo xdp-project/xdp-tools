@@ -19,6 +19,7 @@
 #include <linux/if_link.h> /* depend on kernel-headers installed */
 
 #include "params.h"
+#include "common_kern_user.h"
 
 
 struct installopt {
@@ -26,13 +27,6 @@ struct installopt {
 	char *devname;
 	int features;
 };
-
-#define FEAT_TCP	(1<<0)
-#define FEAT_UDP	(1<<1)
-#define FEAT_IPV6	(1<<2)
-#define FEAT_IPV4	(1<<3)
-#define FEAT_ETHERNET	(1<<4)
-#define FEAT_ALL	(FEAT_TCP|FEAT_UDP|FEAT_IPV6|FEAT_IPV4|FEAT_ETHERNET)
 
 struct flag_val install_features[] = {
 	{"tcp", FEAT_TCP},

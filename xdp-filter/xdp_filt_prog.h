@@ -17,6 +17,8 @@
 #include "bpf/xdp_stats_kern_user.h"
 #include "bpf/xdp_stats_kern.h"
 
+#include "common_kern_user.h"
+
 #define CHECK_RET(ret) do {						\
 		if ((ret) < 0) {					\
 			action = XDP_ABORTED;				\
@@ -29,11 +31,6 @@
 		if ((action = lookup_verdict_##type(param)) != XDP_PASS) \
 			goto out;					\
 	} while (0)
-
-#define SRC_MASK (1<<0)
-#define DST_MASK (1<<1)
-#define TCP_MASK (1<<2)
-#define UDP_MASK (1<<3)
 
 #define CHECK_MAP(map, key, mask) do {				\
 	value = bpf_map_lookup_elem(map, key);			\
