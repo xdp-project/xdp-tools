@@ -55,6 +55,9 @@ static int __always_inline lookup_verdict_tcp(struct tcphdr *tcphdr)
 	CHECK_MAP(&filter_ports, &tcphdr->source, SRC_MASK | TCP_MASK);
 	return XDP_PASS;
 }
+#define FEATURE_TCP FEAT_TCP
+#else
+#define FEATURE_TCP 0
 #endif
 
 #ifdef FILT_MODE_UDP
@@ -66,8 +69,14 @@ static int __always_inline lookup_verdict_udp(struct udphdr *udphdr)
 	CHECK_MAP(&filter_ports, &udphdr->source, SRC_MASK | UDP_MASK);
 	return XDP_PASS;
 }
+#define FEATURE_UDP FEAT_UDP
+#else
+#define FEATURE_UDP 0
 #endif
 
+#else
+#define FEATURE_UDP 0
+#define FEATURE_TCP 0
 #endif /* TCP || UDP */
 
 #ifdef FILT_MODE_IPV4
@@ -88,7 +97,9 @@ static int __always_inline lookup_verdict_ipv4(struct iphdr *iphdr)
 }
 
 #define CHECK_VERDICT_IPV4(param) CHECK_VERDICT(ipv4, param)
+#define FEATURE_IPV4 FEAT_IPV4
 #else
+#define FEATURE_IPV4 0
 #define CHECK_VERDICT_IPV4(param)
 #endif /* FILT_MODE_IPV4 */
 
@@ -110,7 +121,9 @@ static int __always_inline lookup_verdict_ipv6(struct ipv6hdr *ipv6hdr)
 }
 
 #define CHECK_VERDICT_IPV6(param) CHECK_VERDICT(ipv6, param)
+#define FEATURE_IPV6 FEAT_IPV6
 #else
+#define FEATURE_IPV6 0
 #define CHECK_VERDICT_IPV6(param)
 #endif /* FILT_MODE_IPV6 */
 
@@ -136,7 +149,9 @@ static int __always_inline lookup_verdict_ethernet(struct ethhdr *eth)
 }
 
 #define CHECK_VERDICT_ETHERNET(param) CHECK_VERDICT(ethernet, param)
+#define FEATURE_ETHERNET FEAT_ETHERNET
 #else
+#define FEATURE_ETHERNET 0
 #define CHECK_VERDICT_ETHERNET(param)
 #endif /* FILT_MODE_ETHERNET */
 
@@ -197,3 +212,4 @@ out:
 }
 
 char _license[] SEC("license") = "GPL";
+__u32 _features SEC("features") = (FEATURE_ETHERNET | FEATURE_IPV4 | FEATURE_IPV6 | FEATURE_UDP | FEATURE_TCP);
