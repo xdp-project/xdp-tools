@@ -32,6 +32,7 @@ LIB_OBJS += $(LIB_DIR)/params/params.o
 LIB_H := ${LIB_OBJS:.o=.h}
 
 EXTRA_DEPS +=
+EXTRA_USER_DEPS +=
 
 # BPF-prog kern and userspace shares struct via header file:
 KERN_USER_H ?= $(wildcard common_kern_user.h)
@@ -88,7 +89,7 @@ $(LIB_H): %.h: %.c
 $(LIB_OBJS): %.o: %.h
 	make -C $(LIB_DIR)
 
-$(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) Makefile $(LIB_MK) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS)
+$(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) Makefile $(LIB_MK) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
 	$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $(LIB_OBJS) \
 	 $< $(LIBS)
 
