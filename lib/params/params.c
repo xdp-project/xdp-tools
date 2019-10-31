@@ -135,12 +135,36 @@ static const struct opthandler {
 	int (*func)(const struct option_wrapper *opt, void *cfg, char *optarg);
 } handlers[__OPT_MAX] = {
 			 {NULL},
+			 {handle_flags},
 			 {handle_bool},
 			 {handle_string},
 			 {handle_u32},
-			 {handle_macaddr},
-			 {handle_flags}
+			 {handle_macaddr}
 };
+
+static void print_help_flags(const struct option_wrapper *opt)
+{
+	const struct flag_val *flag;
+	bool first = true;
+
+	printf("  %s (one or more of: ", opt->help);
+	for (flag = opt->typearg; flag->flagstring; flag++) {
+		if (!first)
+			printf(",");
+		first = false;
+		printf("%s", flag->flagstring);
+	}
+
+	printf(")\n");
+}
+
+static const struct helprinter {
+	void (*func)(const struct option_wrapper *opt);
+} help_printers[__OPT_MAX] = {
+	{NULL},
+	{print_help_flags}
+};
+
 
 static void _print_options(const struct option_wrapper *long_options, bool required)
 {
@@ -148,8 +172,12 @@ static void _print_options(const struct option_wrapper *long_options, bool requi
 	char buf[BUFSIZE];
 
 	for (i = 0; long_options[i].option.name != 0; i++) {
+		enum option_type type;
+
 		if (long_options[i].required != required)
 			continue;
+
+		type = long_options[i].type;
 
 		if (long_options[i].option.val > 64) /* ord('A') = 65 */
 			printf(" -%c,", long_options[i].option.val);
@@ -159,7 +187,11 @@ static void _print_options(const struct option_wrapper *long_options, bool requi
 		if (long_options[i].metavar)
 			snprintf(&buf[pos], BUFSIZE-pos, " %s", long_options[i].metavar);
 		printf("%-22s", buf);
-		printf("  %s", long_options[i].help);
+
+		if (help_printers[type].func != NULL)
+			help_printers[type].func(&long_options[i]);
+		else
+			printf("  %s", long_options[i].help);
 		printf("\n");
 	}
 }

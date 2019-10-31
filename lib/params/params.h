@@ -8,11 +8,11 @@
 
 enum option_type {
                   OPT_HELP,
+                  OPT_FLAGS,
                   OPT_BOOL,
                   OPT_STRING,
                   OPT_U32,
                   OPT_MACADDR,
-                  OPT_FLAGS,
                   __OPT_MAX
 };
 
