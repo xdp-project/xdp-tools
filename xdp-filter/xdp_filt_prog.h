@@ -42,7 +42,7 @@
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
 	__uint(max_entries, 65536);
-	__type(key, __u16);
+	__type(key, __u32);
 	__type(value, __u32);
 } filter_ports SEC(".maps");
 
