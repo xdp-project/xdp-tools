@@ -27,7 +27,7 @@
 
 struct installopt {
 	bool help;
-	char *devname;
+	struct iface iface;
 	int features;
 };
 
@@ -62,9 +62,9 @@ static struct option_wrapper install_options[] = {
 	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
 		      "Enable verbose logging", "",
 		      struct installopt, help),
-	DEFINE_OPTION('d', "dev", required_argument, true, OPT_STRING, NULL,
+	DEFINE_OPTION('d', "dev", required_argument, true, OPT_IFNAME, NULL,
 		      "Install on device <ifname>", "<ifname>",
-		      struct installopt, devname),
+		      struct installopt, iface),
 	DEFINE_OPTION('f', "features", optional_argument, true,
 		      OPT_FLAGS, install_features,
 		      "Enable features <feats>", "<feats>",
@@ -82,15 +82,14 @@ int do_install(int argc, char **argv)
 			   "xdp-filter install",
 			   "Install xdp-filter on an interface");
 
-	pr_debug("help: %d dev %s feats %d\n", opt.help, opt.devname, opt.features);
-
 	progname = find_progname(opt.features);
 	if (!progname) {
 		pr_warn("Couldn't find an eBPF program with the requested feature set!\n");
 		return EXIT_FAILURE;
 	}
 
-	pr_debug("Found prog for requested features: %s\n", progname);
+	pr_debug("Found prog '%s' matching feature set to be installed on interface '%s'.\n",
+		 progname, opt.iface.ifname);
 
 	return EXIT_SUCCESS;
 }
