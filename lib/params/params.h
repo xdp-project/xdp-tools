@@ -43,7 +43,7 @@ struct flag_val {
 
 #define END_OPTIONS 	{}
 
-bool matches(const char *prefix, const char *string);
+bool is_prefix(const char *prefix, const char *string);
 void usage(const char *prog_name, const char *doc,
            const struct option_wrapper *long_options, bool full);
 

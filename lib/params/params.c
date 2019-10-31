@@ -164,16 +164,14 @@ static void _print_options(const struct option_wrapper *long_options, bool requi
 	}
 }
 
-bool matches(const char *prefix, const char *string)
+bool is_prefix(const char *pfx, const char *str)
 {
-	if (!*prefix)
-		return true;
-	while (*string && *prefix == *string) {
-		prefix++;
-		string++;
-	}
+	if (!pfx)
+		return false;
+	if (strlen(str) < strlen(pfx))
+		return false;
 
-	return !!*prefix;
+	return !memcmp(str, pfx, strlen(pfx));
 }
 
 void usage(const char *prog_name, const char *doc,

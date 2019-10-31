@@ -139,7 +139,7 @@ static int do_cmd(const char *argv0, int argc, char **argv)
 	const struct cmd *c;
 
 	for (c = cmds; c->cmd; ++c) {
-		if (matches(argv0, c->cmd) == 0)
+		if (is_prefix(argv0, c->cmd))
 			return -(c->func(argc, argv));
 	}
 
