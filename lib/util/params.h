@@ -13,6 +13,7 @@ enum option_type {
                   OPT_U32,
                   OPT_MACADDR,
                   OPT_VERBOSE,
+                  OPT_IFNAME,
                   __OPT_MAX
 };
 
@@ -30,6 +31,11 @@ struct option_wrapper {
 struct flag_val {
         char *flagstring;
         int flagval;
+};
+
+struct iface {
+        char *ifname;
+        int ifindex;
 };
 
 #define DEFINE_OPTION(_short, _long, _arg, _req, _type, _typearg,       \

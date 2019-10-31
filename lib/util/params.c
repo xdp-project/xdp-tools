@@ -138,6 +138,24 @@ static int handle_verbose(const struct option_wrapper *opt,
 	return 0;
 }
 
+static int handle_ifname(const struct option_wrapper *opt,
+			  void *cfg, char *optarg)
+{
+	struct iface *iface;
+	int ifindex;
+
+	iface = (cfg + opt->cfg_offset);
+	ifindex = if_nametoindex(optarg);
+	if (!ifindex) {
+		pr_warn("Couldn't find network interface '%s'.\n", optarg);
+		return -1;
+	}
+
+	iface->ifname = optarg;
+	iface->ifindex = ifindex;
+	return 0;
+}
+
 static const struct opthandler {
 	int (*func)(const struct option_wrapper *opt, void *cfg, char *optarg);
 } handlers[__OPT_MAX] = {
@@ -147,7 +165,8 @@ static const struct opthandler {
 			 {handle_string},
 			 {handle_u32},
 			 {handle_macaddr},
-			 {handle_verbose}
+			 {handle_verbose},
+			 {handle_ifname}
 };
 
 static void print_help_flags(const struct option_wrapper *opt)
