@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
+
 #ifndef __LOGGING_H
 #define __LOGGING_H
 
