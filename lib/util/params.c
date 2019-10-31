@@ -217,7 +217,7 @@ bool is_prefix(const char *pfx, const char *str)
 void usage(const char *prog_name, const char *doc,
            const struct option_wrapper *long_options, bool full)
 {
-	printf("Usage: %s [options]\n", prog_name);
+	printf("\nUsage: %s [options]\n", prog_name);
 
 	if (!full) {
 		printf("Use --help (or -h) to see full option list.\n");
@@ -324,7 +324,7 @@ void parse_cmdline_args(int argc, char **argv,
 
 	for (opt_iter = options_wrapper; opt_iter->option.name != 0; opt_iter++) {
 		if (opt_iter->required && !opt_iter->was_set) {
-			fprintf(stderr, "Missing required option '--%s'\n\n",
+			fprintf(stderr, "Missing required option '--%s'\n",
 				opt_iter->option.name);
 			usage(prog, doc, options_wrapper, full_help);
 			err = EXIT_FAILURE;
