@@ -20,6 +20,7 @@
 #include <linux/if_link.h> /* depend on kernel-headers installed */
 
 #include "params.h"
+#include "logging.h"
 #include "common_kern_user.h"
 #include "prog_features.h"
 
@@ -58,6 +59,9 @@ static struct option_wrapper install_options[] = {
 	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
 		      "Show help", "",
 		      struct installopt, help),
+	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
+		      "Enable verbose logging", "",
+		      struct installopt, help),
 	DEFINE_OPTION('d', "dev", required_argument, true, OPT_STRING, NULL,
 		      "Install on device <ifname>", "<ifname>",
 		      struct installopt, devname),
@@ -71,15 +75,22 @@ static struct option_wrapper install_options[] = {
 int do_install(int argc, char **argv)
 {
 	struct installopt opt = {};
+	char *progname;
 
 	/* Cmdline options can change progsec */
 	parse_cmdline_args(argc, argv, install_options, &opt,
 			   "xdp-filter install",
 			   "Install xdp-filter on an interface");
 
-	printf("help: %d dev %s feats %d\n", opt.help, opt.devname, opt.features);
+	pr_debug("help: %d dev %s feats %d\n", opt.help, opt.devname, opt.features);
 
-	printf("Found prog for requested features: %s\n", find_progname(opt.features));
+	progname = find_progname(opt.features);
+	if (!progname) {
+		pr_warn("Couldn't find an eBPF program with the requested feature set!\n");
+		return EXIT_FAILURE;
+	}
+
+	pr_debug("Found prog for requested features: %s\n", progname);
 
 	return EXIT_SUCCESS;
 }
@@ -151,6 +162,8 @@ const char *pin_basedir =  "/sys/fs/bpf";
 
 int main(int argc, char **argv)
 {
+	init_logging();
+
 	if (argc > 1)
 		return do_cmd(argv[1], argc-1, argv+1);
 	return EXIT_FAILURE;
