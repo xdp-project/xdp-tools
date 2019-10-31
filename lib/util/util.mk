@@ -1,1 +1,1 @@
-UTIL_OBJS := params.o logging.o
+UTIL_OBJS := params.o logging.o util.o

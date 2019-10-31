@@ -21,9 +21,11 @@
 
 #include "params.h"
 #include "logging.h"
+#include "util.h"
 #include "common_kern_user.h"
 #include "prog_features.h"
 
+#define NEED_RLIMIT (10*1024*1024) /* 10 Mbyte */
 
 struct installopt {
 	bool help;
@@ -92,6 +94,10 @@ int do_install(int argc, char **argv)
 
 	pr_debug("Found prog '%s' matching feature set to be installed on interface '%s'.\n",
 		 progname, opt.iface.ifname);
+
+	err = check_bpf_environ(NEED_RLIMIT);
+	if (err)
+		goto out;
 
 	obj = bpf_object__open_file(progname, NULL);
 	err = libbpf_get_error(obj);
