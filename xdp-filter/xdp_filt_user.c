@@ -25,12 +25,14 @@
 #include "common_kern_user.h"
 #include "prog_features.h"
 
-#define NEED_RLIMIT (10*1024*1024) /* 10 Mbyte */
+#define NEED_RLIMIT (20*1024*1024) /* 10 Mbyte */
 
 struct installopt {
 	bool help;
 	struct iface iface;
 	int features;
+	bool force;
+	bool skb_mode;
 };
 
 struct flag_val install_features[] = {
@@ -64,6 +66,12 @@ static struct option_wrapper install_options[] = {
 	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
 		      "Enable verbose logging", "",
 		      struct installopt, help),
+	DEFINE_OPTION('F', "force", no_argument, false, OPT_BOOL, NULL,
+		      "Force loading of XDP program", "",
+		      struct installopt, force),
+	DEFINE_OPTION('s', "skb-mode", no_argument, false, OPT_BOOL, NULL,
+		      "Load XDP program in SKB (generic) mode", "",
+		      struct installopt, skb_mode),
 	DEFINE_OPTION('d', "dev", required_argument, true, OPT_IFNAME, NULL,
 		      "Install on device <ifname>", "<ifname>",
 		      struct installopt, iface),
@@ -76,8 +84,9 @@ static struct option_wrapper install_options[] = {
 
 int do_install(int argc, char **argv)
 {
-	struct installopt opt = {};
 	struct bpf_object *obj = NULL;
+	struct bpf_program *prog;
+	struct installopt opt = {};
 	char *progname;
 	int err = EXIT_SUCCESS;
 
@@ -109,6 +118,19 @@ int do_install(int argc, char **argv)
 	err = bpf_object__load(obj);
 	if (err)
 		goto out;
+
+	prog = bpf_program__next(NULL, obj);
+	if (!prog) {
+		pr_warn("Couldn't find an eBPF program to attach. This is a bug!\n");
+		goto out;
+	}
+
+	err = load_xdp_program(prog, opt.iface.ifindex, opt.force, opt.skb_mode);
+	if (err) {
+		pr_warn("Couldn't attach XDP program on iface '%s'\n",
+			opt.iface.ifname);
+		goto out;
+	}
 
 out:
 	if (obj)

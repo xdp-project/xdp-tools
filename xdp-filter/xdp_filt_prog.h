@@ -82,7 +82,7 @@ static int __always_inline lookup_verdict_udp(struct udphdr *udphdr)
 #ifdef FILT_MODE_IPV4
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_HASH);
-	__uint(max_entries, 65536);
+	__uint(max_entries, 10000);
 	__type(key, __u32);
 	__type(value, __u32);
 } filter_ipv4 SEC(".maps");
@@ -106,7 +106,7 @@ static int __always_inline lookup_verdict_ipv4(struct iphdr *iphdr)
 #ifdef FILT_MODE_IPV6
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_HASH);
-	__uint(max_entries, 65536);
+	__uint(max_entries, 10000);
 	__type(key, struct in6_addr);
 	__type(value, __u32);
 } filter_ipv6 SEC(".maps");
@@ -134,7 +134,7 @@ struct ethaddr {
 
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_HASH);
-	__uint(max_entries, 65536);
+	__uint(max_entries, 10000);
 	__type(key, struct ethaddr);
 	__type(value, __u32);
 } filter_ethernet SEC(".maps");
