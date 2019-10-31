@@ -54,7 +54,7 @@ static char *find_progname(__u32 features)
 	return NULL;
 }
 
-static const struct option_wrapper install_options[] = {
+static struct option_wrapper install_options[] = {
 	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
 		      "Show help", "",
 		      struct installopt, help),

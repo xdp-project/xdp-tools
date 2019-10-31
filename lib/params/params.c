@@ -224,9 +224,8 @@ static int option_wrappers_to_options(const struct option_wrapper *wrapper,
 	return 0;
 }
 
-static const struct option_wrapper *
-find_opt(const struct option_wrapper *all_opts,
-	 int optchar)
+static struct option_wrapper *find_opt(struct option_wrapper *all_opts,
+				       int optchar)
 {
 	while (all_opts->option.name != 0) {
 		if (all_opts->option.val == optchar)
@@ -236,22 +235,27 @@ find_opt(const struct option_wrapper *all_opts,
 	return NULL;
 }
 
-static int set_opt(void *cfg, const struct option_wrapper *all_opts,
+static int set_opt(void *cfg, struct option_wrapper *all_opts,
 		   int optchar, char *optarg)
 {
-	const struct option_wrapper *opt;
+	struct option_wrapper *opt;
+	int ret;
 
 	opt = find_opt(all_opts, optchar);
 	if (!opt)
 		return -1;
 
-	return handlers[opt->type].func(opt, cfg, optarg);
+	ret = handlers[opt->type].func(opt, cfg, optarg);
+	if (!ret)
+		opt->was_set = true;
+	return ret;
 }
 
 void parse_cmdline_args(int argc, char **argv,
-			const struct option_wrapper *options_wrapper,
+			struct option_wrapper *options_wrapper,
                         void *cfg, const char *prog, const char *doc)
 {
+	struct option_wrapper *opt_iter;
 	struct option *long_options;
 	bool full_help = false;
 	int longindex = 0;
@@ -272,6 +276,16 @@ void parse_cmdline_args(int argc, char **argv,
 			goto out;
 		}
 		if (set_opt(cfg, options_wrapper, opt, optarg)) {
+			usage(prog, doc, options_wrapper, full_help);
+			err = EXIT_FAILURE;
+			goto out;
+		}
+	}
+
+	for (opt_iter = options_wrapper; opt_iter->option.name != 0; opt_iter++) {
+		if (opt_iter->required && !opt_iter->was_set) {
+			fprintf(stderr, "Missing required option '--%s'\n\n",
+				opt_iter->option.name);
 			usage(prog, doc, options_wrapper, full_help);
 			err = EXIT_FAILURE;
 			goto out;

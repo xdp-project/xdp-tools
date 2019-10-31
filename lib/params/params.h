@@ -24,6 +24,7 @@ struct option_wrapper {
         enum option_type type;
         void *typearg;
         size_t cfg_offset;
+        bool was_set;
 };
 
 struct flag_val {
@@ -48,7 +49,7 @@ void usage(const char *prog_name, const char *doc,
            const struct option_wrapper *long_options, bool full);
 
 void parse_cmdline_args(int argc, char **argv,
-			const struct option_wrapper *long_options,
+			struct option_wrapper *long_options,
                         void *cfg, const char *prog, const char *doc);
 
 #endif /* __COMMON_PARAMS_H */
