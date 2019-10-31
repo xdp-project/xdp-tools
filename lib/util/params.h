@@ -1,6 +1,5 @@
-/* This common_user.h is used by userspace programs */
-#ifndef __COMMON_PARAMS_H
-#define __COMMON_PARAMS_H
+#ifndef __PARAMS_H
+#define __PARAMS_H
 
 #include <getopt.h>
 #include <stdbool.h>

@@ -1,4 +1,4 @@
 
-.PHONY: params
-params:
-	make -C params
+.PHONY: util
+util:
+	make -C util
