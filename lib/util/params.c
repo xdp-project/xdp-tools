@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -12,8 +13,7 @@
 #include <linux/if_xdp.h>
 
 #include "params.h"
-
-int verbose = 1;
+#include "logging.h"
 
 #define BUFSIZE 30
 
@@ -131,6 +131,13 @@ static int handle_flags(const struct option_wrapper *opt,
 	return 0;
 }
 
+static int handle_verbose(const struct option_wrapper *opt,
+			  void *cfg, char *optarg)
+{
+	set_log_level(LOG_DEBUG);
+	return 0;
+}
+
 static const struct opthandler {
 	int (*func)(const struct option_wrapper *opt, void *cfg, char *optarg);
 } handlers[__OPT_MAX] = {
@@ -139,7 +146,8 @@ static const struct opthandler {
 			 {handle_bool},
 			 {handle_string},
 			 {handle_u32},
-			 {handle_macaddr}
+			 {handle_macaddr},
+			 {handle_verbose}
 };
 
 static void print_help_flags(const struct option_wrapper *opt)

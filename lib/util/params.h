@@ -12,6 +12,7 @@ enum option_type {
                   OPT_STRING,
                   OPT_U32,
                   OPT_MACADDR,
+                  OPT_VERBOSE,
                   __OPT_MAX
 };
 
