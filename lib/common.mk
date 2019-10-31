@@ -25,8 +25,11 @@ LIBBPF_DIR := $(LIB_DIR)/libbpf/src
 
 OBJECT_LIBBPF = $(LIBBPF_DIR)/libbpf.a
 
+# get list of objects in util
+include $(LIB_DIR)/util/util.mk
+
 # Extend if including Makefile already added some
-LIB_OBJS += $(LIB_DIR)/util/params.o $(LIB_DIR)/util/logging.o
+LIB_OBJS += $(foreach obj,$(UTIL_OBJS),$(LIB_DIR)/util/$(obj))
 
 # Create expansions for dependencies
 LIB_H := ${LIB_OBJS:.o=.h}

@@ -1,14 +1,14 @@
-OBJS := params.o logging.o
+include util.mk
 
 LIB_DIR ?= ..
 LIBBPF_DIR := $(LIB_DIR)/libbpf/src
 CFLAGS += -I$(LIBBPF_DIR)
 
 
-all: params.o logging.o
+all: $(UTIL_OBJS)
 
-$(OBJS): %.o: %.c %.h
+$(UTIL_OBJS): %.o: %.c %.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(OBJS)
+	rm -f $(UTIL_OBJS)
