@@ -75,7 +75,9 @@ static struct option_wrapper install_options[] = {
 int do_install(int argc, char **argv)
 {
 	struct installopt opt = {};
+	struct bpf_object *obj = NULL;
 	char *progname;
+	int err = EXIT_SUCCESS;
 
 	/* Cmdline options can change progsec */
 	parse_cmdline_args(argc, argv, install_options, &opt,
@@ -91,7 +93,21 @@ int do_install(int argc, char **argv)
 	pr_debug("Found prog '%s' matching feature set to be installed on interface '%s'.\n",
 		 progname, opt.iface.ifname);
 
-	return EXIT_SUCCESS;
+	obj = bpf_object__open_file(progname, NULL);
+	err = libbpf_get_error(obj);
+	if (err) {
+		obj = NULL;
+		goto out;
+	}
+
+	err = bpf_object__load(obj);
+	if (err)
+		goto out;
+
+out:
+	if (obj)
+		bpf_object__close(obj);
+	return err;
 }
 
 int do_add_port(int argc, char **argv)
