@@ -378,7 +378,7 @@ out:
 int do_help(int argc, char **argv)
 {
 	fprintf(stderr,
-		"Usage: xdp-filter { COMMAND | help } [OPTIONS]\n"
+		"Usage: xdp-filter COMMAND [options]\n"
 		"\n"
 		"COMMAND can be one of:\n"
 		"       install     - install xdp-filter on an interface\n"
@@ -386,8 +386,9 @@ int do_help(int argc, char **argv)
 		"       ip          - add an IP address to the blacklist\n"
 		"       ether       - add an Ethernet MAC address to the blacklist\n"
 		"       status      - show current xdp-filter status\n"
+		"       help        - show this help message\n"
 		"\n"
-		"Use 'xdp-filter <COMMAND> --help' to see options for each command\n");
+		"Use 'xdp-filter COMMAND --help' to see options for each command\n");
 	exit(-1);
 }
 
@@ -398,9 +399,9 @@ static const struct cmd {
 } cmds[] = {
 	{ "install",	do_install },
 	{ "port",	do_port },
-	{ "ip",	do_add_ip },
+	/*	{ "ip",	do_add_ip },
 	{ "ether",	do_add_ether },
-	{ "status",	do_status },
+	{ "status",	do_status },*/
 	{ "help",	do_help },
 	{ 0 }
 };
@@ -426,5 +427,7 @@ int main(int argc, char **argv)
 
 	if (argc > 1)
 		return do_cmd(argv[1], argc-1, argv+1);
+
+	do_help(argc, argv);
 	return EXIT_FAILURE;
 }
