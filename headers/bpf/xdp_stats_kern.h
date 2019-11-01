@@ -18,7 +18,8 @@ struct {
 	__uint(max_entries, XDP_ACTION_MAX);
 	__type(key, __u32);
 	__type(value, struct datarec);
-} xdp_stats_map SEC(".maps");
+	__uint(pinning, LIBBPF_PIN_BY_NAME);
+} XDP_STATS_MAP_NAME SEC(".maps");
 
 
 static __always_inline

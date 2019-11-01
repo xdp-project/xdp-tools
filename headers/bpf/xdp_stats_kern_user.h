@@ -16,4 +16,6 @@ struct datarec {
 #define XDP_ACTION_MAX (XDP_REDIRECT + 1)
 #endif
 
+#define XDP_STATS_MAP_NAME xdp_stats_map
+
 #endif /* __XDP_STATS_KERN_USER_H */
