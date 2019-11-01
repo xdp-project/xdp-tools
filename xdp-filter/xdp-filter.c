@@ -383,8 +383,8 @@ int do_help(int argc, char **argv)
 		"COMMAND can be one of:\n"
 		"       load        - load xdp-filter on an interface\n"
 		"       port        - add a port to the blacklist\n"
-		"       ip          - add an IP address to the blacklist\n"
-		"       ether       - add an Ethernet MAC address to the blacklist\n"
+		/*		"       ip          - add an IP address to the blacklist\n"
+				"       ether       - add an Ethernet MAC address to the blacklist\n"*/
 		"       status      - show current xdp-filter status\n"
 		"       help        - show this help message\n"
 		"\n"
@@ -400,8 +400,8 @@ static const struct cmd {
 	{ "load",	do_load },
 	{ "port",	do_port },
 	/*	{ "ip",	do_add_ip },
-	{ "ether",	do_add_ether },
-	{ "status",	do_status },*/
+		{ "ether",	do_add_ether },*/
+	{ "status",	do_status },
 	{ "help",	do_help },
 	{ 0 }
 };
