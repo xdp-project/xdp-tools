@@ -8,10 +8,11 @@
 #define FEAT_ETHERNET	(1<<4)
 #define FEAT_ALL	(FEAT_TCP|FEAT_UDP|FEAT_IPV6|FEAT_IPV4|FEAT_ETHERNET)
 
-#define SRC_MASK (1<<0)
-#define DST_MASK (1<<1)
-#define TCP_MASK (1<<2)
-#define UDP_MASK (1<<3)
+#define MAP_FLAG_SRC (1<<0)
+#define MAP_FLAG_DST (1<<1)
+#define MAP_FLAG_TCP (1<<2)
+#define MAP_FLAG_UDP (1<<3)
+#define MAP_FLAGS (MAP_FLAG_SRC|MAP_FLAG_DST|MAP_FLAG_TCP|MAP_FLAG_UDP)
 
 #define COUNTER_SHIFT 6
 

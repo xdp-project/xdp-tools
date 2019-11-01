@@ -53,8 +53,8 @@ struct {
 #ifdef FILT_MODE_TCP
 static int __always_inline lookup_verdict_tcp(struct tcphdr *tcphdr)
 {
-	CHECK_MAP(&filter_ports, &tcphdr->dest, DST_MASK | TCP_MASK);
-	CHECK_MAP(&filter_ports, &tcphdr->source, SRC_MASK | TCP_MASK);
+	CHECK_MAP(&filter_ports, &tcphdr->dest, MAP_FLAG_DST | MAP_FLAG_TCP);
+	CHECK_MAP(&filter_ports, &tcphdr->source, MAP_FLAG_SRC | MAP_FLAG_TCP);
 	return XDP_PASS;
 }
 #define FEATURE_TCP FEAT_TCP
@@ -65,8 +65,8 @@ static int __always_inline lookup_verdict_tcp(struct tcphdr *tcphdr)
 #ifdef FILT_MODE_UDP
 static int __always_inline lookup_verdict_udp(struct udphdr *udphdr)
 {
-	CHECK_MAP(&filter_ports, &udphdr->dest, DST_MASK | UDP_MASK);
-	CHECK_MAP(&filter_ports, &udphdr->source, SRC_MASK | UDP_MASK);
+	CHECK_MAP(&filter_ports, &udphdr->dest, MAP_FLAG_DST | MAP_FLAG_UDP);
+	CHECK_MAP(&filter_ports, &udphdr->source, MAP_FLAG_SRC | MAP_FLAG_UDP);
 	return XDP_PASS;
 }
 #define FEATURE_UDP FEAT_UDP
@@ -90,8 +90,8 @@ struct {
 
 static int __always_inline lookup_verdict_ipv4(struct iphdr *iphdr)
 {
-	CHECK_MAP(&filter_ipv4, &iphdr->daddr, DST_MASK);
-	CHECK_MAP(&filter_ipv4, &iphdr->saddr, SRC_MASK);
+	CHECK_MAP(&filter_ipv4, &iphdr->daddr, MAP_FLAG_DST);
+	CHECK_MAP(&filter_ipv4, &iphdr->saddr, MAP_FLAG_SRC);
 	return XDP_PASS;
 }
 
@@ -113,8 +113,8 @@ struct {
 
 static int __always_inline lookup_verdict_ipv6(struct ipv6hdr *ipv6hdr)
 {
-	CHECK_MAP(&filter_ipv6, &ipv6hdr->daddr, DST_MASK);
-	CHECK_MAP(&filter_ipv6, &ipv6hdr->saddr, SRC_MASK);
+	CHECK_MAP(&filter_ipv6, &ipv6hdr->daddr, MAP_FLAG_DST);
+	CHECK_MAP(&filter_ipv6, &ipv6hdr->saddr, MAP_FLAG_SRC);
 	return XDP_PASS;
 }
 
@@ -140,8 +140,8 @@ struct {
 
 static int __always_inline lookup_verdict_ethernet(struct ethhdr *eth)
 {
-	CHECK_MAP(&filter_ethernet, eth->h_dest, DST_MASK);
-	CHECK_MAP(&filter_ethernet, eth->h_source, SRC_MASK);
+	CHECK_MAP(&filter_ethernet, eth->h_dest, MAP_FLAG_DST);
+	CHECK_MAP(&filter_ethernet, eth->h_source, MAP_FLAG_SRC);
 	return XDP_PASS;
 }
 
