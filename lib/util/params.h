@@ -12,6 +12,7 @@ enum option_type {
                   OPT_FLAGS,
                   OPT_BOOL,
                   OPT_STRING,
+                  OPT_U16,
                   OPT_U32,
                   OPT_MACADDR,
                   OPT_VERBOSE,

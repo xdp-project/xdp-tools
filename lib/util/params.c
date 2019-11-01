@@ -50,6 +50,21 @@ static int handle_u32(const struct option_wrapper *opt,
 	return 0;
 }
 
+static int handle_u16(const struct option_wrapper *opt,
+		      void *cfg, char *optarg)
+{
+	unsigned long val;
+	__u16 *opt_set;
+
+	opt_set = (cfg + opt->cfg_offset);
+
+	val = strtoul(optarg, NULL, 10);
+	if (errno || val > 0xffff)
+		return -1;
+	*opt_set = val;
+	return 0;
+}
+
 static int parse_u8(char *str, unsigned char *x)
 {
 	unsigned long z;
@@ -163,6 +178,7 @@ static const struct opthandler {
 			 {handle_flags},
 			 {handle_bool},
 			 {handle_string},
+			 {handle_u16},
 			 {handle_u32},
 			 {handle_macaddr},
 			 {handle_verbose},
