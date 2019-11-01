@@ -13,4 +13,6 @@
 #define TCP_MASK (1<<2)
 #define UDP_MASK (1<<3)
 
+#define COUNTER_SHIFT 6
+
 #endif
