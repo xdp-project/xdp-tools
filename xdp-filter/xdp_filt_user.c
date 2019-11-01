@@ -12,7 +12,7 @@
 #include <time.h>
 
 #include <bpf/bpf.h>
-#include <bpf/libbpf.h>
+#include "libbpf.h"
 #include <arpa/inet.h>
 
 #include <net/if.h>
@@ -26,6 +26,7 @@
 #include "prog_features.h"
 
 #define NEED_RLIMIT (20*1024*1024) /* 10 Mbyte */
+#define BPFFS_DIR "xdp-filter"
 
 struct installopt {
 	bool help;
@@ -84,13 +85,14 @@ static struct option_wrapper install_options[] = {
 
 int do_install(int argc, char **argv)
 {
+	char *progname, pin_root_path[PATH_MAX];
 	struct bpf_object *obj = NULL;
-	struct bpf_program *prog;
 	struct installopt opt = {};
-	char *progname;
+	struct bpf_program *prog;
 	int err = EXIT_SUCCESS;
+	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
+			    .pin_root_path = pin_root_path);
 
-	/* Cmdline options can change progsec */
 	parse_cmdline_args(argc, argv, install_options, &opt,
 			   "xdp-filter install",
 			   "Install xdp-filter on an interface");
@@ -108,7 +110,11 @@ int do_install(int argc, char **argv)
 	if (err)
 		goto out;
 
-	obj = bpf_object__open_file(progname, NULL);
+	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
+	if (err)
+		goto out;
+
+	obj = bpf_object__open_file(progname, &opts);
 	err = libbpf_get_error(obj);
 	if (err) {
 		obj = NULL;
