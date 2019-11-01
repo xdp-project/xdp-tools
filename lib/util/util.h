@@ -13,6 +13,12 @@
 #define _textify(x)	#x
 #define textify(x)	_textify(x)
 
+#define FOR_EACH_MAP_KEY(_err, _map_fd, _map_key, _next_key)            \
+  for(_err = bpf_map_get_next_key(_map_fd, NULL, &_next_key);           \
+      !_err;                                                            \
+      _err = bpf_map_get_next_key(_map_fd, &_map_key, &_next_key),      \
+        _map_key = _next_key)
+
 int check_bpf_environ(unsigned long min_rlimit);
 
 int load_xdp_program(struct bpf_program *prog, int ifindex,
