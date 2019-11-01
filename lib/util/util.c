@@ -2,9 +2,14 @@
 
 #include <errno.h>
 #include <unistd.h>
-#include <string.h>     /* strerror */
+#include <stdlib.h>
+#include <string.h>
+#include <bsd/string.h>
 #include <sys/resource.h>
+#include <sys/vfs.h>
+#include <sys/stat.h>
 #include <linux/if_link.h> /* Need XDP flags */
+#include <linux/magic.h> /* BPF FS magic */
 
 #include "bpf.h"
 
@@ -128,4 +133,140 @@ int load_xdp_program(struct bpf_program *prog, int ifindex,
 
 out:
 	return err;
+}
+
+static int bpf_valid_mntpt(const char *mnt, unsigned long magic)
+{
+	struct statfs st_fs;
+
+	if (statfs(mnt, &st_fs) < 0)
+		return -ENOENT;
+	if ((unsigned long)st_fs.f_type != magic)
+		return -ENOENT;
+
+	return 0;
+}
+
+static const char *bpf_find_mntpt_single(unsigned long magic, char *mnt,
+					 int len, const char *mntpt)
+{
+	int ret;
+
+	ret = bpf_valid_mntpt(mntpt, magic);
+	if (!ret) {
+		strlcpy(mnt, mntpt, len);
+		return mnt;
+	}
+
+	return NULL;
+}
+
+static const char *bpf_find_mntpt(const char *fstype, unsigned long magic,
+				  char *mnt, int len,
+				  const char * const *known_mnts)
+{
+	const char * const *ptr;
+	char type[100];
+	FILE *fp;
+
+	if (known_mnts) {
+		ptr = known_mnts;
+		while (*ptr) {
+			if (bpf_find_mntpt_single(magic, mnt, len, *ptr))
+				return mnt;
+			ptr++;
+		}
+	}
+
+	if (len != PATH_MAX)
+		return NULL;
+
+	fp = fopen("/proc/mounts", "r");
+	if (fp == NULL)
+		return NULL;
+
+	while (fscanf(fp, "%*s %" textify(PATH_MAX) "s %99s %*s %*d %*d\n",
+		      mnt, type) == 2) {
+		if (strcmp(type, fstype) == 0)
+			break;
+	}
+
+	fclose(fp);
+	if (strcmp(type, fstype) != 0)
+		return NULL;
+
+	return mnt;
+}
+
+static int bpf_mnt_check_target(const char *target)
+{
+	struct stat sb = {};
+	int ret;
+
+	ret = stat(target, &sb);
+	if (ret) {
+		ret = mkdir(target, S_IRWXU);
+		if (ret) {
+			fprintf(stderr, "mkdir %s failed: %s\n", target,
+				strerror(errno));
+			return ret;
+		}
+	}
+
+	return 0;
+}
+/* simplified version of code from iproute2 */
+static const char *bpf_get_work_dir()
+{
+	static char bpf_tmp[PATH_MAX] = BPF_DIR_MNT;
+	static char bpf_wrk_dir[PATH_MAX];
+	static const char *mnt;
+	static bool bpf_mnt_cached;
+	static const char * const bpf_known_mnts[] = {
+		BPF_DIR_MNT,
+		"/bpf",
+		0,
+	};
+	int ret;
+
+	if (bpf_mnt_cached)
+		return mnt;
+
+	mnt = bpf_find_mntpt("bpf", BPF_FS_MAGIC, bpf_tmp,
+			     sizeof(bpf_tmp), bpf_known_mnts);
+	if (!mnt) {
+		mnt = BPF_DIR_MNT;
+		ret = bpf_mnt_check_target(mnt);
+		if (ret) {
+			mnt = NULL;
+			goto out;
+		}
+	}
+
+	strlcpy(bpf_wrk_dir, mnt, sizeof(bpf_wrk_dir));
+	mnt = bpf_wrk_dir;
+out:
+	bpf_mnt_cached = true;
+	return mnt;
+}
+
+
+int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir)
+{
+	const char *bpf_dir;
+	size_t len;
+
+	bpf_dir = bpf_get_work_dir();
+
+	if (subdir)
+		len = snprintf(buf, buf_len, "%s/%s", bpf_dir, subdir);
+	else
+		len = snprintf(buf, buf_len, "%s", bpf_dir);
+
+	if (len < 0)
+		return -EINVAL;
+	else if (len >= buf_len)
+		return -ENAMETOOLONG;
+
+	return 0;
 }
