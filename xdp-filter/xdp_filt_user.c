@@ -46,6 +46,14 @@ struct flag_val install_features[] = {
 	{}
 };
 
+struct flag_val map_flags[] = {
+	{"src", MAP_FLAG_SRC},
+	{"dst", MAP_FLAG_DST},
+	{"tcp", MAP_FLAG_TCP},
+	{"udp", MAP_FLAG_UDP},
+	{}
+};
+
 static char *find_progname(__u32 features)
 {
 	struct prog_feature *feat;
@@ -59,6 +67,32 @@ static char *find_progname(__u32 features)
 	}
 	return NULL;
 }
+
+int map_get_counter_flags(int fd, void *key, __u64 *counter, __u8 *flags)
+{
+	/* For percpu maps, userspace gets a value per possible CPU */
+	unsigned int nr_cpus = libbpf_num_possible_cpus();
+	__u64 values[nr_cpus];
+	__u64 sum_ctr = 0;
+	int i;
+
+	if ((bpf_map_lookup_elem(fd, key, values)) != 0)
+		return -ENOENT;
+
+	/* Sum values from each CPU */
+	for (i = 0; i < nr_cpus; i++) {
+		__u8 flg = values[i] & MAP_FLAGS;
+
+		if (!flg)
+			return -ENOENT; /* not set */
+		*flags = flg;
+		sum_ctr += values[i] >> COUNTER_SHIFT;
+	}
+	*counter = sum_ctr;
+
+	return 0;
+}
+
 
 static struct option_wrapper install_options[] = {
 	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
@@ -161,7 +195,44 @@ int do_add_ether(int argc, char **argv)
 
 int do_status(int argc, char **argv)
 {
-	return EXIT_FAILURE;
+	char pin_root_path[PATH_MAX];
+	int err = EXIT_SUCCESS, map_fd = -1;
+
+	err = check_bpf_environ(NEED_RLIMIT);
+	if (err)
+		goto out;
+
+	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
+	if (err)
+		goto out;
+
+	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS));
+	if (map_fd >= 0) {
+		__u32 map_key = -1, next_key = 0;
+
+		printf("Filtered ports:\n");
+		printf("  Port   Type             Hit counter\n");
+		FOR_EACH_MAP_KEY(err, map_fd, map_key, next_key)
+		{
+			char buf[100];
+			__u64 counter;
+			__u8 flags;
+
+			err = map_get_counter_flags(map_fd, &map_key, &counter, &flags);
+			if (err == -ENOENT)
+				continue;
+			else if (err)
+				goto out;
+
+			print_flags(buf, sizeof(buf), map_flags, flags);
+			printf("  %-6u %-15s  %llu\n", map_key, buf, counter);
+		}
+	}
+
+out:
+	if (map_fd >= 0)
+		close(map_fd);
+	return err;
 }
 
 int do_help(int argc, char **argv)
