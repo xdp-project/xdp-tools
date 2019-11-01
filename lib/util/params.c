@@ -198,7 +198,7 @@ static void print_help_flags(const struct option_wrapper *opt)
 
 	print_flags(buf, sizeof(buf), opt->typearg, -1);
 
-	printf("  %s (one or more of: %s)", opt->help, buf);
+	printf("  %s (valid values: %s)", opt->help, buf);
 }
 
 static const struct helprinter {
