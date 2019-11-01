@@ -52,6 +52,8 @@ struct iface {
 
 #define END_OPTIONS 	{}
 
+void print_flags(char *buf, size_t buf_len, const struct flag_val *flags,
+                 unsigned long flags_val);
 bool is_prefix(const char *prefix, const char *string);
 void usage(const char *prog_name, const char *doc,
            const struct option_wrapper *long_options, bool full);

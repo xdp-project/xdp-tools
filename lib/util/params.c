@@ -169,20 +169,36 @@ static const struct opthandler {
 			 {handle_ifname}
 };
 
-static void print_help_flags(const struct option_wrapper *opt)
+void print_flags(char *buf, size_t buf_len, const struct flag_val *flags,
+		 unsigned long flags_set)
 {
 	const struct flag_val *flag;
 	bool first = true;
 
-	printf("  %s (one or more of: ", opt->help);
-	for (flag = opt->typearg; flag->flagstring; flag++) {
-		if (!first)
-			printf(",");
-		first = false;
-		printf("%s", flag->flagstring);
-	}
+	for (flag = flags; buf_len && flag->flagstring; flag++) {
+		int len;
 
-	printf(")\n");
+		if (!(flag->flagval & flags_set))
+			continue;
+
+		if (!first) {
+			*buf++ = ',';
+			buf_len--;
+		}
+		first = false;
+		len = snprintf(buf, buf_len, "%s", flag->flagstring);
+		buf += len;
+		buf_len -= len;
+	}
+}
+
+static void print_help_flags(const struct option_wrapper *opt)
+{
+	char buf[100];
+
+	print_flags(buf, sizeof(buf), opt->typearg, -1);
+
+	printf("  %s (one or more of: %s)", opt->help, buf);
 }
 
 static const struct helprinter {
