@@ -53,8 +53,12 @@ struct {
 #ifdef FILT_MODE_TCP
 static int __always_inline lookup_verdict_tcp(struct tcphdr *tcphdr)
 {
-	CHECK_MAP(&filter_ports, &tcphdr->dest, MAP_FLAG_DST | MAP_FLAG_TCP);
-	CHECK_MAP(&filter_ports, &tcphdr->source, MAP_FLAG_SRC | MAP_FLAG_TCP);
+	__u32 key;
+
+	key = bpf_ntohs(tcphdr->dest);
+	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_TCP);
+	key = bpf_ntohs(tcphdr->source);
+	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_TCP);
 	return XDP_PASS;
 }
 #define FEATURE_TCP FEAT_TCP
@@ -65,8 +69,12 @@ static int __always_inline lookup_verdict_tcp(struct tcphdr *tcphdr)
 #ifdef FILT_MODE_UDP
 static int __always_inline lookup_verdict_udp(struct udphdr *udphdr)
 {
-	CHECK_MAP(&filter_ports, &udphdr->dest, MAP_FLAG_DST | MAP_FLAG_UDP);
-	CHECK_MAP(&filter_ports, &udphdr->source, MAP_FLAG_SRC | MAP_FLAG_UDP);
+	__u32 key;
+
+	key = bpf_ntohs(udphdr->dest);
+	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_TCP);
+	key = bpf_ntohs(udphdr->source);
+	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_TCP);
 	return XDP_PASS;
 }
 #define FEATURE_UDP FEAT_UDP
@@ -90,8 +98,12 @@ struct {
 
 static int __always_inline lookup_verdict_ipv4(struct iphdr *iphdr)
 {
-	CHECK_MAP(&filter_ipv4, &iphdr->daddr, MAP_FLAG_DST);
-	CHECK_MAP(&filter_ipv4, &iphdr->saddr, MAP_FLAG_SRC);
+	__u32 key;
+
+	key = bpf_ntohl(iphdr->daddr);
+	CHECK_MAP(&filter_ipv4, &key, MAP_FLAG_DST);
+	key = bpf_ntohl(iphdr->saddr);
+	CHECK_MAP(&filter_ipv4, &key, MAP_FLAG_SRC);
 	return XDP_PASS;
 }
 
