@@ -250,7 +250,6 @@ out:
 	return mnt;
 }
 
-
 int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir)
 {
 	const char *bpf_dir;
@@ -269,4 +268,26 @@ int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir)
 		return -ENAMETOOLONG;
 
 	return 0;
+}
+
+int get_pinned_map_fd(const char *bpf_root, const char *map_name)
+{
+	int len, err, pin_fd;
+	char buf[PATH_MAX], errmsg[STRERR_BUFSIZE];
+
+	len = snprintf(buf, sizeof(buf), "%s/%s", bpf_root, map_name);
+	if (len < 0)
+		return -EINVAL;
+	else if (len >= sizeof(buf))
+		return -ENAMETOOLONG;
+
+	pin_fd = bpf_obj_get(buf);
+	if (pin_fd < 0) {
+		err = -errno;
+		pr_debug("Couldn't retrieve pinned map '%s': %s\n",
+			 libbpf_strerror(-err, errmsg, sizeof(errmsg)));
+		return err;
+	}
+
+	return pin_fd;
 }
