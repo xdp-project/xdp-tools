@@ -48,7 +48,7 @@ struct {
 	__type(key, __u32);
 	__type(value, __u64);
 	__uint(pinning, LIBBPF_PIN_BY_NAME);
-} filter_ports SEC(".maps");
+} MAP_NAME_PORTS SEC(".maps");
 
 #ifdef FILT_MODE_TCP
 static int __always_inline lookup_verdict_tcp(struct tcphdr *tcphdr)
@@ -86,7 +86,7 @@ struct {
 	__type(key, __u32);
 	__type(value, __u64);
 	__uint(pinning, LIBBPF_PIN_BY_NAME);
-} filter_ipv4 SEC(".maps");
+} MAP_NAME_IPV4 SEC(".maps");
 
 static int __always_inline lookup_verdict_ipv4(struct iphdr *iphdr)
 {
@@ -109,7 +109,7 @@ struct {
 	__type(key, struct in6_addr);
 	__type(value, __u64);
 	__uint(pinning, LIBBPF_PIN_BY_NAME);
-} filter_ipv6 SEC(".maps");
+} MAP_NAME_IPV6 SEC(".maps");
 
 static int __always_inline lookup_verdict_ipv6(struct ipv6hdr *ipv6hdr)
 {
@@ -136,7 +136,7 @@ struct {
 	__type(key, struct ethaddr);
 	__type(value, __u64);
 	__uint(pinning, LIBBPF_PIN_BY_NAME);
-} filter_ethernet SEC(".maps");
+} MAP_NAME_ETHERNET SEC(".maps");
 
 static int __always_inline lookup_verdict_ethernet(struct ethhdr *eth)
 {

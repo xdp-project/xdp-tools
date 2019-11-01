@@ -15,4 +15,9 @@
 
 #define COUNTER_SHIFT 6
 
+#define MAP_NAME_PORTS filter_ports
+#define MAP_NAME_IPV4 filter_ipv4
+#define MAP_NAME_IPV6 filter_ipv6
+#define MAP_NAME_ETHERNET filter_ethernet
+
 #endif
