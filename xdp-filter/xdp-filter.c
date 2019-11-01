@@ -105,7 +105,7 @@ int map_set_flags(int fd, void *key, __u8 flags)
 	return bpf_map_update_elem(fd, key, &values, 0);
 }
 
-struct installopt {
+struct loadopt {
 	bool help;
 	struct iface iface;
 	int features;
@@ -113,7 +113,7 @@ struct installopt {
 	bool skb_mode;
 };
 
-struct flag_val install_features[] = {
+struct flag_val load_features[] = {
 	{"tcp", FEAT_TCP},
 	{"udp", FEAT_UDP},
 	{"ipv6", FEAT_IPV6},
@@ -123,42 +123,42 @@ struct flag_val install_features[] = {
 	{}
 };
 
-static struct option_wrapper install_options[] = {
+static struct option_wrapper load_options[] = {
 	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
 		      "Show help", "",
-		      struct installopt, help),
+		      struct loadopt, help),
 	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
 		      "Enable verbose logging", "",
-		      struct installopt, help),
+		      struct loadopt, help),
 	DEFINE_OPTION('F', "force", no_argument, false, OPT_BOOL, NULL,
 		      "Force loading of XDP program", "",
-		      struct installopt, force),
+		      struct loadopt, force),
 	DEFINE_OPTION('s', "skb-mode", no_argument, false, OPT_BOOL, NULL,
 		      "Load XDP program in SKB (generic) mode", "",
-		      struct installopt, skb_mode),
+		      struct loadopt, skb_mode),
 	DEFINE_OPTION('d', "dev", required_argument, true, OPT_IFNAME, NULL,
-		      "Install on device <ifname>", "<ifname>",
-		      struct installopt, iface),
+		      "Load on device <ifname>", "<ifname>",
+		      struct loadopt, iface),
 	DEFINE_OPTION('f', "features", optional_argument, true,
-		      OPT_FLAGS, install_features,
+		      OPT_FLAGS, load_features,
 		      "Enable features <feats>", "<feats>",
-		      struct installopt, features),
+		      struct loadopt, features),
 	END_OPTIONS
 };
 
-int do_install(int argc, char **argv)
+int do_load(int argc, char **argv)
 {
 	char *progname, pin_root_path[PATH_MAX];
 	struct bpf_object *obj = NULL;
-	struct installopt opt = {};
+	struct loadopt opt = {};
 	struct bpf_program *prog;
 	int err = EXIT_SUCCESS;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 
-	parse_cmdline_args(argc, argv, install_options, &opt,
-			   "xdp-filter install",
-			   "Install xdp-filter on an interface");
+	parse_cmdline_args(argc, argv, load_options, &opt,
+			   "xdp-filter load",
+			   "Load xdp-filter on an interface");
 
 	progname = find_progname(opt.features);
 	if (!progname) {
@@ -166,7 +166,7 @@ int do_install(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	pr_debug("Found prog '%s' matching feature set to be installed on interface '%s'.\n",
+	pr_debug("Found prog '%s' matching feature set to be loaded on interface '%s'.\n",
 		 progname, opt.iface.ifname);
 
 	err = check_bpf_environ(NEED_RLIMIT);
@@ -381,7 +381,7 @@ int do_help(int argc, char **argv)
 		"Usage: xdp-filter COMMAND [options]\n"
 		"\n"
 		"COMMAND can be one of:\n"
-		"       install     - install xdp-filter on an interface\n"
+		"       load        - load xdp-filter on an interface\n"
 		"       port        - add a port to the blacklist\n"
 		"       ip          - add an IP address to the blacklist\n"
 		"       ether       - add an Ethernet MAC address to the blacklist\n"
@@ -397,7 +397,7 @@ static const struct cmd {
 	const char *cmd;
 	int (*func)(int argc, char **argv);
 } cmds[] = {
-	{ "install",	do_install },
+	{ "load",	do_load },
 	{ "port",	do_port },
 	/*	{ "ip",	do_add_ip },
 	{ "ether",	do_add_ether },
