@@ -28,27 +28,21 @@
 #define NEED_RLIMIT (20*1024*1024) /* 10 Mbyte */
 #define BPFFS_DIR "xdp-filter"
 
-struct installopt {
-	bool help;
-	struct iface iface;
-	int features;
-	bool force;
-	bool skb_mode;
-};
-
-struct flag_val install_features[] = {
-	{"tcp", FEAT_TCP},
-	{"udp", FEAT_UDP},
-	{"ipv6", FEAT_IPV6},
-	{"ipv4", FEAT_IPV4},
-	{"ethernet", FEAT_ETHERNET},
-	{"all", FEAT_ALL},
+struct flag_val map_flags_all[] = {
+	{"src", MAP_FLAG_SRC},
+	{"dst", MAP_FLAG_DST},
+	{"tcp", MAP_FLAG_TCP},
+	{"udp", MAP_FLAG_UDP},
 	{}
 };
 
-struct flag_val map_flags[] = {
+struct flag_val map_flags_srcdst[] = {
 	{"src", MAP_FLAG_SRC},
 	{"dst", MAP_FLAG_DST},
+	{}
+};
+
+struct flag_val map_flags_tcpudp[] = {
 	{"tcp", MAP_FLAG_TCP},
 	{"udp", MAP_FLAG_UDP},
 	{}
@@ -93,6 +87,41 @@ int map_get_counter_flags(int fd, void *key, __u64 *counter, __u8 *flags)
 	return 0;
 }
 
+int map_set_flags(int fd, void *key, __u8 flags)
+{
+	/* For percpu maps, userspace gets a value per possible CPU */
+	unsigned int nr_cpus = libbpf_num_possible_cpus();
+	__u64 values[nr_cpus];
+	int i;
+
+	if ((bpf_map_lookup_elem(fd, key, values)) != 0)
+		memset(values, 0, sizeof(values));
+
+	for (i = 0; i < nr_cpus; i++)
+		values[i]  = flags ? (values[i] & ~MAP_FLAGS) | (flags & MAP_FLAGS) : 0;
+
+	pr_debug("Setting new map value %llu from flags %u\n", values[0], flags);
+
+	return bpf_map_update_elem(fd, key, &values, 0);
+}
+
+struct installopt {
+	bool help;
+	struct iface iface;
+	int features;
+	bool force;
+	bool skb_mode;
+};
+
+struct flag_val install_features[] = {
+	{"tcp", FEAT_TCP},
+	{"udp", FEAT_UDP},
+	{"ipv6", FEAT_IPV6},
+	{"ipv4", FEAT_IPV4},
+	{"ethernet", FEAT_ETHERNET},
+	{"all", FEAT_ALL},
+	{}
+};
 
 static struct option_wrapper install_options[] = {
 	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
@@ -178,9 +207,136 @@ out:
 	return err;
 }
 
-int do_add_port(int argc, char **argv)
+int print_ports(int map_fd)
 {
-	return EXIT_FAILURE;
+	__u32 map_key = -1, next_key = 0;
+	int err;
+
+	printf("Filtered ports:\n");
+	printf("  Port   Type             Hit counter\n");
+	FOR_EACH_MAP_KEY(err, map_fd, map_key, next_key)
+	{
+		char buf[100];
+		__u64 counter;
+		__u8 flags;
+
+		err = map_get_counter_flags(map_fd, &map_key, &counter, &flags);
+		if (err == -ENOENT)
+			continue;
+		else if (err)
+			return err;
+
+		print_flags(buf, sizeof(buf), map_flags_all, flags);
+		printf("  %-6u %-15s  %llu\n", map_key, buf, counter);
+	}
+	return 0;
+}
+
+struct portopt {
+	bool help;
+	unsigned int mode;
+	unsigned int proto;
+	__u16 port;
+	bool print_status;
+	bool remove;
+};
+
+static struct option_wrapper port_options[] = {
+	DEFINE_OPTION('r', "remove", no_argument, false, OPT_BOOL, NULL,
+		      "Remove port instead of adding", "",
+		      struct portopt, remove),
+	DEFINE_OPTION('s', "status", no_argument, false, OPT_BOOL, NULL,
+		      "Print status of filtered ports after changing", "",
+		      struct portopt, print_status),
+	DEFINE_OPTION('m', "mode", required_argument, false,
+		      OPT_FLAGS, map_flags_srcdst,
+		      "Filter mode; default dst", "<mode>",
+		      struct portopt, mode),
+	DEFINE_OPTION('P', "proto", required_argument, false,
+		      OPT_FLAGS, map_flags_tcpudp,
+		      "Protocol to filter; default tcp,udp", "<proto>",
+		      struct portopt, proto),
+	DEFINE_OPTION('p', "port", required_argument, true,
+		      OPT_U16, NULL,
+		      "Port to add or remove", "<port>",
+		      struct portopt, port),
+	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
+		      "Enable verbose logging", "",
+		      struct portopt, help),
+	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
+		      "Show help", "",
+		      struct portopt, help),
+	END_OPTIONS
+};
+
+
+int do_port(int argc, char **argv)
+{
+	int map_fd = -1, err = EXIT_SUCCESS;
+	char pin_root_path[PATH_MAX];
+	char modestr[100], protostr[100];
+	__u8 flags = 0;
+	__u64 counter;
+	__u32 map_key;
+	struct portopt opt = {
+		.mode = MAP_FLAG_DST,
+		.proto = MAP_FLAG_TCP | MAP_FLAG_UDP,
+	};
+
+	parse_cmdline_args(argc, argv, port_options, &opt,
+			   "xdp-filter port",
+			   "Add or remove ports from xdp-filter");
+
+	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt.mode);
+	print_flags(protostr, sizeof(protostr), map_flags_tcpudp, opt.proto);
+	pr_debug("%s %s port %u mode %s\n", opt.remove ? "Removing" : "Adding",
+		 protostr, opt.port, modestr);
+
+	err = check_bpf_environ(NEED_RLIMIT);
+	if (err)
+		goto out;
+
+	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
+	if (err)
+		goto out;
+
+	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS));
+	if (map_fd < 0) {
+		pr_warn("Couldn't find port filter map; is xdp-filter loaded "
+			"with the right features (udp and/or tcp)?\n");
+		err = EXIT_FAILURE;
+		goto out;
+	}
+
+	map_key = opt.port;
+
+	err = map_get_counter_flags(map_fd, &map_key, &counter, &flags);
+	if (err && err != -ENOENT)
+		goto out;
+
+	if (opt.remove)
+		flags &= ~(opt.mode | opt.proto);
+	else
+		flags |= opt.mode | opt.proto;
+
+	if (!(flags & (MAP_FLAG_DST | MAP_FLAG_SRC)) ||
+	    !(flags & (MAP_FLAG_TCP | MAP_FLAG_UDP)))
+		flags = 0;
+
+	err = map_set_flags(map_fd, &map_key, flags);
+	if (err)
+		goto out;
+
+	if (opt.print_status) {
+		err = print_ports(map_fd);
+		if (err)
+			goto out;
+	}
+
+out:
+	if (map_fd >= 0)
+		close(map_fd);
+	return err;
 }
 
 int do_add_ip(int argc, char **argv)
@@ -208,25 +364,9 @@ int do_status(int argc, char **argv)
 
 	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS));
 	if (map_fd >= 0) {
-		__u32 map_key = -1, next_key = 0;
-
-		printf("Filtered ports:\n");
-		printf("  Port   Type             Hit counter\n");
-		FOR_EACH_MAP_KEY(err, map_fd, map_key, next_key)
-		{
-			char buf[100];
-			__u64 counter;
-			__u8 flags;
-
-			err = map_get_counter_flags(map_fd, &map_key, &counter, &flags);
-			if (err == -ENOENT)
-				continue;
-			else if (err)
-				goto out;
-
-			print_flags(buf, sizeof(buf), map_flags, flags);
-			printf("  %-6u %-15s  %llu\n", map_key, buf, counter);
-		}
+		err = print_ports(map_fd);
+		if (err)
+			goto out;
 	}
 
 out:
@@ -257,7 +397,7 @@ static const struct cmd {
 	int (*func)(int argc, char **argv);
 } cmds[] = {
 	{ "install",	do_install },
-	{ "port",	do_add_port },
+	{ "port",	do_port },
 	{ "ip",	do_add_ip },
 	{ "ether",	do_add_ether },
 	{ "status",	do_status },
