@@ -101,10 +101,27 @@ static int parse_mac(char *str, unsigned char mac[ETH_ALEN])
 static int handle_macaddr(const struct option_wrapper *opt,
 			  void *cfg, char *optarg)
 {
-	unsigned char **opt_set;
+	struct mac_addr *opt_set;
 
 	opt_set = (cfg + opt->cfg_offset);
-	return parse_mac(optarg, *opt_set);
+	return parse_mac(optarg, opt_set->addr);
+}
+
+void print_macaddr(char *buf, size_t buf_len, const struct mac_addr *addr)
+{
+	size_t len;
+	int i;
+
+	for (i = 0; buf_len > 0 && i < ETH_ALEN; i++) {
+		len = snprintf(buf, buf_len, "%02x", addr->addr[i]);
+		buf += len;
+		buf_len -= len;
+
+		if (i < ETH_ALEN-1) {
+			*buf++ = ':';
+			buf_len -= 1;
+		}
+	}
 }
 
 static const struct flag_val *find_flag(const struct flag_val *flag_vals,

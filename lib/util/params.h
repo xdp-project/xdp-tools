@@ -53,6 +53,10 @@ struct ip_addr {
         } addr;
 };
 
+struct mac_addr {
+        unsigned char addr[ETH_ALEN];
+};
+
 #define DEFINE_OPTION(_short, _long, _arg, _req, _type, _typearg,       \
                       _help, _metavar, _cfgtype, _cfgmember)            \
         {.option = {_long, _arg, NULL, _short},                         \
@@ -68,6 +72,7 @@ struct ip_addr {
 void print_flags(char *buf, size_t buf_len, const struct flag_val *flags,
                  unsigned long flags_val);
 void print_addr(char *buf, size_t buf_len, const struct ip_addr *addr);
+void print_macaddr(char *buf, size_t buf_len, const struct mac_addr *addr);
 bool is_prefix(const char *prefix, const char *string);
 void usage(const char *prog_name, const char *doc,
            const struct option_wrapper *long_options, bool full);
