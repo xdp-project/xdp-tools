@@ -28,4 +28,6 @@ int get_xdp_prog_info(int ifindex, struct bpf_prog_info *info);
 int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir);
 int get_pinned_map_fd(const char *bpf_root, const char *map_name);
 
+const char *action2str(__u32 action);
+
 #endif

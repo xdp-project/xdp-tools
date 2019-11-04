@@ -287,3 +287,24 @@ int get_pinned_map_fd(const char *bpf_root, const char *map_name)
 
 	return pin_fd;
 }
+
+#define XDP_UNKNOWN	XDP_REDIRECT + 1
+#ifndef XDP_ACTION_MAX
+#define XDP_ACTION_MAX (XDP_UNKNOWN + 1)
+#endif
+
+static const char *xdp_action_names[XDP_ACTION_MAX] = {
+	[XDP_ABORTED]   = "XDP_ABORTED",
+	[XDP_DROP]      = "XDP_DROP",
+	[XDP_PASS]      = "XDP_PASS",
+	[XDP_TX]        = "XDP_TX",
+	[XDP_REDIRECT]  = "XDP_REDIRECT",
+	[XDP_UNKNOWN]	= "XDP_UNKNOWN",
+};
+
+const char *action2str(__u32 action)
+{
+        if (action < XDP_ACTION_MAX)
+                return xdp_action_names[action];
+        return NULL;
+}
