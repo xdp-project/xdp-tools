@@ -364,10 +364,15 @@ int __print_ips(int map_fd, int af)
 	return 0;
 }
 
-int print_ips(const char *pin_root_path)
+int print_ips()
 {
+	char pin_root_path[PATH_MAX];
 	int map_fd4, map_fd6;
 	int err = 0;
+
+	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
+	if (err)
+		goto out;
 
 	map_fd6 = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_IPV6));
 	map_fd4 = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_IPV4));
@@ -397,7 +402,45 @@ out:
 }
 
 
+static int __do_address(const char *map_name, const char *feat_name,
+			void *map_key, bool remove, int mode)
+{
+	char pin_root_path[PATH_MAX];
+	int map_fd = -1, err = 0;
+	__u8 flags = 0;
+	__u64 counter;
+	err = check_bpf_environ(NEED_RLIMIT);
+	if (err)
+		goto out;
 
+	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
+	if (err)
+		goto out;
+
+	map_fd = get_pinned_map_fd(pin_root_path, map_name);
+	if (map_fd < 0) {
+		pr_warn("Couldn't find filter map; is xdp-filter loaded "
+			"with the %s feature?\n", feat_name);
+		err = -ENOENT;
+		goto out;
+	}
+
+	err = map_get_counter_flags(map_fd, map_key, &counter, &flags);
+	if (err && err != -ENOENT)
+		goto out;
+
+	if (remove)
+		flags &= ~mode;
+	else
+		flags |= mode;
+
+	err = map_set_flags(map_fd, map_key, flags);
+	if (err)
+		goto out;
+
+out:
+	return err ?: map_fd;
+}
 
 struct ipopt {
 	bool help;
@@ -431,15 +474,10 @@ static struct option_wrapper ip_options[] = {
 	END_OPTIONS
 };
 
-int do_ip(int argc, char **argv)
+static int do_ip(int argc, char **argv)
 {
 	int map_fd = -1, err = EXIT_SUCCESS;
 	char modestr[100], addrstr[100];
-	char pin_root_path[PATH_MAX];
-	char *map_name;
-	__u8 flags = 0;
-	__u64 counter;
-	void *map_key;
 	bool v6;
 	struct ipopt opt = {
 		.mode = MAP_FLAG_DST,
@@ -455,40 +493,17 @@ int do_ip(int argc, char **argv)
 		 addrstr, modestr);
 
 	v6 = (opt.addr.af == AF_INET6);
-	map_key = &opt.addr.addr;
 
-	err = check_bpf_environ(NEED_RLIMIT);
-	if (err)
-		goto out;
-
-	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
-	if (err)
-		goto out;
-
-	map_name = v6 ? textify(MAP_NAME_IPV6) : textify(MAP_NAME_IPV4);
-	map_fd = get_pinned_map_fd(pin_root_path, map_name);
+	map_fd = __do_address(v6 ? textify(MAP_NAME_IPV6) : textify(MAP_NAME_IPV4),
+			      v6 ? "ipv6" : "ipv4",
+			      &opt.addr.addr, opt.remove, opt.mode);
 	if (map_fd < 0) {
-		pr_warn("Couldn't find IP filter map; is xdp-filter loaded "
-			"with the %s feature?\n", v6 ? "ipv6" : "ipv4");
-		err = EXIT_FAILURE;
+		err = map_fd;
 		goto out;
 	}
 
-	err = map_get_counter_flags(map_fd, map_key, &counter, &flags);
-	if (err && err != -ENOENT)
-		goto out;
-
-	if (opt.remove)
-		flags &= ~opt.mode;
-	else
-		flags |= opt.mode;
-
-	err = map_set_flags(map_fd, map_key, flags);
-	if (err)
-		goto out;
-
 	if (opt.print_status) {
-		err = print_ips(pin_root_path);
+		err = print_ips();
 		if (err)
 			goto out;
 	}
@@ -499,9 +514,98 @@ out:
 	return err;
 }
 
-int do_add_ether(int argc, char **argv)
+int print_ethers(int map_fd)
 {
-	return EXIT_FAILURE;
+	struct mac_addr map_key = {}, next_key = {};
+	int err;
+
+	printf("Filtered MAC addresses:\n");
+	printf("  %-18s Type             Hit counter\n", "Address");
+	FOR_EACH_MAP_KEY(err, map_fd, map_key, next_key)
+	{
+		char modebuf[100], addrbuf[100];
+		__u64 counter;
+		__u8 flags;
+
+		err = map_get_counter_flags(map_fd, &map_key, &counter, &flags);
+		if (err == -ENOENT)
+			continue;
+		else if (err)
+			return err;
+
+		print_flags(modebuf, sizeof(modebuf), map_flags_srcdst, flags);
+		print_macaddr(addrbuf, sizeof(addrbuf), &map_key);
+		printf("  %-18s %-15s  %llu\n", addrbuf, modebuf, counter);
+	}
+	return 0;
+}
+
+struct etheropt {
+	bool help;
+	unsigned int mode;
+	struct mac_addr addr;
+	bool print_status;
+	bool remove;
+};
+
+static struct option_wrapper ether_options[] = {
+	DEFINE_OPTION('r', "remove", no_argument, false, OPT_BOOL, NULL,
+		      "Remove port instead of adding", "",
+		      struct etheropt, remove),
+	DEFINE_OPTION('s', "status", no_argument, false, OPT_BOOL, NULL,
+		      "Print status of filtered ports after changing", "",
+		      struct etheropt, print_status),
+	DEFINE_OPTION('m', "mode", required_argument, false,
+		      OPT_FLAGS, map_flags_srcdst,
+		      "Filter mode; default dst", "<mode>",
+		      struct etheropt, mode),
+	DEFINE_OPTION('a', "addr", required_argument, true,
+		      OPT_MACADDR, NULL,
+		      "Address to add or remove", "<addr>",
+		      struct etheropt, addr),
+	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
+		      "Enable verbose logging", "",
+		      struct etheropt, help),
+	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
+		      "Show help", "",
+		      struct etheropt, help),
+	END_OPTIONS
+};
+
+static int do_ether(int argc, char **argv)
+{
+	int err = EXIT_SUCCESS, map_fd = -1;
+	char modestr[100], addrstr[100];
+	struct etheropt opt = {
+		.mode = MAP_FLAG_DST,
+	};
+
+	parse_cmdline_args(argc, argv, ether_options, &opt,
+			   "xdp-filter ether",
+			   "Add or remove Ethernet addresses from xdp-filter");
+
+	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt.mode);
+	print_macaddr(addrstr, sizeof(addrstr), &opt.addr);
+	pr_debug("%s addr %s mode %s\n", opt.remove ? "Removing" : "Adding",
+		 addrstr, modestr);
+
+	map_fd = __do_address(textify(MAP_NAME_ETHERNET),
+			      "ethernet", &opt.addr.addr, opt.remove, opt.mode);
+	if (map_fd < 0) {
+		err = map_fd;
+		goto out;
+	}
+
+	if (opt.print_status) {
+		err = print_ethers(map_fd);
+		if (err)
+			goto out;
+	}
+
+out:
+	if (map_fd >= 0)
+		close(map_fd);
+	return err;
 }
 
 int do_status(int argc, char **argv)
@@ -524,8 +628,22 @@ int do_status(int argc, char **argv)
 			goto out;
 		printf("\n");
 	}
+	close(map_fd);
+	map_fd = -1;
 
-	print_ips(pin_root_path);
+	err = print_ips(pin_root_path);
+	if (err)
+		goto out;
+
+	printf("\n");
+
+	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_ETHERNET));
+	if (map_fd >= 0) {
+		err = print_ethers(map_fd);
+		if (err)
+			goto out;
+	}
+
 
 out:
 	if (map_fd >= 0)
@@ -542,7 +660,7 @@ int do_help(int argc, char **argv)
 		"       load        - load xdp-filter on an interface\n"
 		"       port        - add a port to the blacklist\n"
 		"       ip          - add an IP address to the blacklist\n"
-		/*		"       ether       - add an Ethernet MAC address to the blacklist\n"*/
+		"       ether       - add an Ethernet MAC address to the blacklist\n"
 		"       status      - show current xdp-filter status\n"
 		"       help        - show this help message\n"
 		"\n"
@@ -558,7 +676,7 @@ static const struct cmd {
 	{ "load",	do_load },
 	{ "port",	do_port },
 	{ "ip",	do_ip },
-	/*	{ "ether",	do_add_ether },*/
+	{ "ether",	do_ether },
 	{ "status",	do_status },
 	{ "help",	do_help },
 	{ 0 }
