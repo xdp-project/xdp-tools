@@ -187,8 +187,10 @@ static int handle_ipaddr(const struct option_wrapper *opt,
 	addr = (cfg + opt->cfg_offset);
 	af = strchr(optarg, ':') ? AF_INET6 : AF_INET;
 
-	if (inet_pton(af, optarg, &addr->addr) != 1)
+	if (inet_pton(af, optarg, &addr->addr) != 1) {
+		pr_warn("Invalid IP address: %s\n", optarg);
 		return -EINVAL;
+	}
 
 	addr->af = af;
 	return 0;
