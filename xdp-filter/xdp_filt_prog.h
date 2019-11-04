@@ -160,11 +160,12 @@ static int __always_inline lookup_verdict_ethernet(struct ethhdr *eth)
 #define CHECK_VERDICT_ETHERNET(param)
 #endif /* FILT_MODE_ETHERNET */
 
-
-
+#ifndef FUNCNAME
+#define FUNCNAME xdp_filt_unknown
+#endif
 
 SEC("xdp_filter")
-int xdp_filter_func(struct xdp_md *ctx)
+int FUNCNAME(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;

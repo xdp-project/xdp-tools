@@ -5,4 +5,5 @@
 #undef FILT_MODE_IPV6
 #define FILT_MODE_UDP
 #undef FILT_MODE_TCP
+#define FUNCNAME xdp_filt_udp
 #include "xdp_filt_prog.h"
