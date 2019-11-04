@@ -233,7 +233,7 @@ int print_ports(int map_fd)
 	int err;
 
 	printf("Filtered ports:\n");
-	printf("  Port   Type             Hit counter\n");
+	printf("  %-40s Mode             Hit counter\n", "");
 	FOR_EACH_MAP_KEY(err, map_fd, map_key, next_key)
 	{
 		char buf[100];
@@ -247,7 +247,7 @@ int print_ports(int map_fd)
 			return err;
 
 		print_flags(buf, sizeof(buf), map_flags_all, flags);
-		printf("  %-6u %-15s  %llu\n", ntohs(map_key), buf, counter);
+		printf("  %-40u %-15s  %llu\n", ntohs(map_key), buf, counter);
 	}
 	return 0;
 }
@@ -378,7 +378,7 @@ int __print_ips(int map_fd, int af)
 
 		print_flags(flagbuf, sizeof(flagbuf), map_flags_srcdst, flags);
 		print_addr(addrbuf, sizeof(addrbuf), &map_key);
-		printf("  %-40s %-8s  %llu\n", addrbuf, flagbuf, counter);
+		printf("  %-40s %-15s  %llu\n", addrbuf, flagbuf, counter);
 	}
 
 	return 0;
@@ -402,7 +402,7 @@ int print_ips()
 	}
 
 	printf("Filtered IP addresses:\n");
-	printf("  %-40s Type      Hit counter\n", "Address");
+	printf("  %-40s Mode             Hit counter\n", "");
 
 	if (map_fd6 >= 0) {
 		err = __print_ips(map_fd6, AF_INET6);
@@ -540,7 +540,7 @@ int print_ethers(int map_fd)
 	int err;
 
 	printf("Filtered MAC addresses:\n");
-	printf("  %-18s Type             Hit counter\n", "Address");
+	printf("  %-40s Mode             Hit counter\n", "");
 	FOR_EACH_MAP_KEY(err, map_fd, map_key, next_key)
 	{
 		char modebuf[100], addrbuf[100];
@@ -555,7 +555,7 @@ int print_ethers(int map_fd)
 
 		print_flags(modebuf, sizeof(modebuf), map_flags_srcdst, flags);
 		print_macaddr(addrbuf, sizeof(addrbuf), &map_key);
-		printf("  %-18s %-15s  %llu\n", addrbuf, modebuf, counter);
+		printf("  %-40s %-15s  %llu\n", addrbuf, modebuf, counter);
 	}
 	return 0;
 }
@@ -653,7 +653,7 @@ int do_status(int argc, char **argv)
 	printf("CURRENT XDP-FILTER STATUS:\n\n");
 
 	printf("Loaded on interfaces:\n");
-	printf("  Interface name    Enabled features\n");
+	printf("  %-40s Enabled features\n", "");
 
 	for(idx = indexes; idx->if_index; idx++) {
 		struct bpf_prog_info info = {};
@@ -669,7 +669,7 @@ int do_status(int argc, char **argv)
 		feat = find_features(info.name);
 		if (feat) {
 			print_flags(featbuf, sizeof(featbuf), print_features, feat);
-			printf("  %-17s %s\n", idx->if_name, featbuf);
+			printf("  %-40s %s\n", idx->if_name, featbuf);
 		}
 	}
 	if_freenameindex(indexes);
@@ -699,6 +699,7 @@ int do_status(int argc, char **argv)
 			goto out;
 	}
 
+	printf("\n");
 
 out:
 	if (map_fd >= 0)
