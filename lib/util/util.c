@@ -266,10 +266,12 @@ int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir)
 	return 0;
 }
 
-int get_pinned_map_fd(const char *bpf_root, const char *map_name)
+int get_pinned_map_fd(const char *bpf_root, const char *map_name,
+		      struct bpf_map_info *info)
 {
-	int len, err, pin_fd;
 	char buf[PATH_MAX], errmsg[STRERR_BUFSIZE];
+	__u32 info_len = sizeof(*info);
+	int len, err, pin_fd;
 
 	len = snprintf(buf, sizeof(buf), "%s/%s", bpf_root, map_name);
 	if (len < 0)
@@ -283,6 +285,16 @@ int get_pinned_map_fd(const char *bpf_root, const char *map_name)
 		libbpf_strerror(-err, errmsg, sizeof(errmsg));
 		pr_debug("Couldn't retrieve pinned map '%s': %s\n", buf, errmsg);
 		return err;
+	}
+
+	if (info) {
+		err = bpf_obj_get_info_by_fd(pin_fd, info, &info_len);
+		if (err) {
+			err = -errno;
+			libbpf_strerror(-err, errmsg, sizeof(errmsg));
+			pr_debug("Couldn't retrieve map info: %s\n", buf, errmsg);
+			return err;
+		}
 	}
 
 	return pin_fd;
@@ -316,25 +328,25 @@ int check_map_fd_info(const struct bpf_map_info *info,
 		fprintf(stderr, "ERR: %s() "
 			"Map key size(%d) mismatch expected size(%d)\n",
 			__func__, info->key_size, exp->key_size);
-		return EXIT_FAIL;
+		return -EINVAL;
 	}
 	if (exp->value_size && exp->value_size != info->value_size) {
 		fprintf(stderr, "ERR: %s() "
 			"Map value size(%d) mismatch expected size(%d)\n",
 			__func__, info->value_size, exp->value_size);
-		return EXIT_FAIL;
+		return -EINVAL;
 	}
 	if (exp->max_entries && exp->max_entries != info->max_entries) {
 		fprintf(stderr, "ERR: %s() "
 			"Map max_entries(%d) mismatch expected size(%d)\n",
 			__func__, info->max_entries, exp->max_entries);
-		return EXIT_FAIL;
+		return -EINVAL;
 	}
 	if (exp->type && exp->type  != info->type) {
 		fprintf(stderr, "ERR: %s() "
 			"Map type(%d) mismatch expected type(%d)\n",
 			__func__, info->type, exp->type);
-		return EXIT_FAIL;
+		return -EINVAL;
 	}
 
 	return 0;
@@ -365,9 +377,10 @@ int open_bpf_map_file(const char *pin_dir,
 	if (info) {
 		err = bpf_obj_get_info_by_fd(fd, info, &info_len);
 		if (err) {
+			err = -errno;
 			fprintf(stderr, "ERR: %s() can't get info - %s\n",
 				__func__,  strerror(errno));
-			return EXIT_FAIL_BPF;
+			return err;
 		}
 	}
 

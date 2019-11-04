@@ -320,7 +320,7 @@ int do_port(int argc, char **argv)
 	if (err)
 		goto out;
 
-	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS));
+	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS), NULL);
 	if (map_fd < 0) {
 		pr_warn("Couldn't find port filter map; is xdp-filter loaded "
 			"with the right features (udp and/or tcp)?\n");
@@ -394,8 +394,8 @@ int print_ips()
 	if (err)
 		goto out;
 
-	map_fd6 = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_IPV6));
-	map_fd4 = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_IPV4));
+	map_fd6 = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_IPV6), NULL);
+	map_fd4 = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_IPV4), NULL);
 	if (map_fd4 < 0 && map_fd6 < 0) {
 		err = -ENOENT;
 		goto out;
@@ -437,7 +437,7 @@ static int __do_address(const char *map_name, const char *feat_name,
 	if (err)
 		goto out;
 
-	map_fd = get_pinned_map_fd(pin_root_path, map_name);
+	map_fd = get_pinned_map_fd(pin_root_path, map_name, NULL);
 	if (map_fd < 0) {
 		pr_warn("Couldn't find filter map; is xdp-filter loaded "
 			"with the %s feature?\n", feat_name);
@@ -676,7 +676,7 @@ int do_status(int argc, char **argv)
 	err = EXIT_SUCCESS;
 	printf("\n");
 
-	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS));
+	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS), NULL);
 	if (map_fd >= 0) {
 		err = print_ports(map_fd);
 		if (err)
@@ -692,7 +692,7 @@ int do_status(int argc, char **argv)
 
 	printf("\n");
 
-	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_ETHERNET));
+	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_ETHERNET), NULL);
 	if (map_fd >= 0) {
 		err = print_ethers(map_fd);
 		if (err)
