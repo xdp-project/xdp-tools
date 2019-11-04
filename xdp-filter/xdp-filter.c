@@ -22,6 +22,7 @@
 #include "params.h"
 #include "logging.h"
 #include "util.h"
+#include "stats.h"
 #include "common_kern_user.h"
 #include "prog_features.h"
 
@@ -628,11 +629,33 @@ out:
 	return err;
 }
 
+struct statusopt {
+	bool help;
+};
+
+static struct option_wrapper status_options[] = {
+	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
+		      "Enable verbose logging", "",
+		      struct etheropt, help),
+	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
+		      "Show help", "",
+		      struct etheropt, help),
+	END_OPTIONS
+};
+
 int do_status(int argc, char **argv)
 {
 	char pin_root_path[PATH_MAX], errmsg[STRERR_BUFSIZE];
 	int err = EXIT_SUCCESS, map_fd = -1;
 	struct if_nameindex *idx, *indexes;
+	struct stats_record rec = {};
+	struct bpf_map_info info;
+	struct statusopt opt = {};
+
+	parse_cmdline_args(argc, argv, status_options, &opt,
+			   "xdp-filter status",
+			   "Show xdp-filter status");
+
 
 	err = check_bpf_environ(NEED_RLIMIT);
 	if (err)
@@ -651,6 +674,21 @@ int do_status(int argc, char **argv)
 	}
 
 	printf("CURRENT XDP-FILTER STATUS:\n\n");
+
+	map_fd = get_pinned_map_fd(pin_root_path, textify(XDP_STATS_MAP_NAME), &info);
+	if (map_fd < 0) {
+		err = map_fd;
+		pr_warn("Couldn't find stats map. Maybe xdp-filter is not loaded?\n");
+		goto out;
+	}
+
+	err = stats_collect(map_fd, info.type, &rec);
+	if (err)
+		goto out;
+
+	printf("Aggregate per-action statistics:\n");
+	stats_print_one(&rec);
+	printf("\n");
 
 	printf("Loaded on interfaces:\n");
 	printf("  %-40s Enabled features\n", "");

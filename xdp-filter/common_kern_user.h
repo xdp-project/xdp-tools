@@ -21,4 +21,6 @@
 #define MAP_NAME_IPV6 filter_ipv6
 #define MAP_NAME_ETHERNET filter_ethernet
 
+#include "bpf/xdp_stats_kern_user.h"
+
 #endif
