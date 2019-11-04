@@ -51,16 +51,12 @@ int check_bpf_environ(unsigned long min_rlimit)
 	return 0;
 }
 
-static int get_xdp_prog_info(int ifindex, bool skb_mode,
-			     struct bpf_prog_info *info)
+int get_xdp_prog_info(int ifindex, struct bpf_prog_info *info)
 {
 	__u32 prog_id, info_len = sizeof(*info);
-	int prog_fd, err = 0, xdp_flags = 0;
+	int prog_fd, err = 0;
 
-	if (skb_mode)
-		xdp_flags |= XDP_FLAGS_SKB_MODE;
-
-	err = bpf_get_link_xdp_id(ifindex, &prog_id, xdp_flags);
+	err = bpf_get_link_xdp_id(ifindex, &prog_id, 0);
 	if (err)
 		goto out;
 

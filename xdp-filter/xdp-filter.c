@@ -62,6 +62,17 @@ static char *find_progname(__u32 features)
 	return NULL;
 }
 
+static __u32 find_features(const char *progname)
+{
+	struct prog_feature *feat;
+
+	for (feat = prog_features; feat->prog_name; feat++) {
+		if (is_prefix(progname, feat->prog_name))
+			return ntohl(feat->features);
+	}
+	return 0;
+}
+
 int map_get_counter_flags(int fd, void *key, __u64 *counter, __u8 *flags)
 {
 	/* For percpu maps, userspace gets a value per possible CPU */
@@ -120,6 +131,15 @@ struct flag_val load_features[] = {
 	{"ipv4", FEAT_IPV4},
 	{"ethernet", FEAT_ETHERNET},
 	{"all", FEAT_ALL},
+	{}
+};
+
+struct flag_val print_features[] = {
+	{"tcp", FEAT_TCP},
+	{"udp", FEAT_UDP},
+	{"ipv6", FEAT_IPV6},
+	{"ipv4", FEAT_IPV4},
+	{"ethernet", FEAT_ETHERNET},
 	{}
 };
 
@@ -610,8 +630,9 @@ out:
 
 int do_status(int argc, char **argv)
 {
-	char pin_root_path[PATH_MAX];
+	char pin_root_path[PATH_MAX], errmsg[STRERR_BUFSIZE];
 	int err = EXIT_SUCCESS, map_fd = -1;
+	struct if_nameindex *idx, *indexes;
 
 	err = check_bpf_environ(NEED_RLIMIT);
 	if (err)
@@ -620,6 +641,40 @@ int do_status(int argc, char **argv)
 	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
 	if (err)
 		goto out;
+
+	indexes = if_nameindex();
+	if (!indexes) {
+		err = -errno;
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		pr_warn("Couldn't get list of interfaces: %s\n", errmsg);
+		goto out;
+	}
+
+	printf("CURRENT XDP-FILTER STATUS:\n\n");
+
+	printf("Loaded on interfaces:\n");
+	printf("  Interface name    Enabled features\n");
+
+	for(idx = indexes; idx->if_index; idx++) {
+		struct bpf_prog_info info = {};
+		char featbuf[100];
+		__u32 feat;
+
+		err = get_xdp_prog_info(idx->if_index, &info);
+		if (err && err == -ENOENT)
+			continue;
+		else if (err)
+			goto out;
+
+		feat = find_features(info.name);
+		if (feat) {
+			print_flags(featbuf, sizeof(featbuf), print_features, feat);
+			printf("  %-17s %s\n", idx->if_name, featbuf);
+		}
+	}
+	if_freenameindex(indexes);
+	err = EXIT_SUCCESS;
+	printf("\n");
 
 	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS));
 	if (map_fd >= 0) {
