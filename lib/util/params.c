@@ -11,6 +11,7 @@
 #include <linux/if_ether.h>
 #include <linux/if_link.h> /* XDP_FLAGS_* depend on kernel-headers installed */
 #include <linux/if_xdp.h>
+#include <arpa/inet.h>
 
 #include "params.h"
 #include "logging.h"
@@ -171,6 +172,28 @@ static int handle_ifname(const struct option_wrapper *opt,
 	return 0;
 }
 
+void print_addr(char *buf, size_t buf_len, const struct ip_addr *addr)
+{
+	inet_ntop(addr->af, &addr->addr, buf, buf_len);
+}
+
+static int handle_ipaddr(const struct option_wrapper *opt,
+			  void *cfg, char *optarg)
+{
+	struct ip_addr *addr;
+	int err;
+	int af;
+
+	addr = (cfg + opt->cfg_offset);
+	af = strchr(optarg, ':') ? AF_INET6 : AF_INET;
+
+	if (inet_pton(af, optarg, &addr->addr) != 1)
+		return -EINVAL;
+
+	addr->af = af;
+	return 0;
+}
+
 static const struct opthandler {
 	int (*func)(const struct option_wrapper *opt, void *cfg, char *optarg);
 } handlers[__OPT_MAX] = {
@@ -182,7 +205,8 @@ static const struct opthandler {
 			 {handle_u32},
 			 {handle_macaddr},
 			 {handle_verbose},
-			 {handle_ifname}
+			 {handle_ifname},
+			 {handle_ipaddr}
 };
 
 void print_flags(char *buf, size_t buf_len, const struct flag_val *flags,

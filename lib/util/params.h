@@ -6,6 +6,9 @@
 #include <getopt.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <linux/in.h>
+#include <linux/in6.h>
+#include "libbpf.h"
 
 enum option_type {
                   OPT_HELP,
@@ -17,6 +20,7 @@ enum option_type {
                   OPT_MACADDR,
                   OPT_VERBOSE,
                   OPT_IFNAME,
+                  OPT_IPADDR,
                   __OPT_MAX
 };
 
@@ -41,6 +45,14 @@ struct iface {
         int ifindex;
 };
 
+struct ip_addr {
+        int af;
+        union {
+                struct in_addr addr4;
+                struct in6_addr addr6;
+        } addr;
+};
+
 #define DEFINE_OPTION(_short, _long, _arg, _req, _type, _typearg,       \
                       _help, _metavar, _cfgtype, _cfgmember)            \
         {.option = {_long, _arg, NULL, _short},                         \
@@ -55,6 +67,7 @@ struct iface {
 
 void print_flags(char *buf, size_t buf_len, const struct flag_val *flags,
                  unsigned long flags_val);
+void print_addr(char *buf, size_t buf_len, const struct ip_addr *addr);
 bool is_prefix(const char *prefix, const char *string);
 void usage(const char *prog_name, const char *doc,
            const struct option_wrapper *long_options, bool full);
