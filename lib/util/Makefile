@@ -8,7 +8,7 @@ CFLAGS += -I$(LIBBPF_DIR)
 all: $(UTIL_OBJS)
 
 $(UTIL_OBJS): %.o: %.c %.h
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) -I../../headers -c -o $@ $<
 
 clean:
 	rm -f $(UTIL_OBJS)
