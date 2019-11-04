@@ -55,9 +55,9 @@ static int __always_inline lookup_verdict_tcp(struct tcphdr *tcphdr)
 {
 	__u32 key;
 
-	key = bpf_ntohs(tcphdr->dest);
+	key = tcphdr->dest;
 	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_TCP);
-	key = bpf_ntohs(tcphdr->source);
+	key = tcphdr->source;
 	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_TCP);
 	return XDP_PASS;
 }
@@ -71,9 +71,9 @@ static int __always_inline lookup_verdict_udp(struct udphdr *udphdr)
 {
 	__u32 key;
 
-	key = bpf_ntohs(udphdr->dest);
+	key = udphdr->dest;
 	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_TCP);
-	key = bpf_ntohs(udphdr->source);
+	key = udphdr->source;
 	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_TCP);
 	return XDP_PASS;
 }
@@ -98,12 +98,8 @@ struct {
 
 static int __always_inline lookup_verdict_ipv4(struct iphdr *iphdr)
 {
-	__u32 key;
-
-	key = bpf_ntohl(iphdr->daddr);
-	CHECK_MAP(&filter_ipv4, &key, MAP_FLAG_DST);
-	key = bpf_ntohl(iphdr->saddr);
-	CHECK_MAP(&filter_ipv4, &key, MAP_FLAG_SRC);
+	CHECK_MAP(&filter_ipv4, &iphdr->daddr, MAP_FLAG_DST);
+	CHECK_MAP(&filter_ipv4, &iphdr->saddr, MAP_FLAG_SRC);
 	return XDP_PASS;
 }
 

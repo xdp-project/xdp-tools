@@ -227,7 +227,7 @@ int print_ports(int map_fd)
 			return err;
 
 		print_flags(buf, sizeof(buf), map_flags_all, flags);
-		printf("  %-6u %-15s  %llu\n", map_key, buf, counter);
+		printf("  %-6u %-15s  %llu\n", ntohs(map_key), buf, counter);
 	}
 	return 0;
 }
@@ -308,7 +308,7 @@ int do_port(int argc, char **argv)
 		goto out;
 	}
 
-	map_key = opt.port;
+	map_key = htons(opt.port);
 
 	err = map_get_counter_flags(map_fd, &map_key, &counter, &flags);
 	if (err && err != -ENOENT)
