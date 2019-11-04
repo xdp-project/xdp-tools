@@ -351,38 +351,3 @@ int check_map_fd_info(const struct bpf_map_info *info,
 
 	return 0;
 }
-
-int open_bpf_map_file(const char *pin_dir,
-		      const char *mapname,
-		      struct bpf_map_info *info)
-{
-	char filename[PATH_MAX];
-	int err, len, fd;
-	__u32 info_len = sizeof(*info);
-
-	len = snprintf(filename, PATH_MAX, "%s/%s", pin_dir, mapname);
-	if (len < 0) {
-		fprintf(stderr, "ERR: constructing full mapname path\n");
-		return -1;
-	}
-
-	fd = bpf_obj_get(filename);
-	if (fd < 0) {
-		fprintf(stderr,
-			"WARN: Failed to open bpf map file:%s err(%d):%s\n",
-			filename, errno, strerror(errno));
-		return fd;
-	}
-
-	if (info) {
-		err = bpf_obj_get_info_by_fd(fd, info, &info_len);
-		if (err) {
-			err = -errno;
-			fprintf(stderr, "ERR: %s() can't get info - %s\n",
-				__func__,  strerror(errno));
-			return err;
-		}
-	}
-
-	return fd;
-}

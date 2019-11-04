@@ -218,7 +218,7 @@ int stats_poll(const char *pin_dir, const char *map_name, int interval)
 	/* Trick to pretty printf with thousands separators use %' */
 	setlocale(LC_NUMERIC, "en_US");
 
-	map_fd = open_bpf_map_file(pin_dir, "xdp_stats_map", &info);
+	map_fd = get_pinned_map_fd(pin_dir, "xdp_stats_map", &info);
 	map_type = info.type;
 	id = info.id;
 
@@ -231,7 +231,7 @@ int stats_poll(const char *pin_dir, const char *map_name, int interval)
 		prev = record; /* struct copy */
 
 		close(map_fd);
-		map_fd = open_bpf_map_file(pin_dir, "xdp_stats_map", &info);
+		map_fd = get_pinned_map_fd(pin_dir, "xdp_stats_map", &info);
 		if (map_fd < 0) {
                         return map_fd;
 		} else if (id != info.id) {
