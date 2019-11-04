@@ -284,8 +284,8 @@ int get_pinned_map_fd(const char *bpf_root, const char *map_name)
 	pin_fd = bpf_obj_get(buf);
 	if (pin_fd < 0) {
 		err = -errno;
-		pr_debug("Couldn't retrieve pinned map '%s': %s\n",
-			 libbpf_strerror(-err, errmsg, sizeof(errmsg)));
+		libbpf_strerror(-err, errmsg, sizeof(errmsg));
+		pr_debug("Couldn't retrieve pinned map '%s': %s\n", buf, errmsg);
 		return err;
 	}
 
