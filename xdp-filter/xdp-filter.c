@@ -681,6 +681,8 @@ int do_status(int argc, char **argv)
 		pr_warn("Couldn't find stats map. Maybe xdp-filter is not loaded?\n");
 		goto out;
 	}
+	rec.stats[XDP_DROP].enabled = true;
+	rec.stats[XDP_PASS].enabled = true;
 
 	err = stats_collect(map_fd, info.type, &rec);
 	if (err)

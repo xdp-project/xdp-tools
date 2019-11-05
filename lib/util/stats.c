@@ -25,7 +25,7 @@ static __u64 gettime(void)
 
 	res = clock_gettime(CLOCK_MONOTONIC, &t);
 	if (res < 0) {
-		fprintf(stderr, "Error with gettimeofday! (%i)\n", res);
+		pr_warn("Error with gettimeofday! (%i)\n", res);
 		exit(1);
 	}
 	return (__u64) t.tv_sec * NANOSEC_PER_SEC + t.tv_nsec;
@@ -43,31 +43,24 @@ static double calc_period(struct record *r, struct record *p)
 	return period_;
 }
 
-static void stats_print_header()
-{
-	/* Print stats "header" */
-	printf("%-12s\n", "XDP-action");
-}
-
 void stats_print_one(struct stats_record *stats_rec)
 {
-	struct record *rec;
 	__u64 packets, bytes;
+	struct record *rec;
 	int i;
 
 	/* Print for each XDP actions stats */
 	for (i = 0; i < XDP_ACTION_MAX; i++)
 	{
-		char *fmt = "  %-35s %'11lld pkts %'11lld Kbytes\n";
+		char *fmt = "  %-35s %'11lld pkts %'11lld KiB\n";
 		const char *action = action2str(i);
 
 		rec  = &stats_rec->stats[i];
 		packets = rec->total.rx_packets;
 		bytes   = rec->total.rx_bytes;
 
-		if (packets)
-			printf(fmt, action, rec->total.rx_packets,
-			       rec->total.rx_bytes / 1000);
+		if (rec->enabled)
+			printf(fmt, action, packets, bytes / 1024);
 	}
 }
 
@@ -76,46 +69,51 @@ void stats_print(struct stats_record *stats_rec,
 {
 	struct record *rec, *prev;
 	__u64 packets, bytes;
+	struct timespec t;
+	bool first = true;
 	double period;
 	double pps; /* packets per sec */
 	double bps; /* bits per sec */
-	int i;
+	int i, err;
+
+	err = clock_gettime(CLOCK_REALTIME, &t);
+	if (err < 0) {
+		pr_warn("Error with gettimeofday! (%i)\n", err);
+		exit(1);
+	}
 
 	/* Print for each XDP actions stats */
 	for (i = 0; i < XDP_ACTION_MAX; i++)
 	{
-		char *fmt_per = "%-12s %'11lld pkts (%'10.0f pps)"
-			" %'11lld Kbytes (%'6.0f Mbits/s)"
-			" period:%f\n";
-		char *fmt_once = "%-12s %'11lld pkts"
-			" %'11lld Kbytes\n";
+		char *fmt = "%-12s %'11lld pkts (%'10.0f pps)"
+			" %'11lld KiB (%'6.0f Mbits/s)\n";
 		const char *action = action2str(i);
 
 		rec  = &stats_rec->stats[i];
-		packets = rec->total.rx_packets;
-		bytes   = rec->total.rx_bytes;
-
-		if (!stats_prev) {
-			if (packets)
-				printf(fmt_once, action, rec->total.rx_packets,
-				       rec->total.rx_bytes / 1000);
-			continue;
-		}
-
 		prev = &stats_prev->stats[i];
-		packets -= prev->total.rx_packets;
-		bytes -= prev->total.rx_bytes;
+
+		if (!rec->enabled)
+			continue;
+
+		packets = rec->total.rx_packets - prev->total.rx_packets;
+		bytes   = rec->total.rx_bytes - prev->total.rx_bytes;
 
 		period = calc_period(rec, prev);
 		if (period == 0)
 		       return;
 
+		if (first) {
+			printf("Period of %fs ending at %lu.%06lu\n", period,
+			       t.tv_sec, t.tv_nsec / 1000);
+			first = false;
+		}
+
 		pps     = packets / period;
 
 		bps     = (bytes * 8)/ period / 1000000;
 
-		printf(fmt_per, action, rec->total.rx_packets, pps,
-		       rec->total.rx_bytes / 1000 , bps,
+		printf(fmt, action, rec->total.rx_packets, pps,
+		       rec->total.rx_bytes / 1024 , bps,
 		       period);
 	}
 	printf("\n");
@@ -197,6 +195,9 @@ int stats_collect(int map_fd, __u32 map_type,
 	int err;
 
 	for (key = 0; key < XDP_ACTION_MAX; key++) {
+		if (!stats_rec->stats[key].enabled)
+			continue;
+
 		err = map_collect(map_fd, map_type, key, &stats_rec->stats[key]);
 		if (err)
 			return err;
@@ -205,22 +206,24 @@ int stats_collect(int map_fd, __u32 map_type,
 	return 0;
 }
 
-int stats_poll(const char *pin_dir, const char *map_name, int interval)
+int stats_poll(int map_fd, const char *pin_dir, const char *map_name, int interval)
 {
 	struct bpf_map_info info = {};
 	struct stats_record prev, record = { 0 };
-	__u32 id, map_type;
-	int map_fd;
+	__u32 info_len = sizeof(info);
+	__u32 map_type;
+	int err;
+
+	record.stats[XDP_DROP].enabled = true;
+	record.stats[XDP_PASS].enabled = true;
 
 	if (!interval)
 		return -EINVAL;
 
-	/* Trick to pretty printf with thousands separators use %' */
-	setlocale(LC_NUMERIC, "en_US");
-
-	map_fd = get_pinned_map_fd(pin_dir, "xdp_stats_map", &info);
+	err = bpf_obj_get_info_by_fd(map_fd, &info, &info_len);
+	if (err)
+		return err;
 	map_type = info.type;
-	id = info.id;
 
 	/* Get initial reading quickly */
 	stats_collect(map_fd, map_type, &record);
@@ -229,19 +232,9 @@ int stats_poll(const char *pin_dir, const char *map_name, int interval)
 
 	while (1) {
 		prev = record; /* struct copy */
-
-		close(map_fd);
-		map_fd = get_pinned_map_fd(pin_dir, "xdp_stats_map", &info);
-		if (map_fd < 0) {
-                        return map_fd;
-		} else if (id != info.id) {
-			printf("BPF map xdp_stats_map changed its ID, restarting\n");
-			return 0;
-		}
-
 		stats_collect(map_fd, map_type, &record);
 		stats_print(&record, &prev);
-		sleep(interval);
+		usleep(interval*1000);
 	}
 
 	return 0;

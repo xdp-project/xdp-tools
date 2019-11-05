@@ -8,6 +8,7 @@
 
 struct record {
 	__u64 timestamp;
+	bool enabled;
 	struct datarec total; /* defined in common_kern_user.h */
 };
 
@@ -20,6 +21,6 @@ void stats_print(struct stats_record *stats_rec,
                  struct stats_record *stats_prev);
 int stats_collect(int map_fd, __u32 map_type,
                   struct stats_record *stats_rec);
-int stats_poll(const char *pin_dir, const char *map_name, int interval);
+int stats_poll(int map_fd, const char *pin_dir, const char *map_name, int interval);
 
 #endif
