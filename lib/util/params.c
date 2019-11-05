@@ -157,13 +157,6 @@ static int handle_flags(const struct option_wrapper *opt,
 	return 0;
 }
 
-static int handle_verbose(const struct option_wrapper *opt,
-			  void *cfg, char *optarg)
-{
-	set_log_level(LOG_DEBUG);
-	return 0;
-}
-
 static int handle_ifname(const struct option_wrapper *opt,
 			  void *cfg, char *optarg)
 {
@@ -215,7 +208,6 @@ static const struct opthandler {
 			 {handle_u16},
 			 {handle_u32},
 			 {handle_macaddr},
-			 {handle_verbose},
 			 {handle_ifname},
 			 {handle_ipaddr}
 };
@@ -335,6 +327,8 @@ void usage(const char *prog_name, const char *doc,
 	printf("\n");
 	printf("Other options:\n");
 	_print_options(long_options, false);
+	printf(" -v, --verbose              Enable verbose logging\n");
+	printf(" -h, --help                 Show this help\n");
 	printf("\n");
 }
 
@@ -344,17 +338,29 @@ static int option_wrappers_to_options(const struct option_wrapper *wrapper,
 {
 	struct option *new_options, *nopt;
 	const struct option_wrapper *opt;
+	int num = 0, num_cmn = 0;
 	char buf[100], *c = buf;
-	int num = 0;
+
+	struct option common_opts[] = {
+	       {"help", no_argument, NULL, 'h'},
+	       {"verbose", no_argument, NULL, 'v'},
+	       {}
+	};
+
+	for (nopt = common_opts; nopt->name; nopt++) {
+		num++; num_cmn++;
+		*c++ = nopt->val;
+	}
 
 	FOR_EACH_OPTION(wrapper, opt)
-		num++;
+		if(opt->option.has_arg != positional_argument)
+			num++;
 
 	new_options = malloc(sizeof(struct option) * num);
 	if (!new_options)
 		return -1;
-
-	nopt = new_options;
+	memcpy(new_options, &common_opts, sizeof(struct option) * num_cmn);
+	nopt = new_options + num_cmn;
 
 	FOR_EACH_OPTION(wrapper, opt) {
 		if (opt->option.has_arg == positional_argument)
@@ -394,6 +400,9 @@ static int set_opt(void *cfg, struct option_wrapper *all_opts,
 {
 	struct option_wrapper *opt;
 	int ret;
+
+	if (!cfg)
+		return -EFAULT;
 
 	opt = find_opt(all_opts, optchar);
 	if (!opt)
@@ -445,15 +454,21 @@ int parse_cmdline_args(int argc, char **argv,
 	/* Parse commands line args */
 	while ((opt = getopt_long(argc, argv, optstring,
 				  long_options, &longindex)) != -1) {
-		if (opt == 'h') {
+		switch (opt) {
+		case 'h':
 			usage(prog, doc, options_wrapper, true);
 			err = EXIT_FAILURE;
 			goto out;
-		}
-		if (set_opt(cfg, options_wrapper, opt, optarg)) {
-			usage(prog, doc, options_wrapper, full_help);
-			err = EXIT_FAILURE;
-			goto out;
+		case 'v':
+			set_log_level(LOG_DEBUG);
+			break;
+		default:
+			if (set_opt(cfg, options_wrapper, opt, optarg)) {
+				usage(prog, doc, options_wrapper, full_help);
+				err = EXIT_FAILURE;
+				goto out;
+			}
+			break;
 		}
 	}
 

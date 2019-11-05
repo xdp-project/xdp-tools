@@ -148,12 +148,6 @@ struct flag_val print_features[] = {
 };
 
 static struct option_wrapper load_options[] = {
-	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
-		      "Show help", "",
-		      struct loadopt, help),
-	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
-		      "Enable verbose logging", "",
-		      struct loadopt, help),
 	DEFINE_OPTION('F', "force", no_argument, false, OPT_BOOL, NULL,
 		      "Force loading of XDP program", "",
 		      struct loadopt, force),
@@ -295,18 +289,11 @@ out:
 }
 
 struct unloadopt {
-	bool help;
 	bool keep;
 	struct iface iface;
 };
 
 static struct option_wrapper unload_options[] = {
-	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
-		      "Show help", "",
-		      struct unloadopt, help),
-	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
-		      "Enable verbose logging", "",
-		      struct unloadopt, help),
 	DEFINE_OPTION('d', "dev", positional_argument, true, OPT_IFNAME, NULL,
 		      "Load on device <ifname>", "<ifname>",
 		      struct unloadopt, iface),
@@ -438,7 +425,6 @@ int print_ports(int map_fd)
 }
 
 struct portopt {
-	bool help;
 	unsigned int mode;
 	unsigned int proto;
 	__u16 port;
@@ -465,12 +451,6 @@ static struct option_wrapper port_options[] = {
 		      OPT_U16, NULL,
 		      "Port to add or remove", "<port>",
 		      struct portopt, port),
-	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
-		      "Enable verbose logging", "",
-		      struct portopt, help),
-	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
-		      "Show help", "",
-		      struct portopt, help),
 	END_OPTIONS
 };
 
@@ -651,7 +631,6 @@ out:
 }
 
 struct ipopt {
-	bool help;
 	unsigned int mode;
 	struct ip_addr addr;
 	bool print_status;
@@ -673,12 +652,6 @@ static struct option_wrapper ip_options[] = {
 		      OPT_IPADDR, NULL,
 		      "Address to add or remove", "<addr>",
 		      struct ipopt, addr),
-	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
-		      "Enable verbose logging", "",
-		      struct ipopt, help),
-	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
-		      "Show help", "",
-		      struct ipopt, help),
 	END_OPTIONS
 };
 
@@ -751,7 +724,6 @@ int print_ethers(int map_fd)
 }
 
 struct etheropt {
-	bool help;
 	unsigned int mode;
 	struct mac_addr addr;
 	bool print_status;
@@ -773,12 +745,6 @@ static struct option_wrapper ether_options[] = {
 		      OPT_MACADDR, NULL,
 		      "Address to add or remove", "<addr>",
 		      struct etheropt, addr),
-	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
-		      "Enable verbose logging", "",
-		      struct etheropt, help),
-	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
-		      "Show help", "",
-		      struct etheropt, help),
 	END_OPTIONS
 };
 
@@ -820,17 +786,7 @@ out:
 	return err;
 }
 
-struct statusopt {
-	bool help;
-};
-
 static struct option_wrapper status_options[] = {
-	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
-		      "Enable verbose logging", "",
-		      struct statusopt, help),
-	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
-		      "Show help", "",
-		      struct statusopt, help),
 	END_OPTIONS
 };
 
@@ -841,9 +797,8 @@ int do_status(int argc, char **argv)
 	struct if_nameindex *idx, *indexes = NULL;
 	struct stats_record rec = {};
 	struct bpf_map_info info;
-	struct statusopt opt = {};
 
-	err = parse_cmdline_args(argc, argv, status_options, &opt,
+	err = parse_cmdline_args(argc, argv, status_options, NULL,
 				 "xdp-filter status",
 				 "Show xdp-filter status");
 	if (err)
@@ -944,7 +899,6 @@ out:
 }
 
 struct pollopt {
-	bool help;
 	__u32 interval;
 };
 
@@ -952,12 +906,6 @@ static struct option_wrapper poll_options[] = {
 	DEFINE_OPTION('i', "interval", required_argument, false, OPT_U32, NULL,
 		      "Polling interval in milliseconds", "<interval>",
 		      struct pollopt, interval),
-	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
-		      "Enable verbose logging", "",
-		      struct pollopt, help),
-	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
-		      "Show help", "",
-		      struct pollopt, help),
 	END_OPTIONS
 };
 

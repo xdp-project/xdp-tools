@@ -18,7 +18,6 @@ enum option_type {
                   OPT_U16,
                   OPT_U32,
                   OPT_MACADDR,
-                  OPT_VERBOSE,
                   OPT_IFNAME,
                   OPT_IPADDR,
                   __OPT_MAX
