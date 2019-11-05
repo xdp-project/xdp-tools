@@ -26,6 +26,9 @@ int check_bpf_environ(unsigned long min_rlimit)
 		return 1;
 	}
 
+	if (!min_rlimit)
+		return 0;
+
 	err = getrlimit(RLIMIT_MEMLOCK, &limit);
 	if (err) {
 		err = -errno;
@@ -45,8 +48,6 @@ int check_bpf_environ(unsigned long min_rlimit)
 			return err;
 		}
 	}
-
-
 
 	return 0;
 }

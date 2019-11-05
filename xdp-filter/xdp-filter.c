@@ -313,7 +313,7 @@ int do_port(int argc, char **argv)
 	pr_debug("%s %s port %u mode %s\n", opt.remove ? "Removing" : "Adding",
 		 protostr, opt.port, modestr);
 
-	err = check_bpf_environ(NEED_RLIMIT);
+	err = check_bpf_environ(0);
 	if (err)
 		goto out;
 
@@ -430,7 +430,8 @@ static int __do_address(const char *map_name, const char *feat_name,
 	int map_fd = -1, err = 0;
 	__u8 flags = 0;
 	__u64 counter;
-	err = check_bpf_environ(NEED_RLIMIT);
+
+	err = check_bpf_environ(0);
 	if (err)
 		goto out;
 
@@ -656,8 +657,7 @@ int do_status(int argc, char **argv)
 			   "xdp-filter status",
 			   "Show xdp-filter status");
 
-
-	err = check_bpf_environ(NEED_RLIMIT);
+	err = check_bpf_environ(0);
 	if (err)
 		goto out;
 
