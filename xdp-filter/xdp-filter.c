@@ -667,16 +667,6 @@ int do_status(int argc, char **argv)
 	if (err)
 		goto out;
 
-	indexes = if_nameindex();
-	if (!indexes) {
-		err = -errno;
-		libbpf_strerror(err, errmsg, sizeof(errmsg));
-		pr_warn("Couldn't get list of interfaces: %s\n", errmsg);
-		goto out;
-	}
-
-	printf("CURRENT XDP-FILTER STATUS:\n\n");
-
 	map_fd = get_pinned_map_fd(pin_root_path, textify(XDP_STATS_MAP_NAME), &info);
 	if (map_fd < 0) {
 		err = map_fd;
@@ -690,12 +680,21 @@ int do_status(int argc, char **argv)
 	if (err)
 		goto out;
 
+	printf("CURRENT XDP-FILTER STATUS:\n\n");
 	printf("Aggregate per-action statistics:\n");
 	stats_print_one(&rec);
 	printf("\n");
 
 	printf("Loaded on interfaces:\n");
 	printf("  %-40s Enabled features\n", "");
+
+	indexes = if_nameindex();
+	if (!indexes) {
+		err = -errno;
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		pr_warn("Couldn't get list of interfaces: %s\n", errmsg);
+		goto out;
+	}
 
 	for(idx = indexes; idx->if_index; idx++) {
 		struct bpf_prog_info info = {};
@@ -715,6 +714,7 @@ int do_status(int argc, char **argv)
 		}
 	}
 	if_freenameindex(indexes);
+	indexes = NULL;
 	err = EXIT_SUCCESS;
 	printf("\n");
 
@@ -744,6 +744,8 @@ int do_status(int argc, char **argv)
 	printf("\n");
 
 out:
+	if (indexes)
+		if_freenameindex(indexes);
 	if (map_fd >= 0)
 		close(map_fd);
 	return err;
