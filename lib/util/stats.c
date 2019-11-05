@@ -222,8 +222,8 @@ int stats_poll(int map_fd, const char *pin_dir, const char *map_name, int interv
 	struct bpf_map_info info = {};
 	struct stats_record prev, record = { 0 };
 	__u32 info_len = sizeof(info);
-	__u32 map_type;
-	int err;
+	int err, other_fd;
+	__u32 map_type, map_id;
 
 	record.stats[XDP_DROP].enabled = true;
 	record.stats[XDP_PASS].enabled = true;
@@ -235,6 +235,7 @@ int stats_poll(int map_fd, const char *pin_dir, const char *map_name, int interv
 	if (err)
 		return err;
 	map_type = info.type;
+	map_id = info.id;
 
 	/* Get initial reading quickly */
 	stats_collect(map_fd, map_type, &record);
@@ -242,6 +243,19 @@ int stats_poll(int map_fd, const char *pin_dir, const char *map_name, int interv
 	usleep(1000000/4);
 
 	while (1) {
+		memset(&info, 0, sizeof(info));
+		other_fd = get_pinned_map_fd(pin_dir, map_name, &info);
+		if (other_fd < 0) {
+			if (other_fd == -ENOENT)
+				pr_warn("Stats map disappeared while polling\n");
+			else
+				pr_warn("Unable to re-open stats map\n");
+			return other_fd;
+		} else if (info.id != map_id) {
+			pr_warn("Stats map ID changed while polling\n");
+			return -EINVAL;
+		}
+		close(other_fd);
 		prev = record; /* struct copy */
 		stats_collect(map_fd, map_type, &record);
 		err = stats_print(&record, &prev);
