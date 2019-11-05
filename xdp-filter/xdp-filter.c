@@ -1028,7 +1028,7 @@ static int do_cmd(const char *argv0, int argc, char **argv)
 			return -(c->func(argc, argv));
 	}
 
-	fprintf(stderr, "Object \"%s\" is unknown, try \"xdp-filt help\".\n", argv0);
+	fprintf(stderr, "Object \"%s\" is unknown, try \"xdp-filter help\".\n", argv0);
 	return EXIT_FAILURE;
 }
 
