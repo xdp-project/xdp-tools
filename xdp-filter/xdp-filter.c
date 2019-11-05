@@ -1000,13 +1000,14 @@ int do_help(int argc, char **argv)
 		"       help        - show this help message\n"
 		"\n"
 		"Use 'xdp-filter COMMAND --help' to see options for each command\n");
-	exit(-1);
+	return -1;
 }
 
 
 static const struct cmd {
 	const char *cmd;
 	int (*func)(int argc, char **argv);
+	bool no_lock;
 } cmds[] = {
 	{ "load",	do_load },
 	{ "unload",	do_unload },
@@ -1015,21 +1016,35 @@ static const struct cmd {
 	{ "ether",	do_ether },
 	{ "status",	do_status },
 	{ "poll",	do_poll },
-	{ "help",	do_help },
+	{ "help",	do_help, true},
 	{ 0 }
 };
 
 static int do_cmd(const char *argv0, int argc, char **argv)
 {
-	const struct cmd *c;
+	const struct cmd *c, *cmd = NULL;
+	int ret;
 
-	for (c = cmds; c->cmd; ++c) {
-		if (is_prefix(argv0, c->cmd))
-			return -(c->func(argc, argv));
+	for (c = cmds; c->cmd; c++) {
+		if (is_prefix(argv0, c->cmd)) {
+			cmd = c;
+			break;
+		}
 	}
 
-	fprintf(stderr, "Object \"%s\" is unknown, try \"xdp-filter help\".\n", argv0);
-	return EXIT_FAILURE;
+	if (!cmd) {
+		pr_warn("Command '%s' is unknown, try 'xdp-filter help'.\n",
+			argv0);
+		return EXIT_FAILURE;
+	}
+
+	if (!cmd->no_lock && prog_lock_get("xdp-filter"))
+		return EXIT_FAILURE;
+
+	ret = cmd->func(argc, argv);
+	prog_lock_release(0);
+	return ret;
+
 }
 
 const char *pin_basedir =  "/sys/fs/bpf";
@@ -1041,6 +1056,5 @@ int main(int argc, char **argv)
 	if (argc > 1)
 		return do_cmd(argv[1], argc-1, argv+1);
 
-	do_help(argc, argv);
-	return EXIT_FAILURE;
+	return do_help(argc, argv);
 }
