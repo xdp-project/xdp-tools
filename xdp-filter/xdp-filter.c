@@ -182,9 +182,11 @@ int do_load(int argc, char **argv)
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 
-	parse_cmdline_args(argc, argv, load_options, &opt,
-			   "xdp-filter load",
-			   "Load xdp-filter on an interface");
+	err = parse_cmdline_args(argc, argv, load_options, &opt,
+				 "xdp-filter load",
+				 "Load xdp-filter on an interface");
+	if (err)
+		goto out;
 
 	progname = find_progname(opt.features);
 	if (!progname) {
@@ -326,9 +328,11 @@ int do_unload(int argc, char **argv)
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 
-	parse_cmdline_args(argc, argv, unload_options, &opt,
+	err = parse_cmdline_args(argc, argv, unload_options, &opt,
 			   "xdp-filter unload",
 			   "Unload xdp-filter from an interface");
+	if (err)
+		goto out;
 
 	err = check_bpf_environ(0);
 	if (err)
@@ -484,9 +488,11 @@ int do_port(int argc, char **argv)
 		.proto = MAP_FLAG_TCP | MAP_FLAG_UDP,
 	};
 
-	parse_cmdline_args(argc, argv, port_options, &opt,
-			   "xdp-filter port",
-			   "Add or remove ports from xdp-filter");
+	err = parse_cmdline_args(argc, argv, port_options, &opt,
+				 "xdp-filter port",
+				 "Add or remove ports from xdp-filter");
+	if (err)
+		goto out;
 
 	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt.mode);
 	print_flags(protostr, sizeof(protostr), map_flags_tcpudp, opt.proto);
@@ -685,9 +691,11 @@ static int do_ip(int argc, char **argv)
 		.mode = MAP_FLAG_DST,
 	};
 
-	parse_cmdline_args(argc, argv, ip_options, &opt,
-			   "xdp-filter ip",
-			   "Add or remove IP addresses from xdp-filter");
+	err = parse_cmdline_args(argc, argv, ip_options, &opt,
+				 "xdp-filter ip",
+				 "Add or remove IP addresses from xdp-filter");
+	if (err)
+		goto out;
 
 	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt.mode);
 	print_addr(addrstr, sizeof(addrstr), &opt.addr);
@@ -782,9 +790,11 @@ static int do_ether(int argc, char **argv)
 		.mode = MAP_FLAG_DST,
 	};
 
-	parse_cmdline_args(argc, argv, ether_options, &opt,
-			   "xdp-filter ether",
-			   "Add or remove Ethernet addresses from xdp-filter");
+	err = parse_cmdline_args(argc, argv, ether_options, &opt,
+				 "xdp-filter ether",
+				 "Add or remove Ethernet addresses from xdp-filter");
+	if (err)
+		goto out;
 
 	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt.mode);
 	print_macaddr(addrstr, sizeof(addrstr), &opt.addr);
@@ -833,9 +843,11 @@ int do_status(int argc, char **argv)
 	struct bpf_map_info info;
 	struct statusopt opt = {};
 
-	parse_cmdline_args(argc, argv, status_options, &opt,
-			   "xdp-filter status",
-			   "Show xdp-filter status");
+	err = parse_cmdline_args(argc, argv, status_options, &opt,
+				 "xdp-filter status",
+				 "Show xdp-filter status");
+	if (err)
+		goto out;
 
 	err = check_bpf_environ(0);
 	if (err)
@@ -955,9 +967,11 @@ int do_poll(int argc, char **argv)
 			      .interval = 1000
 	};
 
-	parse_cmdline_args(argc, argv, poll_options, &opt,
-			   "xdp-filter poll",
-			   "Poll xdp-filter statistics");
+	err = parse_cmdline_args(argc, argv, poll_options, &opt,
+				 "xdp-filter poll",
+				 "Poll xdp-filter statistics");
+	if (err)
+		goto out;
 
 	err = check_bpf_environ(0);
 	if (err)

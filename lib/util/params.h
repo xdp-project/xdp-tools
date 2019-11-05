@@ -82,8 +82,8 @@ bool is_prefix(const char *prefix, const char *string);
 void usage(const char *prog_name, const char *doc,
            const struct option_wrapper *long_options, bool full);
 
-void parse_cmdline_args(int argc, char **argv,
-			struct option_wrapper *long_options,
-                        void *cfg, const char *prog, const char *doc);
+int parse_cmdline_args(int argc, char **argv,
+                       struct option_wrapper *long_options,
+                       void *cfg, const char *prog, const char *doc);
 
 #endif /* __COMMON_PARAMS_H */

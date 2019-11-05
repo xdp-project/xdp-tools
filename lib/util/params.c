@@ -426,9 +426,9 @@ static int set_pos_opt(void *cfg, struct option_wrapper *all_opts, char *optarg)
 	return ret;
 }
 
-void parse_cmdline_args(int argc, char **argv,
-			struct option_wrapper *options_wrapper,
-                        void *cfg, const char *prog, const char *doc)
+int parse_cmdline_args(int argc, char **argv,
+		       struct option_wrapper *options_wrapper,
+		       void *cfg, const char *prog, const char *doc)
 {
 	struct option_wrapper *opt_iter;
 	struct option *long_options;
@@ -438,8 +438,8 @@ void parse_cmdline_args(int argc, char **argv,
 	char *optstring;
 
 	if (option_wrappers_to_options(options_wrapper, &long_options, &optstring)) {
-		fprintf(stderr, "Unable to malloc()\n");
-		exit(EXIT_FAILURE);
+		pr_warn("Unable to malloc()\n");
+		return -ENOMEM;
 	}
 
 	/* Parse commands line args */
@@ -481,6 +481,6 @@ void parse_cmdline_args(int argc, char **argv,
 out:
 	free(long_options);
 	free(optstring);
-	if (err)
-		exit(err);
+
+	return err;
 }
