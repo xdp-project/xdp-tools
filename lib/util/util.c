@@ -399,7 +399,9 @@ void prog_lock_release(int signal)
 	if (prog_lock_fd < 0 || !prog_lock_file)
 		return;
 
-	sigaction(signal, &sigact, NULL);
+	sigaction(SIGHUP, &sigact, NULL);
+	sigaction(SIGINT, &sigact, NULL);
+	sigaction(SIGTERM, &sigact, NULL);
 
 	err = unlink(prog_lock_file);
 	if (err) {
