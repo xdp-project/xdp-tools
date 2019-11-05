@@ -268,32 +268,49 @@ static const struct helprinter {
 };
 
 
-static void _print_options(const struct option_wrapper *long_options, bool required)
+static void _print_positional(const struct option_wrapper *long_options)
 {
-	int i, pos;
-	char buf[BUFSIZE];
+	const struct option_wrapper *opt;
 
-	for (i = 0; long_options[i].option.name != 0; i++) {
-		enum option_type type;
-
-		if (long_options[i].required != required)
+	FOR_EACH_OPTION(long_options, opt) {
+		if (opt->option.has_arg != positional_argument)
 			continue;
 
-		type = long_options[i].type;
+		printf(" %s", opt->metavar);
+	}
+}
 
-		if (long_options[i].option.val > 64) /* ord('A') = 65 */
-			printf(" -%c,", long_options[i].option.val);
-		else
-			printf("    ");
-		pos = snprintf(buf, BUFSIZE, " --%s", long_options[i].option.name);
-		if (long_options[i].metavar)
-			snprintf(&buf[pos], BUFSIZE-pos, " %s", long_options[i].metavar);
-		printf("%-22s", buf);
+static void _print_options(const struct option_wrapper *long_options,
+			   bool required)
+{
+	const struct option_wrapper *opt;
 
-		if (help_printers[type].func != NULL)
-			help_printers[type].func(&long_options[i]);
+	FOR_EACH_OPTION(long_options, opt) {
+		if (opt->required != required)
+			continue;
+
+		if (opt->option.has_arg == positional_argument) {
+			printf("  %-24s", opt->metavar);
+		} else {
+			char buf[BUFSIZE];
+			int pos;
+
+			if (opt->option.val > 64) /* ord('A') = 65 */
+				printf(" -%c,", opt->option.val);
+			else
+				printf("    ");
+			pos = snprintf(buf, BUFSIZE, " --%s",
+				       opt->option.name);
+			if (opt->metavar)
+				snprintf(&buf[pos], BUFSIZE-pos, " %s",
+					 opt->metavar);
+			printf("%-22s", buf);
+		}
+
+		if (help_printers[opt->type].func != NULL)
+			help_printers[opt->type].func(opt);
 		else
-			printf("  %s", long_options[i].help);
+			printf("  %s", opt->help);
 		printf("\n");
 	}
 }
@@ -311,7 +328,9 @@ bool is_prefix(const char *pfx, const char *str)
 void usage(const char *prog_name, const char *doc,
            const struct option_wrapper *long_options, bool full)
 {
-	printf("\nUsage: %s [options]\n", prog_name);
+	printf("\nUsage: %s [options]", prog_name);
+	_print_positional(long_options);
+	printf("\n");
 
 	if (!full) {
 		printf("Use --help (or -h) to see full option list.\n");
@@ -331,28 +350,35 @@ static int option_wrappers_to_options(const struct option_wrapper *wrapper,
 				      struct option **options,
 				      char **optstring)
 {
+	const struct option_wrapper *opt;
 	struct option *new_options;
 	char buf[100], *c = buf;
-	int i, num;
+	int i, num = 0;
 
-	for (i = 0; wrapper[i].option.name != 0; i++) {}
-	num = i;
+	FOR_EACH_OPTION(wrapper, opt)
+		num++;
 
 	new_options = malloc(sizeof(struct option) * num);
 	if (!new_options)
 		return -1;
 
-	for (i = 0; i < num; i++) {
-		memcpy(&new_options[i], &wrapper[i], sizeof(struct option));
-		*(c++) = wrapper[i].option.val;
-		if (wrapper[i].option.has_arg)
-			*(c++) = ':';
+	FOR_EACH_OPTION(wrapper, opt) {
+		if (opt->option.has_arg == positional_argument)
+			continue;
+		memcpy(&new_options[i], &opt->option, sizeof(struct option));
+		if (opt->option.val) {
+			*(c++) = opt->option.val;
+			if (opt->option.has_arg)
+				*(c++) = ':';
+		}
 	}
 	*(c++) = '\0';
 
 	*optstring = strdup(buf);
-	if (!*optstring)
+	if (!*optstring) {
+		free(new_options);
 		return -1;
+	}
 
 	*options = new_options;
 	return 0;
@@ -361,11 +387,11 @@ static int option_wrappers_to_options(const struct option_wrapper *wrapper,
 static struct option_wrapper *find_opt(struct option_wrapper *all_opts,
 				       int optchar)
 {
-	while (all_opts->option.name != 0) {
-		if (all_opts->option.val == optchar)
-			return all_opts;
-		all_opts++;
-	}
+	struct option_wrapper *opt;
+
+	FOR_EACH_OPTION(all_opts, opt)
+		if (opt->option.val == optchar)
+			return opt;
 	return NULL;
 }
 
@@ -385,6 +411,27 @@ static int set_opt(void *cfg, struct option_wrapper *all_opts,
 	return ret;
 }
 
+static int set_pos_opt(void *cfg, struct option_wrapper *all_opts, char *optarg)
+{
+	struct option_wrapper *opt, *set_opt = NULL;
+	int ret;
+
+	FOR_EACH_OPTION(all_opts, opt) {
+		if (opt->option.has_arg == positional_argument && !opt->was_set) {
+			set_opt = opt;
+			break;
+		}
+	}
+
+	if (!set_opt)
+		return -ENOENT;
+
+	ret = handlers[opt->type].func(set_opt, cfg, optarg);
+	if (!ret)
+		set_opt->was_set = true;
+	return ret;
+}
+
 void parse_cmdline_args(int argc, char **argv,
 			struct option_wrapper *options_wrapper,
                         void *cfg, const char *prog, const char *doc)
@@ -392,8 +439,8 @@ void parse_cmdline_args(int argc, char **argv,
 	struct option_wrapper *opt_iter;
 	struct option *long_options;
 	bool full_help = false;
+	int i, opt, err = 0;
 	int longindex = 0;
-	int opt, err = 0;
 	char *optstring;
 
 	if (option_wrappers_to_options(options_wrapper, &long_options, &optstring)) {
@@ -416,10 +463,22 @@ void parse_cmdline_args(int argc, char **argv,
 		}
 	}
 
-	for (opt_iter = options_wrapper; opt_iter->option.name != 0; opt_iter++) {
+	for (i = optind; i < argc; i++) {
+		if (set_pos_opt(cfg, options_wrapper, argv[i])) {
+			usage(prog, doc, options_wrapper, full_help);
+			err = EXIT_FAILURE;
+			goto out;
+		}
+	}
+
+	FOR_EACH_OPTION(options_wrapper, opt_iter) {
 		if (opt_iter->required && !opt_iter->was_set) {
-			fprintf(stderr, "Missing required option '--%s'\n",
-				opt_iter->option.name);
+			if (opt_iter->option.has_arg == positional_argument)
+				pr_warn("Missing required parameter %s\n",
+					opt_iter->metavar);
+			else
+				pr_warn("Missing required option '--%s'\n",
+					opt_iter->option.name);
 			usage(prog, doc, options_wrapper, full_help);
 			err = EXIT_FAILURE;
 			goto out;

@@ -69,6 +69,11 @@ struct mac_addr {
 
 #define END_OPTIONS 	{}
 
+#define FOR_EACH_OPTION(_options, _opt)                 \
+        for (_opt = _options; _opt->option.name != 0; _opt++)
+
+#define positional_argument (optional_argument +1)
+
 void print_flags(char *buf, size_t buf_len, const struct flag_val *flags,
                  unsigned long flags_val);
 void print_addr(char *buf, size_t buf_len, const struct ip_addr *addr);
