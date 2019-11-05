@@ -157,12 +157,12 @@ static struct option_wrapper load_options[] = {
 	DEFINE_OPTION('s', "skb-mode", no_argument, false, OPT_BOOL, NULL,
 		      "Load XDP program in SKB (generic) mode", "",
 		      struct loadopt, skb_mode),
-	DEFINE_OPTION('d', "dev", required_argument, true, OPT_IFNAME, NULL,
+	DEFINE_OPTION('d', "dev", positional_argument, true, OPT_IFNAME, NULL,
 		      "Load on device <ifname>", "<ifname>",
 		      struct loadopt, iface),
-	DEFINE_OPTION('f', "features", optional_argument, true,
+	DEFINE_OPTION('f', "features", required_argument, false,
 		      OPT_FLAGS, load_features,
-		      "Enable features <feats>", "<feats>",
+		      "Features to enable; default all", "<feats>",
 		      struct loadopt, features),
 	END_OPTIONS
 };
@@ -171,9 +171,11 @@ int do_load(int argc, char **argv)
 {
 	char *progname, pin_root_path[PATH_MAX];
 	struct bpf_object *obj = NULL;
-	struct loadopt opt = {};
 	struct bpf_program *prog;
 	int err = EXIT_SUCCESS;
+	struct loadopt opt = {
+		.features = FEAT_ALL,
+	};
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 
