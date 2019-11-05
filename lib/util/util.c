@@ -4,7 +4,10 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
+#include <signal.h>
 #include <bsd/string.h>
+#include <sys/types.h>
 #include <sys/resource.h>
 #include <sys/vfs.h>
 #include <sys/stat.h>
@@ -378,4 +381,140 @@ int check_map_fd_info(const struct bpf_map_info *info,
 	}
 
 	return 0;
+}
+
+static const char *lock_dir = "/run";
+static char *prog_lock_file = NULL;
+static int prog_lock_fd = -1;
+static pid_t prog_pid = 0;
+
+void prog_lock_release(int signal)
+{
+	int err;
+	struct sigaction sigact = {
+		.sa_flags = SA_RESETHAND
+	};
+
+
+	if (prog_lock_fd < 0 || !prog_lock_file)
+		return;
+
+	sigaction(signal, &sigact, NULL);
+
+	err = unlink(prog_lock_file);
+	if (err) {
+		err = -errno;
+		pr_warn("Unable to unlink lock file: %s\n", strerror(-err));
+		goto out;
+	}
+
+	close(prog_lock_fd);
+	free(prog_lock_file);
+	prog_lock_fd = -1;
+	prog_lock_file = NULL;
+
+out:
+	if (signal) {
+		pr_debug("Exiting on signal %d\n", signal);
+		if (prog_pid)
+			kill(prog_pid, signal);
+		else
+			exit(signal);
+	}
+}
+
+
+int prog_lock_get(const char *progname)
+{
+	char buf[PATH_MAX];
+	int err, len;
+	struct sigaction sigact = {
+		.sa_handler = prog_lock_release
+	};
+
+	if (prog_lock_fd >= 0) {
+		pr_warn("Attempt to get prog_lock twice.\n");
+		return -EFAULT;
+	}
+
+	if (!prog_lock_file) {
+		len = snprintf(buf, sizeof(buf), "%s/%s.lck", lock_dir, progname);
+		if (len < 0)
+			return -EINVAL;
+		else if (len >= sizeof(buf))
+			return -ENAMETOOLONG;
+
+		prog_lock_file = strdup(buf);
+		if (!prog_lock_file)
+			return -ENOMEM;
+	}
+
+	prog_pid = getpid();
+
+	if (sigaction(SIGHUP, &sigact, NULL) ||
+	    sigaction(SIGINT, &sigact, NULL) ||
+	    sigaction(SIGTERM, &sigact, NULL)) {
+		err = -errno;
+		pr_warn("Unable to install signal handler: %s\n", strerror(-err));
+		return err;
+	}
+
+	prog_lock_fd = open(prog_lock_file, O_WRONLY|O_CREAT|O_EXCL, 0644);
+	if (prog_lock_fd < 0) {
+		err = -errno;
+		if (err == -EEXIST) {
+			unsigned long pid;
+			char buf[100];
+			ssize_t len;
+			int fd;
+
+			fd = open(prog_lock_file, O_RDONLY);
+			if (fd < 0) {
+				err = -errno;
+				pr_warn("Unable to open lockfile for reading: %s\n",
+					strerror(-err));
+				return err;
+			}
+
+			len = read(fd, buf, sizeof(buf));
+			close(fd);
+			buf[len] = '\0';
+
+			pid = strtoul(buf, NULL, 10);
+			if (!pid) {
+				err = -errno;
+				pr_warn("Unable to read PID from lockfile: %s\n",
+					strerror(-err));
+				return err;
+			}
+			pr_warn("Unable to get program lock: Already held by pid %lu\n",
+				pid);
+		} else {
+			pr_warn("Unable to get program lock: %s\n", strerror(-err));
+		}
+		return err;
+	}
+
+	err = dprintf(prog_lock_fd, "%d\n", prog_pid);
+	if (err < 0) {
+		err = -errno;
+		pr_warn("Unable to write pid to lock file: %s\n", strerror(-err));
+		goto out_err;
+	}
+
+	err = fsync(prog_lock_fd);
+	if (err) {
+		err = -errno;
+		pr_warn("Unable fsync() lock file: %s\n", strerror(-err));
+		goto out_err;
+	}
+
+	return 0;
+out_err:
+	unlink(prog_lock_file);
+	close(prog_lock_fd);
+	free(prog_lock_file);
+	prog_lock_file = NULL;
+	prog_lock_fd = -1;
+	return err;
 }
