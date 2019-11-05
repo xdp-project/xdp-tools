@@ -66,35 +66,23 @@ static int handle_u16(const struct option_wrapper *opt,
 	return 0;
 }
 
-static int parse_u8(char *str, unsigned char *x)
-{
-	unsigned long z;
-
-	z = strtoul(str, 0, 16);
-	if (z > 0xff)
-		return -1;
-
-	if (x)
-		*x = z;
-
-	return 0;
-}
-
 static int parse_mac(char *str, unsigned char mac[ETH_ALEN])
 {
-	if (parse_u8(str, &mac[0]) < 0)
-		return -1;
-	if (parse_u8(str + 3, &mac[1]) < 0)
-		return -1;
-	if (parse_u8(str + 6, &mac[2]) < 0)
-		return -1;
-	if (parse_u8(str + 9, &mac[3]) < 0)
-		return -1;
-	if (parse_u8(str + 12, &mac[4]) < 0)
-		return -1;
-	if (parse_u8(str + 15, &mac[5]) < 0)
-		return -1;
+	unsigned int v[ETH_ALEN];
+	int len, i;
 
+	/* Based on https://stackoverflow.com/a/20553913 */
+	len = sscanf(str, "%x:%x:%x:%x:%x:%x%*c",
+		     &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]);
+
+	if (len != ETH_ALEN)
+		return -EINVAL;
+
+	for (i = 0; i < ETH_ALEN; i++) {
+		if (v[i] > 0xFF)
+			return -EINVAL;
+		mac[i] = v[i];
+	}
 	return 0;
 }
 
@@ -102,9 +90,14 @@ static int handle_macaddr(const struct option_wrapper *opt,
 			  void *cfg, char *optarg)
 {
 	struct mac_addr *opt_set;
+	int err;
 
 	opt_set = (cfg + opt->cfg_offset);
-	return parse_mac(optarg, opt_set->addr);
+	err = parse_mac(optarg, opt_set->addr);
+	if (err)
+		pr_warn("Invalid MAC address: %s\n", optarg);
+
+	return err;
 }
 
 void print_macaddr(char *buf, size_t buf_len, const struct mac_addr *addr)
