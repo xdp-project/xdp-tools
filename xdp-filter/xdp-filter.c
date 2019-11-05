@@ -637,10 +637,10 @@ struct statusopt {
 static struct option_wrapper status_options[] = {
 	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
 		      "Enable verbose logging", "",
-		      struct etheropt, help),
+		      struct statusopt, help),
 	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
 		      "Show help", "",
-		      struct etheropt, help),
+		      struct statusopt, help),
 	END_OPTIONS
 };
 
