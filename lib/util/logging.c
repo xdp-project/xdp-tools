@@ -12,7 +12,7 @@ static enum logging_print_level log_level = LOG_INFO;
 static int print_func(enum libbpf_print_level level, const char *format,
 		      va_list args)
 {
-	if (level > log_level)
+	if ((enum logging_print_level)level > log_level)
 		return 0;
 
 	return vfprintf(stderr, format, args);

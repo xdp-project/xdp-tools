@@ -191,8 +191,7 @@ static int handle_ipaddr(const struct option_wrapper *opt,
 			  void *cfg, char *optarg)
 {
 	struct ip_addr *addr;
-	int err;
-	int af;
+ 	int af;
 
 	addr = (cfg + opt->cfg_offset);
 	af = strchr(optarg, ':') ? AF_INET6 : AF_INET;
@@ -343,10 +342,10 @@ static int option_wrappers_to_options(const struct option_wrapper *wrapper,
 				      struct option **options,
 				      char **optstring)
 {
+	struct option *new_options, *nopt;
 	const struct option_wrapper *opt;
-	struct option *new_options;
 	char buf[100], *c = buf;
-	int i, num = 0;
+	int num = 0;
 
 	FOR_EACH_OPTION(wrapper, opt)
 		num++;
@@ -355,10 +354,12 @@ static int option_wrappers_to_options(const struct option_wrapper *wrapper,
 	if (!new_options)
 		return -1;
 
+	nopt = new_options;
+
 	FOR_EACH_OPTION(wrapper, opt) {
 		if (opt->option.has_arg == positional_argument)
 			continue;
-		memcpy(&new_options[i], &opt->option, sizeof(struct option));
+		memcpy(nopt++, &opt->option, sizeof(struct option));
 		if (opt->option.val) {
 			*(c++) = opt->option.val;
 			if (opt->option.has_arg)

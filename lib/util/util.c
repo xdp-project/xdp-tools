@@ -128,7 +128,6 @@ int load_xdp_program(struct bpf_program *prog, int ifindex,
 		return -EFAULT;
 	}
 
-out:
 	return err;
 }
 
@@ -293,7 +292,7 @@ int get_pinned_map_fd(const char *bpf_root, const char *map_name,
 		if (err) {
 			err = -errno;
 			libbpf_strerror(-err, errmsg, sizeof(errmsg));
-			pr_debug("Couldn't retrieve map info: %s\n", buf, errmsg);
+			pr_debug("Couldn't retrieve map info: %s\n", errmsg);
 			return err;
 		}
 	}
