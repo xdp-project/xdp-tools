@@ -300,6 +300,34 @@ int get_pinned_map_fd(const char *bpf_root, const char *map_name,
 	return pin_fd;
 }
 
+int unlink_pinned_map(int dir_fd, const char *map_name)
+{
+	struct stat statbuf = {};
+	int err;
+
+	err = fstatat(dir_fd, map_name, &statbuf, 0);
+	if (err && errno == ENOENT) {
+		pr_debug("Map name %s not pinned\n", map_name);
+		return 0;
+	} else if (err) {
+		err = -errno;
+		pr_warn("Couldn't stat pinned map %s: %s\n",
+			map_name, strerror(-err));
+		return err;
+	}
+
+	pr_debug("Unlinking pinned map %s\n", map_name);
+	err = unlinkat(dir_fd, map_name, 0);
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't unlink pinned map %s: %s\n",
+			map_name, strerror(-err));
+		return -errno;
+	}
+
+	return 0;
+}
+
 #define XDP_UNKNOWN	XDP_REDIRECT + 1
 #ifndef XDP_ACTION_MAX
 #define XDP_ACTION_MAX (XDP_UNKNOWN + 1)
