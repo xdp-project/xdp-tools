@@ -872,7 +872,9 @@ int do_status(int argc, char **argv)
 
 	printf("CURRENT XDP-FILTER STATUS:\n\n");
 	printf("Aggregate per-action statistics:\n");
-	stats_print_one(&rec);
+	err = stats_print_one(&rec);
+	if (err)
+		goto out;
 	printf("\n");
 
 	printf("Loaded on interfaces:\n");

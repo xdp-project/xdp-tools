@@ -18,7 +18,7 @@
 #include "libbpf.h"
 
 #define NANOSEC_PER_SEC 1000000000 /* 10^9 */
-static __u64 gettime(void)
+static int gettime(__u64 *nstime)
 {
 	struct timespec t;
 	int res;
@@ -26,9 +26,11 @@ static __u64 gettime(void)
 	res = clock_gettime(CLOCK_MONOTONIC, &t);
 	if (res < 0) {
 		pr_warn("Error with gettimeofday! (%i)\n", res);
-		exit(1);
+		return res;
 	}
-	return (__u64) t.tv_sec * NANOSEC_PER_SEC + t.tv_nsec;
+
+	*nstime = (__u64) t.tv_sec * NANOSEC_PER_SEC + t.tv_nsec;
+	return 0;
 }
 
 static double calc_period(struct record *r, struct record *p)
@@ -43,11 +45,11 @@ static double calc_period(struct record *r, struct record *p)
 	return period_;
 }
 
-void stats_print_one(struct stats_record *stats_rec)
+int stats_print_one(struct stats_record *stats_rec)
 {
 	__u64 packets, bytes;
 	struct record *rec;
-	int i;
+	int i, err;
 
 	/* Print for each XDP actions stats */
 	for (i = 0; i < XDP_ACTION_MAX; i++)
@@ -59,13 +61,18 @@ void stats_print_one(struct stats_record *stats_rec)
 		packets = rec->total.rx_packets;
 		bytes   = rec->total.rx_bytes;
 
-		if (rec->enabled)
-			printf(fmt, action, packets, bytes / 1024);
+		if (rec->enabled) {
+			err = printf(fmt, action, packets, bytes / 1024);
+			if (err < 0)
+				return err;
+		}
 	}
+
+	return 0;
 }
 
-void stats_print(struct stats_record *stats_rec,
-		 struct stats_record *stats_prev)
+int stats_print(struct stats_record *stats_rec,
+		struct stats_record *stats_prev)
 {
 	struct record *rec, *prev;
 	__u64 packets, bytes;
@@ -79,7 +86,7 @@ void stats_print(struct stats_record *stats_rec,
 	err = clock_gettime(CLOCK_REALTIME, &t);
 	if (err < 0) {
 		pr_warn("Error with gettimeofday! (%i)\n", err);
-		exit(1);
+		return err;
 	}
 
 	/* Print for each XDP actions stats */
@@ -100,7 +107,7 @@ void stats_print(struct stats_record *stats_rec,
 
 		period = calc_period(rec, prev);
 		if (period == 0)
-		       return;
+		       return 0;
 
 		if (first) {
 			printf("Period of %fs ending at %lu.%06lu\n", period,
@@ -117,6 +124,8 @@ void stats_print(struct stats_record *stats_rec,
 		       period);
 	}
 	printf("\n");
+
+	return 0;
 }
 
 
@@ -164,7 +173,9 @@ static int map_collect(int fd, __u32 map_type, __u32 key, struct record *rec)
 	int err;
 
 	/* Get time as close as possible to reading map contents */
-	rec->timestamp = gettime();
+	err = gettime(&rec->timestamp);
+	if (err)
+		return err;
 
 	switch (map_type) {
 	case BPF_MAP_TYPE_ARRAY:
@@ -233,7 +244,9 @@ int stats_poll(int map_fd, const char *pin_dir, const char *map_name, int interv
 	while (1) {
 		prev = record; /* struct copy */
 		stats_collect(map_fd, map_type, &record);
-		stats_print(&record, &prev);
+		err = stats_print(&record, &prev);
+		if (err)
+			return err;
 		usleep(interval*1000);
 	}
 
