@@ -747,6 +747,61 @@ out:
 	return err;
 }
 
+struct pollopt {
+	bool help;
+	__u32 interval;
+};
+
+static struct option_wrapper poll_options[] = {
+	DEFINE_OPTION('i', "interval", required_argument, false, OPT_U32, NULL,
+		      "Polling interval in milliseconds", "<interval>",
+		      struct pollopt, interval),
+	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
+		      "Enable verbose logging", "",
+		      struct pollopt, help),
+	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
+		      "Show help", "",
+		      struct pollopt, help),
+	END_OPTIONS
+};
+
+int do_poll(int argc, char **argv)
+{
+	int err = EXIT_SUCCESS, map_fd = -1;
+	char pin_root_path[PATH_MAX];
+ 	struct pollopt opt = {
+			      .interval = 1000
+	};
+
+	parse_cmdline_args(argc, argv, poll_options, &opt,
+			   "xdp-filter poll",
+			   "Poll xdp-filter statistics");
+
+	err = check_bpf_environ(0);
+	if (err)
+		goto out;
+
+	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
+	if (err)
+		goto out;
+
+	map_fd = get_pinned_map_fd(pin_root_path, textify(XDP_STATS_MAP_NAME), NULL);
+	if (map_fd < 0) {
+		err = map_fd;
+		pr_warn("Couldn't find stats map. Maybe xdp-filter is not loaded?\n");
+		goto out;
+	}
+
+	err = stats_poll(map_fd, pin_root_path, textify(XDP_STATS_MAP_NAME),
+			 opt.interval);
+	if (err)
+		goto out;
+
+
+out:
+	return err;
+}
+
 int do_help(int argc, char **argv)
 {
 	fprintf(stderr,
@@ -758,6 +813,7 @@ int do_help(int argc, char **argv)
 		"       ip          - add an IP address to the blacklist\n"
 		"       ether       - add an Ethernet MAC address to the blacklist\n"
 		"       status      - show current xdp-filter status\n"
+		"       poll        - poll statistics output\n"
 		"       help        - show this help message\n"
 		"\n"
 		"Use 'xdp-filter COMMAND --help' to see options for each command\n");
@@ -774,6 +830,7 @@ static const struct cmd {
 	{ "ip",	do_ip },
 	{ "ether",	do_ether },
 	{ "status",	do_status },
+	{ "poll",	do_poll },
 	{ "help",	do_help },
 	{ 0 }
 };
