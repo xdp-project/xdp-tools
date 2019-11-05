@@ -10,6 +10,9 @@
 #include <locale.h>
 #include <unistd.h>
 #include <time.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include <bpf/bpf.h>
 #include "libbpf.h"
@@ -227,6 +230,181 @@ int do_load(int argc, char **argv)
 out:
 	if (obj)
 		bpf_object__close(obj);
+	return err;
+}
+
+static int remove_unused_maps(const char *pin_root_path, __u32 features)
+{
+	int dir_fd, err = 0;
+
+	dir_fd = open(pin_root_path, O_DIRECTORY);
+	if (dir_fd < 0) {
+		err = -errno;
+		pr_warn("Unable to open pin directory %s: %s\n",
+			pin_root_path, strerror(-err));
+		goto out;
+	}
+
+	if (!(features & (FEAT_TCP | FEAT_UDP))) {
+		err = unlink_pinned_map(dir_fd, textify(MAP_NAME_PORTS));
+		if (err)
+			goto out;
+	}
+
+	if (!(features & FEAT_IPV4)) {
+		err = unlink_pinned_map(dir_fd, textify(MAP_NAME_IPV4));
+		if (err)
+			goto out;
+	}
+
+	if (!(features & FEAT_IPV6)) {
+		err = unlink_pinned_map(dir_fd, textify(MAP_NAME_IPV6));
+		if (err)
+			goto out;
+	}
+
+	if (!(features & FEAT_ETHERNET)) {
+		err = unlink_pinned_map(dir_fd, textify(MAP_NAME_ETHERNET));
+		if (err)
+			goto out;
+	}
+
+	if (!features) {
+		err = unlink_pinned_map(dir_fd, textify(XDP_STATS_MAP_NAME));
+		if (err)
+			goto out;
+
+		close(dir_fd);
+		dir_fd = -1;
+
+		pr_debug("Removing pinning directory %s\n", pin_root_path);
+		err = rmdir(pin_root_path);
+		if (err) {
+			err = -errno;
+			pr_warn("Unable to rmdir: %s\n", strerror(-err));
+			goto out;
+		}
+	}
+out:
+	if (dir_fd >= 0)
+		close(dir_fd);
+
+	return err;
+}
+
+struct unloadopt {
+	bool help;
+	bool keep;
+	struct iface iface;
+};
+
+static struct option_wrapper unload_options[] = {
+	DEFINE_OPTION('h', "help", no_argument, false, OPT_HELP, NULL,
+		      "Show help", "",
+		      struct unloadopt, help),
+	DEFINE_OPTION('v', "verbose", no_argument, false, OPT_VERBOSE, NULL,
+		      "Enable verbose logging", "",
+		      struct unloadopt, help),
+	DEFINE_OPTION('d', "dev", positional_argument, true, OPT_IFNAME, NULL,
+		      "Load on device <ifname>", "<ifname>",
+		      struct unloadopt, iface),
+	DEFINE_OPTION('k', "keep-maps", no_argument, false, OPT_BOOL, NULL,
+		      "Don't destroy unused maps after unloading", "",
+		      struct unloadopt, keep),
+	END_OPTIONS
+};
+
+int do_unload(int argc, char **argv)
+{
+	struct if_nameindex *idx, *indexes = NULL;
+	struct bpf_prog_info info = {};
+	char pin_root_path[PATH_MAX];
+	struct unloadopt opt = {};
+	int err = EXIT_SUCCESS;
+	char featbuf[100];
+	__u32 feat, all_feats = 0;
+	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
+			    .pin_root_path = pin_root_path);
+
+	parse_cmdline_args(argc, argv, unload_options, &opt,
+			   "xdp-filter unload",
+			   "Unload xdp-filter from an interface");
+
+	err = check_bpf_environ(0);
+	if (err)
+		goto out;
+
+	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
+	if (err)
+		goto out;
+
+	err = get_xdp_prog_info(opt.iface.ifindex, &info);
+	if (err) {
+		pr_warn("Couldn't find XDP program on interface %s\n",
+			opt.iface.ifname);
+		goto out;
+	}
+
+	feat = find_features(info.name);
+	if (!feat) {
+		pr_warn("Unrecognised XDP program on interface %s. Not removing.\n",
+			opt.iface.ifname);
+		err = EXIT_FAILURE;
+		goto out;
+	}
+
+	print_flags(featbuf, sizeof(featbuf), print_features, feat);
+	pr_debug("Removing XDP program with features %s from iface %s\n",
+		 featbuf, opt.iface.ifname);
+
+	err = bpf_set_link_xdp_fd(opt.iface.ifindex, -1, 0);
+	if (err) {
+		pr_warn("Removing set xdp fd on iface %s failed (%d): %s\n",
+			opt.iface.ifname, -err, strerror(-err));
+		goto out;
+	}
+
+	if (opt.keep) {
+		pr_debug("Not removing pinned maps because of --keep-maps option\n");
+		goto out;
+	}
+
+	pr_debug("Checking map usage and removing unused maps\n");
+	indexes = if_nameindex();
+	if (!indexes) {
+		err = -errno;
+		pr_warn("Couldn't get list of interfaces: %s\n",
+			strerror(-err));
+		goto out;
+	}
+
+	for(idx = indexes; idx->if_index; idx++) {
+		memset(&info, 0, sizeof(info));
+		err = get_xdp_prog_info(idx->if_index, &info);
+		if (err && err == -ENOENT)
+			continue;
+		else if (err) {
+			pr_warn("Couldn't get XDP program info for ifindex %d: %s\n",
+				idx->if_index, strerror(-err));
+			goto out;
+		}
+
+		feat = find_features(info.name);
+		if (feat)
+			all_feats |= feat;
+	}
+
+	print_flags(featbuf, sizeof(featbuf), print_features, all_feats);
+	pr_debug("Features still being used: %s\n", all_feats ? featbuf : "none");
+
+	err = remove_unused_maps(pin_root_path, all_feats);
+	if (err)
+		goto out;
+
+out:
+	if (indexes)
+		if_freenameindex(indexes);
+
 	return err;
 }
 
@@ -813,6 +991,7 @@ int do_help(int argc, char **argv)
 		"\n"
 		"COMMAND can be one of:\n"
 		"       load        - load xdp-filter on an interface\n"
+		"       unload      - unload xdp-filter from an interface\n"
 		"       port        - add a port to the blacklist\n"
 		"       ip          - add an IP address to the blacklist\n"
 		"       ether       - add an Ethernet MAC address to the blacklist\n"
@@ -830,6 +1009,7 @@ static const struct cmd {
 	int (*func)(int argc, char **argv);
 } cmds[] = {
 	{ "load",	do_load },
+	{ "unload",	do_unload },
 	{ "port",	do_port },
 	{ "ip",	do_ip },
 	{ "ether",	do_ether },
