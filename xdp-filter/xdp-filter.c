@@ -838,7 +838,7 @@ int do_status(int argc, char **argv)
 {
 	char pin_root_path[PATH_MAX], errmsg[STRERR_BUFSIZE];
 	int err = EXIT_SUCCESS, map_fd = -1;
-	struct if_nameindex *idx, *indexes;
+	struct if_nameindex *idx, *indexes = NULL;
 	struct stats_record rec = {};
 	struct bpf_map_info info;
 	struct statusopt opt = {};
