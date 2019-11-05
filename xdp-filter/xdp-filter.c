@@ -990,6 +990,7 @@ int do_poll(int argc, char **argv)
 		goto out;
 	}
 
+	prog_lock_release(0);
 	err = stats_poll(map_fd, pin_root_path, textify(XDP_STATS_MAP_NAME),
 			 opt.interval);
 	if (err)
