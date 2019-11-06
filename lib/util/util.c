@@ -24,6 +24,8 @@ int check_bpf_environ(unsigned long min_rlimit)
 	struct rlimit limit;
 	int err;
 
+	init_libbpf_logging();
+
 	if (geteuid() != 0) {
 		pr_warn("This program must be run as root.\n");
 		return 1;

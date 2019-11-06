@@ -969,8 +969,6 @@ static int do_cmd(const char *argv0, int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-	init_logging();
-
 	if (argc > 1)
 		return do_cmd(argv[1], argc-1, argv+1);
 

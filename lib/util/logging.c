@@ -30,7 +30,7 @@ void logging_print(enum logging_print_level level, const char *format, ...)
 	va_end(args);
 }
 
-void init_logging()
+void init_libbpf_logging()
 {
 	libbpf_set_print(print_func);
 }
