@@ -1,0 +1,31 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+
+#ifndef __LOGGING_H
+#define __LOGGING_H
+
+/* This matches the libbpf logging levels
+ */
+enum logging_print_level {
+        LOG_WARN,
+        LOG_INFO,
+        LOG_DEBUG,
+};
+
+
+extern void logging_print(enum logging_print_level level,
+                          const char *format, ...)
+	__attribute__((format(printf, 2, 3)));
+
+#define __pr(level, fmt, ...)	\
+do {				\
+	logging_print(level, fmt, ##__VA_ARGS__);	\
+} while (0)
+
+#define pr_warn(fmt, ...)	__pr(LOG_WARN, fmt, ##__VA_ARGS__)
+#define pr_info(fmt, ...)	__pr(LOG_INFO, fmt, ##__VA_ARGS__)
+#define pr_debug(fmt, ...)	__pr(LOG_DEBUG, fmt, ##__VA_ARGS__)
+
+void init_libbpf_logging(void);
+enum logging_print_level set_log_level(enum logging_print_level level);
+
+#endif

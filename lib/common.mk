@@ -25,13 +25,17 @@ LIBBPF_DIR := $(LIB_DIR)/libbpf/src
 
 OBJECT_LIBBPF = $(LIBBPF_DIR)/libbpf.a
 
+# get list of objects in util
+include $(LIB_DIR)/util/util.mk
+
 # Extend if including Makefile already added some
-LIB_OBJS += 
+LIB_OBJS += $(foreach obj,$(UTIL_OBJS),$(LIB_DIR)/util/$(obj))
 
 # Create expansions for dependencies
 LIB_H := ${LIB_OBJS:.o=.h}
 
 EXTRA_DEPS +=
+EXTRA_USER_DEPS +=
 
 # BPF-prog kern and userspace shares struct via header file:
 KERN_USER_H ?= $(wildcard common_kern_user.h)
@@ -39,8 +43,8 @@ KERN_USER_H ?= $(wildcard common_kern_user.h)
 CFLAGS ?= -I$(LIBBPF_DIR)/root/usr/include/ -g
 # Extra include for Ubuntu
 CFLAGS += -I/usr/include/x86_64-linux-gnu
-CFLAGS += -I../headers/ -I$(LIBBPF_DIR)
-LDFLAGS ?= -L$(LIBBPF_DIR)
+CFLAGS += -I../headers/ -I$(LIBBPF_DIR) -I$(LIB_DIR)/util
+LDFLAGS ?= -L$(LIBBPF_DIR) -lbsd
 
 BPF_CFLAGS ?= -I../headers/bpf/
 BPF_HEADERS := $(wildcard ../headers/bpf/*.h)
@@ -88,7 +92,7 @@ $(LIB_H): %.h: %.c
 $(LIB_OBJS): %.o: %.h
 	make -C $(LIB_DIR)
 
-$(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) Makefile $(LIB_MK) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS)
+$(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) Makefile $(LIB_MK) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
 	$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $(LIB_OBJS) \
 	 $< $(LIBS)
 
