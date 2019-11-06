@@ -4,15 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <getopt.h>
 #include <stdbool.h>
-
-#include <locale.h>
 #include <unistd.h>
-#include <time.h>
 #include <fcntl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 
 #include <bpf/bpf.h>
 #include "libbpf.h"
@@ -20,7 +14,6 @@
 
 #include <net/if.h>
 #include <linux/if_ether.h>
-#include <linux/if_link.h> /* depend on kernel-headers installed */
 
 #include "params.h"
 #include "logging.h"
