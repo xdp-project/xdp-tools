@@ -23,7 +23,7 @@
 #include "prog_features.h"
 
 #define NEED_RLIMIT (20*1024*1024) /* 10 Mbyte */
-#define BPFFS_DIR "xdp-filter"
+#define PROG_NAME "xdp-filter"
 
 struct flag_val map_flags_all[] = {
 	{"src", MAP_FLAG_SRC},
@@ -162,13 +162,13 @@ static struct prog_option load_options[] = {
 	END_OPTIONS
 };
 
-int do_load(void *cfg)
+int do_load(const void *cfg, const char *pin_root_path)
 {
-	char *progname, pin_root_path[PATH_MAX];
+	const struct loadopt *opt = cfg;
 	struct bpf_object *obj = NULL;
-	struct loadopt *opt = cfg;
 	struct bpf_program *prog;
 	int err = EXIT_SUCCESS;
+	char *progname;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 
@@ -182,10 +182,6 @@ int do_load(void *cfg)
 		 progname, opt->iface.ifname);
 
 	err = check_bpf_environ(NEED_RLIMIT);
-	if (err)
-		goto out;
-
-	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
 	if (err)
 		goto out;
 
@@ -295,21 +291,16 @@ static struct prog_option unload_options[] = {
 	END_OPTIONS
 };
 
-int do_unload(void *cfg)
+int do_unload(const void *cfg, const char *pin_root_path)
 {
 	struct if_nameindex *idx, *indexes = NULL;
+	const struct unloadopt *opt = cfg;
 	struct bpf_prog_info info = {};
-	char pin_root_path[PATH_MAX];
-	struct unloadopt *opt = cfg;
 	int err = EXIT_SUCCESS;
 	char featbuf[100];
 	__u32 feat, all_feats = 0;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
-
-	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
-	if (err)
-		goto out;
 
 	err = get_xdp_prog_info(opt->iface.ifindex, &info);
 	if (err) {
@@ -443,12 +434,11 @@ static struct prog_option port_options[] = {
 };
 
 
-int do_port(void *cfg)
+int do_port(const void *cfg, const char *pin_root_path)
 {
 	int map_fd = -1, err = EXIT_SUCCESS;
 	char modestr[100], protostr[100];
-	char pin_root_path[PATH_MAX];
-	struct portopt *opt = cfg;
+	const struct portopt *opt = cfg;
 	__u8 flags = 0;
 	__u64 counter;
 	__u32 map_key;
@@ -457,10 +447,6 @@ int do_port(void *cfg)
 	print_flags(protostr, sizeof(protostr), map_flags_tcpudp, opt->proto);
 	pr_debug("%s %s port %u mode %s\n", opt->remove ? "Removing" : "Adding",
 		 protostr, opt->port, modestr);
-
-	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
-	if (err)
-		goto out;
 
 	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS), NULL);
 	if (map_fd < 0) {
@@ -532,7 +518,7 @@ int print_ips()
 	int map_fd4, map_fd6;
 	int err = 0;
 
-	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
+	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), PROG_NAME);
 	if (err)
 		goto out;
 
@@ -564,17 +550,13 @@ out:
 }
 
 
-static int __do_address(const char *map_name, const char *feat_name,
+static int __do_address(const char *pin_root_path,
+			const char *map_name, const char *feat_name,
 			void *map_key, bool remove, int mode)
 {
-	char pin_root_path[PATH_MAX];
 	int map_fd = -1, err = 0;
 	__u8 flags = 0;
 	__u64 counter;
-
-	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
-	if (err)
-		goto out;
 
 	map_fd = get_pinned_map_fd(pin_root_path, map_name, NULL);
 	if (map_fd < 0) {
@@ -630,11 +612,12 @@ static struct prog_option ip_options[] = {
 	END_OPTIONS
 };
 
-static int do_ip(void *cfg)
+static int do_ip(const void *cfg, const char *pin_root_path)
 {
 	int map_fd = -1, err = EXIT_SUCCESS;
 	char modestr[100], addrstr[100];
-	struct ipopt *opt = cfg;
+	const struct ipopt *opt = cfg;
+	struct ip_addr addr = opt->addr;
 	bool v6;
 
 	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt->mode);
@@ -644,9 +627,10 @@ static int do_ip(void *cfg)
 
 	v6 = (opt->addr.af == AF_INET6);
 
-	map_fd = __do_address(v6 ? textify(MAP_NAME_IPV6) : textify(MAP_NAME_IPV4),
+	map_fd = __do_address(pin_root_path,
+			      v6 ? textify(MAP_NAME_IPV6) : textify(MAP_NAME_IPV4),
 			      v6 ? "ipv6" : "ipv4",
-			      &opt->addr.addr, opt->remove, opt->mode);
+			      &addr.addr, opt->remove, opt->mode);
 	if (map_fd < 0) {
 		err = map_fd;
 		goto out;
@@ -719,19 +703,20 @@ static struct prog_option ether_options[] = {
 	END_OPTIONS
 };
 
-static int do_ether(void *cfg)
+static int do_ether(const void *cfg, const char *pin_root_path)
 {
 	int err = EXIT_SUCCESS, map_fd = -1;
+	const struct etheropt *opt = cfg;
+	struct mac_addr addr = opt->addr;
 	char modestr[100], addrstr[100];
-	struct etheropt *opt = cfg;
 
 	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt->mode);
 	print_macaddr(addrstr, sizeof(addrstr), &opt->addr);
 	pr_debug("%s addr %s mode %s\n", opt->remove ? "Removing" : "Adding",
 		 addrstr, modestr);
 
-	map_fd = __do_address(textify(MAP_NAME_ETHERNET),
-			      "ethernet", &opt->addr.addr, opt->remove, opt->mode);
+	map_fd = __do_address(pin_root_path, textify(MAP_NAME_ETHERNET),
+			      "ethernet", &addr.addr, opt->remove, opt->mode);
 	if (map_fd < 0) {
 		err = map_fd;
 		goto out;
@@ -753,17 +738,13 @@ static struct prog_option status_options[] = {
 	END_OPTIONS
 };
 
-int do_status(void *cfg)
+int do_status(const void *cfg, const char *pin_root_path)
 {
-	char pin_root_path[PATH_MAX], errmsg[STRERR_BUFSIZE];
-	int err = EXIT_SUCCESS, map_fd = -1;
 	struct if_nameindex *idx, *indexes = NULL;
+	int err = EXIT_SUCCESS, map_fd = -1;
+	char errmsg[STRERR_BUFSIZE];
 	struct stats_record rec = {};
 	struct bpf_map_info info;
-
-	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
-	if (err)
-		goto out;
 
 	map_fd = get_pinned_map_fd(pin_root_path, textify(XDP_STATS_MAP_NAME), &info);
 	if (map_fd < 0) {
@@ -863,15 +844,10 @@ static struct prog_option poll_options[] = {
 	END_OPTIONS
 };
 
-int do_poll(void *cfg)
+int do_poll(const void *cfg, const char *pin_root_path)
 {
 	int err = EXIT_SUCCESS, map_fd = -1;
-	char pin_root_path[PATH_MAX];
- 	struct pollopt *opt = cfg;
-
-	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
-	if (err)
-		goto out;
+ 	const struct pollopt *opt = cfg;
 
 	map_fd = get_pinned_map_fd(pin_root_path, textify(XDP_STATS_MAP_NAME), NULL);
 	if (map_fd < 0) {
@@ -891,7 +867,7 @@ out:
 	return err;
 }
 
-int do_help(void *cfg)
+int do_help(const void *cfg, const char *pin_root_path)
 {
 	fprintf(stderr,
 		"Usage: xdp-filter COMMAND [options]\n"
@@ -915,7 +891,7 @@ int do_help(void *cfg)
 
 static const struct cmd {
 	const char *cmd;
-	int (*func)(void *cfg);
+	int (*func)(const void *cfg, const char *pin_root_path);
 	struct prog_option *options;
 	const void *default_cfg;
 	char *doc;
@@ -944,6 +920,7 @@ union all_opts {
 static int do_cmd(const char *argv0, int argc, char **argv)
 {
 	const struct cmd *c, *cmd = NULL;
+	char pin_root_path[PATH_MAX];
 	union all_opts cfgbuf = {};
 	void *cfg = &cfgbuf;
 	char namebuf[100];
@@ -957,12 +934,12 @@ static int do_cmd(const char *argv0, int argc, char **argv)
 	}
 
 	if (!cmd) {
-		pr_warn("Command '%s' is unknown, try 'xdp-filter help'.\n",
-			argv0);
+		pr_warn("Command '%s' is unknown, try '%s help'.\n",
+			argv0, PROG_NAME);
 		return EXIT_FAILURE;
 	}
 
-	snprintf(namebuf, sizeof(namebuf), "%s %s", "xdp-filter", cmd->cmd);
+	snprintf(namebuf, sizeof(namebuf), "%s %s", PROG_NAME, cmd->cmd);
 	err = parse_cmdline_args(argc, argv, cmd->options,
 				 cfg, namebuf, cmd->doc,
 				 cmd->default_cfg);
@@ -970,21 +947,25 @@ static int do_cmd(const char *argv0, int argc, char **argv)
 	if (err)
 		return EXIT_FAILURE;
 
+	if (cmd->no_lock)
+		return cmd->func(cfg, pin_root_path);
+
 	err = check_bpf_environ(0);
 	if (err)
-		return EXIT_FAILURE ;
-
-
-	if (!cmd->no_lock && prog_lock_get("xdp-filter"))
 		return EXIT_FAILURE;
 
-	ret = cmd->func(cfg);
+	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), PROG_NAME);
+	if (err)
+		return EXIT_FAILURE;
+
+	if (prog_lock_get(PROG_NAME))
+		return EXIT_FAILURE;
+
+	ret = cmd->func(cfg, pin_root_path);
 	prog_lock_release(0);
 	return ret;
 
 }
-
-const char *pin_basedir =  "/sys/fs/bpf";
 
 int main(int argc, char **argv)
 {
@@ -993,5 +974,5 @@ int main(int argc, char **argv)
 	if (argc > 1)
 		return do_cmd(argv[1], argc-1, argv+1);
 
-	return do_help(NULL);
+	return do_help(NULL, NULL);
 }
