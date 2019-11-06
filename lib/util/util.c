@@ -19,11 +19,8 @@
 #include "util.h"
 #include "logging.h"
 
-int check_bpf_environ(unsigned long min_rlimit)
+int check_bpf_environ()
 {
-	struct rlimit limit;
-	int err;
-
 	init_libbpf_logging();
 
 	if (geteuid() != 0) {
@@ -31,8 +28,13 @@ int check_bpf_environ(unsigned long min_rlimit)
 		return 1;
 	}
 
-	if (!min_rlimit)
-		return 0;
+	return 0;
+}
+
+int check_rlimit(unsigned long min_rlimit)
+{
+	struct rlimit limit;
+	int err;
 
 	err = getrlimit(RLIMIT_MEMLOCK, &limit);
 	if (err) {

@@ -19,7 +19,8 @@
       _err = bpf_map_get_next_key(_map_fd, &_map_key, &_next_key),      \
         _map_key = _next_key)
 
-int check_bpf_environ(unsigned long min_rlimit);
+int check_bpf_environ(void);
+int check_rlimit(unsigned long min_rlimit);
 
 int load_xdp_program(struct bpf_program *prog, int ifindex,
 		     bool force, bool skb_mode);

@@ -181,7 +181,7 @@ int do_load(const void *cfg, const char *pin_root_path)
 	pr_debug("Found prog '%s' matching feature set to be loaded on interface '%s'.\n",
 		 progname, opt->iface.ifname);
 
-	err = check_bpf_environ(NEED_RLIMIT);
+	err = check_rlimit(NEED_RLIMIT);
 	if (err)
 		goto out;
 
@@ -950,7 +950,7 @@ static int do_cmd(const char *argv0, int argc, char **argv)
 	if (cmd->no_lock)
 		return cmd->func(cfg, pin_root_path);
 
-	err = check_bpf_environ(0);
+	err = check_bpf_environ();
 	if (err)
 		return EXIT_FAILURE;
 
