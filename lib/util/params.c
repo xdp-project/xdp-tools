@@ -15,6 +15,7 @@
 
 #include "params.h"
 #include "logging.h"
+#include "util.h"
 
 #define BUFSIZE 30
 
@@ -499,4 +500,60 @@ out:
 	free(optstring);
 
 	return err;
+}
+
+int dispatch_commands(const char *argv0, int argc, char **argv,
+		      const struct prog_command *cmds, size_t cfg_size,
+		      const char *prog_name)
+{
+	const struct prog_command *c, *cmd = NULL;
+	char pin_root_path[PATH_MAX];
+	int ret = EXIT_FAILURE, err;
+	char namebuf[100];
+	void *cfg;
+
+	for (c = cmds; c->name; c++) {
+		if (is_prefix(argv0, c->name)) {
+			cmd = c;
+			break;
+		}
+	}
+
+	if (!cmd) {
+		pr_warn("Command '%s' is unknown, try '%s help'.\n",
+			argv0, prog_name);
+		return EXIT_FAILURE;
+	}
+
+	if (cmd->no_cfg)
+		return cmd->func(NULL, NULL);
+
+	cfg = malloc(cfg_size);
+	if (!cfg) {
+		pr_warn("Couldn't allocate memory\n");
+		return EXIT_FAILURE;
+	}
+
+	snprintf(namebuf, sizeof(namebuf), "%s %s", prog_name, cmd->name);
+	err = parse_cmdline_args(argc, argv, cmd->options, cfg, namebuf,
+				 cmd->doc, cmd->default_cfg);
+	if (err)
+		goto out;
+
+	err = check_bpf_environ();
+	if (err)
+		goto out;
+
+	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), prog_name);
+	if (err)
+		goto out;
+
+	if (prog_lock_get(prog_name))
+		goto out;
+
+	ret = cmd->func(cfg, pin_root_path);
+	prog_lock_release(0);
+out:
+	free(cfg);
+	return ret;
 }

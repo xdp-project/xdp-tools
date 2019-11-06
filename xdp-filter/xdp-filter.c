@@ -886,17 +886,8 @@ int do_help(const void *cfg, const char *pin_root_path)
 	return -1;
 }
 
-#define DEFINE_COMMAND(_name, _help) {textify(_name), do_##_name, _name ##_options, &defaults_##_name, _help}
-#define DEFINE_COMMAND_NODEF(_name, _help) {textify(_name), do_##_name, _name ##_options, NULL, _help}
 
-static const struct cmd {
-	const char *cmd;
-	int (*func)(const void *cfg, const char *pin_root_path);
-	struct prog_option *options;
-	const void *default_cfg;
-	char *doc;
-	bool no_lock;
-} cmds[] = {
+static const struct prog_command cmds[] = {
 	DEFINE_COMMAND(load, "Load xdp-filter on an interface"),
 	DEFINE_COMMAND(unload, "Unload xdp-filter from an interface"),
 	DEFINE_COMMAND(port, "Add or remove ports from xdp-filter"),
@@ -904,8 +895,8 @@ static const struct cmd {
 	DEFINE_COMMAND(ether, "Add or remove MAC addresses from xdp-filter"),
 	DEFINE_COMMAND(poll, "Poll xdp-filter statistics"),
 	DEFINE_COMMAND_NODEF(status, "Show xdp-filter status"),
-	{ "help",	do_help, NULL, NULL, NULL, true},
-	{ 0 }
+	{.name = "help", .func = do_help, .no_cfg = true},
+	END_COMMANDS
 };
 
 union all_opts {
@@ -917,60 +908,12 @@ union all_opts {
 	struct pollopt poll;
 };
 
-static int do_cmd(const char *argv0, int argc, char **argv)
-{
-	const struct cmd *c, *cmd = NULL;
-	char pin_root_path[PATH_MAX];
-	union all_opts cfgbuf = {};
-	void *cfg = &cfgbuf;
-	char namebuf[100];
-	int ret, err;
-
-	for (c = cmds; c->cmd; c++) {
-		if (is_prefix(argv0, c->cmd)) {
-			cmd = c;
-			break;
-		}
-	}
-
-	if (!cmd) {
-		pr_warn("Command '%s' is unknown, try '%s help'.\n",
-			argv0, PROG_NAME);
-		return EXIT_FAILURE;
-	}
-
-	snprintf(namebuf, sizeof(namebuf), "%s %s", PROG_NAME, cmd->cmd);
-	err = parse_cmdline_args(argc, argv, cmd->options,
-				 cfg, namebuf, cmd->doc,
-				 cmd->default_cfg);
-
-	if (err)
-		return EXIT_FAILURE;
-
-	if (cmd->no_lock)
-		return cmd->func(cfg, pin_root_path);
-
-	err = check_bpf_environ();
-	if (err)
-		return EXIT_FAILURE;
-
-	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), PROG_NAME);
-	if (err)
-		return EXIT_FAILURE;
-
-	if (prog_lock_get(PROG_NAME))
-		return EXIT_FAILURE;
-
-	ret = cmd->func(cfg, pin_root_path);
-	prog_lock_release(0);
-	return ret;
-
-}
-
 int main(int argc, char **argv)
 {
 	if (argc > 1)
-		return do_cmd(argv[1], argc-1, argv+1);
+		return dispatch_commands(argv[1], argc-1, argv+1,
+					 cmds, sizeof(union all_opts),
+					 PROG_NAME);
 
 	return do_help(NULL, NULL);
 }

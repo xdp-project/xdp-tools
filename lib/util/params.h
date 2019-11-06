@@ -75,7 +75,28 @@ struct mac_addr {
 #define FOR_EACH_OPTION(_options, _opt)                 \
         for (_opt = _options; _opt->type != OPT_NONE; _opt++)
 
-#define positional_argument (optional_argument +1)
+struct prog_command {
+	const char *name;
+	int (*func)(const void *cfg, const char *pin_root_path);
+	struct prog_option *options;
+	const void *default_cfg;
+	char *doc;
+	bool no_cfg;
+};
+
+#define DEFINE_COMMAND(_name, _doc) {					\
+		.name = textify(_name),				\
+		.func = do_##_name,					\
+		.options = _name ##_options,				\
+		.default_cfg = &defaults_##_name,			\
+		.doc = _doc}
+#define DEFINE_COMMAND_NODEF(_name, _doc) {				\
+		.name = textify(_name),				\
+		.func = do_##_name,					\
+		.options = _name ##_options,				\
+		.doc = _doc}
+
+#define END_COMMANDS {}
 
 void print_flags(char *buf, size_t buf_len, const struct flag_val *flags,
                  unsigned long flags_val);
@@ -89,5 +110,9 @@ int parse_cmdline_args(int argc, char **argv,
                        struct prog_option *long_options,
                        void *cfg, const char *prog, const char *doc,
 		       const void *defaults);
+
+int dispatch_commands(const char *argv0, int argc, char **argv,
+		      const struct prog_command *cmds, size_t cfg_size,
+		      const char *prog_name);
 
 #endif /* __COMMON_PARAMS_H */
