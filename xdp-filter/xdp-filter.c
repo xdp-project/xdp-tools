@@ -147,20 +147,23 @@ struct flag_val print_features[] = {
 	{}
 };
 
-static struct option_wrapper load_options[] = {
-	DEFINE_OPTION('F', "force", no_argument, false, OPT_BOOL, NULL,
-		      "Force loading of XDP program", "",
-		      struct loadopt, force),
-	DEFINE_OPTION('s', "skb-mode", no_argument, false, OPT_BOOL, NULL,
-		      "Load XDP program in SKB (generic) mode", "",
-		      struct loadopt, skb_mode),
-	DEFINE_OPTION('d', "dev", positional_argument, true, OPT_IFNAME, NULL,
-		      "Load on device <ifname>", "<ifname>",
-		      struct loadopt, iface),
-	DEFINE_OPTION('f', "features", required_argument, false,
-		      OPT_FLAGS, load_features,
-		      "Features to enable; default all", "<feats>",
-		      struct loadopt, features),
+static struct prog_option load_options[] = {
+	DEFINE_OPTION("force", OPT_BOOL, struct loadopt, force,
+		      .short_opt = 'F',
+		      .help = "Force loading of XDP program"),
+	DEFINE_OPTION("skb-mode", OPT_BOOL, struct loadopt, skb_mode,
+		      .short_opt = 's',
+		      .help = "Load XDP program in SKB (generic) mode"),
+	DEFINE_OPTION("dev", OPT_IFNAME, struct loadopt, iface,
+		      .positional = true,
+		      .metavar = "<ifname>",
+		      .required = true,
+		      .help = "Load on device <ifname>"),
+	DEFINE_OPTION("features", OPT_FLAGS, struct loadopt, features,
+		      .short_opt = 'f',
+		      .metavar = "<feats>",
+		      .typearg = load_features,
+		      .help = "Features to enable; default all"),
 	END_OPTIONS
 };
 
@@ -293,13 +296,15 @@ struct unloadopt {
 	struct iface iface;
 };
 
-static struct option_wrapper unload_options[] = {
-	DEFINE_OPTION('d', "dev", positional_argument, true, OPT_IFNAME, NULL,
-		      "Load on device <ifname>", "<ifname>",
-		      struct unloadopt, iface),
-	DEFINE_OPTION('k', "keep-maps", no_argument, false, OPT_BOOL, NULL,
-		      "Don't destroy unused maps after unloading", "",
-		      struct unloadopt, keep),
+static struct prog_option unload_options[] = {
+	DEFINE_OPTION("keep-maps", OPT_BOOL, struct unloadopt, keep,
+		      .short_opt = 'k',
+		      .help = "Don't destroy unused maps after unloading"),
+	DEFINE_OPTION("dev", OPT_IFNAME, struct unloadopt, iface,
+		      .positional = true,
+		      .metavar = "<ifname>",
+		      .required = true,
+		      .help = "Load on device <ifname>"),
 	END_OPTIONS
 };
 
@@ -432,25 +437,28 @@ struct portopt {
 	bool remove;
 };
 
-static struct option_wrapper port_options[] = {
-	DEFINE_OPTION('r', "remove", no_argument, false, OPT_BOOL, NULL,
-		      "Remove port instead of adding", "",
-		      struct portopt, remove),
-	DEFINE_OPTION('s', "status", no_argument, false, OPT_BOOL, NULL,
-		      "Print status of filtered ports after changing", "",
-		      struct portopt, print_status),
-	DEFINE_OPTION('m', "mode", required_argument, false,
-		      OPT_FLAGS, map_flags_srcdst,
-		      "Filter mode; default dst", "<mode>",
-		      struct portopt, mode),
-	DEFINE_OPTION('p', "proto", required_argument, false,
-		      OPT_FLAGS, map_flags_tcpudp,
-		      "Protocol to filter; default tcp,udp", "<proto>",
-		      struct portopt, proto),
-	DEFINE_OPTION('P', "port", positional_argument, true,
-		      OPT_U16, NULL,
-		      "Port to add or remove", "<port>",
-		      struct portopt, port),
+static struct prog_option port_options[] = {
+	DEFINE_OPTION("port", OPT_U16, struct portopt, port,
+		      .positional = true,
+		      .metavar = "<port>",
+		      .required = true,
+		      .help = "Port to add or remove"),
+	DEFINE_OPTION("remove", OPT_BOOL, struct portopt, remove,
+		      .short_opt = 'r',
+		      .help = "Remove port instead of adding"),
+	DEFINE_OPTION("status", OPT_BOOL, struct portopt, print_status,
+		      .short_opt = 's',
+		      .help = "Print status of filtered ports after changing"),
+	DEFINE_OPTION("mode", OPT_FLAGS, struct portopt, mode,
+		      .short_opt = 'm',
+		      .metavar = "<mode>",
+		      .typearg = map_flags_srcdst,
+		      .help = "Filter mode; default dst"),
+	DEFINE_OPTION("proto", OPT_FLAGS, struct portopt, proto,
+		      .short_opt = 'p',
+		      .metavar = "<proto>",
+		      .typearg = map_flags_tcpudp,
+		      .help = "Protocol to filter; default tcp,udp"),
 	END_OPTIONS
 };
 
@@ -637,21 +645,23 @@ struct ipopt {
 	bool remove;
 };
 
-static struct option_wrapper ip_options[] = {
-	DEFINE_OPTION('r', "remove", no_argument, false, OPT_BOOL, NULL,
-		      "Remove port instead of adding", "",
-		      struct ipopt, remove),
-	DEFINE_OPTION('s', "status", no_argument, false, OPT_BOOL, NULL,
-		      "Print status of filtered ports after changing", "",
-		      struct ipopt, print_status),
-	DEFINE_OPTION('m', "mode", required_argument, false,
-		      OPT_FLAGS, map_flags_srcdst,
-		      "Filter mode; default dst", "<mode>",
-		      struct ipopt, mode),
-	DEFINE_OPTION('a', "addr", positional_argument, true,
-		      OPT_IPADDR, NULL,
-		      "Address to add or remove", "<addr>",
-		      struct ipopt, addr),
+static struct prog_option ip_options[] = {
+	DEFINE_OPTION("addr", OPT_IPADDR, struct ipopt, addr,
+		      .positional = true,
+		      .metavar = "<addr>",
+		      .required = true,
+		      .help = "Address to add or remove"),
+	DEFINE_OPTION("remove", OPT_BOOL, struct ipopt, remove,
+		      .short_opt = 'r',
+		      .help = "Remove address instead of adding"),
+	DEFINE_OPTION("status", OPT_BOOL, struct ipopt, print_status,
+		      .short_opt = 's',
+		      .help = "Print status of filtered addresses after changing"),
+	DEFINE_OPTION("mode", OPT_FLAGS, struct ipopt, mode,
+		      .short_opt = 'm',
+		      .metavar = "<mode>",
+		      .typearg = map_flags_srcdst,
+		      .help = "Filter mode; default dst"),
 	END_OPTIONS
 };
 
@@ -730,21 +740,23 @@ struct etheropt {
 	bool remove;
 };
 
-static struct option_wrapper ether_options[] = {
-	DEFINE_OPTION('r', "remove", no_argument, false, OPT_BOOL, NULL,
-		      "Remove port instead of adding", "",
-		      struct etheropt, remove),
-	DEFINE_OPTION('s', "status", no_argument, false, OPT_BOOL, NULL,
-		      "Print status of filtered ports after changing", "",
-		      struct etheropt, print_status),
-	DEFINE_OPTION('m', "mode", required_argument, false,
-		      OPT_FLAGS, map_flags_srcdst,
-		      "Filter mode; default dst", "<mode>",
-		      struct etheropt, mode),
-	DEFINE_OPTION('a', "addr", positional_argument, true,
-		      OPT_MACADDR, NULL,
-		      "Address to add or remove", "<addr>",
-		      struct etheropt, addr),
+static struct prog_option ether_options[] = {
+	DEFINE_OPTION("addr", OPT_MACADDR, struct etheropt, addr,
+		      .positional = true,
+		      .metavar = "<addr>",
+		      .required = true,
+		      .help = "Address to add or remove"),
+	DEFINE_OPTION("remove", OPT_BOOL, struct etheropt, remove,
+		      .short_opt = 'r',
+		      .help = "Remove address instead of adding"),
+	DEFINE_OPTION("status", OPT_BOOL, struct etheropt, print_status,
+		      .short_opt = 's',
+		      .help = "Print status of filtered addresses after changing"),
+	DEFINE_OPTION("mode", OPT_FLAGS, struct etheropt, mode,
+		      .short_opt = 'm',
+		      .metavar = "<mode>",
+		      .typearg = map_flags_srcdst,
+		      .help = "Filter mode; default dst"),
 	END_OPTIONS
 };
 
@@ -786,7 +798,7 @@ out:
 	return err;
 }
 
-static struct option_wrapper status_options[] = {
+static struct prog_option status_options[] = {
 	END_OPTIONS
 };
 
@@ -902,10 +914,11 @@ struct pollopt {
 	__u32 interval;
 };
 
-static struct option_wrapper poll_options[] = {
-	DEFINE_OPTION('i', "interval", required_argument, false, OPT_U32, NULL,
-		      "Polling interval in milliseconds", "<interval>",
-		      struct pollopt, interval),
+static struct prog_option poll_options[] = {
+	DEFINE_OPTION("interval", OPT_U32, struct pollopt, interval,
+		      .short_opt = 'i',
+		      .metavar = "<interval>",
+		      .help = "Polling interval in milliseconds"),
 	END_OPTIONS
 };
 

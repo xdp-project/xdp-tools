@@ -11,9 +11,9 @@
 #include "libbpf.h"
 
 enum option_type {
-                  OPT_HELP,
-                  OPT_FLAGS,
+                  OPT_NONE,
                   OPT_BOOL,
+                  OPT_FLAGS,
                   OPT_STRING,
                   OPT_U16,
                   OPT_U32,
@@ -23,15 +23,18 @@ enum option_type {
                   __OPT_MAX
 };
 
-struct option_wrapper {
-        struct option option;
-        char *help;
-        char *metavar;
-        bool required;
-        enum option_type type;
-        void *typearg;
-        size_t cfg_offset;
-        bool was_set;
+struct prog_option {
+	enum option_type type;
+	size_t cfg_size;
+	size_t cfg_offset;
+	char *name;
+	char short_opt;
+	char *help;
+	char *metavar;
+	void *typearg;
+	bool required;
+	bool positional;
+	bool was_set;
 };
 
 struct flag_val {
@@ -56,20 +59,17 @@ struct mac_addr {
         unsigned char addr[ETH_ALEN];
 };
 
-#define DEFINE_OPTION(_short, _long, _arg, _req, _type, _typearg,       \
-                      _help, _metavar, _cfgtype, _cfgmember)            \
-        {.option = {_long, _arg, NULL, _short},                         \
-         .help = _help,                                                 \
-         .metavar = _metavar,                                           \
-         .required = _req,                                              \
-         .type = _type,                                                 \
-         .typearg = _typearg,                                           \
-         .cfg_offset = offsetof(_cfgtype, _cfgmember)}
+#define DEFINE_OPTION(_name, _type, _cfgtype, _cfgmember, ...)           \
+	{.cfg_size = sizeof(_cfgtype),                                  \
+	.name = _name,                                  \
+	.type = _type,			      \
+	.cfg_offset = offsetof(_cfgtype, _cfgmember),   \
+	__VA_ARGS__}
 
 #define END_OPTIONS 	{}
 
 #define FOR_EACH_OPTION(_options, _opt)                 \
-        for (_opt = _options; _opt->option.name != 0; _opt++)
+        for (_opt = _options; _opt->type != OPT_NONE; _opt++)
 
 #define positional_argument (optional_argument +1)
 
@@ -79,10 +79,10 @@ void print_addr(char *buf, size_t buf_len, const struct ip_addr *addr);
 void print_macaddr(char *buf, size_t buf_len, const struct mac_addr *addr);
 bool is_prefix(const char *prefix, const char *string);
 void usage(const char *prog_name, const char *doc,
-           const struct option_wrapper *long_options, bool full);
+           const struct prog_option *long_options, bool full);
 
 int parse_cmdline_args(int argc, char **argv,
-                       struct option_wrapper *long_options,
+                       struct prog_option *long_options,
                        void *cfg, const char *prog, const char *doc);
 
 #endif /* __COMMON_PARAMS_H */

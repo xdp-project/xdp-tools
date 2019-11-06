@@ -18,46 +18,44 @@
 
 #define BUFSIZE 30
 
-static int handle_bool(const struct option_wrapper *opt,
-		       void *cfg, char *optarg)
+static bool opt_needs_arg(const struct prog_option *opt)
 {
-	bool *opt_set;
-	opt_set = (cfg + opt->cfg_offset);
+	return opt->type > OPT_BOOL && !opt->positional;
+}
+
+static int handle_bool(char *optarg, void *tgt, void *typearg)
+{
+	bool *opt_set = tgt;
+
 	*opt_set = true;
 	return 0;
 }
 
-static int handle_string(const struct option_wrapper *opt,
-			 void *cfg, char *optarg)
+static int handle_string(char *optarg, void *tgt, void *typearg)
 {
-	char **opt_set;
-	opt_set = (cfg + opt->cfg_offset);
+	char **opt_set = tgt;
+
 	*opt_set = optarg;
 	return 0;
 }
 
-static int handle_u32(const struct option_wrapper *opt,
-		      void *cfg, char *optarg)
+static int handle_u32(char *optarg, void *tgt, void *typearg)
 {
+	__u32 *opt_set = tgt;
 	unsigned long val;
-	__u32 *opt_set;
-
-	opt_set = (cfg + opt->cfg_offset);
 
 	val = strtoul(optarg, NULL, 10);
 	if (errno || val > 0xffffffff)
 		return -1;
+
 	*opt_set = val;
 	return 0;
 }
 
-static int handle_u16(const struct option_wrapper *opt,
-		      void *cfg, char *optarg)
+static int handle_u16(char *optarg, void *tgt, void *typearg)
 {
+	__u16 *opt_set = tgt;
 	unsigned long val;
-	__u16 *opt_set;
-
-	opt_set = (cfg + opt->cfg_offset);
 
 	val = strtoul(optarg, NULL, 10);
 	if (errno || val > 0xffff)
@@ -86,13 +84,11 @@ static int parse_mac(char *str, unsigned char mac[ETH_ALEN])
 	return 0;
 }
 
-static int handle_macaddr(const struct option_wrapper *opt,
-			  void *cfg, char *optarg)
+static int handle_macaddr(char *optarg, void *tgt, void *typearg)
 {
-	struct mac_addr *opt_set;
+	struct mac_addr *opt_set = tgt;
 	int err;
 
-	opt_set = (cfg + opt->cfg_offset);
 	err = parse_mac(optarg, opt_set->addr);
 	if (err)
 		pr_warn("Invalid MAC address: %s\n", optarg);
@@ -128,21 +124,18 @@ static const struct flag_val *find_flag(const struct flag_val *flag_vals,
 	return NULL;
 }
 
-static int handle_flags(const struct option_wrapper *opt,
-			void *cfg, char *optarg)
+static int handle_flags(char *optarg, void *tgt, void *typearg)
 {
-	const struct flag_val *flag;
+	const struct flag_val *flag, *flag_vals = typearg;
+	int *opt_set = tgt;
 	int flagval = 0;
 	char *c = NULL;
-	int *opt_set;
-
-	opt_set = (cfg + opt->cfg_offset);
 
 	while (*optarg) {
 		c = strchr(optarg, ',');
 		if (c)
 			*c = '\0';
-		flag = find_flag(opt->typearg, optarg);
+		flag = find_flag(flag_vals, optarg);
 		if (!flag) {
 			fprintf(stderr, "invalid flag: %s\n", optarg);
 			return -1;
@@ -157,13 +150,11 @@ static int handle_flags(const struct option_wrapper *opt,
 	return 0;
 }
 
-static int handle_ifname(const struct option_wrapper *opt,
-			  void *cfg, char *optarg)
+static int handle_ifname(char *optarg, void *tgt, void *typearg)
 {
-	struct iface *iface;
+	struct iface *iface = tgt;
 	int ifindex;
 
-	iface = (cfg + opt->cfg_offset);
 	ifindex = if_nametoindex(optarg);
 	if (!ifindex) {
 		pr_warn("Couldn't find network interface '%s'.\n", optarg);
@@ -180,13 +171,11 @@ void print_addr(char *buf, size_t buf_len, const struct ip_addr *addr)
 	inet_ntop(addr->af, &addr->addr, buf, buf_len);
 }
 
-static int handle_ipaddr(const struct option_wrapper *opt,
-			  void *cfg, char *optarg)
+static int handle_ipaddr(char *optarg, void *tgt, void *typearg)
 {
-	struct ip_addr *addr;
+	struct ip_addr *addr = tgt;
  	int af;
 
-	addr = (cfg + opt->cfg_offset);
 	af = strchr(optarg, ':') ? AF_INET6 : AF_INET;
 
 	if (inet_pton(af, optarg, &addr->addr) != 1) {
@@ -199,11 +188,11 @@ static int handle_ipaddr(const struct option_wrapper *opt,
 }
 
 static const struct opthandler {
-	int (*func)(const struct option_wrapper *opt, void *cfg, char *optarg);
+	int (*func)(char *optarg, void *tgt, void *typearg);
 } handlers[__OPT_MAX] = {
 			 {NULL},
-			 {handle_flags},
 			 {handle_bool},
+			 {handle_flags},
 			 {handle_string},
 			 {handle_u16},
 			 {handle_u32},
@@ -235,7 +224,7 @@ void print_flags(char *buf, size_t buf_len, const struct flag_val *flags,
 	}
 }
 
-static void print_help_flags(const struct option_wrapper *opt)
+static void print_help_flags(const struct prog_option *opt)
 {
 	char buf[100];
 
@@ -245,46 +234,45 @@ static void print_help_flags(const struct option_wrapper *opt)
 }
 
 static const struct helprinter {
-	void (*func)(const struct option_wrapper *opt);
+	void (*func)(const struct prog_option *opt);
 } help_printers[__OPT_MAX] = {
 	{NULL},
 	{print_help_flags}
 };
 
 
-static void _print_positional(const struct option_wrapper *long_options)
+static void _print_positional(const struct prog_option *long_options)
 {
-	const struct option_wrapper *opt;
+	const struct prog_option *opt;
 
 	FOR_EACH_OPTION(long_options, opt) {
-		if (opt->option.has_arg != positional_argument)
+		if (opt->positional)
 			continue;
 
-		printf(" %s", opt->metavar);
+		printf(" %s", opt->metavar ?: opt->name);
 	}
 }
 
-static void _print_options(const struct option_wrapper *long_options,
+static void _print_options(const struct prog_option *poptions,
 			   bool required)
 {
-	const struct option_wrapper *opt;
+	const struct prog_option *opt;
 
-	FOR_EACH_OPTION(long_options, opt) {
+	FOR_EACH_OPTION(poptions, opt) {
 		if (opt->required != required)
 			continue;
 
-		if (opt->option.has_arg == positional_argument) {
-			printf("  %-24s", opt->metavar);
+		if (opt->positional) {
+			printf("  %-24s", opt->metavar ?: opt->name);
 		} else {
 			char buf[BUFSIZE];
 			int pos;
 
-			if (opt->option.val > 64) /* ord('A') = 65 */
-				printf(" -%c,", opt->option.val);
+			if (opt->short_opt > 64) /* ord('A') = 65 */
+				printf(" -%c,", opt->short_opt);
 			else
 				printf("    ");
-			pos = snprintf(buf, BUFSIZE, " --%s",
-				       opt->option.name);
+			pos = snprintf(buf, BUFSIZE, " --%s", opt->name);
 			if (opt->metavar)
 				snprintf(&buf[pos], BUFSIZE-pos, " %s",
 					 opt->metavar);
@@ -293,7 +281,7 @@ static void _print_options(const struct option_wrapper *long_options,
 
 		if (help_printers[opt->type].func != NULL)
 			help_printers[opt->type].func(opt);
-		else
+		else if (opt->help)
 			printf("  %s", opt->help);
 		printf("\n");
 	}
@@ -310,7 +298,7 @@ bool is_prefix(const char *pfx, const char *str)
 }
 
 void usage(const char *prog_name, const char *doc,
-           const struct option_wrapper *long_options, bool full)
+           const struct prog_option *long_options, bool full)
 {
 	printf("\nUsage: %s [options]", prog_name);
 	_print_positional(long_options);
@@ -332,12 +320,12 @@ void usage(const char *prog_name, const char *doc,
 	printf("\n");
 }
 
-static int option_wrappers_to_options(const struct option_wrapper *wrapper,
-				      struct option **options,
-				      char **optstring)
+static int prog_options_to_options(const struct prog_option *poptions,
+				   struct option **options,
+				   char **optstring)
 {
 	struct option *new_options, *nopt;
-	const struct option_wrapper *opt;
+	const struct prog_option *opt;
 	int num = 0, num_cmn = 0;
 	char buf[100], *c = buf;
 
@@ -352,8 +340,8 @@ static int option_wrappers_to_options(const struct option_wrapper *wrapper,
 		*c++ = nopt->val;
 	}
 
-	FOR_EACH_OPTION(wrapper, opt)
-		if(opt->option.has_arg != positional_argument)
+	FOR_EACH_OPTION(poptions, opt)
+		if(!opt->positional)
 			num++;
 
 	new_options = malloc(sizeof(struct option) * num);
@@ -362,13 +350,16 @@ static int option_wrappers_to_options(const struct option_wrapper *wrapper,
 	memcpy(new_options, &common_opts, sizeof(struct option) * num_cmn);
 	nopt = new_options + num_cmn;
 
-	FOR_EACH_OPTION(wrapper, opt) {
-		if (opt->option.has_arg == positional_argument)
+	FOR_EACH_OPTION(poptions, opt) {
+		if (opt->positional)
 			continue;
-		memcpy(nopt++, &opt->option, sizeof(struct option));
-		if (opt->option.val) {
-			*(c++) = opt->option.val;
-			if (opt->option.has_arg)
+		nopt->has_arg = opt_needs_arg(opt) ? required_argument : no_argument;
+		nopt->name = opt->name;
+		nopt->val = opt->short_opt;
+		nopt++;
+		if (opt->short_opt) {
+			*(c++) = opt->short_opt;
+			if (opt_needs_arg(opt))
 				*(c++) = ':';
 		}
 	}
@@ -384,21 +375,21 @@ static int option_wrappers_to_options(const struct option_wrapper *wrapper,
 	return 0;
 }
 
-static struct option_wrapper *find_opt(struct option_wrapper *all_opts,
+static struct prog_option *find_opt(struct prog_option *all_opts,
 				       int optchar)
 {
-	struct option_wrapper *opt;
+	struct prog_option *opt;
 
 	FOR_EACH_OPTION(all_opts, opt)
-		if (opt->option.val == optchar)
+		if (opt->short_opt == optchar)
 			return opt;
 	return NULL;
 }
 
-static int set_opt(void *cfg, struct option_wrapper *all_opts,
+static int set_opt(void *cfg, struct prog_option *all_opts,
 		   int optchar, char *optarg)
 {
-	struct option_wrapper *opt;
+	struct prog_option *opt;
 	int ret;
 
 	if (!cfg)
@@ -408,45 +399,47 @@ static int set_opt(void *cfg, struct option_wrapper *all_opts,
 	if (!opt)
 		return -1;
 
-	ret = handlers[opt->type].func(opt, cfg, optarg);
+	ret = handlers[opt->type].func(optarg, (cfg + opt->cfg_offset),
+				       opt->typearg);
 	if (!ret)
 		opt->was_set = true;
 	return ret;
 }
 
-static int set_pos_opt(void *cfg, struct option_wrapper *all_opts, char *optarg)
+static int set_pos_opt(void *cfg, struct prog_option *all_opts, char *optarg)
 {
-	struct option_wrapper *opt, *set_opt = NULL;
+	struct prog_option *o, *opt = NULL;
 	int ret;
 
-	FOR_EACH_OPTION(all_opts, opt) {
-		if (opt->option.has_arg == positional_argument && !opt->was_set) {
-			set_opt = opt;
+	FOR_EACH_OPTION(all_opts, o) {
+		if (o->positional && !o->was_set) {
+			opt = o;
 			break;
 		}
 	}
 
-	if (!set_opt)
+	if (!opt)
 		return -ENOENT;
 
-	ret = handlers[opt->type].func(set_opt, cfg, optarg);
+	ret = handlers[opt->type].func(optarg, (cfg + opt->cfg_offset),
+				       opt->typearg);
 	if (!ret)
-		set_opt->was_set = true;
+		opt->was_set = true;
 	return ret;
 }
 
 int parse_cmdline_args(int argc, char **argv,
-		       struct option_wrapper *options_wrapper,
+		       struct prog_option *poptions,
 		       void *cfg, const char *prog, const char *doc)
 {
-	struct option_wrapper *opt_iter;
+	struct prog_option *opt_iter;
 	struct option *long_options;
 	bool full_help = false;
 	int i, opt, err = 0;
 	int longindex = 0;
 	char *optstring;
 
-	if (option_wrappers_to_options(options_wrapper, &long_options, &optstring)) {
+	if (prog_options_to_options(poptions, &long_options, &optstring)) {
 		pr_warn("Unable to malloc()\n");
 		return -ENOMEM;
 	}
@@ -456,15 +449,15 @@ int parse_cmdline_args(int argc, char **argv,
 				  long_options, &longindex)) != -1) {
 		switch (opt) {
 		case 'h':
-			usage(prog, doc, options_wrapper, true);
+			usage(prog, doc, poptions, true);
 			err = EXIT_FAILURE;
 			goto out;
 		case 'v':
 			set_log_level(LOG_DEBUG);
 			break;
 		default:
-			if (set_opt(cfg, options_wrapper, opt, optarg)) {
-				usage(prog, doc, options_wrapper, full_help);
+			if (set_opt(cfg, poptions, opt, optarg)) {
+				usage(prog, doc, poptions, full_help);
 				err = EXIT_FAILURE;
 				goto out;
 			}
@@ -473,22 +466,22 @@ int parse_cmdline_args(int argc, char **argv,
 	}
 
 	for (i = optind; i < argc; i++) {
-		if (set_pos_opt(cfg, options_wrapper, argv[i])) {
-			usage(prog, doc, options_wrapper, full_help);
+		if (set_pos_opt(cfg, poptions, argv[i])) {
+			usage(prog, doc, poptions, full_help);
 			err = EXIT_FAILURE;
 			goto out;
 		}
 	}
 
-	FOR_EACH_OPTION(options_wrapper, opt_iter) {
+	FOR_EACH_OPTION(poptions, opt_iter) {
 		if (opt_iter->required && !opt_iter->was_set) {
-			if (opt_iter->option.has_arg == positional_argument)
+			if (opt_iter->positional)
 				pr_warn("Missing required parameter %s\n",
-					opt_iter->metavar);
+					opt_iter->metavar ?: opt_iter->name);
 			else
 				pr_warn("Missing required option '--%s'\n",
-					opt_iter->option.name);
-			usage(prog, doc, options_wrapper, full_help);
+					opt_iter->name);
+			usage(prog, doc, poptions, full_help);
 			err = EXIT_FAILURE;
 			goto out;
 		}
