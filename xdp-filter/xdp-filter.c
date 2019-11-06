@@ -120,12 +120,14 @@ int map_set_flags(int fd, void *key, __u8 flags)
 	return bpf_map_update_elem(fd, key, &values, 0);
 }
 
-struct loadopt {
+static const struct loadopt {
 	bool help;
 	struct iface iface;
 	int features;
 	bool force;
 	bool skb_mode;
+} defaults_load = {
+	.features = FEAT_ALL,
 };
 
 struct flag_val load_features[] = {
@@ -167,32 +169,24 @@ static struct prog_option load_options[] = {
 	END_OPTIONS
 };
 
-int do_load(int argc, char **argv)
+int do_load(void *cfg)
 {
 	char *progname, pin_root_path[PATH_MAX];
 	struct bpf_object *obj = NULL;
+	struct loadopt *opt = cfg;
 	struct bpf_program *prog;
 	int err = EXIT_SUCCESS;
-	struct loadopt opt = {
-		.features = FEAT_ALL,
-	};
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 
-	err = parse_cmdline_args(argc, argv, load_options, &opt,
-				 "xdp-filter load",
-				 "Load xdp-filter on an interface");
-	if (err)
-		goto out;
-
-	progname = find_progname(opt.features);
+	progname = find_progname(opt->features);
 	if (!progname) {
 		pr_warn("Couldn't find an eBPF program with the requested feature set!\n");
 		return EXIT_FAILURE;
 	}
 
 	pr_debug("Found prog '%s' matching feature set to be loaded on interface '%s'.\n",
-		 progname, opt.iface.ifname);
+		 progname, opt->iface.ifname);
 
 	err = check_bpf_environ(NEED_RLIMIT);
 	if (err)
@@ -219,10 +213,10 @@ int do_load(int argc, char **argv)
 		goto out;
 	}
 
-	err = load_xdp_program(prog, opt.iface.ifindex, opt.force, opt.skb_mode);
+	err = load_xdp_program(prog, opt->iface.ifindex, opt->force, opt->skb_mode);
 	if (err) {
 		pr_warn("Couldn't attach XDP program on iface '%s'\n",
-			opt.iface.ifname);
+			opt->iface.ifname);
 		goto out;
 	}
 
@@ -291,10 +285,10 @@ out:
 	return err;
 }
 
-struct unloadopt {
+static const struct unloadopt {
 	bool keep;
 	struct iface iface;
-};
+} defaults_unload = {};
 
 static struct prog_option unload_options[] = {
 	DEFINE_OPTION("keep-maps", OPT_BOOL, struct unloadopt, keep,
@@ -308,59 +302,49 @@ static struct prog_option unload_options[] = {
 	END_OPTIONS
 };
 
-int do_unload(int argc, char **argv)
+int do_unload(void *cfg)
 {
 	struct if_nameindex *idx, *indexes = NULL;
 	struct bpf_prog_info info = {};
 	char pin_root_path[PATH_MAX];
-	struct unloadopt opt = {};
+	struct unloadopt *opt = cfg;
 	int err = EXIT_SUCCESS;
 	char featbuf[100];
 	__u32 feat, all_feats = 0;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 
-	err = parse_cmdline_args(argc, argv, unload_options, &opt,
-			   "xdp-filter unload",
-			   "Unload xdp-filter from an interface");
-	if (err)
-		goto out;
-
-	err = check_bpf_environ(0);
-	if (err)
-		goto out;
-
 	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
 	if (err)
 		goto out;
 
-	err = get_xdp_prog_info(opt.iface.ifindex, &info);
+	err = get_xdp_prog_info(opt->iface.ifindex, &info);
 	if (err) {
 		pr_warn("Couldn't find XDP program on interface %s\n",
-			opt.iface.ifname);
+			opt->iface.ifname);
 		goto out;
 	}
 
 	feat = find_features(info.name);
 	if (!feat) {
 		pr_warn("Unrecognised XDP program on interface %s. Not removing.\n",
-			opt.iface.ifname);
+			opt->iface.ifname);
 		err = EXIT_FAILURE;
 		goto out;
 	}
 
 	print_flags(featbuf, sizeof(featbuf), print_features, feat);
 	pr_debug("Removing XDP program with features %s from iface %s\n",
-		 featbuf, opt.iface.ifname);
+		 featbuf, opt->iface.ifname);
 
-	err = bpf_set_link_xdp_fd(opt.iface.ifindex, -1, 0);
+	err = bpf_set_link_xdp_fd(opt->iface.ifindex, -1, 0);
 	if (err) {
 		pr_warn("Removing set xdp fd on iface %s failed (%d): %s\n",
-			opt.iface.ifname, -err, strerror(-err));
+			opt->iface.ifname, -err, strerror(-err));
 		goto out;
 	}
 
-	if (opt.keep) {
+	if (opt->keep) {
 		pr_debug("Not removing pinned maps because of --keep-maps option\n");
 		goto out;
 	}
@@ -429,12 +413,15 @@ int print_ports(int map_fd)
 	return 0;
 }
 
-struct portopt {
+static const struct portopt {
 	unsigned int mode;
 	unsigned int proto;
 	__u16 port;
 	bool print_status;
 	bool remove;
+} defaults_port = {
+	.mode = MAP_FLAG_DST,
+	.proto = MAP_FLAG_TCP | MAP_FLAG_UDP,
 };
 
 static struct prog_option port_options[] = {
@@ -463,33 +450,20 @@ static struct prog_option port_options[] = {
 };
 
 
-int do_port(int argc, char **argv)
+int do_port(void *cfg)
 {
 	int map_fd = -1, err = EXIT_SUCCESS;
-	char pin_root_path[PATH_MAX];
 	char modestr[100], protostr[100];
+	char pin_root_path[PATH_MAX];
+	struct portopt *opt = cfg;
 	__u8 flags = 0;
 	__u64 counter;
 	__u32 map_key;
-	struct portopt opt = {
-		.mode = MAP_FLAG_DST,
-		.proto = MAP_FLAG_TCP | MAP_FLAG_UDP,
-	};
 
-	err = parse_cmdline_args(argc, argv, port_options, &opt,
-				 "xdp-filter port",
-				 "Add or remove ports from xdp-filter");
-	if (err)
-		goto out;
-
-	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt.mode);
-	print_flags(protostr, sizeof(protostr), map_flags_tcpudp, opt.proto);
-	pr_debug("%s %s port %u mode %s\n", opt.remove ? "Removing" : "Adding",
-		 protostr, opt.port, modestr);
-
-	err = check_bpf_environ(0);
-	if (err)
-		goto out;
+	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt->mode);
+	print_flags(protostr, sizeof(protostr), map_flags_tcpudp, opt->proto);
+	pr_debug("%s %s port %u mode %s\n", opt->remove ? "Removing" : "Adding",
+		 protostr, opt->port, modestr);
 
 	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
 	if (err)
@@ -503,16 +477,16 @@ int do_port(int argc, char **argv)
 		goto out;
 	}
 
-	map_key = htons(opt.port);
+	map_key = htons(opt->port);
 
 	err = map_get_counter_flags(map_fd, &map_key, &counter, &flags);
 	if (err && err != -ENOENT)
 		goto out;
 
-	if (opt.remove)
-		flags &= ~(opt.mode | opt.proto);
+	if (opt->remove)
+		flags &= ~(opt->mode | opt->proto);
 	else
-		flags |= opt.mode | opt.proto;
+		flags |= opt->mode | opt->proto;
 
 	if (!(flags & (MAP_FLAG_DST | MAP_FLAG_SRC)) ||
 	    !(flags & (MAP_FLAG_TCP | MAP_FLAG_UDP)))
@@ -522,7 +496,7 @@ int do_port(int argc, char **argv)
 	if (err)
 		goto out;
 
-	if (opt.print_status) {
+	if (opt->print_status) {
 		err = print_ports(map_fd);
 		if (err)
 			goto out;
@@ -605,10 +579,6 @@ static int __do_address(const char *map_name, const char *feat_name,
 	__u8 flags = 0;
 	__u64 counter;
 
-	err = check_bpf_environ(0);
-	if (err)
-		goto out;
-
 	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
 	if (err)
 		goto out;
@@ -638,11 +608,13 @@ out:
 	return err ?: map_fd;
 }
 
-struct ipopt {
+static const struct ipopt {
 	unsigned int mode;
 	struct ip_addr addr;
 	bool print_status;
 	bool remove;
+} defaults_ip = {
+	.mode = MAP_FLAG_DST,
 };
 
 static struct prog_option ip_options[] = {
@@ -665,37 +637,29 @@ static struct prog_option ip_options[] = {
 	END_OPTIONS
 };
 
-static int do_ip(int argc, char **argv)
+static int do_ip(void *cfg)
 {
 	int map_fd = -1, err = EXIT_SUCCESS;
 	char modestr[100], addrstr[100];
+	struct ipopt *opt = cfg;
 	bool v6;
-	struct ipopt opt = {
-		.mode = MAP_FLAG_DST,
-	};
 
-	err = parse_cmdline_args(argc, argv, ip_options, &opt,
-				 "xdp-filter ip",
-				 "Add or remove IP addresses from xdp-filter");
-	if (err)
-		goto out;
-
-	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt.mode);
-	print_addr(addrstr, sizeof(addrstr), &opt.addr);
-	pr_debug("%s addr %s mode %s\n", opt.remove ? "Removing" : "Adding",
+	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt->mode);
+	print_addr(addrstr, sizeof(addrstr), &opt->addr);
+	pr_debug("%s addr %s mode %s\n", opt->remove ? "Removing" : "Adding",
 		 addrstr, modestr);
 
-	v6 = (opt.addr.af == AF_INET6);
+	v6 = (opt->addr.af == AF_INET6);
 
 	map_fd = __do_address(v6 ? textify(MAP_NAME_IPV6) : textify(MAP_NAME_IPV4),
 			      v6 ? "ipv6" : "ipv4",
-			      &opt.addr.addr, opt.remove, opt.mode);
+			      &opt->addr.addr, opt->remove, opt->mode);
 	if (map_fd < 0) {
 		err = map_fd;
 		goto out;
 	}
 
-	if (opt.print_status) {
+	if (opt->print_status) {
 		err = print_ips();
 		if (err)
 			goto out;
@@ -733,11 +697,13 @@ int print_ethers(int map_fd)
 	return 0;
 }
 
-struct etheropt {
+static const struct etheropt {
 	unsigned int mode;
 	struct mac_addr addr;
 	bool print_status;
 	bool remove;
+} defaults_ether = {
+		.mode = MAP_FLAG_DST,
 };
 
 static struct prog_option ether_options[] = {
@@ -760,33 +726,25 @@ static struct prog_option ether_options[] = {
 	END_OPTIONS
 };
 
-static int do_ether(int argc, char **argv)
+static int do_ether(void *cfg)
 {
 	int err = EXIT_SUCCESS, map_fd = -1;
 	char modestr[100], addrstr[100];
-	struct etheropt opt = {
-		.mode = MAP_FLAG_DST,
-	};
+	struct etheropt *opt = cfg;
 
-	err = parse_cmdline_args(argc, argv, ether_options, &opt,
-				 "xdp-filter ether",
-				 "Add or remove Ethernet addresses from xdp-filter");
-	if (err)
-		goto out;
-
-	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt.mode);
-	print_macaddr(addrstr, sizeof(addrstr), &opt.addr);
-	pr_debug("%s addr %s mode %s\n", opt.remove ? "Removing" : "Adding",
+	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt->mode);
+	print_macaddr(addrstr, sizeof(addrstr), &opt->addr);
+	pr_debug("%s addr %s mode %s\n", opt->remove ? "Removing" : "Adding",
 		 addrstr, modestr);
 
 	map_fd = __do_address(textify(MAP_NAME_ETHERNET),
-			      "ethernet", &opt.addr.addr, opt.remove, opt.mode);
+			      "ethernet", &opt->addr.addr, opt->remove, opt->mode);
 	if (map_fd < 0) {
 		err = map_fd;
 		goto out;
 	}
 
-	if (opt.print_status) {
+	if (opt->print_status) {
 		err = print_ethers(map_fd);
 		if (err)
 			goto out;
@@ -802,23 +760,13 @@ static struct prog_option status_options[] = {
 	END_OPTIONS
 };
 
-int do_status(int argc, char **argv)
+int do_status(void *cfg)
 {
 	char pin_root_path[PATH_MAX], errmsg[STRERR_BUFSIZE];
 	int err = EXIT_SUCCESS, map_fd = -1;
 	struct if_nameindex *idx, *indexes = NULL;
 	struct stats_record rec = {};
 	struct bpf_map_info info;
-
-	err = parse_cmdline_args(argc, argv, status_options, NULL,
-				 "xdp-filter status",
-				 "Show xdp-filter status");
-	if (err)
-		goto out;
-
-	err = check_bpf_environ(0);
-	if (err)
-		goto out;
 
 	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
 	if (err)
@@ -910,9 +858,9 @@ out:
 	return err;
 }
 
-struct pollopt {
+static const struct pollopt {
 	__u32 interval;
-};
+} defaults_poll = {};
 
 static struct prog_option poll_options[] = {
 	DEFINE_OPTION("interval", OPT_U32, struct pollopt, interval,
@@ -922,23 +870,11 @@ static struct prog_option poll_options[] = {
 	END_OPTIONS
 };
 
-int do_poll(int argc, char **argv)
+int do_poll(void *cfg)
 {
 	int err = EXIT_SUCCESS, map_fd = -1;
 	char pin_root_path[PATH_MAX];
- 	struct pollopt opt = {
-			      .interval = 1000
-	};
-
-	err = parse_cmdline_args(argc, argv, poll_options, &opt,
-				 "xdp-filter poll",
-				 "Poll xdp-filter statistics");
-	if (err)
-		goto out;
-
-	err = check_bpf_environ(0);
-	if (err)
-		goto out;
+ 	struct pollopt *opt = cfg;
 
 	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), BPFFS_DIR);
 	if (err)
@@ -953,7 +889,7 @@ int do_poll(int argc, char **argv)
 
 	prog_lock_release(0);
 	err = stats_poll(map_fd, pin_root_path, textify(XDP_STATS_MAP_NAME),
-			 opt.interval);
+			 opt->interval);
 	if (err)
 		goto out;
 
@@ -962,7 +898,7 @@ out:
 	return err;
 }
 
-int do_help(int argc, char **argv)
+int do_help(void *cfg)
 {
 	fprintf(stderr,
 		"Usage: xdp-filter COMMAND [options]\n"
@@ -981,27 +917,44 @@ int do_help(int argc, char **argv)
 	return -1;
 }
 
+#define DEFINE_COMMAND(_name, _help) {textify(_name), do_##_name, _name ##_options, &defaults_##_name, _help}
+#define DEFINE_COMMAND_NODEF(_name, _help) {textify(_name), do_##_name, _name ##_options, NULL, _help}
 
 static const struct cmd {
 	const char *cmd;
-	int (*func)(int argc, char **argv);
+	int (*func)(void *cfg);
+	struct prog_option *options;
+	const void *default_cfg;
+	char *doc;
 	bool no_lock;
 } cmds[] = {
-	{ "load",	do_load },
-	{ "unload",	do_unload },
-	{ "port",	do_port },
-	{ "ip",	do_ip },
-	{ "ether",	do_ether },
-	{ "status",	do_status },
-	{ "poll",	do_poll },
-	{ "help",	do_help, true},
+	DEFINE_COMMAND(load, "Load xdp-filter on an interface"),
+	DEFINE_COMMAND(unload, "Unload xdp-filter from an interface"),
+	DEFINE_COMMAND(port, "Add or remove ports from xdp-filter"),
+	DEFINE_COMMAND(ip, "Add or remove IP addresses from xdp-filter"),
+	DEFINE_COMMAND(ether, "Add or remove MAC addresses from xdp-filter"),
+	DEFINE_COMMAND(poll, "Poll xdp-filter statistics"),
+	DEFINE_COMMAND_NODEF(status, "Show xdp-filter status"),
+	{ "help",	do_help, NULL, NULL, NULL, true},
 	{ 0 }
+};
+
+union all_opts {
+	struct loadopt load;
+	struct unloadopt unload;
+	struct portopt port;
+	struct ipopt ip;
+	struct etheropt ether;
+	struct pollopt poll;
 };
 
 static int do_cmd(const char *argv0, int argc, char **argv)
 {
 	const struct cmd *c, *cmd = NULL;
-	int ret;
+	union all_opts cfgbuf = {};
+	void *cfg = &cfgbuf;
+	char namebuf[100];
+	int ret, err;
 
 	for (c = cmds; c->cmd; c++) {
 		if (is_prefix(argv0, c->cmd)) {
@@ -1016,10 +969,23 @@ static int do_cmd(const char *argv0, int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
+	snprintf(namebuf, sizeof(namebuf), "%s %s", "xdp-filter", cmd->cmd);
+	err = parse_cmdline_args(argc, argv, cmd->options,
+				 cfg, namebuf, cmd->doc,
+				 cmd->default_cfg);
+
+	if (err)
+		return EXIT_FAILURE;
+
+	err = check_bpf_environ(0);
+	if (err)
+		return EXIT_FAILURE ;
+
+
 	if (!cmd->no_lock && prog_lock_get("xdp-filter"))
 		return EXIT_FAILURE;
 
-	ret = cmd->func(argc, argv);
+	ret = cmd->func(cfg);
 	prog_lock_release(0);
 	return ret;
 
@@ -1034,5 +1000,5 @@ int main(int argc, char **argv)
 	if (argc > 1)
 		return do_cmd(argv[1], argc-1, argv+1);
 
-	return do_help(argc, argv);
+	return do_help(NULL);
 }
