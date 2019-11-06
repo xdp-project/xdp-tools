@@ -6,7 +6,6 @@
 #include <string.h>
 #include <fcntl.h>
 #include <signal.h>
-#include <bsd/string.h>
 #include <sys/types.h>
 #include <sys/resource.h>
 #include <sys/vfs.h>
@@ -157,7 +156,8 @@ static const char *bpf_find_mntpt_single(unsigned long magic, char *mnt,
 
 	ret = bpf_valid_mntpt(mntpt, magic);
 	if (!ret) {
-		strlcpy(mnt, mntpt, len);
+		strncpy(mnt, mntpt, len);
+		mnt[len-1] = '\0';
 		return mnt;
 	}
 
@@ -246,7 +246,8 @@ static const char *bpf_get_work_dir()
 		}
 	}
 
-	strlcpy(bpf_wrk_dir, mnt, sizeof(bpf_wrk_dir));
+	strncpy(bpf_wrk_dir, mnt, sizeof(bpf_wrk_dir));
+	bpf_wrk_dir[sizeof(bpf_wrk_dir) -1] = '\0';
 	mnt = bpf_wrk_dir;
 out:
 	bpf_mnt_cached = true;

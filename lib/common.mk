@@ -44,7 +44,7 @@ CFLAGS ?= -I$(LIBBPF_DIR)/root/usr/include/ -g
 # Extra include for Ubuntu
 CFLAGS += -I/usr/include/x86_64-linux-gnu
 CFLAGS += -I../headers/ -I$(LIBBPF_DIR) -I$(LIB_DIR)/util
-LDFLAGS ?= -L$(LIBBPF_DIR) -lbsd
+LDFLAGS ?= -L$(LIBBPF_DIR)
 
 BPF_CFLAGS ?= -I../headers/bpf/
 BPF_HEADERS := $(wildcard ../headers/bpf/*.h)
