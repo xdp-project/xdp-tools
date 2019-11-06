@@ -430,7 +430,8 @@ static int set_pos_opt(void *cfg, struct prog_option *all_opts, char *optarg)
 
 int parse_cmdline_args(int argc, char **argv,
 		       struct prog_option *poptions,
-		       void *cfg, const char *prog, const char *doc)
+		       void *cfg, const char *prog, const char *doc,
+		       const void *defaults)
 {
 	struct prog_option *opt_iter;
 	struct option *long_options;
@@ -474,7 +475,9 @@ int parse_cmdline_args(int argc, char **argv,
 	}
 
 	FOR_EACH_OPTION(poptions, opt_iter) {
-		if (opt_iter->required && !opt_iter->was_set) {
+		if (opt_iter->was_set)
+			continue;
+		if (opt_iter->required) {
 			if (opt_iter->positional)
 				pr_warn("Missing required parameter %s\n",
 					opt_iter->metavar ?: opt_iter->name);
@@ -484,6 +487,11 @@ int parse_cmdline_args(int argc, char **argv,
 			usage(prog, doc, poptions, full_help);
 			err = EXIT_FAILURE;
 			goto out;
+		} else if (defaults) {
+			void *dst = cfg + opt_iter->cfg_offset;
+			const void *src = defaults + opt_iter->cfg_offset;
+
+			memcpy(dst, src, opt_iter->opt_size);
 		}
 	}
 out:

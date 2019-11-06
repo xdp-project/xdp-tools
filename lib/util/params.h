@@ -27,6 +27,7 @@ struct prog_option {
 	enum option_type type;
 	size_t cfg_size;
 	size_t cfg_offset;
+	size_t opt_size;
 	char *name;
 	char short_opt;
 	char *help;
@@ -59,12 +60,15 @@ struct mac_addr {
         unsigned char addr[ETH_ALEN];
 };
 
-#define DEFINE_OPTION(_name, _type, _cfgtype, _cfgmember, ...)           \
-	{.cfg_size = sizeof(_cfgtype),                                  \
-	.name = _name,                                  \
-	.type = _type,			      \
-	.cfg_offset = offsetof(_cfgtype, _cfgmember),   \
-	__VA_ARGS__}
+#define sizeof_field(TYPE, MEMBER) sizeof((((TYPE *)0)->MEMBER))
+
+#define DEFINE_OPTION(_name, _type, _cfgtype, _cfgmember, ...) {	\
+		.cfg_size = sizeof(_cfgtype),				\
+		.opt_size = sizeof_field(_cfgtype, _cfgmember),	\
+		.cfg_offset = offsetof(_cfgtype, _cfgmember),		\
+		.name = _name,						\
+		.type = _type,						\
+		__VA_ARGS__}
 
 #define END_OPTIONS 	{}
 
@@ -83,6 +87,7 @@ void usage(const char *prog_name, const char *doc,
 
 int parse_cmdline_args(int argc, char **argv,
                        struct prog_option *long_options,
-                       void *cfg, const char *prog, const char *doc);
+                       void *cfg, const char *prog, const char *doc,
+		       const void *defaults);
 
 #endif /* __COMMON_PARAMS_H */
