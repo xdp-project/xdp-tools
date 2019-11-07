@@ -199,7 +199,7 @@ retry:
 
 
 	err = load_bpf_object(obj, raise_rlimit);
-	if (err && !raise_rlimit) {
+	if (err == -EPERM && !raise_rlimit) {
 		pr_debug("Permission denied when loading eBPF object; "
 			 "raising rlimit and retrying\n");
 
