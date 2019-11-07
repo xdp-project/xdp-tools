@@ -18,6 +18,13 @@ static int print_func(enum libbpf_print_level level, const char *format,
 	return vfprintf(stderr, format, args);
 }
 
+static int silent_print_func(enum libbpf_print_level level, const char *format,
+			     va_list args)
+{
+	return 0;
+}
+
+
 #define __printf(a, b)	__attribute__((format(printf, a, b)))
 
 __printf(2, 3)
@@ -33,6 +40,12 @@ void logging_print(enum logging_print_level level, const char *format, ...)
 void init_libbpf_logging()
 {
 	libbpf_set_print(print_func);
+}
+
+void silence_libbpf_logging()
+{
+	if (log_level < LOG_DEBUG)
+		libbpf_set_print(silent_print_func);
 }
 
 enum logging_print_level set_log_level(enum logging_print_level level)
