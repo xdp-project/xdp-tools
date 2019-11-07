@@ -30,10 +30,10 @@ int check_bpf_environ()
 	return 0;
 }
 
-int check_rlimit(unsigned long min_rlimit)
+int raise_rlimit(unsigned long rlimit)
 {
 	struct rlimit limit;
-	int err;
+	int err = 0;
 
 	err = getrlimit(RLIMIT_MEMLOCK, &limit);
 	if (err) {
@@ -42,17 +42,20 @@ int check_rlimit(unsigned long min_rlimit)
 		return err;
 	}
 
-	if (limit.rlim_cur < min_rlimit) {
-		pr_debug("Current rlimit %lu < needed %lu; raising.\n",
-			 limit.rlim_cur, min_rlimit);
-		limit.rlim_cur = min_rlimit;
-		limit.rlim_max = min_rlimit;
-		err = setrlimit(RLIMIT_MEMLOCK, &limit);
-		if (err) {
-			err = -errno;
-			pr_warn("Couldn't get current rlimit\n");
-			return err;
-		}
+	if (limit.rlim_cur == RLIM_INFINITY) {
+		pr_debug("Current rlimit is infinity. Not raising\n");
+		return 0;
+	}
+
+	pr_debug("Current rlimit %lu; raising by %lu\n", limit.rlim_cur, rlimit);
+	limit.rlim_cur += rlimit;
+	limit.rlim_max += rlimit;
+
+	err = setrlimit(RLIMIT_MEMLOCK, &limit);
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't raise rlimit: %s\n", strerror(-err));
+		return err;
 	}
 
 	return 0;
