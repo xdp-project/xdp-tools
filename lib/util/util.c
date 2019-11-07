@@ -84,10 +84,58 @@ out:
 	return err;
 }
 
-int load_xdp_program(struct bpf_program *prog, int ifindex,
-		     bool force, bool skb_mode)
+/* estimate of number of bytes needed for a map not including contents */
+#define BPF_MAP_SIZE_OVERHEAD 512
+/* estimate of overhead for each map entry */
+#define BPF_MAP_SIZE_ENTRY 128
+static size_t estimate_memlock_usage(const struct bpf_object *obj)
+{
+	const struct bpf_map_def *def;
+	const struct bpf_map *map;
+	size_t size = 0;
+
+	bpf_object__for_each_map(map, obj) {
+		size_t map_size = 0;
+
+		def = bpf_map__def(map);
+		map_size += (def->value_size + def->key_size) * def->max_entries +
+			BPF_MAP_SIZE_ENTRY;
+
+		if (def->type == BPF_MAP_TYPE_PERCPU_HASH ||
+		    def->type == BPF_MAP_TYPE_PERCPU_ARRAY ||
+		    def->type == BPF_MAP_TYPE_LRU_PERCPU_HASH)
+			map_size *= libbpf_num_possible_cpus();
+
+		map_size += BPF_MAP_SIZE_OVERHEAD;
+
+		pr_debug("Estimated size %lu bytes for map %s\n", map_size,
+			 bpf_map__name(map));
+
+		size += map_size;
+	}
+
+	pr_debug("Estimated total memlock size to be %lu bytes\n", size);
+	return size;
+}
+
+int load_bpf_object(struct bpf_object *obj, bool raise_limit)
+{
+	if (raise_limit) {
+		int err;
+
+		err = raise_rlimit(estimate_memlock_usage(obj));
+		if (err)
+			return err;
+	}
+
+	return bpf_object__load(obj);
+}
+
+int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
+		       int ifindex, bool force, bool skb_mode)
 {
 	int err = 0, xdp_flags = 0;
+	struct bpf_program *prog;
 	int prog_fd;
 
 	if (!force)
@@ -95,6 +143,16 @@ int load_xdp_program(struct bpf_program *prog, int ifindex,
 
 	if (skb_mode)
 		xdp_flags |= XDP_FLAGS_SKB_MODE;
+
+	if (prog_name)
+		prog = bpf_object__find_program_by_title(obj, prog_name);
+	else
+		prog = bpf_program__next(NULL, obj);
+
+	if (!prog) {
+		pr_warn("Couldn't find an eBPF program to attach. This is a bug!\n");
+		return -EFAULT;
+	}
 
 	prog_fd = bpf_program__fd(prog);
 	if (prog_fd <= 0) {

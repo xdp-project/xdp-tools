@@ -22,8 +22,9 @@
 int check_bpf_environ(void);
 int raise_rlimit(unsigned long limit);
 
-int load_xdp_program(struct bpf_program *prog, int ifindex,
-		     bool force, bool skb_mode);
+int load_bpf_object(struct bpf_object *obj, bool raise_rlimit);
+int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
+                       int ifindex, bool force, bool skb_mode);
 
 int get_xdp_prog_info(int ifindex, struct bpf_prog_info *info);
 int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir);
