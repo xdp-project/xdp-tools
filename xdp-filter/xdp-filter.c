@@ -166,7 +166,8 @@ int do_load(const void *cfg, const char *pin_root_path)
 {
 	const struct loadopt *opt = cfg;
 	struct bpf_object *obj = NULL;
-	struct bpf_program *prog;
+	char errmsg[STRERR_BUFSIZE];
+	bool raise_rlimit = false;
 	int err = EXIT_SUCCESS;
 	char *progname;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
@@ -181,9 +182,13 @@ int do_load(const void *cfg, const char *pin_root_path)
 	pr_debug("Found prog '%s' matching feature set to be loaded on interface '%s'.\n",
 		 progname, opt->iface.ifname);
 
-	err = check_rlimit(NEED_RLIMIT);
-	if (err)
-		goto out;
+	/* libbpf spits out a lot of unhelpful error messages while loading.
+	 * Silence the logging so we can provide our own messages instead; this
+	 * is a noop if verbose logging is enabled.
+	 */
+	silence_libbpf_logging();
+
+retry:
 
 	obj = bpf_object__open_file(progname, &opts);
 	err = libbpf_get_error(obj);
@@ -192,17 +197,23 @@ int do_load(const void *cfg, const char *pin_root_path)
 		goto out;
 	}
 
-	err = bpf_object__load(obj);
-	if (err)
-		goto out;
 
-	prog = bpf_program__next(NULL, obj);
-	if (!prog) {
-		pr_warn("Couldn't find an eBPF program to attach. This is a bug!\n");
+	err = load_bpf_object(obj, raise_rlimit);
+	if (err && !raise_rlimit) {
+		pr_debug("Permission denied when loading eBPF object; "
+			 "raising rlimit and retrying\n");
+
+		raise_rlimit = true;
+		bpf_object__close(obj);
+		goto retry;
+	} else if (err) {
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		pr_warn("Couldn't load eBPF object: %s(%d)\n", errmsg, err);
 		goto out;
 	}
 
-	err = load_xdp_program(prog, opt->iface.ifindex, opt->force, opt->skb_mode);
+	err = attach_xdp_program(obj, NULL,
+				 opt->iface.ifindex, opt->force, opt->skb_mode);
 	if (err) {
 		pr_warn("Couldn't attach XDP program on iface '%s'\n",
 			opt->iface.ifname);
