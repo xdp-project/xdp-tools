@@ -1,14 +1,13 @@
 include util.mk
 
 LIB_DIR ?= ..
-LIBBPF_DIR := $(LIB_DIR)/libbpf/src
-CFLAGS += -I$(LIBBPF_DIR)/root/usr/include
 
+include ../../config.mk
 
 all: $(UTIL_OBJS)
 
 $(UTIL_OBJS): %.o: %.c %.h
-	$(CC) $(CFLAGS) -Wall -I../../headers -c -o $@ $<
+	$(QUIET_CC)$(CC) $(CFLAGS) -Wall -I../../headers -c -o $@ $<
 
 clean:
-	rm -f $(UTIL_OBJS)
+	$(Q)rm -f $(UTIL_OBJS)

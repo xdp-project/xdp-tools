@@ -10,10 +10,6 @@
 #  XDP_TARGETS and USER_TARGETS
 # as a space-separated list
 #
-LLC ?= llc
-CLANG ?= clang
-CC ?= gcc
-
 XDP_C = ${XDP_TARGETS:=.c}
 XDP_OBJ = ${XDP_C:.c=.o}
 USER_C := ${USER_TARGETS:=.c}
@@ -21,9 +17,9 @@ USER_OBJ := ${USER_C:.c=.o}
 
 # Expect this is defined by including Makefile, but define if not
 LIB_DIR ?= ../lib
-LIBBPF_DIR := $(LIB_DIR)/libbpf/src
+LDLIBS ?= $(USER_LIBS)
 
-OBJECT_LIBBPF = $(LIBBPF_DIR)/libbpf.a
+include ../config.mk
 
 # get list of objects in util
 include $(LIB_DIR)/util/util.mk
@@ -40,48 +36,26 @@ EXTRA_USER_DEPS +=
 # BPF-prog kern and userspace shares struct via header file:
 KERN_USER_H ?= $(wildcard common_kern_user.h)
 
-CFLAGS ?= -I$(LIBBPF_DIR)/root/usr/include/ -g
-# Extra include for Ubuntu
-CFLAGS += -I/usr/include/x86_64-linux-gnu
-CFLAGS += -I../headers/ -I$(LIBBPF_DIR)/root/usr/include -I$(LIB_DIR)/util
-LDFLAGS ?= -L$(LIBBPF_DIR)
+CFLAGS += -I../headers/ -I$(LIB_DIR)/util
 
 BPF_CFLAGS ?= -I../headers/bpf/
 BPF_HEADERS := $(wildcard ../headers/bpf/*.h)
 
-LIBS = -l:libbpf.a -lelf $(USER_LIBS)
 
-all: llvm-check $(USER_TARGETS) $(XDP_OBJ) $(COPY_LOADER) $(COPY_STATS)
+all: $(USER_TARGETS) $(XDP_OBJ) $(COPY_LOADER) $(COPY_STATS)
 
-.PHONY: clean $(CLANG) $(LLC)
+.PHONY: clean
 
 clean:
-	$(MAKE) -C $(LIBBPF_DIR) clean
-	$(MAKE) -C $(LIB_DIR) clean
-	rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(COPY_LOADER) $(COPY_STATS)
-	rm -f *.ll
-	rm -f *~
+	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(COPY_LOADER) $(COPY_STATS)
+	$(Q)rm -f *.ll
+	$(Q)rm -f *~
 
 # For build dependency on this file, if it gets updated
 LIB_MK = $(LIB_DIR)/common.mk
 
-llvm-check: $(CLANG) $(LLC)
-	@for TOOL in $^ ; do \
-		if [ ! $$(command -v $${TOOL} 2>/dev/null) ]; then \
-			echo "*** ERROR: Cannot find tool $${TOOL}" ;\
-			exit 1; \
-		else true; fi; \
-	done
-
 $(OBJECT_LIBBPF):
-	@if [ ! -d $(LIBBPF_DIR) ]; then \
-		echo "Error: Need libbpf submodule"; \
-		echo "May need to run git submodule update --init"; \
-		exit 1; \
-	else \
-		cd $(LIBBPF_DIR) && $(MAKE) all; \
-		mkdir -p root; DESTDIR=root $(MAKE) install_headers; \
-	fi
+	$(Q)$(MAKE) $(MFLAGS) -C $(LIB_DIR) libbpf
 
 # Create dependency: detect if C-file change and touch H-file, to trigger
 # target $(LIB_OBJS)
@@ -93,11 +67,11 @@ $(LIB_OBJS): %.o: %.h
 	make -C $(LIB_DIR)
 
 $(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) Makefile $(LIB_MK) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
-	$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $(LIB_OBJS) \
-	 $< $(LIBS)
+	$(QUIET_CC)$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $(LIB_OBJS) \
+	 $< $(LDLIBS)
 
 $(XDP_OBJ): %.o: %.c  Makefile $(LIB_MK) $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEADERS)
-	$(CLANG) -S \
+	$(QUIET_CLANG)$(CLANG) -S \
 	    -target bpf \
 	    -D __BPF_TRACING__ \
 	    $(CFLAGS) \
@@ -107,4 +81,4 @@ $(XDP_OBJ): %.o: %.c  Makefile $(LIB_MK) $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEAD
 	    -Wno-compare-distinct-pointer-types \
 	    -Werror \
 	    -O2 -emit-llvm -c -g -o ${@:.o=.ll} $<
-	$(LLC) -march=bpf -filetype=obj -o $@ ${@:.o=.ll}
+	$(QUIET_LLC)$(LLC) -march=bpf -filetype=obj -o $@ ${@:.o=.ll}

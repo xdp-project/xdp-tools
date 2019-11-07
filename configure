@@ -1,0 +1,113 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# This is not an autoconf generated configure
+#
+
+# Output file which is input to Makefile
+CONFIG=config.mk
+
+# Make a temp directory in build tree.
+TMPDIR=$(mktemp -d config.XXXXXX)
+trap 'status=$?; rm -rf $TMPDIR; exit $status' EXIT HUP INT QUIT TERM
+
+check_toolchain()
+{
+    : ${PKG_CONFIG:=pkg-config}
+    : ${CC=gcc}
+    : ${CLANG=clang}
+    : ${LLC=llc}
+    echo "PKG_CONFIG:=${PKG_CONFIG}" >>$CONFIG
+    echo "CC:=${CC}" >>$CONFIG
+    echo "CLANG:=${CLANG}" >>$CONFIG
+    echo "LLC:=${LLC}" >>$CONFIG
+}
+
+check_elf()
+{
+    if ${PKG_CONFIG} libelf --exists; then
+	echo "HAVE_ELF:=y" >>$CONFIG
+	echo "yes"
+
+	echo 'CFLAGS += -DHAVE_ELF' `${PKG_CONFIG} libelf --cflags` >> $CONFIG
+	echo 'LDLIBS += ' `${PKG_CONFIG} libelf --libs` >>$CONFIG
+    else
+	echo "missing - this is required"
+        return 1
+    fi
+}
+
+check_libbpf()
+{
+    if ${PKG_CONFIG} libbpf --exists; then
+
+        cat >$TMPDIR/libbpftest.c <<EOF
+#include <bpf/libbpf.h>
+int main(int argc, char **argv) {
+	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts, .pin_root_path = "/path");
+        (void) bpf_object__open_file("file", &opts);
+	return 0;
+}
+EOF
+
+        if $CC -o $TMPDIR/libbpftest $TMPDIR/libbpftest.c -lbpf $(${PKG_CONFIG} libbpf --cflags) >/dev/null 2>&1; then
+	    echo "SYSTEM_LIBBPF:=y" >>$CONFIG
+	    echo 'CFLAGS += ' $(${PKG_CONFIG} libbpf --cflags) >> $CONFIG
+	    echo 'LDLIBS += ' $(${PKG_CONFIG} libbpf --libs) >>$CONFIG
+            echo 'OBJECT_LIBBPF = ' >>$CONFIG
+	    echo system
+            return 0
+        fi
+    fi
+
+    echo submodule
+    echo "SYSTEM_LIBBPF:=n" >> $CONFIG
+    echo 'CFLAGS += -I$(LIB_DIR)/libbpf/src/root/usr/include' >>$CONFIG
+    echo 'LDFLAGS += -L$(LIB_DIR)/libbpf/src' >>$CONFIG
+    echo 'LDLIBS += -l:libbpf.a' >>$CONFIG
+    echo 'OBJECT_LIBBPF = $(LIB_DIR)/libbpf/src/libbpf.a' >>$CONFIG
+    if ! [ -d "lib/libbpf/src" ] && [ -f ".gitmodules" ]; then
+        git submodule init && git submodule update
+    fi
+
+}
+
+quiet_config()
+{
+	cat <<EOF
+# user can control verbosity similar to kernel builds (e.g., V=1)
+ifeq ("\$(origin V)", "command line")
+  VERBOSE = \$(V)
+endif
+ifndef VERBOSE
+  VERBOSE = 0
+endif
+ifeq (\$(VERBOSE),1)
+  Q =
+else
+  Q = @
+endif
+ifeq (\$(VERBOSE),0)
+MAKEFLAGS += --no-print-directory
+endif
+
+
+ifeq (\$(VERBOSE), 0)
+    QUIET_CC       = @echo '    CC       '\$@;
+    QUIET_CLANG    = @echo '    CLANG    '\$@;
+    QUIET_LLC      = @echo '    LLC      '\$@;
+    QUIET_LINK     = @echo '    LINK     '\$@;
+    QUIET_INSTALL  = @echo '    INSTALL  '\$@;
+endif
+EOF
+}
+
+echo "# Generated config" >$CONFIG
+quiet_config >> $CONFIG
+
+check_toolchain
+
+echo -n "ELF support: "
+check_elf || exit 1
+
+echo -n "libbpf support: "
+check_libbpf

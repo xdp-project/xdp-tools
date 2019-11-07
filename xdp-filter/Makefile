@@ -11,5 +11,5 @@ LIB_DIR = ../lib
 include $(LIB_DIR)/common.mk
 
 prog_features.h: ${XDP_TARGETS:=.o} extract_features.sh
-	sh extract_features.sh $^ > prog_features.h
+	$(Q)sh extract_features.sh $^ > prog_features.h
 
