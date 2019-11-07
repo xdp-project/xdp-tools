@@ -84,10 +84,12 @@ out:
 	return err;
 }
 
-/* estimate of number of bytes needed for a map not including contents */
-#define BPF_MAP_SIZE_OVERHEAD 512
-/* estimate of overhead for each map entry */
-#define BPF_MAP_SIZE_ENTRY 128
+/* BPF size overhead for kernel data structures per entry and map/prog */
+#define BPF_SIZE_OVERHEAD 512
+#define PAGE_SIZE 4096
+
+#define max(x,y) ((x>y)?x:y)
+
 static size_t estimate_memlock_usage(const struct bpf_object *obj)
 {
 	const struct bpf_map_def *def;
@@ -95,26 +97,46 @@ static size_t estimate_memlock_usage(const struct bpf_object *obj)
 	size_t size = 0;
 
 	bpf_object__for_each_map(map, obj) {
-		size_t map_size = 0;
+		size_t entries, entry_size, map_size;
+		bool percpu, hash;
 
 		def = bpf_map__def(map);
-		map_size += (def->value_size + def->key_size) * def->max_entries +
-			BPF_MAP_SIZE_ENTRY;
+		entries = def->max_entries;
 
-		if (def->type == BPF_MAP_TYPE_PERCPU_HASH ||
-		    def->type == BPF_MAP_TYPE_PERCPU_ARRAY ||
-		    def->type == BPF_MAP_TYPE_LRU_PERCPU_HASH)
-			map_size *= libbpf_num_possible_cpus();
+		percpu = (def->type == BPF_MAP_TYPE_PERCPU_HASH ||
+			  def->type == BPF_MAP_TYPE_PERCPU_ARRAY ||
+			  def->type == BPF_MAP_TYPE_LRU_PERCPU_HASH);
 
-		map_size += BPF_MAP_SIZE_OVERHEAD;
+		hash = (def->type == BPF_MAP_TYPE_PERCPU_HASH ||
+			def->type == BPF_MAP_TYPE_HASH);
 
-		pr_debug("Estimated size %lu bytes for map %s\n", map_size,
-			 bpf_map__name(map));
+		if (percpu)
+			entry_size = libbpf_num_possible_cpus() * def->value_size +
+				max(sizeof(void *), def->key_size);
+		else
+			entry_size = def->key_size + def->value_size;
+
+		if (hash) {
+			size_t roundto = 1;
+
+			entry_size += 32;
+			while (roundto && roundto < entries)
+				roundto <<= 1;
+
+			entries = roundto;
+		}
+
+		map_size = entries * entry_size + BPF_SIZE_OVERHEAD;
+		map_size += PAGE_SIZE - (map_size % PAGE_SIZE);
+
+		pr_debug("Estimated size %lu bytes / %lu pages for map %s\n",
+			 map_size, map_size / PAGE_SIZE, bpf_map__name(map));
 
 		size += map_size;
 	}
 
-	pr_debug("Estimated total memlock size to be %lu bytes\n", size);
+	pr_debug("Estimated total memlock size to be %lu bytes / %lu pages\n",
+		 size, size / PAGE_SIZE);
 	return size;
 }
 
