@@ -9,7 +9,7 @@
 #include <fcntl.h>
 
 #include <bpf/bpf.h>
-#include "libbpf.h"
+#include <bpf/libbpf.h>
 #include <arpa/inet.h>
 
 #include <net/if.h>

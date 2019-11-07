@@ -3,7 +3,7 @@
 #ifndef __UTIL_H
 #define __UTIL_H
 
-#include "libbpf.h"
+#include <bpf/libbpf.h>
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096

@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#include "libbpf.h"
+#include <bpf/libbpf.h>
 
 #include "logging.h"
 

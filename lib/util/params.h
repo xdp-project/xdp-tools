@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <linux/in.h>
 #include <linux/in6.h>
-#include "libbpf.h"
+#include <bpf/libbpf.h>
 
 enum option_type {
                   OPT_NONE,

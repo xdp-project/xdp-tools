@@ -10,12 +10,13 @@
 #include <unistd.h>
 #include <time.h>
 
+#include <bpf/bpf.h>
+#include <bpf/libbpf.h>
+
 #include "stats.h"
 #include "util.h"
 #include "logging.h"
 
-#include "bpf.h"
-#include "libbpf.h"
 
 #define NANOSEC_PER_SEC 1000000000 /* 10^9 */
 static int gettime(__u64 *nstime)

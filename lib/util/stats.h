@@ -3,7 +3,8 @@
 #ifndef __STATS_H
 #define __STATS_H
 
-#include "libbpf.h"
+#include <bpf/libbpf.h>
+
 #include "bpf/xdp_stats_kern_user.h"
 
 struct record {

@@ -2,7 +2,7 @@ include util.mk
 
 LIB_DIR ?= ..
 LIBBPF_DIR := $(LIB_DIR)/libbpf/src
-CFLAGS += -I$(LIBBPF_DIR)
+CFLAGS += -I$(LIBBPF_DIR)/root/usr/include
 
 
 all: $(UTIL_OBJS)

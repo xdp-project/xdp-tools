@@ -9,8 +9,9 @@
 
 #include <linux/bpf.h>
 #include <linux/in.h>
-#include "bpf_helpers.h"
-#include "bpf_endian.h"
+#include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
+
 #include "bpf/parsing_helpers.h"
 
 /* Defines xdp_stats_map */

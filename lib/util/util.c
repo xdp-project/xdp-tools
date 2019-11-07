@@ -12,8 +12,7 @@
 #include <sys/stat.h>
 #include <linux/if_link.h> /* Need XDP flags */
 #include <linux/magic.h> /* BPF FS magic */
-
-#include "bpf.h"
+#include <bpf/bpf.h>
 
 #include "util.h"
 #include "logging.h"
