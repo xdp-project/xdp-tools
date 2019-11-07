@@ -106,6 +106,7 @@ static size_t estimate_memlock_usage(const struct bpf_object *obj)
 {
 	const struct bpf_map_def *def;
 	const struct bpf_map *map;
+	struct bpf_program *prog;
 	size_t size = 0;
 
 	bpf_object__for_each_map(map, obj) {
@@ -145,6 +146,19 @@ static size_t estimate_memlock_usage(const struct bpf_object *obj)
 			 map_size, map_size / PAGE_SIZE, bpf_map__name(map));
 
 		size += map_size;
+	}
+
+	bpf_object__for_each_program(prog, obj) {
+		size_t prog_size;
+
+		prog_size = BPF_SIZE_OVERHEAD + bpf_program__size(prog);
+		prog_size += PAGE_SIZE - (prog_size % PAGE_SIZE);
+
+		pr_debug("Estimated size %lu bytes / %lu pages for program %s\n",
+			 prog_size, prog_size / PAGE_SIZE,
+			 bpf_program__title(prog, false));
+
+		size += prog_size;
 	}
 
 	pr_debug("Estimated total memlock size to be %lu bytes / %lu pages\n",
