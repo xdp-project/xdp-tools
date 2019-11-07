@@ -313,7 +313,7 @@ int do_unload(const void *cfg, const char *pin_root_path)
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 
-	err = get_xdp_prog_info(opt->iface.ifindex, &info);
+	err = get_xdp_prog_info(opt->iface.ifindex, &info, NULL);
 	if (err) {
 		pr_warn("Couldn't find XDP program on interface %s\n",
 			opt->iface.ifname);
@@ -355,7 +355,7 @@ int do_unload(const void *cfg, const char *pin_root_path)
 
 	for(idx = indexes; idx->if_index; idx++) {
 		memset(&info, 0, sizeof(info));
-		err = get_xdp_prog_info(idx->if_index, &info);
+		err = get_xdp_prog_info(idx->if_index, &info, NULL);
 		if (err && err == -ENOENT)
 			continue;
 		else if (err) {
@@ -791,9 +791,10 @@ int do_status(const void *cfg, const char *pin_root_path)
 	for(idx = indexes; idx->if_index; idx++) {
 		struct bpf_prog_info info = {};
 		char featbuf[100];
+		bool is_skb;
 		__u32 feat;
 
-		err = get_xdp_prog_info(idx->if_index, &info);
+		err = get_xdp_prog_info(idx->if_index, &info, &is_skb);
 		if (err && err == -ENOENT)
 			continue;
 		else if (err)
@@ -801,8 +802,14 @@ int do_status(const void *cfg, const char *pin_root_path)
 
 		feat = find_features(info.name);
 		if (feat) {
+			char namebuf[100];
+
 			print_flags(featbuf, sizeof(featbuf), print_features, feat);
-			printf("  %-40s %s\n", idx->if_name, featbuf);
+			if (is_skb)
+				snprintf(namebuf, sizeof(namebuf), "%s (skb-mode)", idx->if_name);
+			else
+				snprintf(namebuf, sizeof(namebuf), "%s", idx->if_name);
+			printf("  %-40s %s\n", namebuf, featbuf);
 		}
 	}
 	if_freenameindex(indexes);

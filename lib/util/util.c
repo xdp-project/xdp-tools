@@ -61,14 +61,23 @@ int raise_rlimit(unsigned long rlimit)
 	return 0;
 }
 
-int get_xdp_prog_info(int ifindex, struct bpf_prog_info *info)
+int get_xdp_prog_info(int ifindex, struct bpf_prog_info *info, bool *is_skb)
 {
 	__u32 prog_id, info_len = sizeof(*info);
+	struct xdp_link_info xinfo = {};
 	int prog_fd, err = 0;
 
-	err = bpf_get_link_xdp_id(ifindex, &prog_id, 0);
+	err = bpf_get_link_xdp_info(ifindex, &xinfo, sizeof(xinfo), 0);
 	if (err)
 		goto out;
+
+	if (xinfo.attach_mode == XDP_ATTACHED_SKB)
+		prog_id = xinfo.skb_prog_id;
+	else
+		prog_id = xinfo.drv_prog_id;
+
+	if (!prog_id)
+		return -ENOENT;
 
 	prog_fd = bpf_prog_get_fd_by_id(prog_id);
 	if (prog_fd <= 0) {
@@ -79,6 +88,9 @@ int get_xdp_prog_info(int ifindex, struct bpf_prog_info *info)
 	err = bpf_obj_get_info_by_fd(prog_fd, info, &info_len);
 	if (err)
 		goto out;
+
+	if (is_skb)
+		*is_skb = xinfo.attach_mode == XDP_ATTACHED_SKB;
 
 out:
 	return err;
