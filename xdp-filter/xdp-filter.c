@@ -190,7 +190,7 @@ int do_load(const void *cfg, const char *pin_root_path)
 
 retry:
 
-	obj = bpf_object__open_file(progname, &opts);
+	obj = open_bpf_file(progname, &opts);
 	err = libbpf_get_error(obj);
 	if (err) {
 		obj = NULL;
