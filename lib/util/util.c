@@ -17,6 +17,23 @@
 #include "util.h"
 #include "logging.h"
 
+static int check_snprintf(char *buf, size_t buf_len, const char *format, ...)
+{
+	va_list args;
+	int len;
+
+	va_start(args, format);
+	len = vsnprintf(buf, buf_len, format, args);
+	va_end(args);
+
+	if (len < 0)
+		return -EINVAL;
+	else if ((size_t)len >= buf_len)
+		return -ENAMETOOLONG;
+
+	return 0;
+}
+
 int check_bpf_environ()
 {
 	init_libbpf_logging();
@@ -339,21 +356,13 @@ out:
 int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir)
 {
 	const char *bpf_dir;
-	size_t len;
 
 	bpf_dir = bpf_get_work_dir();
 
 	if (subdir)
-		len = snprintf(buf, buf_len, "%s/%s", bpf_dir, subdir);
+		return check_snprintf(buf, buf_len, "%s/%s", bpf_dir, subdir);
 	else
-		len = snprintf(buf, buf_len, "%s", bpf_dir);
-
-	if (len < 0)
-		return -EINVAL;
-	else if (len >= buf_len)
-		return -ENAMETOOLONG;
-
-	return 0;
+		return check_snprintf(buf, buf_len, "%s", bpf_dir);
 }
 
 int get_pinned_map_fd(const char *bpf_root, const char *map_name,
@@ -516,7 +525,7 @@ out:
 int prog_lock_get(const char *progname)
 {
 	char buf[PATH_MAX];
-	int err, len;
+	int err;
 	struct sigaction sigact = {
 		.sa_handler = prog_lock_release
 	};
@@ -527,11 +536,10 @@ int prog_lock_get(const char *progname)
 	}
 
 	if (!prog_lock_file) {
-		len = snprintf(buf, sizeof(buf), "%s/%s.lck", lock_dir, progname);
-		if (len < 0)
-			return -EINVAL;
-		else if (len >= sizeof(buf))
-			return -ENAMETOOLONG;
+		err = check_snprintf(buf, sizeof(buf), "%s/%s.lck", lock_dir,
+				     progname);
+		if (err)
+			return err;
 
 		prog_lock_file = strdup(buf);
 		if (!prog_lock_file)
