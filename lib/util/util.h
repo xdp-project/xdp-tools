@@ -9,9 +9,16 @@
 #define PATH_MAX 4096
 #endif
 #define STRERR_BUFSIZE 1024
-#define BPF_DIR_MNT	"/sys/fs/bpf"
 #define _textify(x)	#x
 #define textify(x)	_textify(x)
+
+#ifndef BPF_DIR_MNT
+#define BPF_DIR_MNT	"/sys/fs/bpf"
+#endif
+
+#ifndef BPF_OBJECT_PATH
+#define BPF_OBJECT_PATH "/usr/lib/bpf"
+#endif
 
 #define FOR_EACH_MAP_KEY(_err, _map_fd, _map_key, _next_key)            \
   for(_err = bpf_map_get_next_key(_map_fd, NULL, &_next_key);           \
@@ -22,6 +29,8 @@
 int check_bpf_environ(void);
 int raise_rlimit(unsigned long limit);
 
+struct bpf_object *open_bpf_file(const char *progname,
+                                 struct bpf_object_open_opts *opts);
 int load_bpf_object(struct bpf_object *obj, bool raise_rlimit);
 int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
                        int ifindex, bool force, bool skb_mode);

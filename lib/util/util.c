@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <linux/if_link.h> /* Need XDP flags */
 #include <linux/magic.h> /* BPF FS magic */
+#include <linux/err.h> /* ERR_PTR */
 #include <bpf/bpf.h>
 
 #include "util.h"
@@ -155,6 +156,39 @@ static size_t estimate_memlock_usage(const struct bpf_object *obj)
 		 size, size / PAGE_SIZE);
 	return size;
 }
+
+struct bpf_object *open_bpf_file(const char *progname,
+                                 struct bpf_object_open_opts *opts)
+{
+	static char *bpf_obj_paths[] = {
+#ifdef DEBUG
+		".",
+#endif
+		BPF_OBJECT_PATH,
+		NULL
+	};
+	char buf[PATH_MAX], **path;
+	struct stat sb = {};
+	int err;
+
+	for (path = bpf_obj_paths; *path; path++) {
+		err = check_snprintf(buf, sizeof(buf), "%s/%s", *path, progname);
+		if (err)
+			return ERR_PTR(err);
+
+		pr_debug("Looking for '%s'\n", buf);
+		err = stat(buf, &sb);
+		if (err)
+			continue;
+
+		pr_debug("Loading bpf file '%s' from '%s'\n", progname, buf);
+		return bpf_object__open_file(buf, opts);
+	}
+
+	pr_warn("Couldn't find a BPF file with name %s\n", progname);
+	return ERR_PTR(-ENOENT);
+}
+
 
 int load_bpf_object(struct bpf_object *obj, bool raise_limit)
 {
