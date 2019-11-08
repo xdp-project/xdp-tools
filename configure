@@ -76,6 +76,8 @@ EOF
         git submodule init && git submodule update
     fi
 
+    echo -n "ELF support: "
+    check_elf || exit 1
 }
 
 quiet_config()
@@ -113,9 +115,6 @@ quiet_config >> $CONFIG
 
 check_opts
 check_toolchain
-
-echo -n "ELF support: "
-check_elf || exit 1
 
 echo -n "libbpf support: "
 check_libbpf
