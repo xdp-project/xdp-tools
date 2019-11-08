@@ -68,6 +68,7 @@ EOF
     echo submodule
     echo "SYSTEM_LIBBPF:=n" >> $CONFIG
     echo 'CFLAGS += -I$(LIB_DIR)/libbpf/src/root/usr/include' >>$CONFIG
+    echo 'BPF_CFLAGS += -I$(LIB_DIR)/libbpf/src/root/usr/include' >>$CONFIG
     echo 'LDFLAGS += -L$(LIB_DIR)/libbpf/src' >>$CONFIG
     echo 'LDLIBS += -l:libbpf.a' >>$CONFIG
     echo 'OBJECT_LIBBPF = $(LIB_DIR)/libbpf/src/libbpf.a' >>$CONFIG

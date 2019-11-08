@@ -37,8 +37,8 @@ EXTRA_USER_DEPS +=
 KERN_USER_H ?= $(wildcard common_kern_user.h)
 
 CFLAGS += -I../headers/ -I$(LIB_DIR)/util
+BPF_CFLAGS += -I../headers/
 
-BPF_CFLAGS ?= -I../headers/bpf/
 BPF_HEADERS := $(wildcard ../headers/bpf/*.h)
 
 all: $(USER_TARGETS) $(XDP_OBJ)
@@ -76,7 +76,7 @@ $(XDP_OBJ): %.o: %.c $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEADERS) $(MAKEFILES)
 	$(QUIET_CLANG)$(CLANG) -S \
 	    -target bpf \
 	    -D __BPF_TRACING__ \
-	    $(CFLAGS) \
+	    $(BPF_CFLAGS) \
 	    -Wall \
 	    -Wno-unused-value \
 	    -Wno-pointer-sign \
