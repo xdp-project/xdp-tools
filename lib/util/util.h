@@ -43,9 +43,6 @@ int unlink_pinned_map(int dir_fd, const char *map_name);
 
 const char *action2str(__u32 action);
 
-int check_map_fd_info(const struct bpf_map_info *info,
-                      const struct bpf_map_info *exp);
-
 int prog_lock_get(const char *progname);
 void prog_lock_release(int signal);
 

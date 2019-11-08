@@ -466,37 +466,6 @@ const char *action2str(__u32 action)
         return NULL;
 }
 
-int check_map_fd_info(const struct bpf_map_info *info,
-		      const struct bpf_map_info *exp)
-{
-	if (exp->key_size && exp->key_size != info->key_size) {
-		fprintf(stderr, "ERR: %s() "
-			"Map key size(%d) mismatch expected size(%d)\n",
-			__func__, info->key_size, exp->key_size);
-		return -EINVAL;
-	}
-	if (exp->value_size && exp->value_size != info->value_size) {
-		fprintf(stderr, "ERR: %s() "
-			"Map value size(%d) mismatch expected size(%d)\n",
-			__func__, info->value_size, exp->value_size);
-		return -EINVAL;
-	}
-	if (exp->max_entries && exp->max_entries != info->max_entries) {
-		fprintf(stderr, "ERR: %s() "
-			"Map max_entries(%d) mismatch expected size(%d)\n",
-			__func__, info->max_entries, exp->max_entries);
-		return -EINVAL;
-	}
-	if (exp->type && exp->type  != info->type) {
-		fprintf(stderr, "ERR: %s() "
-			"Map type(%d) mismatch expected type(%d)\n",
-			__func__, info->type, exp->type);
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 int check_bpf_environ(const char *pin_root_path)
 {
 	init_libbpf_logging();
