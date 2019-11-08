@@ -1,10 +1,13 @@
 
 include $(LIB_DIR)/../config.mk
 
+PREFIX?=/usr
+LIBDIR?=$(PREFIX)/lib
+SBINDIR?=$(PREFIX)/sbin
 BPF_DIR_MNT ?=/sys/fs/bpf
-BPF_OBJECT_PATH ?=/usr/lib/bpf
+BPF_OBJECT_DIR ?=$(LIBDIR)/bpf
 
-DEFINES := -DBPF_DIR_MNT=\"$(BPF_DIR_MNT)\" -DBPF_OBJECT_PATH=\"$(BPF_OBJECT_PATH)\"
+DEFINES := -DBPF_DIR_MNT=\"$(BPF_DIR_MNT)\" -DBPF_OBJECT_PATH=\"$(BPF_OBJECT_DIR)\"
 
 ifneq ($(PRODUCTION),1)
 DEFINES += -DDEBUG

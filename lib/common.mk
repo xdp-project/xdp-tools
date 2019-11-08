@@ -50,6 +50,12 @@ clean:
 	$(Q)rm -f *.ll
 	$(Q)rm -f *~
 
+install:
+	install -m 0755 -d $(DESTDIR)$(SBINDIR)
+	install -m 0755 -d $(DESTDIR)$(BPF_OBJECT_DIR)
+	install -m 0755 $(USER_TARGETS) $(DESTDIR)$(SBINDIR)
+	install -m 0644 $(XDP_OBJ) $(DESTDIR)$(BPF_OBJECT_DIR)
+
 $(OBJECT_LIBBPF):
 	$(Q)$(MAKE) $(MFLAGS) -C $(LIB_DIR) libbpf
 

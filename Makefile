@@ -12,7 +12,9 @@ ifeq ($(VERBOSE),0)
 MAKEFLAGS += --no-print-directory
 endif
 
-SUBDIRS=lib xdp-filter
+LIBSUBDIRS=lib
+PROGSUBDIRS=xdp-filter
+SUBDIRS=$(LIBSUBDIRS) $(PROGSUBDIRS)
 
 
 all: llvm-check config.mk
@@ -33,6 +35,7 @@ help:
 	@echo " all                 - build binaries"
 	@echo " clean               - remove products of build"
 	@echo " distclean           - remove configuration and build"
+	@echo " install             - install binaries on local machine"
 	@echo ""
 	@echo "Make Arguments:"
 	@echo " V=[0|1]             - set build verbosity level"
@@ -51,3 +54,9 @@ distclean: clobber
 clean:
 	@for i in $(SUBDIRS); \
 	do $(MAKE) $(MFLAGS) -C $$i clean; done
+
+
+install: all
+	@for i in $(PROGSUBDIRS); \
+	do $(MAKE) $(MFLAGS) -C $$i install; done
+
