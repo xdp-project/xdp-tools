@@ -3,12 +3,15 @@
 #ifndef __LOGGING_H
 #define __LOGGING_H
 
-/* This matches the libbpf logging levels
+/* This matches the libbpf logging levels, but with an additional VERBOSE level;
+ * we demote all libbpf messages by one level so debug messages only show up on
+ * VERBOSE.
  */
 enum logging_print_level {
         LOG_WARN,
         LOG_INFO,
         LOG_DEBUG,
+        LOG_VERBOSE,
 };
 
 
@@ -28,5 +31,6 @@ do {				\
 void init_libbpf_logging(void);
 void silence_libbpf_logging(void);
 enum logging_print_level set_log_level(enum logging_print_level level);
+enum logging_print_level increase_log_level();
 
 #endif

@@ -316,7 +316,7 @@ void usage(const char *prog_name, const char *doc,
 	printf("\n");
 	printf("Other options:\n");
 	_print_options(long_options, false);
-	printf(" -v, --verbose              Enable verbose logging\n");
+	printf(" -v, --verbose              Enable verbose logging (-vv: more verbose)\n");
 	printf(" -h, --help                 Show this help\n");
 	printf("\n");
 }
@@ -455,7 +455,7 @@ int parse_cmdline_args(int argc, char **argv,
 			err = EXIT_FAILURE;
 			goto out;
 		case 'v':
-			set_log_level(LOG_DEBUG);
+			increase_log_level();
 			break;
 		default:
 			if (set_opt(cfg, poptions, opt, optarg)) {

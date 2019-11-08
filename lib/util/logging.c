@@ -9,13 +9,19 @@
 
 static enum logging_print_level log_level = LOG_INFO;
 
-static int print_func(enum libbpf_print_level level, const char *format,
+static int print_func(enum logging_print_level level, const char *format,
 		      va_list args)
 {
-	if ((enum logging_print_level)level > log_level)
+	if (level > log_level)
 		return 0;
 
 	return vfprintf(stderr, format, args);
+}
+
+static int libbpf_print_func(enum libbpf_print_level level, const char *format,
+			     va_list args)
+{
+	return print_func(level+1, format, args);
 }
 
 static int silent_print_func(enum libbpf_print_level level, const char *format,
@@ -39,12 +45,12 @@ void logging_print(enum logging_print_level level, const char *format, ...)
 
 void init_libbpf_logging()
 {
-	libbpf_set_print(print_func);
+	libbpf_set_print(libbpf_print_func);
 }
 
 void silence_libbpf_logging()
 {
-	if (log_level < LOG_DEBUG)
+	if (log_level < LOG_VERBOSE)
 		libbpf_set_print(silent_print_func);
 }
 
@@ -54,4 +60,11 @@ enum logging_print_level set_log_level(enum logging_print_level level)
 
 	log_level = level;
 	return old_level;
+}
+
+enum logging_print_level increase_log_level()
+{
+	if (log_level < LOG_VERBOSE)
+		log_level++;
+	return log_level;
 }
