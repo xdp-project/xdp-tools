@@ -41,12 +41,12 @@ CFLAGS += -I../headers/ -I$(LIB_DIR)/util
 BPF_CFLAGS ?= -I../headers/bpf/
 BPF_HEADERS := $(wildcard ../headers/bpf/*.h)
 
-all: $(USER_TARGETS) $(XDP_OBJ) $(COPY_LOADER) $(COPY_STATS)
+all: $(USER_TARGETS) $(XDP_OBJ)
 
 .PHONY: clean
 
 clean:
-	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(COPY_LOADER) $(COPY_STATS)
+	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ)
 	$(Q)rm -f *.ll
 	$(Q)rm -f *~
 

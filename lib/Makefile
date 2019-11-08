@@ -14,6 +14,8 @@ clean: libbpf_clean
 	@for i in $(SUBDIRS); \
 	do $(MAKE) $(MFLAGS) -C $$i clean; done
 
+libbpf: $(OBJECT_LIBBPF)
+
 ifeq ($(SYSTEM_LIBBPF),n)
 
 ifeq ($(VERBOSE),0)
