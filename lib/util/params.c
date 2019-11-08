@@ -227,9 +227,12 @@ void print_flags(char *buf, size_t buf_len, const struct flag_val *flags,
 
 static void print_help_flags(const struct prog_option *opt)
 {
-	char buf[100];
+	char buf[100] = {};
 
-	print_flags(buf, sizeof(buf), opt->typearg, -1);
+	if (!opt->typearg)
+		pr_warn("Missing typearg for opt %s\n", opt->name);
+	else
+		print_flags(buf, sizeof(buf), opt->typearg, -1);
 
 	printf("  %s (valid values: %s)", opt->help, buf);
 }
@@ -237,6 +240,7 @@ static void print_help_flags(const struct prog_option *opt)
 static const struct helprinter {
 	void (*func)(const struct prog_option *opt);
 } help_printers[__OPT_MAX] = {
+	{NULL},
 	{NULL},
 	{print_help_flags}
 };
