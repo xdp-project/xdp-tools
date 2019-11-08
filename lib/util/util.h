@@ -26,7 +26,7 @@
       _err = bpf_map_get_next_key(_map_fd, &_map_key, &_next_key),      \
         _map_key = _next_key)
 
-int check_bpf_environ(void);
+int check_bpf_environ(const char *pin_root_path);
 int raise_rlimit(unsigned long limit);
 
 struct bpf_object *open_bpf_file(const char *progname,

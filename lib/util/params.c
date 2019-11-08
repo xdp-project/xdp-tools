@@ -544,11 +544,11 @@ int dispatch_commands(const char *argv0, int argc, char **argv,
 	if (err)
 		goto out;
 
-	err = check_bpf_environ();
+	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), prog_name);
 	if (err)
 		goto out;
 
-	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), prog_name);
+	err = check_bpf_environ(pin_root_path);
 	if (err)
 		goto out;
 

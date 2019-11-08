@@ -35,18 +35,6 @@ static int check_snprintf(char *buf, size_t buf_len, const char *format, ...)
 	return 0;
 }
 
-int check_bpf_environ()
-{
-	init_libbpf_logging();
-
-	if (geteuid() != 0) {
-		pr_warn("This program must be run as root.\n");
-		return 1;
-	}
-
-	return 0;
-}
-
 int raise_rlimit(unsigned long rlimit)
 {
 	struct rlimit limit;
@@ -270,25 +258,22 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 	return err;
 }
 
-static int bpf_valid_mntpt(const char *mnt, unsigned long magic)
+static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
 {
 	struct statfs st_fs;
 
 	if (statfs(mnt, &st_fs) < 0)
-		return -ENOENT;
+		return false;
 	if ((unsigned long)st_fs.f_type != magic)
-		return -ENOENT;
+		return false;
 
-	return 0;
+	return true;
 }
 
 static const char *bpf_find_mntpt_single(unsigned long magic, char *mnt,
 					 int len, const char *mntpt)
 {
-	int ret;
-
-	ret = bpf_valid_mntpt(mntpt, magic);
-	if (!ret) {
+	if (bpf_is_valid_mntpt(mntpt, magic)) {
 		strncpy(mnt, mntpt, len);
 		mnt[len-1] = '\0';
 		return mnt;
@@ -343,8 +328,7 @@ static int bpf_mnt_check_target(const char *target)
 	if (ret) {
 		ret = mkdir(target, S_IRWXU);
 		if (ret) {
-			fprintf(stderr, "mkdir %s failed: %s\n", target,
-				strerror(errno));
+			pr_warn("mkdir %s failed: %s\n", target, strerror(errno));
 			return ret;
 		}
 	}
@@ -508,6 +492,26 @@ int check_map_fd_info(const struct bpf_map_info *info,
 			"Map type(%d) mismatch expected type(%d)\n",
 			__func__, info->type, exp->type);
 		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int check_bpf_environ(const char *pin_root_path)
+{
+	init_libbpf_logging();
+
+	if (geteuid() != 0) {
+		pr_warn("This program must be run as root.\n");
+		return 1;
+	}
+
+	if (!pin_root_path ||
+	    !bpf_is_valid_mntpt(pin_root_path, BPF_FS_MAGIC)) {
+		pr_warn("Couldn't find a valid bpffs at %s. "
+			"Please mount bpffs at %s\n",
+			pin_root_path, BPF_DIR_MNT);
+		return 1;
 	}
 
 	return 0;
