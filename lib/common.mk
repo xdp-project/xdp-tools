@@ -19,7 +19,7 @@ USER_OBJ := ${USER_C:.c=.o}
 LIB_DIR ?= ../lib
 LDLIBS ?= $(USER_LIBS)
 
-include ../config.mk
+include $(LIB_DIR)/defines.mk
 
 # get list of objects in util
 include $(LIB_DIR)/util/util.mk
@@ -41,7 +41,6 @@ CFLAGS += -I../headers/ -I$(LIB_DIR)/util
 BPF_CFLAGS ?= -I../headers/bpf/
 BPF_HEADERS := $(wildcard ../headers/bpf/*.h)
 
-
 all: $(USER_TARGETS) $(XDP_OBJ) $(COPY_LOADER) $(COPY_STATS)
 
 .PHONY: clean
@@ -50,9 +49,6 @@ clean:
 	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(COPY_LOADER) $(COPY_STATS)
 	$(Q)rm -f *.ll
 	$(Q)rm -f *~
-
-# For build dependency on this file, if it gets updated
-LIB_MK = $(LIB_DIR)/common.mk
 
 $(OBJECT_LIBBPF):
 	$(Q)$(MAKE) $(MFLAGS) -C $(LIB_DIR) libbpf
@@ -66,11 +62,11 @@ $(LIB_H): %.h: %.c
 $(LIB_OBJS): %.o: %.h
 	make -C $(LIB_DIR)
 
-$(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) Makefile $(LIB_MK) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
+$(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) $(MAKEFILES) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
 	$(QUIET_CC)$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $(LIB_OBJS) \
 	 $< $(LDLIBS)
 
-$(XDP_OBJ): %.o: %.c  Makefile $(LIB_MK) $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEADERS)
+$(XDP_OBJ): %.o: %.c $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEADERS) $(MAKEFILES)
 	$(QUIET_CLANG)$(CLANG) -S \
 	    -target bpf \
 	    -D __BPF_TRACING__ \

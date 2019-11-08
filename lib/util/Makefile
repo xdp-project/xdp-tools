@@ -2,11 +2,11 @@ include util.mk
 
 LIB_DIR ?= ..
 
-include ../../config.mk
+include $(LIB_DIR)/defines.mk
 
 all: $(UTIL_OBJS)
 
-$(UTIL_OBJS): %.o: %.c %.h
+$(UTIL_OBJS): %.o: %.c %.h $(MAKEFILES)
 	$(QUIET_CC)$(CC) $(CFLAGS) -Wall -I../../headers -c -o $@ $<
 
 clean:
