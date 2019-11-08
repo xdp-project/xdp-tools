@@ -10,6 +10,12 @@ CONFIG=config.mk
 TMPDIR=$(mktemp -d config.XXXXXX)
 trap 'status=$?; rm -rf $TMPDIR; exit $status' EXIT HUP INT QUIT TERM
 
+check_opts()
+{
+    : ${PRODUCTION:=0}
+    echo "PRODUCTION:=${PRODUCTION}" >>$CONFIG
+}
+
 check_toolchain()
 {
     : ${PKG_CONFIG:=pkg-config}
@@ -104,6 +110,7 @@ EOF
 echo "# Generated config" >$CONFIG
 quiet_config >> $CONFIG
 
+check_opts
 check_toolchain
 
 echo -n "ELF support: "
