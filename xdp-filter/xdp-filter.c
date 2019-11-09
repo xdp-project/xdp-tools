@@ -113,6 +113,50 @@ int map_set_flags(int fd, void *key, __u8 flags)
 	return bpf_map_update_elem(fd, key, &values, 0);
 }
 
+static __u32 get_iface_features(const struct iface *iface, const char *pin_root_path)
+{
+	struct bpf_prog_info info = {};
+	int err;
+
+	err = get_xdp_prog_info(iface, &info, pin_root_path);
+	if (err)
+		return 0;
+
+	return find_features(info.name);
+}
+
+static __u32 get_used_features(const char *pin_root_path)
+{
+	struct if_nameindex *idx, *indexes = NULL;
+	__u32 all_feats = 0;
+	int err;
+
+	indexes = if_nameindex();
+	if (!indexes) {
+		err = -errno;
+		pr_warn("Couldn't get list of interfaces: %s\n", strerror(-err));
+		goto out;
+	}
+
+	for(idx = indexes; idx->if_index; idx++) {
+		struct iface iface = {
+			.ifindex = idx->if_index,
+			.ifname = idx->if_name,
+		};
+		__u32 feat;
+
+		feat = get_iface_features(&iface, pin_root_path);
+		if (feat)
+			all_feats |= feat;
+	}
+
+out:
+	if (indexes)
+		if_freenameindex(indexes);
+
+	return all_feats;
+}
+
 static const struct loadopt {
 	bool help;
 	struct iface iface;
@@ -330,31 +374,22 @@ static struct prog_option unload_options[] = {
 
 int do_unload(const void *cfg, const char *pin_root_path)
 {
-	struct if_nameindex *idx, *indexes = NULL;
 	const struct unloadopt *opt = cfg;
-	struct bpf_prog_info info = {};
 	int err = EXIT_SUCCESS;
 	char featbuf[100];
-	__u32 feat, all_feats = 0;
+	__u32 feats;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 
-	err = get_xdp_prog_info(opt->iface.ifindex, &info);
-	if (err) {
-		pr_warn("Couldn't find XDP program on interface %s\n",
-			opt->iface.ifname);
-		goto out;
-	}
-
-	feat = find_features(info.name);
-	if (!feat) {
+	feats = get_iface_features(&opt->iface, pin_root_path);
+	if (!feats) {
 		pr_warn("Unrecognised XDP program on interface %s. Not removing.\n",
 			opt->iface.ifname);
 		err = EXIT_FAILURE;
 		goto out;
 	}
 
-	print_flags(featbuf, sizeof(featbuf), print_features, feat);
+	print_flags(featbuf, sizeof(featbuf), print_features, feats);
 	pr_debug("Removing XDP program with features %s from iface %s\n",
 		 featbuf, opt->iface.ifname);
 
@@ -371,41 +406,16 @@ int do_unload(const void *cfg, const char *pin_root_path)
 	}
 
 	pr_debug("Checking map usage and removing unused maps\n");
-	indexes = if_nameindex();
-	if (!indexes) {
-		err = -errno;
-		pr_warn("Couldn't get list of interfaces: %s\n",
-			strerror(-err));
-		goto out;
-	}
+	feats = get_used_features(pin_root_path);
 
-	for(idx = indexes; idx->if_index; idx++) {
-		memset(&info, 0, sizeof(info));
-		err = get_xdp_prog_info(idx->if_index, &info);
-		if (err && err == -ENOENT)
-			continue;
-		else if (err) {
-			pr_warn("Couldn't get XDP program info for ifindex %d: %s\n",
-				idx->if_index, strerror(-err));
-			goto out;
-		}
+	print_flags(featbuf, sizeof(featbuf), print_features, feats);
+	pr_debug("Features still being used: %s\n", feats ? featbuf : "none");
 
-		feat = find_features(info.name);
-		if (feat)
-			all_feats |= feat;
-	}
-
-	print_flags(featbuf, sizeof(featbuf), print_features, all_feats);
-	pr_debug("Features still being used: %s\n", all_feats ? featbuf : "none");
-
-	err = remove_unused_maps(pin_root_path, all_feats);
+	err = remove_unused_maps(pin_root_path, feats);
 	if (err)
 		goto out;
 
 out:
-	if (indexes)
-		if_freenameindex(indexes);
-
 	return err;
 }
 
@@ -815,18 +825,17 @@ int do_status(const void *cfg, const char *pin_root_path)
 	}
 
 	for(idx = indexes; idx->if_index; idx++) {
-		struct bpf_prog_info info = {};
-		char featbuf[100];
+		struct iface iface = {
+			.ifindex = idx->if_index,
+			.ifname = idx->if_name,
+		};
 		__u32 feat;
 
-		err = get_xdp_prog_info(idx->if_index, &info);
-		if (err && err == -ENOENT)
-			continue;
-		else if (err)
-			goto out;
+		feat = get_iface_features(&iface, pin_root_path);
 
-		feat = find_features(info.name);
 		if (feat) {
+			char featbuf[100];
+
 			print_flags(featbuf, sizeof(featbuf), print_features, feat);
 			printf("  %-40s %s\n", idx->if_name, featbuf);
 		}
