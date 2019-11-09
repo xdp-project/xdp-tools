@@ -20,7 +20,7 @@ SUBDIRS=$(LIBSUBDIRS) $(PROGSUBDIRS)
 all: llvm-check config.mk
 	@set -e; \
 	for i in $(SUBDIRS); \
-	do echo; echo $$i; $(MAKE) $(MFLAGS) -C $$i; done
+	do echo; echo $$i; $(MAKE) -C $$i; done
 
 llvm-check: $(CLANG) $(LLC)
 	@for TOOL in $^ ; do \
@@ -45,7 +45,7 @@ config.mk:
 
 clobber:
 	touch config.mk
-	$(MAKE) $(MFLAGS) clean
+	$(MAKE) clean
 	rm -f config.mk cscope.*
 
 distclean: clobber
@@ -53,10 +53,10 @@ distclean: clobber
 
 clean:
 	@for i in $(SUBDIRS); \
-	do $(MAKE) $(MFLAGS) -C $$i clean; done
+	do $(MAKE) -C $$i clean; done
 
 
 install: all
 	@for i in $(PROGSUBDIRS); \
-	do $(MAKE) $(MFLAGS) -C $$i install; done
+	do $(MAKE) -C $$i install; done
 

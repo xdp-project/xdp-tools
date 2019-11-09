@@ -7,12 +7,12 @@ LIB_DIR = .
 all: $(OBJECT_LIBBPF)
 	@set -e; \
 	for i in $(SUBDIRS); \
-	do echo "  $$i"; $(MAKE) $(MFLAGS) -C $$i; done
+	do echo; echo "  $$i"; $(MAKE) -C $$i; done
 
 .PHONY: clean
 clean: libbpf_clean
 	@for i in $(SUBDIRS); \
-	do $(MAKE) $(MFLAGS) -C $$i clean; done
+	do $(MAKE) -C $$i clean; done
 
 libbpf: $(OBJECT_LIBBPF)
 
@@ -24,11 +24,11 @@ endif
 .PHONY: libbpf_clean
 libbpf/src/libbpf.a:
 	@echo ; echo "  libbpf"
-	$(QUIET_CC)$(MAKE) $(MFLAGS) -C libbpf/src $P
-	$(QUIET_INSTALL)$(MAKE) $(MFLAGS) -C libbpf/src install_headers DESTDIR=root $P
+	$(QUIET_CC)$(MAKE) -C libbpf/src $P
+	$(QUIET_INSTALL)$(MAKE) -C libbpf/src install_headers DESTDIR=root $P
 
 libbpf_clean:
-	$(Q)$(MAKE) $(MFLAGS) -C libbpf/src clean $P
+	$(Q)$(MAKE) -C libbpf/src clean $P
 
 else
 
