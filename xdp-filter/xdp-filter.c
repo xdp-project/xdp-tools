@@ -219,14 +219,28 @@ int do_load(const void *cfg, const char *pin_root_path)
 	struct bpf_object *obj = NULL;
 	unsigned int features = opt->features;
 	int err = EXIT_SUCCESS;
+	__u32 used_feats;
 	char *progname;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 
-	if (opt->whitelist_mode)
+	used_feats = get_used_features(pin_root_path);
+
+	if (opt->whitelist_mode) {
+		if (used_feats & FEAT_BLACKLIST) {
+			pr_warn("xdp-filter is already loaded blacklist mode. "
+				"Unload before loading in whitelist mode.\n");
+			return EXIT_FAILURE;
+		}
 		features |= FEAT_WHITELIST;
-	else
+	} else {
+		if (used_feats & FEAT_WHITELIST) {
+			pr_warn("xdp-filter is already loaded whitelist mode. "
+				"Unload before loading in blacklist mode.\n");
+			return EXIT_FAILURE;
+		}
 		features |= FEAT_BLACKLIST;
+	}
 
 	print_flags(featbuf, sizeof(featbuf), print_features, features);
 	pr_debug("Looking for eBPF program with features %s\n", featbuf);
