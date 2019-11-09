@@ -18,7 +18,7 @@
 #include "util.h"
 #include "logging.h"
 
-static int check_snprintf(char *buf, size_t buf_len, const char *format, ...)
+int check_snprintf(char *buf, size_t buf_len, const char *format, ...)
 {
 	va_list args;
 	int len;
@@ -76,7 +76,7 @@ int get_xdp_prog_info(int ifindex, struct bpf_prog_info *info)
 		goto out;
 
 	prog_fd = bpf_prog_get_fd_by_id(prog_id);
-	if (prog_fd <= 0) {
+	if (prog_fd < 0) {
 		err = -errno;
 		goto out;
 	}
@@ -191,17 +191,94 @@ int load_bpf_object(struct bpf_object *obj, bool raise_limit)
 	return bpf_object__load(obj);
 }
 
+static int get_pinned_object_fd(const char *path, void *info, __u32 *info_len)
+{
+	char errmsg[STRERR_BUFSIZE];
+	int pin_fd, err;
+
+	pin_fd = bpf_obj_get(path);
+	if (pin_fd < 0) {
+		err = -errno;
+		libbpf_strerror(-err, errmsg, sizeof(errmsg));
+		pr_debug("Couldn't retrieve pinned object '%s': %s\n", path, errmsg);
+		return err;
+	}
+
+	if (info) {
+		err = bpf_obj_get_info_by_fd(pin_fd, info, info_len);
+		if (err) {
+			err = -errno;
+			libbpf_strerror(-err, errmsg, sizeof(errmsg));
+			pr_debug("Couldn't retrieve object info: %s\n", errmsg);
+			return err;
+		}
+	}
+
+	return pin_fd;
+}
+
+
+
+static bool program_is_loaded(int ifindex, const char *pin_path)
+{
+	struct bpf_prog_info if_info = {}, pinned_info = {};
+	__u32 info_len = sizeof(if_info);
+	int if_fd, pinned_fd;
+	bool ret;
+
+	if_fd = get_xdp_prog_info(ifindex, &if_info);
+	if (if_fd < 0) {
+		return false;
+	}
+
+	if (!pin_path) {
+		close(if_fd);
+		return true;
+	}
+
+	pinned_fd = get_pinned_object_fd(pin_path, &pinned_info, &info_len);
+	if (pinned_fd < 0) {
+		close(if_fd);
+		return false;
+	}
+
+	ret = if_info.id == pinned_info.id;
+
+	close(pinned_fd);
+	close(if_fd);
+
+	return ret;
+}
+
 int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 		       const struct iface *iface, bool force, bool skb_mode,
-		       const char *pin_root_dir)
+		       const char *pin_root_path)
 {
 	int ifindex = iface->ifindex;
 	int err = 0, xdp_flags = 0;
 	struct bpf_program *prog;
+	char pin_path[PATH_MAX];
+	struct stat sb = {};
 	int prog_fd;
 
-	if (!force)
+	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
+			     pin_root_path, iface->ifname);
+
+	if (!force) {
+		if (program_is_loaded(ifindex, pin_path)) {
+			pr_warn("Program already loaded on %s; use --force to replace\n",
+				iface->ifname);
+			return -EEXIST;
+		}
+
 		xdp_flags |= XDP_FLAGS_UPDATE_IF_NOEXIST;
+	} else if (program_is_loaded(ifindex, NULL) &&
+		   !program_is_loaded(ifindex, pin_path)) {
+		pr_warn("Found an XDP program on %s, but not installed by us. "
+			"Refusing to replace; remove manually and try again\n",
+			iface->ifname);
+		return -EEXIST;
+	}
 
 	if (skb_mode)
 		xdp_flags |= XDP_FLAGS_SKB_MODE;
@@ -238,31 +315,67 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 			err = bpf_set_link_xdp_fd(ifindex, prog_fd, old_flags);
 	}
 	if (err < 0) {
-		pr_warn("ifindex(%d) link set xdp fd failed (%d): %s\n",
-			ifindex, -err, strerror(-err));
+		pr_warn("Error attaching XDP program to %s: %s\n",
+			iface->ifname, strerror(-err));
 
 		switch (-err) {
 		case EBUSY:
 		case EEXIST:
-			pr_warn("XDP already loaded on device"
+			pr_warn("XDP already loaded on device;"
 				" use --force to replace\n");
 			break;
 		case EOPNOTSUPP:
-			pr_warn("Hint: Native XDP not supported"
-				" use --skb-mode or --auto-mode\n");
+			pr_warn("Native XDP not supported;"
+				" try using --skb-mode\n");
 			break;
 		default:
 			break;
 		}
-		return -EFAULT;
+		return err;
 	}
+
+	err = stat(pin_path, &sb);
+	if (!err)
+		unlink(pin_path);
+
+	err = bpf_program__pin(prog, pin_path);
+	if (err) {
+		pr_warn("Unable to pin XDP program at %s: %s\n",
+			pin_path, strerror(-err));
+		bpf_set_link_xdp_fd(ifindex, -1, xdp_flags);
+	}
+	pr_debug("XDP program pinned at %s\n", pin_path);
 
 	return err;
 }
 
-int detach_xdp_program(const struct iface *iface, const char *pin_root_dir)
+int detach_xdp_program(const struct iface *iface, const char *pin_root_path)
 {
-	return bpf_set_link_xdp_fd(iface->ifindex, -1, 0);
+	int err, ifindex = iface->ifindex;
+	char pin_path[PATH_MAX];
+
+	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
+			     pin_root_path, iface->ifname);
+	if (err)
+		return err;
+
+	if (!program_is_loaded(ifindex, NULL)) {
+		pr_warn("No XDP program loaded on %s\n", iface->ifname);
+		return -ENOENT;
+	}
+
+	if (!program_is_loaded(ifindex, pin_path)) {
+		pr_warn("Found an XDP program on %s, but not installed by us. "
+			"Refusing to remove\n",
+			iface->ifname);
+		return -EEXIST;
+	}
+
+	err = bpf_set_link_xdp_fd(iface->ifindex, -1, 0);
+	if (!err)
+		err = unlink(pin_path);
+
+	return err;
 }
 
 static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
@@ -393,35 +506,15 @@ int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir)
 int get_pinned_map_fd(const char *bpf_root, const char *map_name,
 		      struct bpf_map_info *info)
 {
-	char buf[PATH_MAX], errmsg[STRERR_BUFSIZE];
 	__u32 info_len = sizeof(*info);
-	int len, err, pin_fd;
+	char buf[PATH_MAX];
+	int err;
 
-	len = snprintf(buf, sizeof(buf), "%s/%s", bpf_root, map_name);
-	if (len < 0)
-		return -EINVAL;
-	else if (len >= sizeof(buf))
-		return -ENAMETOOLONG;
-
-	pin_fd = bpf_obj_get(buf);
-	if (pin_fd < 0) {
-		err = -errno;
-		libbpf_strerror(-err, errmsg, sizeof(errmsg));
-		pr_debug("Couldn't retrieve pinned map '%s': %s\n", buf, errmsg);
+	err = check_snprintf(buf, sizeof(buf), "%s/%s", bpf_root, map_name);
+	if (err)
 		return err;
-	}
 
-	if (info) {
-		err = bpf_obj_get_info_by_fd(pin_fd, info, &info_len);
-		if (err) {
-			err = -errno;
-			libbpf_strerror(-err, errmsg, sizeof(errmsg));
-			pr_debug("Couldn't retrieve map info: %s\n", errmsg);
-			return err;
-		}
-	}
-
-	return pin_fd;
+	return get_pinned_object_fd(buf, info, &info_len);
 }
 
 int unlink_pinned_map(int dir_fd, const char *map_name)

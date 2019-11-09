@@ -27,6 +27,8 @@
       _err = bpf_map_get_next_key(_map_fd, &_map_key, &_next_key),      \
         _map_key = _next_key)
 
+int check_snprintf(char *buf, size_t buf_len, const char *format, ...);
+
 int check_bpf_environ(const char *pin_root_path);
 int raise_rlimit(unsigned long limit);
 
