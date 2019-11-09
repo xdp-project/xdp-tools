@@ -68,11 +68,11 @@ $(LIB_H): %.h: %.c
 $(LIB_OBJS): %.o: %.h
 	make -C $(LIB_DIR)
 
-$(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) $(MAKEFILES) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
+$(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) $(LIBMK) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
 	$(QUIET_CC)$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $(LIB_OBJS) \
 	 $< $(LDLIBS)
 
-$(XDP_OBJ): %.o: %.c $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEADERS) $(MAKEFILES)
+$(XDP_OBJ): %.o: %.c $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEADERS) $(LIBMK)
 	$(QUIET_CLANG)$(CLANG) -S \
 	    -target bpf \
 	    -D __BPF_TRACING__ \

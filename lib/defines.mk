@@ -16,5 +16,5 @@ endif
 CFLAGS += $(DEFINES)
 BPF_CFLAGS += $(DEFINES)
 
-MAKEFILES := Makefile $(LIB_DIR)/../config.mk $(LIB_DIR)/defines.mk $(LIB_DIR)/common.mk
+LIBMK := Makefile $(LIB_DIR)/../config.mk $(LIB_DIR)/defines.mk $(LIB_DIR)/common.mk
 
