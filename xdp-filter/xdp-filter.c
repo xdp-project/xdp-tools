@@ -119,6 +119,7 @@ static const struct loadopt {
 	int features;
 	bool force;
 	bool skb_mode;
+	bool whitelist_mode;
 } defaults_load = {
 	.features = FEAT_ALL,
 };
@@ -139,6 +140,8 @@ struct flag_val print_features[] = {
 	{"ipv6", FEAT_IPV6},
 	{"ipv4", FEAT_IPV4},
 	{"ethernet", FEAT_ETHERNET},
+	{"whitelist", FEAT_WHITELIST},
+	{"blacklist", FEAT_BLACKLIST},
 	{}
 };
 
@@ -149,6 +152,9 @@ static struct prog_option load_options[] = {
 	DEFINE_OPTION("skb-mode", OPT_BOOL, struct loadopt, skb_mode,
 		      .short_opt = 's',
 		      .help = "Load XDP program in SKB (generic) mode"),
+	DEFINE_OPTION("whitelist", OPT_BOOL, struct loadopt, whitelist_mode,
+		      .short_opt = 'w',
+		      .help = "Use filters in whitelist mode (default blacklist)"),
 	DEFINE_OPTION("dev", OPT_IFNAME, struct loadopt, iface,
 		      .positional = true,
 		      .metavar = "<ifname>",
@@ -164,16 +170,25 @@ static struct prog_option load_options[] = {
 
 int do_load(const void *cfg, const char *pin_root_path)
 {
+	char errmsg[STRERR_BUFSIZE], featbuf[100];
 	const struct loadopt *opt = cfg;
 	struct bpf_object *obj = NULL;
-	char errmsg[STRERR_BUFSIZE];
+	int features = opt->features;
 	bool raise_rlimit = false;
 	int err = EXIT_SUCCESS;
 	char *progname;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 
-	progname = find_progname(opt->features);
+	if (opt->whitelist_mode)
+		features |= FEAT_WHITELIST;
+	else
+		features |= FEAT_BLACKLIST;
+
+	print_flags(featbuf, sizeof(featbuf), print_features, features);
+	pr_debug("Looking for eBPF program with features %s\n", featbuf);
+
+	progname = find_progname(features);
 	if (!progname) {
 		pr_warn("Couldn't find an eBPF program with the requested feature set!\n");
 		return EXIT_FAILURE;

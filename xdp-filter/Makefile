@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 
-XDP_TARGETS  := xdp_filt_udp xdp_filt_tcp xdp_filt_ip xdp_filt_ethernet xdp_filt_all
+XDP_TARGETS  := xdp_filt_black_udp xdp_filt_black_tcp xdp_filt_black_ip \
+	xdp_filt_black_ethernet xdp_filt_black_all \
+	xdp_filt_white_udp xdp_filt_white_tcp xdp_filt_white_ip \
+	xdp_filt_white_ethernet xdp_filt_white_all
+
 USER_TARGETS := xdp-filter
 EXTRA_DEPS := xdp_filt_prog.h
 

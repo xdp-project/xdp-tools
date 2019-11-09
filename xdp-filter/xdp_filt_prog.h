@@ -20,6 +20,16 @@
 
 #include "common_kern_user.h"
 
+#ifdef FILT_MODE_BLACKLIST
+#define VERDICT_HIT XDP_DROP
+#define VERDICT_MISS XDP_PASS
+#define FEATURE_OPMODE FEAT_BLACKLIST
+#else
+#define VERDICT_HIT XDP_PASS
+#define VERDICT_MISS XDP_DROP
+#define FEATURE_OPMODE FEAT_WHITELIST
+#endif
+
 #define CHECK_RET(ret) do {						\
 		if ((ret) < 0) {					\
 			action = XDP_ABORTED;				\
@@ -29,7 +39,7 @@
 
 #define CHECK_VERDICT(type, param)					\
 	do {								\
-		if ((action = lookup_verdict_##type(param)) != XDP_PASS) \
+		if ((action = lookup_verdict_##type(param)) != VERDICT_MISS) \
 			goto out;					\
 	} while (0)
 
@@ -38,7 +48,7 @@
 		value = bpf_map_lookup_elem(map, key);			\
 		if ((value) && (*(value) & (mask)) == (mask)) {	\
 			*value += (1 << COUNTER_SHIFT);		\
-			return XDP_DROP;				\
+			return VERDICT_HIT;				\
 		}							\
 	} while(0)
 
@@ -60,7 +70,7 @@ static int __always_inline lookup_verdict_tcp(struct tcphdr *tcphdr)
 	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_TCP);
 	key = tcphdr->source;
 	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_TCP);
-	return XDP_PASS;
+	return VERDICT_MISS;
 }
 #define FEATURE_TCP FEAT_TCP
 #else
@@ -76,7 +86,7 @@ static int __always_inline lookup_verdict_udp(struct udphdr *udphdr)
 	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_TCP);
 	key = udphdr->source;
 	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_TCP);
-	return XDP_PASS;
+	return VERDICT_MISS;
 }
 #define FEATURE_UDP FEAT_UDP
 #else
@@ -101,7 +111,7 @@ static int __always_inline lookup_verdict_ipv4(struct iphdr *iphdr)
 {
 	CHECK_MAP(&filter_ipv4, &iphdr->daddr, MAP_FLAG_DST);
 	CHECK_MAP(&filter_ipv4, &iphdr->saddr, MAP_FLAG_SRC);
-	return XDP_PASS;
+	return VERDICT_MISS;
 }
 
 #define CHECK_VERDICT_IPV4(param) CHECK_VERDICT(ipv4, param)
@@ -124,7 +134,7 @@ static int __always_inline lookup_verdict_ipv6(struct ipv6hdr *ipv6hdr)
 {
 	CHECK_MAP(&filter_ipv6, &ipv6hdr->daddr, MAP_FLAG_DST);
 	CHECK_MAP(&filter_ipv6, &ipv6hdr->saddr, MAP_FLAG_SRC);
-	return XDP_PASS;
+	return VERDICT_MISS;
 }
 
 #define CHECK_VERDICT_IPV6(param) CHECK_VERDICT(ipv6, param)
@@ -151,7 +161,7 @@ static int __always_inline lookup_verdict_ethernet(struct ethhdr *eth)
 {
 	CHECK_MAP(&filter_ethernet, eth->h_dest, MAP_FLAG_DST);
 	CHECK_MAP(&filter_ethernet, eth->h_source, MAP_FLAG_SRC);
-	return XDP_PASS;
+	return VERDICT_MISS;
 }
 
 #define CHECK_VERDICT_ETHERNET(param) CHECK_VERDICT(ethernet, param)
@@ -170,7 +180,7 @@ int FUNCNAME(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
-	__u32 action = XDP_PASS; /* Default action */
+	__u32 action = VERDICT_MISS; /* Default action */
 	struct hdr_cursor nh;
 	struct ethhdr *eth;
 	int eth_type;
@@ -219,4 +229,4 @@ out:
 }
 
 char _license[] SEC("license") = "GPL";
-__u32 _features SEC("features") = (FEATURE_ETHERNET | FEATURE_IPV4 | FEATURE_IPV6 | FEATURE_UDP | FEATURE_TCP);
+__u32 _features SEC("features") = (FEATURE_ETHERNET | FEATURE_IPV4 | FEATURE_IPV6 | FEATURE_UDP | FEATURE_TCP | FEATURE_OPMODE);

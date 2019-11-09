@@ -7,6 +7,8 @@
 #define FEAT_IPV4	(1<<3)
 #define FEAT_ETHERNET	(1<<4)
 #define FEAT_ALL	(FEAT_TCP|FEAT_UDP|FEAT_IPV6|FEAT_IPV4|FEAT_ETHERNET)
+#define FEAT_BLACKLIST	(1<<5)
+#define FEAT_WHITELIST	(1<<6)
 
 #define MAP_FLAG_SRC (1<<0)
 #define MAP_FLAG_DST (1<<1)
