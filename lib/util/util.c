@@ -357,7 +357,7 @@ static const char *bpf_get_work_dir()
 	if (!mnt) {
 		mnt = BPF_DIR_MNT;
 		ret = bpf_mnt_check_target(mnt);
-		if (ret) {
+		if (ret || !bpf_is_valid_mntpt(mnt, BPF_FS_MAGIC)) {
 			mnt = NULL;
 			goto out;
 		}
@@ -475,11 +475,9 @@ int check_bpf_environ(const char *pin_root_path)
 		return 1;
 	}
 
-	if (!pin_root_path ||
-	    !bpf_is_valid_mntpt(pin_root_path, BPF_FS_MAGIC)) {
-		pr_warn("Couldn't find a valid bpffs at %s. "
-			"Please mount bpffs at %s\n",
-			pin_root_path, BPF_DIR_MNT);
+	if (!pin_root_path) {
+		pr_warn("Couldn't find a valid bpffs. "
+			"Please mount bpffs at %s\n", BPF_DIR_MNT);
 		return 1;
 	}
 
