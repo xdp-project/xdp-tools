@@ -27,10 +27,13 @@
       _err = bpf_map_get_next_key(_map_fd, &_map_key, &_next_key),      \
         _map_key = _next_key)
 
+#define min(x,y) ((x)<(y) ? x : y)
+#define max(x,y) ((x)>(y) ? x : y)
+
 int check_snprintf(char *buf, size_t buf_len, const char *format, ...);
 
 int check_bpf_environ(const char *pin_root_path);
-int raise_rlimit(unsigned long limit);
+int double_rlimit();
 
 struct bpf_object *open_bpf_file(const char *progname,
                                  struct bpf_object_open_opts *opts);

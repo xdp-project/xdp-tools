@@ -35,7 +35,7 @@ int check_snprintf(char *buf, size_t buf_len, const char *format, ...)
 	return 0;
 }
 
-int raise_rlimit(unsigned long rlimit)
+int double_rlimit()
 {
 	struct rlimit limit;
 	int err = 0;
@@ -49,12 +49,12 @@ int raise_rlimit(unsigned long rlimit)
 
 	if (limit.rlim_cur == RLIM_INFINITY) {
 		pr_debug("Current rlimit is infinity. Not raising\n");
-		return 0;
+		return -ENOMEM;
 	}
 
-	pr_debug("Current rlimit %lu; raising by %lu\n", limit.rlim_cur, rlimit);
-	limit.rlim_cur += rlimit;
-	limit.rlim_max += rlimit;
+	pr_debug("Doubling current rlimit of %lu\n", limit.rlim_cur);
+	limit.rlim_cur <<= 1;
+	limit.rlim_max = max(limit.rlim_cur, limit.rlim_max);
 
 	err = setrlimit(RLIMIT_MEMLOCK, &limit);
 	if (err) {
@@ -89,62 +89,6 @@ out:
 	return err;
 }
 
-/* BPF size overhead for kernel data structures per entry and map/prog */
-#define BPF_SIZE_OVERHEAD 512
-#define PAGE_SIZE 4096
-
-#define max(x,y) ((x>y)?x:y)
-
-static size_t estimate_memlock_usage(const struct bpf_object *obj)
-{
-	const struct bpf_map_def *def;
-	const struct bpf_map *map;
-	size_t size = 0;
-
-	bpf_object__for_each_map(map, obj) {
-		size_t entries, entry_size, map_size;
-		bool percpu, hash;
-
-		def = bpf_map__def(map);
-		entries = def->max_entries;
-
-		percpu = (def->type == BPF_MAP_TYPE_PERCPU_HASH ||
-			  def->type == BPF_MAP_TYPE_PERCPU_ARRAY ||
-			  def->type == BPF_MAP_TYPE_LRU_PERCPU_HASH);
-
-		hash = (def->type == BPF_MAP_TYPE_PERCPU_HASH ||
-			def->type == BPF_MAP_TYPE_HASH);
-
-		if (percpu)
-			entry_size = libbpf_num_possible_cpus() * def->value_size +
-				max(sizeof(void *), def->key_size);
-		else
-			entry_size = def->key_size + def->value_size;
-
-		if (hash) {
-			size_t roundto = 1;
-
-			entry_size += 32;
-			while (roundto && roundto < entries)
-				roundto <<= 1;
-
-			entries = roundto;
-		}
-
-		map_size = entries * entry_size + BPF_SIZE_OVERHEAD;
-		map_size += PAGE_SIZE - (map_size % PAGE_SIZE);
-
-		pr_debug("Estimated size %lu bytes / %lu pages for map %s\n",
-			 map_size, map_size / PAGE_SIZE, bpf_map__name(map));
-
-		size += map_size;
-	}
-
-	pr_debug("Estimated total memlock size to be %lu bytes / %lu pages\n",
-		 size, size / PAGE_SIZE);
-	return size;
-}
-
 struct bpf_object *open_bpf_file(const char *progname,
                                  struct bpf_object_open_opts *opts)
 {
@@ -177,19 +121,6 @@ struct bpf_object *open_bpf_file(const char *progname,
 	return ERR_PTR(-ENOENT);
 }
 
-
-int load_bpf_object(struct bpf_object *obj, bool raise_limit)
-{
-	if (raise_limit) {
-		int err;
-
-		err = raise_rlimit(estimate_memlock_usage(obj));
-		if (err)
-			return err;
-	}
-
-	return bpf_object__load(obj);
-}
 
 static int get_pinned_object_fd(const char *path, void *info, __u32 *info_len)
 {

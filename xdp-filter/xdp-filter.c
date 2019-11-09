@@ -174,7 +174,6 @@ int do_load(const void *cfg, const char *pin_root_path)
 	const struct loadopt *opt = cfg;
 	struct bpf_object *obj = NULL;
 	int features = opt->features;
-	bool raise_rlimit = false;
 	int err = EXIT_SUCCESS;
 	char *progname;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
@@ -213,15 +212,16 @@ retry:
 	}
 
 
-	err = load_bpf_object(obj, raise_rlimit);
-	if (err && !raise_rlimit) {
+	err = bpf_object__load(obj);
+	if (err) {
 		pr_debug("Permission denied when loading eBPF object; "
 			 "raising rlimit and retrying\n");
 
-		raise_rlimit = true;
-		bpf_object__close(obj);
-		goto retry;
-	} else if (err) {
+		if (!double_rlimit()) {
+			bpf_object__close(obj);
+			goto retry;
+		}
+
 		libbpf_strerror(err, errmsg, sizeof(errmsg));
 		pr_warn("Couldn't load eBPF object: %s(%d)\n", errmsg, err);
 		goto out;
