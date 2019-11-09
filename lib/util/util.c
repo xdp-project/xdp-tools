@@ -197,48 +197,83 @@ int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
 	return __get_xdp_prog_info(iface->ifindex, info);
 }
 
+static int make_dir_subdir(const char *parent, const char *dir)
+{
+	char path[PATH_MAX];
+	int err;
+
+	err = check_snprintf(path, sizeof(path), "%s/%s", parent, dir);
+	if (err)
+		return err;
+
+	err = mkdir(parent, S_IRWXU);
+	if (err && errno != EEXIST) {
+		err = -errno;
+		return err;
+	}
+
+	err = mkdir(path, S_IRWXU);
+	if (err && errno != EEXIST) {
+		err = -errno;
+		return err;
+	}
+
+	return 0;
+}
+
 int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 		       const struct iface *iface, bool force, bool skb_mode,
 		       const char *pin_root_path)
 {
+	char pin_path[PATH_MAX], old_prog_name[100];
 	int ifindex = iface->ifindex;
 	int err = 0, xdp_flags = 0;
 	struct bpf_program *prog;
-	char pin_path[PATH_MAX];
 	struct stat sb = {};
+	bool has_old;
 	int prog_fd;
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
-			     pin_root_path, iface->ifname);
+	err = make_dir_subdir(pin_root_path, "programs");
 	if (err)
 		return err;
 
+	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s/%s",
+			     pin_root_path, iface->ifname, prog_name);
+	if (err)
+		return err;
+
+	err = get_iface_program(iface, pin_root_path, old_prog_name,
+				sizeof(old_prog_name));
+	has_old = err != -ENOENT;
+
 	if (!force) {
-		if (program_is_loaded(ifindex, pin_path)) {
+		if (has_old) {
 			pr_warn("Program already loaded on %s; use --force to replace\n",
 				iface->ifname);
 			return -EEXIST;
 		}
 
 		xdp_flags |= XDP_FLAGS_UPDATE_IF_NOEXIST;
-	} else if (program_is_loaded(ifindex, NULL) &&
-		   !program_is_loaded(ifindex, pin_path)) {
+	} else if (!has_old && program_is_loaded(ifindex, NULL)) {
 		pr_warn("Found an XDP program on %s, but not installed by us. "
 			"Refusing to replace; remove manually and try again\n",
 			iface->ifname);
 		return -EEXIST;
+	} else if (has_old) {
+		pr_debug("Replacing old program '%s' on iface '%s'\n",
+			 old_prog_name, iface->ifname);
 	}
 
 	if (skb_mode)
 		xdp_flags |= XDP_FLAGS_SKB_MODE;
 
-	if (prog_name)
-		prog = bpf_object__find_program_by_title(obj, prog_name);
-	else
+	prog = bpf_object__find_program_by_title(obj, prog_name);
+	if (!prog)
 		prog = bpf_program__next(NULL, obj);
 
 	if (!prog) {
-		pr_warn("Couldn't find an eBPF program to attach. This is a bug!\n");
+		pr_warn("Couldn't find an eBPF program '%s' to attach. "
+			"This is a bug!\n", prog_name);
 		return -EFAULT;
 	}
 
@@ -283,6 +318,19 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 		return err;
 	}
 
+	pr_debug("Program '%s' loaded on interface '%s'%s\n",
+		 prog_name, iface->ifname, skb_mode ? " in skb mode" : "");
+
+	if (has_old) {
+		char buf[PATH_MAX];
+		err = check_snprintf(buf, sizeof(buf), "%s/programs/%s/%s",
+				     pin_root_path, iface->ifname, old_prog_name);
+		if (!err) {
+			pr_debug("Unpinning old program from %s\n", buf);
+			unlink(buf);
+		}
+	}
+
 	err = stat(pin_path, &sb);
 	if (!err)
 		unlink(pin_path);
@@ -300,38 +348,109 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 
 int detach_xdp_program(const struct iface *iface, const char *pin_root_path)
 {
-	int err, ifindex = iface->ifindex;
+	char pin_path[PATH_MAX], prog_name[100];
+	int err;
+
+	err = get_iface_program(iface, pin_root_path, prog_name,
+				sizeof(prog_name));
+	if (err) {
+		pr_warn("No XDP program loaded on %s\n", iface->ifname);
+		return -ENOENT;
+	}
+
+	err = bpf_set_link_xdp_fd(iface->ifindex, -1, 0);
+	if (err)
+		goto out;
+
+	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s/%s",
+			     pin_root_path, iface->ifname, prog_name);
+	if (err)
+		return err;
+
+	err = unlink(pin_path);
+	if (err)
+		goto out;
+
+	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
+			     pin_root_path, iface->ifname, prog_name);
+	if (err)
+		goto out;
+
+	err = rmdir(pin_path);
+out:
+	return err;
+}
+
+int get_iface_program(const struct iface *iface, const char *pin_root_path,
+		      char *prog_name, size_t prog_name_len)
+{
+	int ret = 0, err, ifindex = iface->ifindex;
 	char pin_path[PATH_MAX];
+	bool remove_all = false;
+	struct dirent *de;
+	DIR *dr;
 
 	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
 			     pin_root_path, iface->ifname);
 	if (err)
 		return err;
 
-	if (!program_is_loaded(ifindex, NULL)) {
-		pr_warn("No XDP program loaded on %s\n", iface->ifname);
+	dr = opendir(pin_path);
+	if (!dr)
 		return -ENOENT;
+
+	if (!ifindex)
+		ifindex = if_nametoindex(iface->ifname);
+	if (!ifindex) {
+		pr_debug("Interface %s no longer exists\n", iface->ifname);
+		remove_all = true;
+		ret = -ENODEV;
 	}
 
-	if (!program_is_loaded(ifindex, pin_path)) {
-		pr_warn("Found an XDP program on %s, but not installed by us. "
-			"Refusing to remove\n",
-			iface->ifname);
-		return -EEXIST;
+	while ((de = readdir(dr)) != NULL) {
+		if (!strcmp(".", de->d_name) ||
+		    !strcmp("..", de->d_name))
+			continue;
+
+		err = check_snprintf(pin_path, sizeof(pin_path),
+				     "%s/programs/%s/%s", pin_root_path,
+				     iface->ifname, de->d_name);
+		if (err)
+			goto out;
+
+		if (remove_all) {
+			err = unlink(pin_path);
+			if (err)
+				ret = err;
+			continue;
+		}
+
+		if (!program_is_loaded(iface->ifindex, pin_path)) {
+			ret = -ENOENT;
+			pr_debug("Program %s no longer loaded on %s\n",
+				 de->d_name, iface->ifname);
+			err = unlink(pin_path);
+			if (err)
+				ret = err;
+		} else {
+			ret = 0;
+			err = check_snprintf(prog_name, prog_name_len, "%s",
+					     de->d_name);
+			if (err)
+				ret = err;
+			break;
+		}
 	}
-
-	err = bpf_set_link_xdp_fd(iface->ifindex, -1, 0);
-	if (!err)
-		err = unlink(pin_path);
-
-	return err;
+out:
+	closedir(dr);
+	return ret;
 }
 
-int check_program_pins(const char *pin_root_path)
+int iterate_iface_programs(const char *pin_root_path,
+			   program_callback cb, void *arg)
 {
 	char pin_path[PATH_MAX];
 	struct dirent *de;
-	int ifindex;
 	int err = 0;
 	DIR *dr;
 
@@ -345,23 +464,35 @@ int check_program_pins(const char *pin_root_path)
 		return -ENOENT;
 
 	while ((de = readdir(dr)) != NULL) {
+		char prog_name[PATH_MAX];
+		struct iface iface = {};
+
 		if (!strcmp(".", de->d_name) ||
 		    !strcmp("..", de->d_name))
 			continue;
 
+		iface.ifname = de->d_name;
+
 		err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
-				     pin_root_path, de->d_name);
+				     pin_root_path, iface.ifname);
 		if (err)
 			goto out;
 
-		ifindex = if_nametoindex(de->d_name);
-		if (!ifindex || !program_is_loaded(ifindex, pin_path)) {
-			pr_debug("Program no longer loaded on interface %s; removing pin\n",
-				 de->d_name);
-			err = unlink(pin_path);
+		err = get_iface_program(&iface, pin_root_path,
+					prog_name, sizeof(prog_name));
+
+		if (err == -ENOENT || err == -ENODEV) {
+			err = rmdir(pin_path);
 			if (err)
 				goto out;
+			continue;
+		} else if (err) {
+			goto out;
 		}
+
+		err = cb(&iface, prog_name, arg);
+		if (err)
+			goto out;
 	}
 
 out:
