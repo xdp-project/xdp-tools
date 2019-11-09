@@ -6,5 +6,5 @@
 #undef FILT_MODE_IPV6
 #undef FILT_MODE_UDP
 #define FILT_MODE_TCP
-#define FUNCNAME xdp_filt_black_tcp
-#include "xdp_filt_prog.h"
+#define FUNCNAME xdpfilt_blk_tcp
+#include "xdpfilt_prog.h"
