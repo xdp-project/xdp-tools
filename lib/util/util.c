@@ -724,6 +724,7 @@ void prog_lock_release(int signal)
 
 	sigaction(SIGHUP, &sigact, NULL);
 	sigaction(SIGINT, &sigact, NULL);
+	sigaction(SIGSEGV, &sigact, NULL);
 	sigaction(SIGTERM, &sigact, NULL);
 
 	err = unlink(prog_lock_file);
@@ -777,6 +778,7 @@ int prog_lock_get(const char *progname)
 
 	if (sigaction(SIGHUP, &sigact, NULL) ||
 	    sigaction(SIGINT, &sigact, NULL) ||
+	    sigaction(SIGSEGV, &sigact, NULL) ||
 	    sigaction(SIGTERM, &sigact, NULL)) {
 		err = -errno;
 		pr_warn("Unable to install signal handler: %s\n", strerror(-err));
