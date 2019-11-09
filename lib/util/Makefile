@@ -6,7 +6,10 @@ include $(LIB_DIR)/defines.mk
 
 all: $(UTIL_OBJS)
 
-$(UTIL_OBJS): %.o: %.c %.h $(MAKEFILES)
+# Create expansions for dependencies
+UTIL_H := ${UTIL_OBJS:.o=.h}
+
+$(UTIL_OBJS): %.o: %.c $(UTIL_H) $(LIBMK)
 	$(QUIET_CC)$(CC) $(CFLAGS) -Wall -I../../headers -c -o $@ $<
 
 clean:

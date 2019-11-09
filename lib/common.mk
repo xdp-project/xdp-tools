@@ -58,8 +58,11 @@ install:
 $(OBJECT_LIBBPF):
 	$(Q)$(MAKE) -C $(LIB_DIR) libbpf
 
+# Create expansions for dependencies
+LIB_H := ${LIB_OBJS:.o=.h}
+
 # Detect if any of common obj changed and create dependency on .h-files
-$(LIB_OBJS): %.o: %.c %.h
+$(LIB_OBJS): %.o: %.c %.h $(LIB_H)
 	$(Q)$(MAKE) -C $(dir $@) $(notdir $@)
 
 $(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) $(LIBMK) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
