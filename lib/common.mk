@@ -27,9 +27,6 @@ include $(LIB_DIR)/util/util.mk
 # Extend if including Makefile already added some
 LIB_OBJS += $(foreach obj,$(UTIL_OBJS),$(LIB_DIR)/util/$(obj))
 
-# Create expansions for dependencies
-LIB_H := ${LIB_OBJS:.o=.h}
-
 EXTRA_DEPS +=
 EXTRA_USER_DEPS +=
 
@@ -57,16 +54,11 @@ install:
 	install -m 0644 $(XDP_OBJ) $(DESTDIR)$(BPF_OBJECT_DIR)
 
 $(OBJECT_LIBBPF):
-	$(Q)$(MAKE) $(MFLAGS) -C $(LIB_DIR) libbpf
-
-# Create dependency: detect if C-file change and touch H-file, to trigger
-# target $(LIB_OBJS)
-$(LIB_H): %.h: %.c
-	touch $@
+	$(Q)$(MAKE) -C $(LIB_DIR) libbpf
 
 # Detect if any of common obj changed and create dependency on .h-files
-$(LIB_OBJS): %.o: %.h
-	make -C $(LIB_DIR)
+$(LIB_OBJS): %.o: %.c %.h
+	$(Q)$(MAKE) -C $(dir $@) $(notdir $@)
 
 $(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) $(LIBMK) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
 	$(QUIET_CC)$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $(LIB_OBJS) \
