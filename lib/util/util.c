@@ -66,7 +66,7 @@ int double_rlimit()
 	return 0;
 }
 
-int get_xdp_prog_info(int ifindex, struct bpf_prog_info *info)
+static int __get_xdp_prog_info(int ifindex, struct bpf_prog_info *info)
 {
 	__u32 prog_id, info_len = sizeof(*info);
 	int prog_fd, err = 0;
@@ -121,7 +121,6 @@ struct bpf_object *open_bpf_file(const char *progname,
 	return ERR_PTR(-ENOENT);
 }
 
-
 static int get_pinned_object_fd(const char *path, void *info, __u32 *info_len)
 {
 	char errmsg[STRERR_BUFSIZE];
@@ -148,8 +147,6 @@ static int get_pinned_object_fd(const char *path, void *info, __u32 *info_len)
 	return pin_fd;
 }
 
-
-
 static bool program_is_loaded(int ifindex, const char *pin_path)
 {
 	struct bpf_prog_info if_info = {}, pinned_info = {};
@@ -157,7 +154,7 @@ static bool program_is_loaded(int ifindex, const char *pin_path)
 	int if_fd, pinned_fd;
 	bool ret;
 
-	if_fd = get_xdp_prog_info(ifindex, &if_info);
+	if_fd = __get_xdp_prog_info(ifindex, &if_info);
 	if (if_fd < 0) {
 		return false;
 	}
@@ -181,6 +178,23 @@ static bool program_is_loaded(int ifindex, const char *pin_path)
 	return ret;
 }
 
+int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
+		      const char *pin_root_path)
+{
+	char pin_path[PATH_MAX];
+	int err;
+
+	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
+			     pin_root_path, iface->ifname);
+	if (err)
+		return err;
+
+	if (!program_is_loaded(iface->ifindex, pin_path))
+		return -ENOENT;
+
+	return __get_xdp_prog_info(iface->ifindex, info);
+}
+
 int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 		       const struct iface *iface, bool force, bool skb_mode,
 		       const char *pin_root_path)
@@ -194,6 +208,8 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 
 	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
 			     pin_root_path, iface->ifname);
+	if (err)
+		return err;
 
 	if (!force) {
 		if (program_is_loaded(ifindex, pin_path)) {
