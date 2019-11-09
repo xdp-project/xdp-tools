@@ -14,6 +14,8 @@
 #include <linux/magic.h> /* BPF FS magic */
 #include <linux/err.h> /* ERR_PTR */
 #include <bpf/bpf.h>
+#include <dirent.h>
+#include <net/if.h>
 
 #include "util.h"
 #include "logging.h"
@@ -322,6 +324,48 @@ int detach_xdp_program(const struct iface *iface, const char *pin_root_path)
 	if (!err)
 		err = unlink(pin_path);
 
+	return err;
+}
+
+int check_program_pins(const char *pin_root_path)
+{
+	char pin_path[PATH_MAX];
+	struct dirent *de;
+	int ifindex;
+	int err = 0;
+	DIR *dr;
+
+	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs",
+			     pin_root_path);
+	if (err)
+		return err;
+
+	dr = opendir(pin_path);
+	if (!dr)
+		return -ENOENT;
+
+	while ((de = readdir(dr)) != NULL) {
+		if (!strcmp(".", de->d_name) ||
+		    !strcmp("..", de->d_name))
+			continue;
+
+		err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
+				     pin_root_path, de->d_name);
+		if (err)
+			goto out;
+
+		ifindex = if_nametoindex(de->d_name);
+		if (!ifindex || !program_is_loaded(ifindex, pin_path)) {
+			pr_debug("Program no longer loaded on interface %s; removing pin\n",
+				 de->d_name);
+			err = unlink(pin_path);
+			if (err)
+				goto out;
+		}
+	}
+
+out:
+	closedir(dr);
 	return err;
 }
 

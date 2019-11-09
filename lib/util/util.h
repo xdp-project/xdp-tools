@@ -42,6 +42,7 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
                        const struct iface *iface, bool force, bool skb_mode,
                        const char *pin_root_dir);
 int detach_xdp_program(const struct iface *iface, const char *pin_root_dir);
+int check_program_pins(const char *pin_root_path);
 
 int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
                       const char *pin_root_path);

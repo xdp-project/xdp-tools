@@ -335,6 +335,10 @@ static int remove_unused_maps(const char *pin_root_path, __u32 features)
 			goto out;
 	}
 
+	err = check_program_pins(pin_root_path);
+	if (err && err != -ENOENT)
+		return err;
+
 	if (!features) {
 		char buf[PATH_MAX];
 
@@ -362,6 +366,7 @@ static int remove_unused_maps(const char *pin_root_path, __u32 features)
 			goto out;
 		}
 	}
+
 out:
 	if (dir_fd >= 0)
 		close(dir_fd);
