@@ -160,7 +160,7 @@ out:
 static const struct loadopt {
 	bool help;
 	struct iface iface;
-	int features;
+	unsigned int features;
 	bool force;
 	bool skb_mode;
 	bool whitelist_mode;
@@ -217,7 +217,7 @@ int do_load(const void *cfg, const char *pin_root_path)
 	char errmsg[STRERR_BUFSIZE], featbuf[100];
 	const struct loadopt *opt = cfg;
 	struct bpf_object *obj = NULL;
-	int features = opt->features;
+	unsigned int features = opt->features;
 	int err = EXIT_SUCCESS;
 	char *progname;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,

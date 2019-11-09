@@ -128,8 +128,8 @@ static const struct flag_val *find_flag(const struct flag_val *flag_vals,
 static int handle_flags(char *optarg, void *tgt, void *typearg)
 {
 	const struct flag_val *flag, *flag_vals = typearg;
-	int *opt_set = tgt;
-	int flagval = 0;
+	unsigned int *opt_set = tgt;
+	unsigned int flagval = 0;
 	char *c = NULL;
 
 	while (*optarg) {

@@ -41,7 +41,7 @@ struct prog_option {
 
 struct flag_val {
         char *flagstring;
-        int flagval;
+        unsigned int flagval;
 };
 
 struct iface {
