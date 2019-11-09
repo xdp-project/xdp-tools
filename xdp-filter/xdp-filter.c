@@ -278,12 +278,23 @@ static int remove_unused_maps(const char *pin_root_path, __u32 features)
 	}
 
 	if (!features) {
+		char buf[PATH_MAX];
+
 		err = unlink_pinned_map(dir_fd, textify(XDP_STATS_MAP_NAME));
 		if (err)
 			goto out;
 
 		close(dir_fd);
 		dir_fd = -1;
+
+		err = check_snprintf(buf, sizeof(buf), "%s/%s", pin_root_path, "programs");
+		pr_debug("Removing program directory %s\n", buf);
+		err = rmdir(buf);
+		if (err) {
+			err = -errno;
+			pr_warn("Unable to rmdir: %s\n", strerror(-err));
+			goto out;
+		}
 
 		pr_debug("Removing pinning directory %s\n", pin_root_path);
 		err = rmdir(pin_root_path);
