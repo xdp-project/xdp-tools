@@ -4,6 +4,7 @@
 #define __UTIL_H
 
 #include <bpf/libbpf.h>
+#include "params.h"
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
@@ -33,7 +34,9 @@ struct bpf_object *open_bpf_file(const char *progname,
                                  struct bpf_object_open_opts *opts);
 int load_bpf_object(struct bpf_object *obj, bool raise_rlimit);
 int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
-                       int ifindex, bool force, bool skb_mode);
+                       const struct iface *iface, bool force, bool skb_mode,
+                       const char *pin_root_dir);
+int detach_xdp_program(const struct iface *iface, const char *pin_root_dir);
 
 int get_xdp_prog_info(int ifindex, struct bpf_prog_info *info);
 int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir);

@@ -227,8 +227,8 @@ retry:
 		goto out;
 	}
 
-	err = attach_xdp_program(obj, NULL,
-				 opt->iface.ifindex, opt->force, opt->skb_mode);
+	err = attach_xdp_program(obj, NULL, &opt->iface, opt->force,
+				 opt->skb_mode, pin_root_path);
 	if (err) {
 		pr_warn("Couldn't attach XDP program on iface '%s'\n",
 			opt->iface.ifname);
@@ -347,7 +347,7 @@ int do_unload(const void *cfg, const char *pin_root_path)
 	pr_debug("Removing XDP program with features %s from iface %s\n",
 		 featbuf, opt->iface.ifname);
 
-	err = bpf_set_link_xdp_fd(opt->iface.ifindex, -1, 0);
+	err = detach_xdp_program(&opt->iface, pin_root_path);
 	if (err) {
 		pr_warn("Removing set xdp fd on iface %s failed (%d): %s\n",
 			opt->iface.ifname, -err, strerror(-err));

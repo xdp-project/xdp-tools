@@ -192,8 +192,10 @@ int load_bpf_object(struct bpf_object *obj, bool raise_limit)
 }
 
 int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
-		       int ifindex, bool force, bool skb_mode)
+		       const struct iface *iface, bool force, bool skb_mode,
+		       const char *pin_root_dir)
 {
+	int ifindex = iface->ifindex;
 	int err = 0, xdp_flags = 0;
 	struct bpf_program *prog;
 	int prog_fd;
@@ -256,6 +258,11 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 	}
 
 	return err;
+}
+
+int detach_xdp_program(const struct iface *iface, const char *pin_root_dir)
+{
+	return bpf_set_link_xdp_fd(iface->ifindex, -1, 0);
 }
 
 static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
