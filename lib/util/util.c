@@ -384,7 +384,7 @@ out:
 int get_iface_program(const struct iface *iface, const char *pin_root_path,
 		      char *prog_name, size_t prog_name_len)
 {
-	int ret = 0, err, ifindex = iface->ifindex;
+	int ret = -ENOENT, err, ifindex = iface->ifindex;
 	char pin_path[PATH_MAX];
 	bool remove_all = false;
 	struct dirent *de;
