@@ -472,6 +472,7 @@ int iterate_iface_programs(const char *pin_root_path,
 			continue;
 
 		iface.ifname = de->d_name;
+		iface.ifindex = if_nametoindex(iface.ifname);
 
 		err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
 				     pin_root_path, iface.ifname);
