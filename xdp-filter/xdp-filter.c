@@ -293,6 +293,8 @@ static int remove_unused_maps(const char *pin_root_path, __u32 features)
 
 	dir_fd = open(pin_root_path, O_DIRECTORY);
 	if (dir_fd < 0) {
+		if (errno == ENOENT)
+			return 0;
 		err = -errno;
 		pr_warn("Unable to open pin directory %s: %s\n",
 			pin_root_path, strerror(-err));
@@ -358,20 +360,51 @@ out:
 	return err;
 }
 
+static int remove_iface_program(const struct iface *iface, const char *prog_name,
+				void *arg)
+{
+	char *pin_root_path = arg;
+	char buf[100];
+	__u32 feats;
+	int err;
+
+	feats = find_features(prog_name);
+	if (!feats) {
+		pr_warn("Unrecognised XDP program on interface %s. Not removing.\n",
+			iface->ifname);
+		return -ENOENT;
+	}
+
+	print_flags(buf, sizeof(buf), print_features, feats);
+	pr_debug("Removing XDP program with features %s from iface %s\n",
+		 buf, iface->ifname);
+
+	err = detach_xdp_program(iface, pin_root_path);
+	if (err) {
+		pr_warn("Removing XDP program on iface %s failed (%d): %s\n",
+			iface->ifname, -err, strerror(-err));
+	}
+	return err;
+}
+
+
 static const struct unloadopt {
+	bool all;
 	bool keep;
 	struct iface iface;
 } defaults_unload = {};
 
 static struct prog_option unload_options[] = {
+	DEFINE_OPTION("all", OPT_BOOL, struct unloadopt, all,
+		      .short_opt = 'a',
+		      .help = "Unload from all interfaces"),
 	DEFINE_OPTION("keep-maps", OPT_BOOL, struct unloadopt, keep,
 		      .short_opt = 'k',
 		      .help = "Don't destroy unused maps after unloading"),
 	DEFINE_OPTION("dev", OPT_IFNAME, struct unloadopt, iface,
 		      .positional = true,
 		      .metavar = "<ifname>",
-		      .required = true,
-		      .help = "Load on device <ifname>"),
+		      .help = "Unload from device <ifname>"),
 	END_OPTIONS
 };
 
@@ -384,6 +417,21 @@ int do_unload(const void *cfg, const char *pin_root_path)
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 
+	if (opt->all) {
+		pr_debug("Removing xdp-filter from all interfaces\n");
+		err = iterate_iface_programs(pin_root_path, remove_iface_program,
+					     (void *)pin_root_path);
+		if (err && err != -ENOENT)
+			goto out;
+		goto clean_maps;
+	}
+
+	if (!opt->iface.ifindex) {
+		pr_warn("Must specify ifname or --all\n");
+		err = EXIT_FAILURE;
+		goto out;
+	}
+
 	err = get_iface_program(&opt->iface, pin_root_path, buf, sizeof(buf));
 	if (err) {
 		pr_warn("xdp-filter is not loaded on %s\n", opt->iface.ifname);
@@ -391,25 +439,11 @@ int do_unload(const void *cfg, const char *pin_root_path)
 		goto out;
 	}
 
-	feats = find_features(buf);
-	if (!feats) {
-		pr_warn("Unrecognised XDP program on interface %s. Not removing.\n",
-			opt->iface.ifname);
-		err = EXIT_FAILURE;
+	err = remove_iface_program(&opt->iface, buf, (void *)pin_root_path);
+	if (err)
 		goto out;
-	}
 
-	print_flags(buf, sizeof(buf), print_features, feats);
-	pr_debug("Removing XDP program with features %s from iface %s\n",
-		 buf, opt->iface.ifname);
-
-	err = detach_xdp_program(&opt->iface, pin_root_path);
-	if (err) {
-		pr_warn("Removing set xdp fd on iface %s failed (%d): %s\n",
-			opt->iface.ifname, -err, strerror(-err));
-		goto out;
-	}
-
+clean_maps:
 	if (opt->keep) {
 		pr_debug("Not removing pinned maps because of --keep-maps option\n");
 		goto out;
