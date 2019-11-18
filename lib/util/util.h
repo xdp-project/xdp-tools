@@ -45,9 +45,10 @@ int detach_xdp_program(const struct iface *iface, const char *pin_root_dir);
 
 typedef int (*program_callback)(const struct iface *iface,
                                 const char *prog_name,
+                                bool is_skb,
                                 void *arg);
 int get_iface_program(const struct iface *iface, const char *pin_root_path,
-                      char *prog_name, size_t prog_name_len);
+                      char *prog_name, size_t prog_name_len, bool *is_skb);
 int iterate_iface_programs(const char *pin_root_path, program_callback cb,
                            void *arg);
 

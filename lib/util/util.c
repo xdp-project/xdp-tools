@@ -161,14 +161,14 @@ static int get_pinned_object_fd(const char *path, void *info, __u32 *info_len)
 	return pin_fd;
 }
 
-static bool program_is_loaded(int ifindex, const char *pin_path)
+static bool program_is_loaded(int ifindex, const char *pin_path, bool *is_skb)
 {
 	struct bpf_prog_info if_info = {}, pinned_info = {};
 	__u32 info_len = sizeof(if_info);
 	int if_fd, pinned_fd;
 	bool ret;
 
-	if_fd = __get_xdp_prog_info(ifindex, &if_info, NULL);
+	if_fd = __get_xdp_prog_info(ifindex, &if_info, is_skb);
 	if (if_fd < 0) {
 		return false;
 	}
@@ -203,7 +203,7 @@ int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
 	if (err)
 		return err;
 
-	if (!program_is_loaded(iface->ifindex, pin_path))
+	if (!program_is_loaded(iface->ifindex, pin_path, NULL))
 		return -ENOENT;
 
 	return __get_xdp_prog_info(iface->ifindex, info, is_skb);
@@ -255,7 +255,7 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 		return err;
 
 	err = get_iface_program(iface, pin_root_path, old_prog_name,
-				sizeof(old_prog_name));
+				sizeof(old_prog_name), NULL);
 	has_old = err != -ENOENT;
 
 	if (!force) {
@@ -266,7 +266,7 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 		}
 
 		xdp_flags |= XDP_FLAGS_UPDATE_IF_NOEXIST;
-	} else if (!has_old && program_is_loaded(ifindex, NULL)) {
+	} else if (!has_old && program_is_loaded(ifindex, NULL, NULL)) {
 		pr_warn("Found an XDP program on %s, but not installed by us. "
 			"Refusing to replace; remove manually and try again\n",
 			iface->ifname);
@@ -364,7 +364,7 @@ int detach_xdp_program(const struct iface *iface, const char *pin_root_path)
 	int err;
 
 	err = get_iface_program(iface, pin_root_path, prog_name,
-				sizeof(prog_name));
+				sizeof(prog_name), NULL);
 	if (err) {
 		pr_warn("No XDP program loaded on %s\n", iface->ifname);
 		return -ENOENT;
@@ -394,7 +394,7 @@ out:
 }
 
 int get_iface_program(const struct iface *iface, const char *pin_root_path,
-		      char *prog_name, size_t prog_name_len)
+		      char *prog_name, size_t prog_name_len, bool *is_skb)
 {
 	int ret = -ENOENT, err, ifindex = iface->ifindex;
 	char pin_path[PATH_MAX];
@@ -437,7 +437,7 @@ int get_iface_program(const struct iface *iface, const char *pin_root_path,
 			continue;
 		}
 
-		if (!program_is_loaded(iface->ifindex, pin_path)) {
+		if (!program_is_loaded(iface->ifindex, pin_path, is_skb)) {
 			ret = -ENOENT;
 			pr_debug("Program %s no longer loaded on %s\n",
 				 de->d_name, iface->ifname);
@@ -478,6 +478,7 @@ int iterate_iface_programs(const char *pin_root_path,
 	while ((de = readdir(dr)) != NULL) {
 		char prog_name[PATH_MAX];
 		struct iface iface = {};
+		bool is_skb;
 
 		if (!strcmp(".", de->d_name) ||
 		    !strcmp("..", de->d_name))
@@ -492,7 +493,7 @@ int iterate_iface_programs(const char *pin_root_path,
 			goto out;
 
 		err = get_iface_program(&iface, pin_root_path,
-					prog_name, sizeof(prog_name));
+					prog_name, sizeof(prog_name), &is_skb);
 
 		if (err == -ENOENT || err == -ENODEV) {
 			err = rmdir(pin_path);
@@ -503,7 +504,7 @@ int iterate_iface_programs(const char *pin_root_path,
 			goto out;
 		}
 
-		err = cb(&iface, prog_name, arg);
+		err = cb(&iface, prog_name, is_skb, arg);
 		if (err)
 			goto out;
 	}
