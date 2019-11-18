@@ -836,7 +836,7 @@ static struct prog_option status_options[] = {
 int print_iface_status(const struct iface *iface, const char *prog_name,
 		       bool is_skb, void *arg)
 {
-	__u32 feat;
+	__u32 feat = 0;
 	int err;
 
 	err = get_iface_features(iface, prog_name, false, &feat);
