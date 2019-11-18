@@ -113,7 +113,7 @@ int map_set_flags(int fd, void *key, __u8 flags)
 }
 
 static int get_iface_features(const struct iface *iface, const char *prog_name,
-			      void *arg)
+			      bool is_skb, void *arg)
 {
 	__u32 *all_feats = arg;
 
@@ -363,7 +363,7 @@ out:
 }
 
 static int remove_iface_program(const struct iface *iface, const char *prog_name,
-				void *arg)
+				bool is_skb, void *arg)
 {
 	char *pin_root_path = arg;
 	char buf[100];
@@ -434,14 +434,14 @@ int do_unload(const void *cfg, const char *pin_root_path)
 		goto out;
 	}
 
-	err = get_iface_program(&opt->iface, pin_root_path, buf, sizeof(buf));
+	err = get_iface_program(&opt->iface, pin_root_path, buf, sizeof(buf), NULL);
 	if (err) {
 		pr_warn("xdp-filter is not loaded on %s\n", opt->iface.ifname);
 		err = EXIT_FAILURE;
 		goto out;
 	}
 
-	err = remove_iface_program(&opt->iface, buf, (void *)pin_root_path);
+	err = remove_iface_program(&opt->iface, buf, false, (void *)pin_root_path);
 	if (err)
 		goto out;
 
@@ -834,20 +834,25 @@ static struct prog_option status_options[] = {
 };
 
 int print_iface_status(const struct iface *iface, const char *prog_name,
-		       void *arg)
+		       bool is_skb, void *arg)
 {
 	__u32 feat;
 	int err;
 
-	err = get_iface_features(iface, prog_name, &feat);
+	err = get_iface_features(iface, prog_name, false, &feat);
 	if (err)
 		return err;
 
 	if (feat) {
 		char featbuf[100];
+		char namebuf[100];
 
 		print_flags(featbuf, sizeof(featbuf), print_features, feat);
-		printf("  %-40s %s\n", iface->ifname, featbuf);
+		if (is_skb)
+			snprintf(namebuf, sizeof(namebuf), "%s (skb mode)", iface->ifname);
+		else
+			snprintf(namebuf, sizeof(namebuf), "%s", iface->ifname);
+		printf("  %-40s %s\n", namebuf, featbuf);
 	}
 	return 0;
 }
