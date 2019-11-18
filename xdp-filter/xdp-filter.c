@@ -255,12 +255,14 @@ retry:
 
 	err = bpf_object__load(obj);
 	if (err) {
-		pr_debug("Permission denied when loading eBPF object; "
-			 "raising rlimit and retrying\n");
+		if (err == -EPERM) {
+			pr_debug("Permission denied when loading eBPF object; "
+				 "raising rlimit and retrying\n");
 
-		if (!double_rlimit()) {
-			bpf_object__close(obj);
-			goto retry;
+			if (!double_rlimit()) {
+				bpf_object__close(obj);
+				goto retry;
+			}
 		}
 
 		libbpf_strerror(err, errmsg, sizeof(errmsg));

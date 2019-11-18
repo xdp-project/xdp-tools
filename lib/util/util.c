@@ -68,14 +68,23 @@ int double_rlimit()
 	return 0;
 }
 
-static int __get_xdp_prog_info(int ifindex, struct bpf_prog_info *info)
+static int __get_xdp_prog_info(int ifindex, struct bpf_prog_info *info, bool *is_skb)
 {
 	__u32 prog_id, info_len = sizeof(*info);
+	struct xdp_link_info xinfo = {};
 	int prog_fd, err = 0;
 
-	err = bpf_get_link_xdp_id(ifindex, &prog_id, 0);
+	err = bpf_get_link_xdp_info(ifindex, &xinfo, sizeof(xinfo), 0);
 	if (err)
 		goto out;
+
+	if (xinfo.attach_mode == XDP_ATTACHED_SKB)
+		prog_id = xinfo.skb_prog_id;
+	else
+		prog_id = xinfo.drv_prog_id;
+
+	if (!prog_id)
+		return -ENOENT;
 
 	prog_fd = bpf_prog_get_fd_by_id(prog_id);
 	if (prog_fd < 0) {
@@ -86,6 +95,9 @@ static int __get_xdp_prog_info(int ifindex, struct bpf_prog_info *info)
 	err = bpf_obj_get_info_by_fd(prog_fd, info, &info_len);
 	if (err)
 		goto out;
+
+	if (is_skb)
+		*is_skb = xinfo.attach_mode == XDP_ATTACHED_SKB;
 
 out:
 	return err;
@@ -156,7 +168,7 @@ static bool program_is_loaded(int ifindex, const char *pin_path)
 	int if_fd, pinned_fd;
 	bool ret;
 
-	if_fd = __get_xdp_prog_info(ifindex, &if_info);
+	if_fd = __get_xdp_prog_info(ifindex, &if_info, NULL);
 	if (if_fd < 0) {
 		return false;
 	}
@@ -181,7 +193,7 @@ static bool program_is_loaded(int ifindex, const char *pin_path)
 }
 
 int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
-		      const char *pin_root_path)
+		      bool *is_skb, const char *pin_root_path)
 {
 	char pin_path[PATH_MAX];
 	int err;
@@ -194,7 +206,7 @@ int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
 	if (!program_is_loaded(iface->ifindex, pin_path))
 		return -ENOENT;
 
-	return __get_xdp_prog_info(iface->ifindex, info);
+	return __get_xdp_prog_info(iface->ifindex, info, is_skb);
 }
 
 static int make_dir_subdir(const char *parent, const char *dir)

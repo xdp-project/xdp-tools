@@ -52,7 +52,7 @@ int iterate_iface_programs(const char *pin_root_path, program_callback cb,
                            void *arg);
 
 int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
-                      const char *pin_root_path);
+                      bool *is_skb, const char *pin_root_path);
 int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir);
 int get_pinned_map_fd(const char *bpf_root, const char *map_name,
                       struct bpf_map_info *info);
