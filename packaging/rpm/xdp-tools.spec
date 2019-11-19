@@ -1,5 +1,3 @@
-%global srcname xdp-tools
-
 Name:             xdp-tools
 Version:          0.0.1
 Release:          1%{?dist}
