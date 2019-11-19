@@ -929,20 +929,28 @@ out:
 
 static const struct pollopt {
 	__u32 interval;
-} defaults_poll = {};
+} defaults_poll = {
+		.interval = 1000
+};
 
 static struct prog_option poll_options[] = {
 	DEFINE_OPTION("interval", OPT_U32, struct pollopt, interval,
 		      .short_opt = 'i',
 		      .metavar = "<interval>",
-		      .help = "Polling interval in milliseconds"),
+		      .help = "Polling interval in milliseconds (default 1000)"),
 	END_OPTIONS
 };
 
 int do_poll(const void *cfg, const char *pin_root_path)
 {
-	int err = EXIT_SUCCESS, map_fd = -1;
+	int err = 0, map_fd = -1;
  	const struct pollopt *opt = cfg;
+
+	if (!opt->interval) {
+		err = -EINVAL;
+		pr_warn("Can't use a polling interval of 0\n");
+		goto out;
+	}
 
 	map_fd = get_pinned_map_fd(pin_root_path, textify(XDP_STATS_MAP_NAME), NULL);
 	if (map_fd < 0) {
@@ -960,7 +968,7 @@ int do_poll(const void *cfg, const char *pin_root_path)
 	}
 
 out:
-	return err;
+	return err ? EXIT_FAILURE : EXIT_SUCESS;
 }
 
 int do_help(const void *cfg, const char *pin_root_path)
