@@ -248,7 +248,13 @@ retry:
 	obj = open_bpf_file(progname, &opts);
 	err = libbpf_get_error(obj);
 	if (err) {
-		pr_warn("Couldn't load BPF program: %s\n", strerror(-err));
+		if (err == -ENOENT) {
+			pr_warn("Couldn't load the eBPF program (libbpf said 'no such file').\n"
+				"Maybe xdp-filter was compiled with a too old "
+				"version of LLVM (need v9.0+)?\n");
+		} else {
+			pr_warn("Couldn't load BPF program: %s\n", strerror(-err));
+		}
 		obj = NULL;
 		goto out;
 	}
