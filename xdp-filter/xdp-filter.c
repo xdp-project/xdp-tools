@@ -248,6 +248,7 @@ retry:
 	obj = open_bpf_file(progname, &opts);
 	err = libbpf_get_error(obj);
 	if (err) {
+		pr_warn("Couldn't load BPF program: %s\n", strerror(-err));
 		obj = NULL;
 		goto out;
 	}
