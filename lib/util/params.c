@@ -251,7 +251,7 @@ static void _print_positional(const struct prog_option *long_options)
 	const struct prog_option *opt;
 
 	FOR_EACH_OPTION(long_options, opt) {
-		if (opt->positional)
+		if (!opt->positional)
 			continue;
 
 		printf(" %s", opt->metavar ?: opt->name);
