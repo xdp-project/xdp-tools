@@ -17,7 +17,7 @@ for f in $*; do
 
     found=0
     for w in $featstring; do
-        if [[ "$w" == "0x00000000" ]]; then
+        if [ "$w" = "0x00000000" ]; then
             found=1
         else
             if [ "$found" -eq "1" ]; then
