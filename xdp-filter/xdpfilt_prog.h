@@ -12,13 +12,12 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
-#include "bpf/parsing_helpers.h"
+#include "common_kern_user.h"
 
 /* Defines xdp_stats_map */
-#include "bpf/xdp_stats_kern_user.h"
-#include "bpf/xdp_stats_kern.h"
+#include "xdp/xdp_stats_kern.h"
+#include "xdp/parsing_helpers.h"
 
-#include "common_kern_user.h"
 
 #ifdef FILT_MODE_BLACKLIST
 #define VERDICT_HIT XDP_DROP

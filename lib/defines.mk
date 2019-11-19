@@ -8,6 +8,7 @@ SBINDIR?=$(PREFIX)/sbin
 BPF_DIR_MNT ?=/sys/fs/bpf
 BPF_OBJECT_DIR ?=$(LIBDIR)/bpf
 
+HEADER_DIR = $(LIB_DIR)/../headers
 DEFINES := -DBPF_DIR_MNT=\"$(BPF_DIR_MNT)\" -DBPF_OBJECT_PATH=\"$(BPF_OBJECT_DIR)\"
 
 ifneq ($(PRODUCTION),1)

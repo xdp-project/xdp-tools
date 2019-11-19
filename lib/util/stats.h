@@ -5,7 +5,7 @@
 
 #include <bpf/libbpf.h>
 
-#include "bpf/xdp_stats_kern_user.h"
+#include "xdp/xdp_stats_kern_user.h"
 
 struct record {
 	__u64 timestamp;
