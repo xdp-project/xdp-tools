@@ -954,9 +954,10 @@ int do_poll(const void *cfg, const char *pin_root_path)
 	prog_lock_release(0);
 	err = stats_poll(map_fd, pin_root_path, textify(XDP_STATS_MAP_NAME),
 			 opt->interval);
-	if (err)
+	if (err) {
+		pr_warn("Error polling statistics: %s\n", strerror(-err));
 		goto out;
-
+	}
 
 out:
 	return err;
