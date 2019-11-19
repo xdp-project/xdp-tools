@@ -1,10 +1,10 @@
 #+EXPORT_FILE_NAME: xdp-filter
 # This file serves both as a README on github, and as the source for the man
 # page; the latter through the org-mode man page export support.
-#
+# .
 # To export the man page, simply use the org-mode exporter; (require 'ox-man) if
 # it's not available.
-#
+# .
 # The org-mode export doesn't support extended title lines, so manually copy
 # over the first line of the resulting .man file before exporting and
 # committing.
