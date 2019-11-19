@@ -519,9 +519,6 @@ static struct prog_option port_options[] = {
 	DEFINE_OPTION("remove", OPT_BOOL, struct portopt, remove,
 		      .short_opt = 'r',
 		      .help = "Remove port instead of adding"),
-	DEFINE_OPTION("status", OPT_BOOL, struct portopt, print_status,
-		      .short_opt = 's',
-		      .help = "Print status of filtered ports after changing"),
 	DEFINE_OPTION("mode", OPT_FLAGS, struct portopt, mode,
 		      .short_opt = 'm',
 		      .metavar = "<mode>",
@@ -532,6 +529,9 @@ static struct prog_option port_options[] = {
 		      .metavar = "<proto>",
 		      .typearg = map_flags_tcpudp,
 		      .help = "Protocol to filter; default tcp,udp"),
+	DEFINE_OPTION("status", OPT_BOOL, struct portopt, print_status,
+		      .short_opt = 's',
+		      .help = "Print status of filtered ports after changing"),
 	END_OPTIONS
 };
 
@@ -703,14 +703,14 @@ static struct prog_option ip_options[] = {
 	DEFINE_OPTION("remove", OPT_BOOL, struct ipopt, remove,
 		      .short_opt = 'r',
 		      .help = "Remove address instead of adding"),
-	DEFINE_OPTION("status", OPT_BOOL, struct ipopt, print_status,
-		      .short_opt = 's',
-		      .help = "Print status of filtered addresses after changing"),
 	DEFINE_OPTION("mode", OPT_FLAGS, struct ipopt, mode,
 		      .short_opt = 'm',
 		      .metavar = "<mode>",
 		      .typearg = map_flags_srcdst,
 		      .help = "Filter mode; default dst"),
+	DEFINE_OPTION("status", OPT_BOOL, struct ipopt, print_status,
+		      .short_opt = 's',
+		      .help = "Print status of filtered addresses after changing"),
 	END_OPTIONS
 };
 
@@ -794,14 +794,14 @@ static struct prog_option ether_options[] = {
 	DEFINE_OPTION("remove", OPT_BOOL, struct etheropt, remove,
 		      .short_opt = 'r',
 		      .help = "Remove address instead of adding"),
-	DEFINE_OPTION("status", OPT_BOOL, struct etheropt, print_status,
-		      .short_opt = 's',
-		      .help = "Print status of filtered addresses after changing"),
 	DEFINE_OPTION("mode", OPT_FLAGS, struct etheropt, mode,
 		      .short_opt = 'm',
 		      .metavar = "<mode>",
 		      .typearg = map_flags_srcdst,
 		      .help = "Filter mode; default dst"),
+	DEFINE_OPTION("status", OPT_BOOL, struct etheropt, print_status,
+		      .short_opt = 's',
+		      .help = "Print status of filtered addresses after changing"),
 	END_OPTIONS
 };
 
