@@ -303,10 +303,13 @@ bool is_prefix(const char *pfx, const char *str)
 }
 
 void usage(const char *prog_name, const char *doc,
-           const struct prog_option *long_options, bool full)
+           const struct prog_option *poptions, bool full)
 {
+	const struct prog_option *opt;
+	int num_req = 0;
+
 	printf("\nUsage: %s [options]", prog_name);
-	_print_positional(long_options);
+	_print_positional(poptions);
 	printf("\n");
 
 	if (!full) {
@@ -314,12 +317,18 @@ void usage(const char *prog_name, const char *doc,
 		return;
 	}
 
+	FOR_EACH_OPTION(poptions, opt)
+		if (opt->required)
+			num_req++;
+
 	printf("\n %s\n\n", doc);
-	printf("Required options:\n");
-	_print_options(long_options, true);
-	printf("\n");
-	printf("Other options:\n");
-	_print_options(long_options, false);
+	if (num_req) {
+		printf("Required parameters:\n");
+		_print_options(poptions, true);
+		printf("\n");
+	}
+	printf("Options:\n");
+	_print_options(poptions, false);
 	printf(" -v, --verbose              Enable verbose logging (-vv: more verbose)\n");
 	printf(" -h, --help                 Show this help\n");
 	printf("\n");
