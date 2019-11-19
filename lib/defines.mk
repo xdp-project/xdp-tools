@@ -5,6 +5,7 @@ include $(LIB_DIR)/../config.mk
 PREFIX?=/usr
 LIBDIR?=$(PREFIX)/lib
 SBINDIR?=$(PREFIX)/sbin
+HDRDIR?=$(PREFIX)/include/xdp
 BPF_DIR_MNT ?=/sys/fs/bpf
 BPF_OBJECT_DIR ?=$(LIBDIR)/bpf
 

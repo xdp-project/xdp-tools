@@ -1,8 +1,9 @@
 
-include ../config.mk
-SUBDIRS=util
 
 LIB_DIR = .
+include defines.mk
+
+SUBDIRS=util
 
 all: $(OBJECT_LIBBPF)
 	@set -e; \
@@ -13,6 +14,10 @@ all: $(OBJECT_LIBBPF)
 clean: libbpf_clean
 	@for i in $(SUBDIRS); \
 	do $(MAKE) -C $$i clean; done
+
+install:
+	install -m 0755 -d $(DESTDIR)$(HDRDIR)
+	install -m 0644 $(HEADER_DIR)/xdp/*.h $(DESTDIR)$(HDRDIR)
 
 libbpf: $(OBJECT_LIBBPF)
 

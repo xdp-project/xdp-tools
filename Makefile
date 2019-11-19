@@ -1,3 +1,4 @@
+
 # SPDX-License-Identifier: GPL-2.0
 # Top level Makefile for xdp-tools
 
@@ -12,10 +13,7 @@ ifeq ($(VERBOSE),0)
 MAKEFLAGS += --no-print-directory
 endif
 
-LIBSUBDIRS=lib
-PROGSUBDIRS=xdp-filter
-SUBDIRS=$(LIBSUBDIRS) $(PROGSUBDIRS)
-
+SUBDIRS=lib xdp-filter
 
 all: llvm-check config.mk
 	@set -e; \
@@ -50,13 +48,10 @@ clobber:
 
 distclean: clobber
 
-
 clean:
 	@for i in $(SUBDIRS); \
 	do $(MAKE) -C $$i clean; done
 
-
 install: all
-	@for i in $(PROGSUBDIRS); \
+	@for i in $(SUBDIRS); \
 	do $(MAKE) -C $$i install; done
-
