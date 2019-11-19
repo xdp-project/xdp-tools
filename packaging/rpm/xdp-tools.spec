@@ -1,5 +1,5 @@
 Name:             xdp-tools
-Version:          0.0.1
+Version:          0.0.2
 Release:          1%{?dist}
 Summary:          Utilities and example programs for use with XDP
 
@@ -24,6 +24,15 @@ BuildRequires:    pkgconfig
 %description
 Utilities and example programs for use with XDP
 
+%package devel
+Summary:          Development files for %{name}
+Requires:         %{name} = %{version}-%{release}
+Requires:         kernel-headers
+
+%description devel
+The %{name}-devel package contains libraries header files for
+developing applications that use %{name}
+
 %prep
 %autosetup -p1 -n %{name}-%{version}
 
@@ -40,13 +49,21 @@ make %{?_smp_mflags}
 export DESTDIR='%{buildroot}'
 export SBINDIR='%{_sbindir}'
 export LIBDIR='%{_libdir}'
+export MANDIR='%{_mandir}'
+export HDRDIR='%{_includedir}/xdp'
 make install
 
 %files
 %{_sbindir}/xdp-filter
+%{_mandir}/man8/*
 %{_libdir}/bpf/*.o
 
+%files devel
+%{_includedir}/xdp/
 
 %changelog
+* Thu Nov 21 2019 Toke Høiland-Jørgensen <toke@redhat.com> 0.0.2-1
+- Upstream update
+
 * Fri Nov 8 2019 Toke Høiland-Jørgensen <toke@redhat.com> 0.0.1-1
 - Initial release
