@@ -6,6 +6,8 @@ PREFIX?=/usr
 LIBDIR?=$(PREFIX)/lib
 SBINDIR?=$(PREFIX)/sbin
 HDRDIR?=$(PREFIX)/include/xdp
+DATADIR?=$(PREFIX)/share
+MANDIR?=$(DATADIR)/man
 BPF_DIR_MNT ?=/sys/fs/bpf
 BPF_OBJECT_DIR ?=$(LIBDIR)/bpf
 

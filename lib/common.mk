@@ -37,6 +37,7 @@ CFLAGS += -I$(HEADER_DIR) -I$(LIB_DIR)/util
 BPF_CFLAGS += -I$(HEADER_DIR)
 
 BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h)
+MAN_FILES := $(wildcard ${USER_TARGETS:=.1})
 
 all: $(USER_TARGETS) $(XDP_OBJ)
 
@@ -52,6 +53,8 @@ install:
 	install -m 0755 -d $(DESTDIR)$(BPF_OBJECT_DIR)
 	install -m 0755 $(USER_TARGETS) $(DESTDIR)$(SBINDIR)
 	install -m 0644 $(XDP_OBJ) $(DESTDIR)$(BPF_OBJECT_DIR)
+	$(if $(MAN_FILES),install -m 0755 -d $(DESTDIR)$(MANDIR))
+	$(if $(MAN_FILES),install -m 0644 $(MAN_FILES) $(DESTDIR)$(MANDIR))
 
 $(OBJECT_LIBBPF):
 	$(Q)$(MAKE) -C $(LIB_DIR) libbpf
