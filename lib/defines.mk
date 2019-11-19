@@ -2,7 +2,7 @@ CFLAGS ?= -O2 -g
 
 include $(LIB_DIR)/../config.mk
 
-PREFIX?=/usr
+PREFIX?=/usr/local
 LIBDIR?=$(PREFIX)/lib
 SBINDIR?=$(PREFIX)/sbin
 HDRDIR?=$(PREFIX)/include/xdp
