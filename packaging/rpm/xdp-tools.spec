@@ -40,10 +40,12 @@ make %{?_smp_mflags}
 export DESTDIR='%{buildroot}'
 export SBINDIR='%{_sbindir}'
 export LIBDIR='%{_libdir}'
+export MANDIR='%{_mandir}'
 make install
 
 %files
 %{_sbindir}/xdp-filter
+%{_mandir}/man8/xdp-filter.8
 %{_libdir}/bpf/*.o
 
 
