@@ -1,2 +1,21 @@
-* xdp-tools
-Utilities and example programs for use with XDP
+* xdp-tools - Utilities and example programs for use with XDP
+
+This repository contains a collection of utilities and example code to be used
+with the eXpress Data Path facility of the Linux kernel.
+
+For a general introduction to XDP, please see the [[https://github.com/xdp-project/xdp-tutorial][XDP tutorial]]. Some of the
+example code in this repository is derived from the tutorial, but packaged to be
+easier to re-use.
+
+The repository contains the following:
+
+- [[headers/xdp/][headers/xdp/]] - reusable eBPF code snippets for XDP (installed in /usr/include/xdp by =make install=).
+- [[lib/util/][lib/util/]] - common code shared between the different utilities
+- [[lib/libbpf/][lib/libbpf/]] - a git submodule with [[https://github.com/libbpf/libbpf][libbpf]], used if the system version is not recent enough
+- [[packaging/][packaging/]] - files used for distro packaging
+- [[xdp-filter/][xdp-filter/]] - a simple packet filtering utility powered by XDP
+
+To compile, first run =./configure=, then simply type =make=. Make sure you
+either have a sufficiently recent libbpf installed on your system, or that you
+pulled down the libbpf git submodule (=git submodule init && git submodule
+update=).
