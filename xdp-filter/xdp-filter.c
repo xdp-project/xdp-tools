@@ -609,8 +609,8 @@ int __print_ips(int map_fd, int af)
 
 int print_ips()
 {
+	int map_fd4 = -1, map_fd6 = -1;
 	char pin_root_path[PATH_MAX];
-	int map_fd4, map_fd6;
 	int err = 0;
 
 	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), PROG_NAME);
