@@ -1,0 +1,263 @@
+#+EXPORT_FILE_NAME: xdp-filter.1
+#+TITLE: xdp-filter
+
+* XDP-filter - a simple XDP-powered packet filter
+
+XDP-filter is a packet filtering utility powered by XDP. It is deliberately
+simple and so does not have the same matching capabilities as, e.g., netfilter.
+Instead, thanks to XDP, it can achieve very high drop rates: tens of millions of
+packets per second on a single CPU core.
+
+** Running xdp-filter
+The syntax for running xdp-filter is:
+
+#+begin_src sh
+xdp-filter COMMAND [options]
+
+Where COMMAND can be one of:
+       load        - load xdp-filter on an interface
+       unload      - unload xdp-filter from an interface
+       port        - add a port to the blacklist
+       ip          - add an IP address to the blacklist
+       ether       - add an Ethernet MAC address to the blacklist
+       status      - show current xdp-filter status
+       poll        - poll statistics output
+       help        - show the list of available commands
+#+end_src
+
+Each command, and its options are explained below. Or use =xdp-filter COMMAND
+--help= to see the options for each command.
+
+* The LOAD command
+To use =xdp-filter=, it must first be loaded unto an interface. This is
+accomplished with the =load= command, which takes the name of the interface as a
+parameter, and optionally allows specifying the features that should be
+included. By default all features are loaded, but de-selecting some features can
+speed up the packet matching, and increase performance by a substantial amount.
+
+The syntax for the =load= command is:
+
+=xdp-filter load [options] <ifname>=
+
+Where =<ifname>= is the name of the interface to load =xdp-filter= unto, and
+must be specified. The supported options are:
+
+** -F, --force
+Specifying this option causes =xdp-filter= to unload any XDP program already
+loaded on the interface.
+
+** -s, --skb-mode
+Specifying this option causes the XDP program to be loaded in the so-called /skb
+mode/ (also known as /generic XDP/). This is a compatibility mode that results
+in lower performance, but can be used on all network interfaces (whereas the
+default /native XDP mode/ requires specific driver support).
+
+** -w, --whitelist
+This option causes =xdp-filter= to run in /whitelist/ mode instead of the default
+/blacklist/ mode. In /whitelist/ mode, *all* packets are dropped *except* those
+matched by the filter options, whereas in /blacklist/ mode, only the packets
+matched by the specified rules are dropped.
+
+=xdp-filter= cannot be loaded simultaneously in /whitelist/ and /blacklist/ mode
+on the system.
+
+** -f, --features <feats>
+Use this option to select which features to include when loaded =xdp-filter=.
+The default is to load all available features. So select individual features
+specify one or more of these:
+
+ * *tcp*: Support filtering on TCP port number
+ * *udp*: Support filtering on UDP port number
+ * *ipv6*: Support filtering on IPv6 addresses
+ * *ipv4*: Support filtering on IPv4 addresses
+ * *ethernet*: Support filtering on Ethernet MAC addresses
+
+Specify multiple features by separating them with a comma. E.g.: =tcp,udp,ipv6=.
+
+** -v, --verbose
+Enable debug logging. Specify twice for even more verbosity.
+
+** -h, --help
+Display a summary of the available options
+
+* The UNLOAD command
+The =unload= command unloads =xdp-filter= from one (or all) interfaces, and
+cleans up the program state.
+
+The syntax for the =load= command is:
+
+=xdp-filter unload [options] <ifname>=
+
+Where =<ifname>= is the name of the interface to unload =xdp-filter= from, and
+must be specified unless the *--all* option is used. The supported options are:
+
+** -a, --all
+Specify this option to remove =xdp-filter= from all interfaces it was loaded
+unto. If this option is specified, no =<ifname>= is needed.
+
+This option can also be used to clean up all =xdp-filter= state if the XDP
+program(s) were unloaded by other means.
+
+** -k, --keep-maps
+Specify this option to prevent =xdp-filter= from clearing its map state. By
+default, all BPF maps no longer needed by any loaded program are removed.
+However, this will also remove the contents of the maps (the filtering rules),
+so this option can be used to keep the maps around so the rules persist until
+=xdp-filter= is loaded again.
+
+** -v, --verbose
+Enable debug logging. Specify twice for even more verbosity.
+
+** -h, --help
+Display a summary of the available options
+
+* The PORT command
+Use the =port= command to add a TCP or UDP port to the =xdp-filter= match list.
+For this to work, =xdp-filter= must be loaded with either the *udp* or the *tcp*
+feature (or both) on at least one interface.
+
+The syntax for the =port= command is:
+
+=xdp-filter port [options] <port>=
+
+Where =<port>= is the port number to add (or remove if the *--remove* is
+specified). The supported options are:
+
+** -r, --remove
+Remove the port instead of adding it.
+
+** -m, --mode <mode>
+Select filtering mode. Valid options are *src* and *dst*, both of which may be
+specified as =src,dst=. If *src* is specified, the port number will added as a
+/source port/ match, while if *dst* is specified, the port number will be added
+as a /destination port/ match. If both are specified, a packet will be matched
+if *either* its source or destination port is the specified port number.
+
+** -p, --proto <proto>
+Specify one (or both) of *udp* and/or *tcp* to match UDP or TCP ports,
+respectively.
+
+** -s, --status
+If this option is specified, the current list of matched ports will be printed
+after inserting the port number. Otherwise, nothing will be printed.
+
+** -v, --verbose
+Enable debug logging. Specify twice for even more verbosity.
+
+** -h, --help
+Display a summary of the available options
+
+
+* The IP command
+Use the =ip= command to add an IPv6 or an IPv4 address to the =xdp-filter= match
+list.
+
+The syntax for the =ip= command is:
+
+=xdp-filter ip [options] <ip>=
+
+Where =<ip>= is the IP address to add (or remove if the *--remove* is
+specified). Either IPv4 or IPv6 addresses can be specified, but =xdp-filter=
+must be loaded with the corresponding features (*ipv4* and *ipv6*,
+respectively). The supported options are:
+
+** -r, --remove
+Remove the IP address instead of adding it.
+
+** -m, --mode <mode>
+Select filtering mode. Valid options are *src* and *dst*, both of which may be
+specified as =src,dst=. If *src* is specified, the IP address will added as a
+/source IP/ match, while if *dst* is specified, the IP address will be added
+as a /destination IP/ match. If both are specified, a packet will be matched
+if *either* its source or destination IP is the specified IP address.
+
+** -s, --status
+If this option is specified, the current list of matched ips will be printed
+after inserting the IP address. Otherwise, nothing will be printed.
+
+** -v, --verbose
+Enable debug logging. Specify twice for even more verbosity.
+
+** -h, --help
+Display a summary of the available options
+
+* The ETHER command
+Use the =ether= command to add an Ethernet MAC address to the =xdp-filter= match
+list. For this to work, =xdp-filter= must be loaded with either the *ethernet*
+feature on at least one interface.
+
+The syntax for the =ether= command is:
+
+=xdp-filter ether [options] <addr>=
+
+Where =<addr>= is the MAC address to add (or remove if the *--remove* is
+specified). The supported options are:
+
+** -r, --remove
+Remove the MAC address instead of adding it.
+
+** -m, --mode <mode>
+Select filtering mode. Valid options are *src* and *dst*, both of which may be
+specified as =src,dst=. If *src* is specified, the MAC address will added as a
+/source MAC/ match, while if *dst* is specified, the MAC address will be added
+as a /destination MAC/ match. If both are specified, a packet will be matched
+if *either* its source or destination MAC is the specified MAC address.
+
+** -s, --status
+If this option is specified, the current list of matched ips will be printed
+after inserting the MAC address. Otherwise, nothing will be printed.
+
+** -v, --verbose
+Enable debug logging. Specify twice for even more verbosity.
+
+** -h, --help
+Display a summary of the available options
+
+* The STATUS command
+The =status= command prints the current status of =xdp-filter=: Which interfaces
+it is loaded on, the current list of rules, and some statistics for how many
+packets have been processed in total, and how many times each rule has been hit.
+
+The syntax for the =status= command is:
+
+=xdp-filter status [options]=
+
+Where the supported options are:
+
+** -v, --verbose
+Enable debug logging. Specify twice for even more verbosity.
+
+** -h, --help
+Display a summary of the available options
+
+* The POLL command
+The =poll= command periodically polls the =xdp-filter= statistics map and prints
+out the total number of packets and bytes processed by =xdp-filter=, as well as
+the number in the last polling interval, converted to packets (and bytes) per
+second. This can be used to inspect the performance of =xdp-filter=, and to
+compare the performance of the different feature sets selectable by the =load=
+parameter.
+
+The syntax for the =poll= command is:
+
+=xdp-filter poll [options]=
+
+Where the supported options are:
+
+** -i, --interval <interval>
+The polling interval, in milliseconds. Defaults to 1000 (1 second).
+
+** -v, --verbose
+Enable debug logging. Specify twice for even more verbosity.
+
+** -h, --help
+Display a summary of the available options
+
+* BUGS
+
+Please report any bugs on Github: https://github.com/xdp-project/xdp-tools/issues
+
+* AUTHOR
+
+xdp-filter was written by Toke Høiland-Jørgensen and Jesper Dangaard Brouer.
+This man page was written by Toke Høiland-Jørgensen.

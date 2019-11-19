@@ -9,11 +9,11 @@ easier to re-use.
 
 The repository contains the following:
 
+- [[xdp-filter/][xdp-filter/]] - a simple packet filtering utility powered by XDP
 - [[headers/xdp/][headers/xdp/]] - reusable eBPF code snippets for XDP (installed in /usr/include/xdp by =make install=).
 - [[lib/util/][lib/util/]] - common code shared between the different utilities
-- [[lib/libbpf/][lib/libbpf/]] - a git submodule with [[https://github.com/libbpf/libbpf][libbpf]], used if the system version is not recent enough
 - [[packaging/][packaging/]] - files used for distro packaging
-- [[xdp-filter/][xdp-filter/]] - a simple packet filtering utility powered by XDP
+- lib/libbpf/ - a git submodule with [[https://github.com/libbpf/libbpf][libbpf]], used if the system version is not recent enough
 
 To compile, first run =./configure=, then simply type =make=. Make sure you
 either have a sufficiently recent libbpf installed on your system, or that you

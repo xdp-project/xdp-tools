@@ -1,0 +1,5 @@
+* Library files
+
+This directory contains common Makefile definitions, and common code used by the
+different utilities. The libbpf subdir is a git submodule linking to the
+upstream libbpf github repository.
