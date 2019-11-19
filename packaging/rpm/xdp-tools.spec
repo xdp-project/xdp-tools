@@ -19,6 +19,7 @@ BuildRequires:    gcc
 BuildRequires:    pkgconfig
 
 %global debug_package %{nil}
+%global _hardened_build 1
 
 %description
 Utilities and example programs for use with XDP
@@ -28,7 +29,7 @@ Utilities and example programs for use with XDP
 
 
 %build
-export CFLAGS='%{optflags}'
+export CFLAGS='%{build_cflags}'
 export LDFLAGS='%{build_ldflags}'
 export LIBDIR='%{_libdir}'
 export PRODUCTION=1
