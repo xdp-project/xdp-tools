@@ -404,16 +404,16 @@ static const struct unloadopt {
 } defaults_unload = {};
 
 static struct prog_option unload_options[] = {
+	DEFINE_OPTION("dev", OPT_IFNAME, struct unloadopt, iface,
+		      .positional = true,
+		      .metavar = "<ifname>",
+		      .help = "Unload from device <ifname>"),
 	DEFINE_OPTION("all", OPT_BOOL, struct unloadopt, all,
 		      .short_opt = 'a',
 		      .help = "Unload from all interfaces"),
 	DEFINE_OPTION("keep-maps", OPT_BOOL, struct unloadopt, keep,
 		      .short_opt = 'k',
 		      .help = "Don't destroy unused maps after unloading"),
-	DEFINE_OPTION("dev", OPT_IFNAME, struct unloadopt, iface,
-		      .positional = true,
-		      .metavar = "<ifname>",
-		      .help = "Unload from device <ifname>"),
 	END_OPTIONS
 };
 
