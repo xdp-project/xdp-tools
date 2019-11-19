@@ -82,9 +82,9 @@ static int __always_inline lookup_verdict_udp(struct udphdr *udphdr)
 	__u32 key;
 
 	key = udphdr->dest;
-	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_TCP);
+	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_UDP);
 	key = udphdr->source;
-	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_TCP);
+	CHECK_MAP(&filter_ports, &key, MAP_FLAG_DST | MAP_FLAG_UDP);
 	return VERDICT_MISS;
 }
 #define FEATURE_UDP FEAT_UDP
