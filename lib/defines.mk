@@ -1,3 +1,4 @@
+CFLAGS ?= -O2 -g
 
 include $(LIB_DIR)/../config.mk
 
