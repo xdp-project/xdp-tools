@@ -968,7 +968,7 @@ int do_poll(const void *cfg, const char *pin_root_path)
 	}
 
 out:
-	return err ? EXIT_FAILURE : EXIT_SUCESS;
+	return err ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
 int do_help(const void *cfg, const char *pin_root_path)
