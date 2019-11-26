@@ -55,6 +55,7 @@ make install
 %{_sbindir}/xdp-filter
 %{_mandir}/man8/*
 %{_libdir}/bpf/*.o
+%license LICENSE
 
 %files devel
 %{_includedir}/xdp/
