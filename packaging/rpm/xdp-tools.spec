@@ -7,6 +7,7 @@ License:          GPLv2
 URL:              https://github.com/xdp-project/%{name}
 Source0:          https://github.com/xdp-project/%{name}/releases/download/v%{version}/xdp-tools-%{version}.tar.gz
 
+BuildRequires:    libbpf-devel
 BuildRequires:    elfutils-libelf-devel
 BuildRequires:    clang >= 9.0.0
 BuildRequires:    llvm >= 9.0.0
