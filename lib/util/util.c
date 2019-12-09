@@ -458,8 +458,8 @@ out:
 	return ret;
 }
 
-int iterate_iface_programs(const char *pin_root_path,
-			   program_callback cb, void *arg)
+int iterate_iface_programs_pinned(const char *pin_root_path,
+				  program_callback cb, void *arg)
 {
 	char pin_path[PATH_MAX];
 	struct dirent *de;
@@ -511,6 +511,43 @@ int iterate_iface_programs(const char *pin_root_path,
 
 out:
 	closedir(dr);
+	return err;
+}
+
+int iterate_iface_programs_all(const char *pin_root_path,
+			       program_callback cb, void *arg)
+{
+	struct if_nameindex *idx, *indexes = NULL;
+	int err = 0;
+
+	indexes = if_nameindex();
+	if (!indexes) {
+		err = -errno;
+		pr_warn("Couldn't get list of interfaces: %s\n", strerror(-err));
+		goto out;
+	}
+
+	for (idx = indexes; idx->if_index; idx++){
+		struct bpf_prog_info info = {};
+		struct iface iface = {
+			.ifindex = idx->if_index,
+			.ifname = idx->if_name,
+		};
+		bool is_skb;
+
+
+		err = __get_xdp_prog_info(iface.ifindex, &info, &is_skb);
+		if (err == -ENOENT)
+			continue;
+		else if (err)
+			goto out;
+
+		err = cb(&iface, info.name, is_skb, arg);
+		if (err)
+			goto out;
+	}
+
+out:
 	return err;
 }
 

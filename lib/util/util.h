@@ -49,8 +49,10 @@ typedef int (*program_callback)(const struct iface *iface,
                                 void *arg);
 int get_iface_program(const struct iface *iface, const char *pin_root_path,
                       char *prog_name, size_t prog_name_len, bool *is_skb);
-int iterate_iface_programs(const char *pin_root_path, program_callback cb,
-                           void *arg);
+int iterate_iface_programs_pinned(const char *pin_root_path, program_callback cb,
+                                  void *arg);
+int iterate_iface_programs_all(const char *pin_root_path, program_callback cb,
+                               void *arg);
 
 int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
                       bool *is_skb, const char *pin_root_path);

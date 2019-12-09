@@ -126,8 +126,8 @@ static int get_used_features(const char *pin_root_path, __u32 *feats)
 	__u32 all_feats = 0;
 	int err;
 
-	err = iterate_iface_programs(pin_root_path, get_iface_features,
-				     &all_feats);
+	err = iterate_iface_programs_pinned(pin_root_path, get_iface_features,
+					    &all_feats);
 	if (err && err != -ENOENT)
 		return err;
 
@@ -428,8 +428,9 @@ int do_unload(const void *cfg, const char *pin_root_path)
 
 	if (opt->all) {
 		pr_debug("Removing xdp-filter from all interfaces\n");
-		err = iterate_iface_programs(pin_root_path, remove_iface_program,
-					     (void *)pin_root_path);
+		err = iterate_iface_programs_pinned(pin_root_path,
+						    remove_iface_program,
+						    (void *)pin_root_path);
 		if (err && err != -ENOENT)
 			goto out;
 		goto clean_maps;
@@ -893,7 +894,8 @@ int do_status(const void *cfg, const char *pin_root_path)
 	printf("Loaded on interfaces:\n");
 	printf("  %-40s Enabled features\n", "");
 
-	err = iterate_iface_programs(pin_root_path, print_iface_status, NULL);
+	err = iterate_iface_programs_pinned(pin_root_path, print_iface_status,
+					    NULL);
 	printf("\n");
 
 	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS), NULL);
