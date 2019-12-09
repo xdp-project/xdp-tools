@@ -112,12 +112,13 @@ int map_set_flags(int fd, void *key, __u8 flags)
 	return bpf_map_update_elem(fd, key, &values, 0);
 }
 
-static int get_iface_features(const struct iface *iface, const char *prog_name,
+static int get_iface_features(const struct iface *iface,
+			      const struct bpf_prog_info *info,
 			      bool is_skb, void *arg)
 {
 	__u32 *all_feats = arg;
 
-	*all_feats |= find_features(prog_name);
+	*all_feats |= find_features(info->name);
 	return 0;
 }
 
@@ -369,7 +370,8 @@ out:
 	return err;
 }
 
-static int remove_iface_program(const struct iface *iface, const char *prog_name,
+static int remove_iface_program(const struct iface *iface,
+				const struct bpf_prog_info *info,
 				bool is_skb, void *arg)
 {
 	char *pin_root_path = arg;
@@ -377,7 +379,7 @@ static int remove_iface_program(const struct iface *iface, const char *prog_name
 	__u32 feats;
 	int err;
 
-	feats = find_features(prog_name);
+	feats = find_features(info->name);
 	if (!feats) {
 		pr_warn("Unrecognised XDP program on interface %s. Not removing.\n",
 			iface->ifname);
@@ -420,6 +422,7 @@ static struct prog_option unload_options[] = {
 int do_unload(const void *cfg, const char *pin_root_path)
 {
 	const struct unloadopt *opt = cfg;
+	struct bpf_prog_info info;
 	int err = EXIT_SUCCESS;
 	char buf[100];
 	__u32 feats;
@@ -442,14 +445,15 @@ int do_unload(const void *cfg, const char *pin_root_path)
 		goto out;
 	}
 
-	err = get_iface_program(&opt->iface, pin_root_path, buf, sizeof(buf), NULL);
+	err = get_iface_program(&opt->iface, pin_root_path, buf, sizeof(buf),
+				NULL, &info);
 	if (err) {
 		pr_warn("xdp-filter is not loaded on %s\n", opt->iface.ifname);
 		err = EXIT_FAILURE;
 		goto out;
 	}
 
-	err = remove_iface_program(&opt->iface, buf, false, (void *)pin_root_path);
+	err = remove_iface_program(&opt->iface, &info, false, (void *)pin_root_path);
 	if (err)
 		goto out;
 
@@ -841,13 +845,15 @@ static struct prog_option status_options[] = {
 	END_OPTIONS
 };
 
-int print_iface_status(const struct iface *iface, const char *prog_name,
+int print_iface_status(const struct iface *iface,
+		       const struct bpf_prog_info *info,
 		       bool is_skb, void *arg)
 {
 	__u32 feat = 0;
 	int err;
+	printf("%s\n", info->name);
 
-	err = get_iface_features(iface, prog_name, false, &feat);
+	err = get_iface_features(iface, info, false, &feat);
 	if (err)
 		return err;
 
