@@ -50,6 +50,8 @@ typedef int (*program_callback)(const struct iface *iface,
 int get_pinned_program(const struct iface *iface, const char *pin_root_path,
                        char *prog_name, size_t prog_name_len, bool *is_skb,
                        struct bpf_prog_info *info);
+int get_loaded_program(const struct iface *iface, bool *is_skb,
+                       struct bpf_prog_info *info);
 int iterate_iface_programs_pinned(const char *pin_root_path, program_callback cb,
                                   void *arg);
 int iterate_iface_programs_all(const char *pin_root_path, program_callback cb,

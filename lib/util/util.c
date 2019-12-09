@@ -198,6 +198,14 @@ out:
 	return ret;
 }
 
+int get_loaded_program(const struct iface *iface, bool *is_skb,
+		       struct bpf_prog_info *info)
+{
+	if (!program_is_loaded(iface->ifindex, NULL, is_skb, info))
+		return -ENOENT;
+	return 0;
+}
+
 int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
 		      bool *is_skb, const char *pin_root_path)
 {
