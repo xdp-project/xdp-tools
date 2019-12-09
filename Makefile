@@ -13,7 +13,7 @@ ifeq ($(VERBOSE),0)
 MAKEFLAGS += --no-print-directory
 endif
 
-SUBDIRS=lib xdp-filter
+SUBDIRS=lib xdp-filter xdp-loader
 
 all: llvm-check config.mk
 	@set -e; \
