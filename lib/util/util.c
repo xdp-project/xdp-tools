@@ -252,25 +252,14 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 		       const char *pin_root_path)
 {
 	char pin_path[PATH_MAX], old_prog_name[100];
+	struct bpf_program *prog = NULL;
 	int ifindex = iface->ifindex;
 	int err = 0, xdp_flags = 0;
-	struct bpf_program *prog;
 	struct stat sb = {};
 	bool has_old;
 	int prog_fd;
 
-	err = make_dir_subdir(pin_root_path, "programs");
-	if (err)
-		return err;
-
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s/%s",
-			     pin_root_path, iface->ifname, prog_name);
-	if (err)
-		return err;
-
-	err = get_pinned_program(iface, pin_root_path, old_prog_name,
-				sizeof(old_prog_name), NULL, NULL);
-	has_old = err != -ENOENT;
+	has_old = program_is_loaded(iface->ifindex, NULL, NULL, NULL);
 
 	if (!force) {
 		if (has_old) {
@@ -280,11 +269,6 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 		}
 
 		xdp_flags |= XDP_FLAGS_UPDATE_IF_NOEXIST;
-	} else if (!has_old && program_is_loaded(ifindex, NULL, NULL, NULL)) {
-		pr_warn("Found an XDP program on %s, but not installed by us. "
-			"Refusing to replace; remove manually and try again\n",
-			iface->ifname);
-		return -EEXIST;
 	} else if (has_old) {
 		pr_debug("Replacing old program '%s' on iface '%s'\n",
 			 old_prog_name, iface->ifname);
@@ -293,7 +277,8 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 	if (skb_mode)
 		xdp_flags |= XDP_FLAGS_SKB_MODE;
 
-	prog = bpf_object__find_program_by_title(obj, prog_name);
+	if (prog_name)
+		prog = bpf_object__find_program_by_title(obj, prog_name);
 	if (!prog)
 		prog = bpf_program__next(NULL, obj);
 
@@ -347,6 +332,22 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 	pr_debug("Program '%s' loaded on interface '%s'%s\n",
 		 prog_name, iface->ifname, skb_mode ? " in skb mode" : "");
 
+	if (!pin_root_path)
+		return 0;
+
+	err = make_dir_subdir(pin_root_path, "programs");
+	if (err)
+		return err;
+
+	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s/%s",
+			     pin_root_path, iface->ifname,
+			     prog_name ?: bpf_program__title(prog, false));
+	if (err)
+		return err;
+
+	err = get_pinned_program(iface, pin_root_path, old_prog_name,
+				 sizeof(old_prog_name), NULL, NULL);
+
 	if (has_old) {
 		char buf[PATH_MAX];
 		err = check_snprintf(buf, sizeof(buf), "%s/programs/%s/%s",
@@ -374,11 +375,11 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 
 int detach_xdp_program(const struct iface *iface, const char *pin_root_path)
 {
-	char pin_path[PATH_MAX], prog_name[100];
+	struct bpf_prog_info info;
+	char pin_path[PATH_MAX];
 	int err;
 
-	err = get_pinned_program(iface, pin_root_path, prog_name,
-				 sizeof(prog_name), NULL, NULL);
+	err = get_loaded_program(iface, NULL, &info);
 	if (err) {
 		pr_warn("No XDP program loaded on %s\n", iface->ifname);
 		return -ENOENT;
@@ -389,20 +390,24 @@ int detach_xdp_program(const struct iface *iface, const char *pin_root_path)
 		goto out;
 
 	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s/%s",
-			     pin_root_path, iface->ifname, prog_name);
+			     pin_root_path, iface->ifname, info.name);
 	if (err)
 		return err;
 
 	err = unlink(pin_path);
-	if (err)
+	if (err && errno != ENOENT)
 		goto out;
 
 	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
-			     pin_root_path, iface->ifname, prog_name);
+			     pin_root_path, iface->ifname, info.name);
 	if (err)
 		goto out;
 
 	err = rmdir(pin_path);
+	if (err && errno == ENOENT)
+		err = 0;
+	else if (err)
+		err = -errno;
 out:
 	return err;
 }
