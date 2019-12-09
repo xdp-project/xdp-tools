@@ -260,7 +260,7 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 	if (err)
 		return err;
 
-	err = get_iface_program(iface, pin_root_path, old_prog_name,
+	err = get_pinned_program(iface, pin_root_path, old_prog_name,
 				sizeof(old_prog_name), NULL, NULL);
 	has_old = err != -ENOENT;
 
@@ -369,8 +369,8 @@ int detach_xdp_program(const struct iface *iface, const char *pin_root_path)
 	char pin_path[PATH_MAX], prog_name[100];
 	int err;
 
-	err = get_iface_program(iface, pin_root_path, prog_name,
-				sizeof(prog_name), NULL, NULL);
+	err = get_pinned_program(iface, pin_root_path, prog_name,
+				 sizeof(prog_name), NULL, NULL);
 	if (err) {
 		pr_warn("No XDP program loaded on %s\n", iface->ifname);
 		return -ENOENT;
@@ -399,9 +399,9 @@ out:
 	return err;
 }
 
-int get_iface_program(const struct iface *iface, const char *pin_root_path,
-		      char *prog_name, size_t prog_name_len, bool *is_skb,
-		      struct bpf_prog_info *info)
+int get_pinned_program(const struct iface *iface, const char *pin_root_path,
+		       char *prog_name, size_t prog_name_len, bool *is_skb,
+		       struct bpf_prog_info *info)
 {
 	int ret = -ENOENT, err, ifindex = iface->ifindex;
 	char pin_path[PATH_MAX];
@@ -505,8 +505,8 @@ int iterate_iface_programs_pinned(const char *pin_root_path,
 		if (err)
 			goto out;
 
-		err = get_iface_program(&iface, pin_root_path,
-					prog_name, sizeof(prog_name), &is_skb, &info);
+		err = get_pinned_program(&iface, pin_root_path,
+					 prog_name, sizeof(prog_name), &is_skb, &info);
 
 		if (err == -ENOENT || err == -ENODEV) {
 			err = rmdir(pin_path);

@@ -445,8 +445,8 @@ int do_unload(const void *cfg, const char *pin_root_path)
 		goto out;
 	}
 
-	err = get_iface_program(&opt->iface, pin_root_path, buf, sizeof(buf),
-				NULL, &info);
+	err = get_pinned_program(&opt->iface, pin_root_path, buf, sizeof(buf),
+				 NULL, &info);
 	if (err) {
 		pr_warn("xdp-filter is not loaded on %s\n", opt->iface.ifname);
 		err = EXIT_FAILURE;
