@@ -255,11 +255,12 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 	struct bpf_program *prog = NULL;
 	int ifindex = iface->ifindex;
 	int err = 0, xdp_flags = 0;
+	struct bpf_prog_info info;
 	struct stat sb = {};
 	bool has_old;
 	int prog_fd;
 
-	has_old = program_is_loaded(iface->ifindex, NULL, NULL, NULL);
+	has_old = program_is_loaded(iface->ifindex, NULL, NULL, &info);
 
 	if (!force) {
 		if (has_old) {
@@ -271,7 +272,7 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 		xdp_flags |= XDP_FLAGS_UPDATE_IF_NOEXIST;
 	} else if (has_old) {
 		pr_debug("Replacing old program '%s' on iface '%s'\n",
-			 old_prog_name, iface->ifname);
+			 info.name, iface->ifname);
 	}
 
 	if (skb_mode)
@@ -330,7 +331,8 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 	}
 
 	pr_debug("Program '%s' loaded on interface '%s'%s\n",
-		 prog_name, iface->ifname, skb_mode ? " in skb mode" : "");
+		 prog_name ?: bpf_program__title(prog, false),
+		 iface->ifname, skb_mode ? " in skb mode" : "");
 
 	if (!pin_root_path)
 		return 0;
