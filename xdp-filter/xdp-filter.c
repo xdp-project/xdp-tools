@@ -173,7 +173,7 @@ static struct prog_option load_options[] = {
 		      .short_opt = 'F',
 		      .help = "Force loading of XDP program"),
 	DEFINE_OPTION("skb-mode", OPT_BOOL, struct loadopt, skb_mode,
-		      .short_opt = 's',
+		      .short_opt = 'S',
 		      .help = "Load XDP program in SKB (generic) mode"),
 	DEFINE_OPTION("whitelist", OPT_BOOL, struct loadopt, whitelist_mode,
 		      .short_opt = 'w',
