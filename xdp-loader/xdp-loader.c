@@ -34,12 +34,13 @@ static struct prog_option load_options[] = {
 		      .short_opt = 'F',
 		      .help = "Force loading of XDP program"),
 	DEFINE_OPTION("skb-mode", OPT_BOOL, struct loadopt, skb_mode,
-		      .short_opt = 's',
+		      .short_opt = 'S',
 		      .help = "Load XDP program in SKB (generic) mode"),
 	DEFINE_OPTION("pin-path", OPT_STRING, struct loadopt, pin_path,
 		      .short_opt = 'p',
 		      .help = "Path to pin maps under (must be in bpffs)."),
-	DEFINE_OPTION("section-name", OPT_STRING, struct loadopt, section_name,
+	DEFINE_OPTION("section", OPT_STRING, struct loadopt, section_name,
+		      .metavar = "<section>",
 		      .short_opt = 's',
 		      .help = "ELF section name of program to load (default: first in file)."),
 	DEFINE_OPTION("dev", OPT_IFNAME, struct loadopt, iface,
@@ -75,10 +76,11 @@ int do_load(const void *cfg, const char *pin_root_path)
 
 retry:
 
-	obj = open_bpf_file(opt->filename, &opts);
+	obj = bpf_object__open_file(opt->filename, &opts);
 	err = libbpf_get_error(obj);
 	if (err) {
-		pr_warn("Couldn't load BPF program: %s\n", strerror(-err));
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		pr_warn("Couldn't load BPF program: %s\n", errmsg);
 		obj = NULL;
 		goto out;
 	}
