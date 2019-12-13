@@ -405,17 +405,33 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 
 int detach_xdp_program(const struct iface *iface, const char *pin_root_path)
 {
+	unsigned int xdp_flags = 0;
 	struct bpf_prog_info info;
+	enum xdp_attach_mode mode;
 	char pin_path[PATH_MAX];
 	int err;
 
-	err = get_loaded_program(iface, NULL, &info);
+	err = get_loaded_program(iface, &mode, &info);
 	if (err) {
 		pr_warn("No XDP program loaded on %s\n", iface->ifname);
 		return -ENOENT;
 	}
 
-	err = bpf_set_link_xdp_fd(iface->ifindex, -1, 0);
+	switch (mode) {
+	case XDP_MODE_SKB:
+		xdp_flags |= XDP_FLAGS_SKB_MODE;
+		break;
+	case XDP_MODE_NATIVE:
+		xdp_flags |= XDP_FLAGS_DRV_MODE;
+		break;
+	case XDP_MODE_HW:
+		xdp_flags |= XDP_FLAGS_HW_MODE;
+		break;
+	case XDP_MODE_UNSPEC:
+		break;
+	}
+
+	err = bpf_set_link_xdp_fd(iface->ifindex, -1, xdp_flags);
 	if (err)
 		goto out;
 
