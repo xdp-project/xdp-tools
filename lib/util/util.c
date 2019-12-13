@@ -248,7 +248,7 @@ static int make_dir_subdir(const char *parent, const char *dir)
 }
 
 int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
-		       const struct iface *iface, bool force, bool skb_mode,
+		       const struct iface *iface, bool force, enum xdp_attach_mode mode,
 		       const char *pin_root_path)
 {
 	char pin_path[PATH_MAX], old_prog_name[100];
@@ -275,8 +275,19 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 			 info.name, iface->ifname);
 	}
 
-	if (skb_mode)
+	switch (mode) {
+	case XDP_MODE_SKB:
 		xdp_flags |= XDP_FLAGS_SKB_MODE;
+		break;
+	case XDP_MODE_NATIVE:
+		xdp_flags |= XDP_FLAGS_DRV_MODE;
+		break;
+	case XDP_MODE_HW:
+		xdp_flags |= XDP_FLAGS_HW_MODE;
+		break;
+	case XDP_MODE_UNSPEC:
+		break;
+	}
 
 	if (prog_name)
 		prog = bpf_object__find_program_by_title(obj, prog_name);
@@ -305,7 +316,8 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 		__u32 old_flags = xdp_flags;
 
 		xdp_flags &= ~XDP_FLAGS_MODES;
-		xdp_flags |= skb_mode ? XDP_FLAGS_DRV_MODE : XDP_FLAGS_SKB_MODE;
+		xdp_flags |= (mode == XDP_MODE_SKB) ? XDP_FLAGS_DRV_MODE :
+			XDP_FLAGS_SKB_MODE;
 		err = bpf_set_link_xdp_fd(ifindex, -1, xdp_flags);
 		if (!err)
 			err = bpf_set_link_xdp_fd(ifindex, prog_fd, old_flags);
@@ -332,7 +344,7 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 
 	pr_debug("Program '%s' loaded on interface '%s'%s\n",
 		 prog_name ?: bpf_program__title(prog, false),
-		 iface->ifname, skb_mode ? " in skb mode" : "");
+		 iface->ifname, mode == XDP_MODE_SKB ? " in skb mode" : "");
 
 	if (!pin_root_path)
 		return 0;

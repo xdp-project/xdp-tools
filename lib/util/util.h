@@ -30,6 +30,13 @@
 #define min(x,y) ((x)<(y) ? x : y)
 #define max(x,y) ((x)>(y) ? x : y)
 
+enum xdp_attach_mode {
+                      XDP_MODE_UNSPEC = 0,
+                      XDP_MODE_NATIVE,
+                      XDP_MODE_SKB,
+                      XDP_MODE_HW
+};
+
 int check_snprintf(char *buf, size_t buf_len, const char *format, ...);
 
 int check_bpf_environ(const char *pin_root_path);
@@ -39,8 +46,8 @@ struct bpf_object *open_bpf_file(const char *progname,
                                  struct bpf_object_open_opts *opts);
 int load_bpf_object(struct bpf_object *obj, bool raise_rlimit);
 int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
-                       const struct iface *iface, bool force, bool skb_mode,
-                       const char *pin_root_dir);
+                       const struct iface *iface, bool force,
+                       enum xdp_attach_mode mode, const char *pin_root_dir);
 int detach_xdp_program(const struct iface *iface, const char *pin_root_dir);
 
 typedef int (*program_callback)(const struct iface *iface,

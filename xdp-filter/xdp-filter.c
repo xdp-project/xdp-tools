@@ -141,10 +141,11 @@ static const struct loadopt {
 	struct iface iface;
 	unsigned int features;
 	bool force;
-	bool skb_mode;
+	enum xdp_attach_mode mode;
 	bool whitelist_mode;
 } defaults_load = {
 	.features = FEAT_ALL,
+	.mode = XDP_MODE_NATIVE,
 };
 
 struct flag_val load_features[] = {
@@ -168,13 +169,21 @@ struct flag_val print_features[] = {
 	{}
 };
 
+struct enum_val xdp_modes[] = {
+       {"native", XDP_MODE_NATIVE},
+       {"skb", XDP_MODE_SKB},
+       {"hw", XDP_MODE_HW},
+};
+
 static struct prog_option load_options[] = {
 	DEFINE_OPTION("force", OPT_BOOL, struct loadopt, force,
 		      .short_opt = 'F',
 		      .help = "Force loading of XDP program"),
-	DEFINE_OPTION("skb-mode", OPT_BOOL, struct loadopt, skb_mode,
-		      .short_opt = 'S',
-		      .help = "Load XDP program in SKB (generic) mode"),
+	DEFINE_OPTION("mode", OPT_ENUM, struct loadopt, mode,
+		      .short_opt = 'm',
+		      .typearg = xdp_modes,
+		      .metavar = "<mode>",
+		      .help = "Load XDP program in <mode>; default native"),
 	DEFINE_OPTION("whitelist", OPT_BOOL, struct loadopt, whitelist_mode,
 		      .short_opt = 'w',
 		      .help = "Use filters in whitelist mode (default blacklist)"),
@@ -283,7 +292,7 @@ retry:
 		*chr = '\0';
 
 	err = attach_xdp_program(obj, progname, &opt->iface, opt->force,
-				 opt->skb_mode, pin_root_path);
+				 opt->mode, pin_root_path);
 	if (err) {
 		pr_warn("Couldn't attach XDP program on iface '%s'\n",
 			opt->iface.ifname);

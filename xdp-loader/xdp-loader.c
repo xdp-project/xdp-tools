@@ -25,17 +25,27 @@ static const struct loadopt {
 	char *pin_path;
 	char *section_name;
 	bool force;
-	bool skb_mode;
+	enum xdp_attach_mode mode;
 } defaults_load = {
+	.mode = XDP_MODE_NATIVE
 };
+
+struct enum_val xdp_modes[] = {
+       {"native", XDP_MODE_NATIVE},
+       {"skb", XDP_MODE_SKB},
+       {"hw", XDP_MODE_HW},
+};
+
 
 static struct prog_option load_options[] = {
 	DEFINE_OPTION("force", OPT_BOOL, struct loadopt, force,
 		      .short_opt = 'F',
 		      .help = "Force loading of XDP program"),
-	DEFINE_OPTION("skb-mode", OPT_BOOL, struct loadopt, skb_mode,
-		      .short_opt = 'S',
-		      .help = "Load XDP program in SKB (generic) mode"),
+	DEFINE_OPTION("mode", OPT_ENUM, struct loadopt, mode,
+		      .short_opt = 'm',
+		      .typearg = xdp_modes,
+		      .metavar = "<mode>",
+		      .help = "Load XDP program in <mode>; default native"),
 	DEFINE_OPTION("pin-path", OPT_STRING, struct loadopt, pin_path,
 		      .short_opt = 'p',
 		      .help = "Path to pin maps under (must be in bpffs)."),
@@ -110,7 +120,7 @@ retry:
 	}
 
 	err = attach_xdp_program(obj, opt->section_name, &opt->iface, opt->force,
-				 opt->skb_mode, opt->pin_path);
+				 opt->mode, opt->pin_path);
 	if (err) {
 		pr_warn("Couldn't attach XDP program on iface '%s'\n",
 			opt->iface.ifname);
