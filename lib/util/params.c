@@ -213,7 +213,7 @@ static int handle_enum(char *optarg, void *tgt, void *typearg)
 	return 0;
 }
 
-void print_enum_vals(char *buf, size_t buf_len, const struct enum_val *vals)
+static void print_enum_vals(char *buf, size_t buf_len, const struct enum_val *vals)
 {
 	const struct enum_val *val;
 	bool first = true;
@@ -231,6 +231,16 @@ void print_enum_vals(char *buf, size_t buf_len, const struct enum_val *vals)
 		buf += len;
 		buf_len -= len;
 	}
+}
+
+const char *get_enum_name(const struct enum_val *vals, unsigned int value)
+{
+	const struct enum_val *val;
+
+	for (val = vals; val->name; val++)
+		if (val->value == value)
+			return val->name;
+	return NULL;
 }
 
 static const struct opthandler {
