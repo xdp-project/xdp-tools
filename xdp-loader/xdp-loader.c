@@ -95,6 +95,17 @@ retry:
 		goto out;
 	}
 
+	struct bpf_program *main = bpf_object__find_program_by_title(obj, "xdp_test");
+	struct bpf_program *prog1 = bpf_object__find_program_by_title(obj, "xdp_pass");
+	struct bpf_program *prog2 = bpf_object__find_program_by_title(obj, "xdp_drop");
+
+
+	if (!main || !prog1 || !prog2)
+		return -1;
+
+	bpf_program__resolve_ext_call(main, "prog1", prog1);
+	bpf_program__resolve_ext_call(main, "prog2", prog2);
+
 	if (!opt->pin_path) {
 		struct bpf_map *map;
 
@@ -135,7 +146,7 @@ out:
 
 static int remove_iface_program(const struct iface *iface,
 				const struct bpf_prog_info *info,
-				bool is_skb, void *arg)
+				enum xdp_attach_mode mode, void *arg)
 {
 	char *pin_root_path = arg;
 	int err;
@@ -206,10 +217,9 @@ static struct prog_option status_options[] = {
 };
 
 int print_iface_status(const struct iface *iface, const struct bpf_prog_info *info,
-		       bool is_skb, void *arg)
+		       enum xdp_attach_mode mode, void *arg)
 {
 	char tag[BPF_TAG_SIZE*2+1];
-	char namebuf[100];
 	int i;
 
 	for (i = 0; i < BPF_TAG_SIZE; i++) {
@@ -217,14 +227,10 @@ int print_iface_status(const struct iface *iface, const struct bpf_prog_info *in
 	}
 	tag[BPF_TAG_SIZE*2] = '\0';
 
-	if (is_skb)
-		snprintf(namebuf, sizeof(namebuf), "%s (skb mode)", iface->ifname);
-	else
-		snprintf(namebuf, sizeof(namebuf), "%s", iface->ifname);
 	printf("%-16s %-16s %-8s %-4d %s\n",
 	       iface->ifname,
 	       info->name,
-	       is_skb ? "skb" : "native",
+	       get_enum_name(xdp_modes, mode),
 	       info->id, tag);
 	return 0;
 }

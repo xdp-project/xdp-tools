@@ -68,7 +68,8 @@ int double_rlimit()
 	return 0;
 }
 
-static int __get_xdp_prog_info(int ifindex, struct bpf_prog_info *info, bool *is_skb)
+static int __get_xdp_prog_info(int ifindex, struct bpf_prog_info *info,
+			       enum xdp_attach_mode *mode)
 {
 	__u32 prog_id, info_len = sizeof(*info);
 	struct xdp_link_info xinfo = {};
@@ -96,8 +97,22 @@ static int __get_xdp_prog_info(int ifindex, struct bpf_prog_info *info, bool *is
 	if (err)
 		goto out;
 
-	if (is_skb)
-		*is_skb = xinfo.attach_mode == XDP_ATTACHED_SKB;
+	if (mode) {
+		switch(xinfo.attach_mode){
+		case XDP_ATTACHED_SKB:
+			*mode = XDP_MODE_SKB;
+			break;
+		case XDP_ATTACHED_HW:
+			*mode = XDP_MODE_HW;
+			break;
+		case XDP_ATTACHED_DRV:
+			*mode = XDP_MODE_NATIVE;
+			break;
+		default:
+			*mode = XDP_MODE_UNSPEC;
+			break;
+		}
+	}
 
 out:
 	return err;
@@ -161,7 +176,8 @@ static int get_pinned_object_fd(const char *path, void *info, __u32 *info_len)
 	return pin_fd;
 }
 
-static bool program_is_loaded(int ifindex, const char *pin_path, bool *is_skb,
+static bool program_is_loaded(int ifindex, const char *pin_path,
+			      enum xdp_attach_mode *mode,
 			      struct bpf_prog_info *info)
 {
 	struct bpf_prog_info if_info = {}, pinned_info = {};
@@ -169,7 +185,7 @@ static bool program_is_loaded(int ifindex, const char *pin_path, bool *is_skb,
 	int if_fd, pinned_fd;
 	bool ret;
 
-	if_fd = __get_xdp_prog_info(ifindex, &if_info, is_skb);
+	if_fd = __get_xdp_prog_info(ifindex, &if_info, mode);
 	if (if_fd < 0) {
 		return false;
 	}
@@ -198,16 +214,16 @@ out:
 	return ret;
 }
 
-int get_loaded_program(const struct iface *iface, bool *is_skb,
+int get_loaded_program(const struct iface *iface, enum xdp_attach_mode *mode,
 		       struct bpf_prog_info *info)
 {
-	if (!program_is_loaded(iface->ifindex, NULL, is_skb, info))
+	if (!program_is_loaded(iface->ifindex, NULL, mode, info))
 		return -ENOENT;
 	return 0;
 }
 
 int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
-		      bool *is_skb, const char *pin_root_path)
+		      enum xdp_attach_mode *mode, const char *pin_root_path)
 {
 	char pin_path[PATH_MAX];
 	int err;
@@ -217,7 +233,7 @@ int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
 	if (err)
 		return err;
 
-	if (!program_is_loaded(iface->ifindex, pin_path, is_skb, info))
+	if (!program_is_loaded(iface->ifindex, pin_path, mode, info))
 		return -ENOENT;
 
 	return 0;
@@ -427,7 +443,8 @@ out:
 }
 
 int get_pinned_program(const struct iface *iface, const char *pin_root_path,
-		       char *prog_name, size_t prog_name_len, bool *is_skb,
+		       char *prog_name, size_t prog_name_len,
+		       enum xdp_attach_mode *mode,
 		       struct bpf_prog_info *info)
 {
 	int ret = -ENOENT, err, ifindex = iface->ifindex;
@@ -471,7 +488,7 @@ int get_pinned_program(const struct iface *iface, const char *pin_root_path,
 			continue;
 		}
 
-		if (!program_is_loaded(iface->ifindex, pin_path, is_skb, info)) {
+		if (!program_is_loaded(iface->ifindex, pin_path, mode, info)) {
 			ret = -ENOENT;
 			pr_debug("Program %s no longer loaded on %s\n",
 				 de->d_name, iface->ifname);
@@ -518,7 +535,7 @@ int iterate_iface_programs_pinned(const char *pin_root_path,
 		struct bpf_prog_info info = {};
 		char prog_name[PATH_MAX];
 		struct iface iface = {};
-		bool is_skb;
+		enum xdp_attach_mode mode;
 
 		if (!strcmp(".", de->d_name) ||
 		    !strcmp("..", de->d_name))
@@ -533,7 +550,7 @@ int iterate_iface_programs_pinned(const char *pin_root_path,
 			goto out;
 
 		err = get_pinned_program(&iface, pin_root_path,
-					 prog_name, sizeof(prog_name), &is_skb, &info);
+					 prog_name, sizeof(prog_name), &mode, &info);
 
 		if (err == -ENOENT || err == -ENODEV) {
 			err = rmdir(pin_path);
@@ -544,7 +561,7 @@ int iterate_iface_programs_pinned(const char *pin_root_path,
 			goto out;
 		}
 
-		err = cb(&iface, &info, is_skb, arg);
+		err = cb(&iface, &info, mode, arg);
 		if (err)
 			goto out;
 	}
@@ -573,13 +590,13 @@ int iterate_iface_programs_all(const char *pin_root_path,
 			.ifindex = idx->if_index,
 			.ifname = idx->if_name,
 		};
-		bool is_skb;
+		enum xdp_attach_mode mode;
 
 
-		if (!program_is_loaded(iface.ifindex, NULL, &is_skb, &info))
+		if (!program_is_loaded(iface.ifindex, NULL, &mode, &info))
 			continue;
 
-		err = cb(&iface, &info, is_skb, arg);
+		err = cb(&iface, &info, mode, arg);
 		if (err)
 			goto out;
 	}

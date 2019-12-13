@@ -114,7 +114,7 @@ int map_set_flags(int fd, void *key, __u8 flags)
 
 static int get_iface_features(const struct iface *iface,
 			      const struct bpf_prog_info *info,
-			      bool is_skb, void *arg)
+			      enum xdp_attach_mode mode, void *arg)
 {
 	__u32 *all_feats = arg;
 
@@ -381,7 +381,7 @@ out:
 
 static int remove_iface_program(const struct iface *iface,
 				const struct bpf_prog_info *info,
-				bool is_skb, void *arg)
+				enum xdp_attach_mode mode, void *arg)
 {
 	char *pin_root_path = arg;
 	char buf[100];
@@ -856,7 +856,7 @@ static struct prog_option status_options[] = {
 
 int print_iface_status(const struct iface *iface,
 		       const struct bpf_prog_info *info,
-		       bool is_skb, void *arg)
+		       enum xdp_attach_mode mode, void *arg)
 {
 	__u32 feat = 0;
 	int err;
@@ -871,10 +871,8 @@ int print_iface_status(const struct iface *iface,
 		char namebuf[100];
 
 		print_flags(featbuf, sizeof(featbuf), print_features, feat);
-		if (is_skb)
-			snprintf(namebuf, sizeof(namebuf), "%s (skb mode)", iface->ifname);
-		else
-			snprintf(namebuf, sizeof(namebuf), "%s", iface->ifname);
+		snprintf(namebuf, sizeof(namebuf), "%s (%s mode)", iface->ifname,
+			 get_enum_name(xdp_modes, mode));
 		printf("  %-40s %s\n", namebuf, featbuf);
 	}
 	return 0;
