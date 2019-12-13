@@ -95,17 +95,6 @@ retry:
 		goto out;
 	}
 
-	struct bpf_program *main = bpf_object__find_program_by_title(obj, "xdp_test");
-	struct bpf_program *prog1 = bpf_object__find_program_by_title(obj, "xdp_pass");
-	struct bpf_program *prog2 = bpf_object__find_program_by_title(obj, "xdp_drop");
-
-
-	if (!main || !prog1 || !prog2)
-		return -1;
-
-	bpf_program__resolve_ext_call(main, "prog1", prog1);
-	bpf_program__resolve_ext_call(main, "prog2", prog2);
-
 	if (!opt->pin_path) {
 		struct bpf_map *map;
 
