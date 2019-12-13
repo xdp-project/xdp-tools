@@ -188,6 +188,51 @@ static int handle_ipaddr(char *optarg, void *tgt, void *typearg)
 	return 0;
 }
 
+static const struct enum_val *find_enum(const struct enum_val *enum_vals,
+					const char *chr)
+{
+	while(enum_vals->name) {
+		if (strcmp(chr, enum_vals->name) == 0)
+			return enum_vals;
+		enum_vals++;
+	}
+	return NULL;
+}
+
+static int handle_enum(char *optarg, void *tgt, void *typearg)
+{
+	const struct enum_val *val, *all_vals = typearg;
+	unsigned int *opt_set = tgt;
+
+	val = find_enum(all_vals, optarg);
+	if (!val) {
+		fprintf(stderr, "invalid value: %s\n", optarg);
+		return -1;
+	}
+	*opt_set = val->value;
+	return 0;
+}
+
+void print_enum_vals(char *buf, size_t buf_len, const struct enum_val *vals)
+{
+	const struct enum_val *val;
+	bool first = true;
+
+	for (val = vals; buf_len && val->name; val++) {
+		int len;
+
+		if (!first) {
+			*buf++ = ',';
+			buf_len--;
+		}
+		first = false;
+
+		len = snprintf(buf, buf_len, "%s", val->name);
+		buf += len;
+		buf_len -= len;
+	}
+}
+
 static const struct opthandler {
 	int (*func)(char *optarg, void *tgt, void *typearg);
 } handlers[__OPT_MAX] = {
@@ -199,7 +244,8 @@ static const struct opthandler {
 			 {handle_u32},
 			 {handle_macaddr},
 			 {handle_ifname},
-			 {handle_ipaddr}
+			 {handle_ipaddr},
+			 {handle_enum}
 };
 
 void print_flags(char *buf, size_t buf_len, const struct flag_val *flags,
@@ -237,12 +283,33 @@ static void print_help_flags(const struct prog_option *opt)
 	printf("  %s (valid values: %s)", opt->help, buf);
 }
 
+static void print_help_enum(const struct prog_option *opt)
+{
+	char buf[100] = {};
+
+	if (!opt->typearg)
+		pr_warn("Missing typearg for opt %s\n", opt->name);
+	else
+		print_enum_vals(buf, sizeof(buf), opt->typearg);
+
+	printf("  %s (valid values: %s)", opt->help, buf);
+}
+
+
+
 static const struct helprinter {
 	void (*func)(const struct prog_option *opt);
 } help_printers[__OPT_MAX] = {
 	{NULL},
 	{NULL},
-	{print_help_flags}
+	{print_help_flags},
+	{NULL},
+	{NULL},
+	{NULL},
+	{NULL},
+	{NULL},
+	{NULL},
+	{print_help_enum}
 };
 
 

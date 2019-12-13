@@ -21,6 +21,7 @@ enum option_type {
                   OPT_MACADDR,
                   OPT_IFNAME,
                   OPT_IPADDR,
+                  OPT_ENUM,
                   __OPT_MAX
 };
 
@@ -40,8 +41,13 @@ struct prog_option {
 };
 
 struct flag_val {
-        char *flagstring;
+        const char *flagstring;
         unsigned int flagval;
+};
+
+struct enum_val {
+        const char *name;
+        unsigned int value;
 };
 
 struct iface {
