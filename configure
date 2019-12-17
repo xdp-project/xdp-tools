@@ -44,7 +44,15 @@ check_elf()
 
 check_libbpf()
 {
-    if ${PKG_CONFIG} libbpf --exists; then
+    if ${PKG_CONFIG} libbpf --exists || [ -n "$LIBBPF_DIR" ]; then
+
+        if [ -n "$LIBBPF_DIR" ]; then
+            LIBBPF_CFLAGS="-I${LIBBPF_DIR}/include -L${LIBBPF_DIR}/lib"
+            LIBBPF_LDLIBS="-lbpf"
+        else
+            LIBBPF_CFLAGS=$(${PKG_CONFIG} libbpf --cflags)
+            LIBBPF_LDLIBS=$(${PKG_CONFIG} libbpf --libs)
+        fi
 
         cat >$TMPDIR/libbpftest.c <<EOF
 #include <bpf/libbpf.h>
@@ -55,10 +63,10 @@ int main(int argc, char **argv) {
 }
 EOF
 
-        if $CC -o $TMPDIR/libbpftest $TMPDIR/libbpftest.c -lbpf $(${PKG_CONFIG} libbpf --cflags) >/dev/null 2>&1; then
+        if $CC -o $TMPDIR/libbpftest $TMPDIR/libbpftest.c  $LIBBPF_CFLAGS -lbpf >/dev/null 2>&1; then
 	    echo "SYSTEM_LIBBPF:=y" >>$CONFIG
-	    echo 'CFLAGS += ' $(${PKG_CONFIG} libbpf --cflags) >> $CONFIG
-	    echo 'LDLIBS += ' $(${PKG_CONFIG} libbpf --libs) >>$CONFIG
+	    echo 'CFLAGS += ' $LIBBPF_CFLAGS >> $CONFIG
+	    echo 'LDLIBS += ' $LIBBPF_LDLIBS >>$CONFIG
             echo 'OBJECT_LIBBPF = ' >>$CONFIG
 	    echo system
             return 0
