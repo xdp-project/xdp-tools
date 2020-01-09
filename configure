@@ -73,6 +73,12 @@ EOF
         fi
     fi
 
+    if [ "${FORCE_SYSTEM_LIBBPF:-0}" -eq "1" ]; then
+        echo "FORCE_SYSTEM_LIBBPF is set, but no usable libbpf found on system"
+        rm -f "$CONFIG"
+        exit 1
+    fi
+
     echo submodule
     echo "SYSTEM_LIBBPF:=n" >> $CONFIG
     echo 'CFLAGS += -I$(LIB_DIR)/libbpf/src/root/usr/include' >>$CONFIG
