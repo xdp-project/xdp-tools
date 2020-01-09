@@ -21,5 +21,6 @@ endif
 CFLAGS += $(DEFINES)
 BPF_CFLAGS += $(DEFINES)
 
-LIBMK := Makefile $(LIB_DIR)/../config.mk $(LIB_DIR)/defines.mk $(LIB_DIR)/common.mk
+CONFIGMK := $(LIB_DIR)/../config.mk
+LIBMK := Makefile $(CONFIGMK) $(LIB_DIR)/defines.mk $(LIB_DIR)/common.mk
 

@@ -59,6 +59,9 @@ install:
 $(OBJECT_LIBBPF):
 	$(Q)$(MAKE) -C $(LIB_DIR) libbpf
 
+$(CONFIGMK):
+	$(Q)$(MAKE) -C $(LIB_DIR)/.. config.mk
+
 # Create expansions for dependencies
 LIB_H := ${LIB_OBJS:.o=.h}
 
