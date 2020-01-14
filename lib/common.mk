@@ -39,7 +39,7 @@ BPF_CFLAGS += -I$(HEADER_DIR)
 BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h)
 MAN_FILES := $(wildcard ${USER_TARGETS:=.8})
 
-all: $(USER_TARGETS) $(XDP_OBJ)
+all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS)
 
 .PHONY: clean
 
