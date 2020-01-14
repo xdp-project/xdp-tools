@@ -21,6 +21,8 @@
 #define BPF_OBJECT_PATH "/usr/lib/bpf"
 #endif
 
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
+
 #define FOR_EACH_MAP_KEY(_err, _map_fd, _map_key, _next_key)            \
   for(_err = bpf_map_get_next_key(_map_fd, NULL, &_next_key);           \
       !_err;                                                            \
