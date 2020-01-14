@@ -42,6 +42,20 @@ check_elf()
     fi
 }
 
+check_zlib()
+{
+    if ${PKG_CONFIG} zlib --exists; then
+	echo "HAVE_ZLIB:=y" >>$CONFIG
+	echo "yes"
+
+	echo 'CFLAGS += -DHAVE_ZLIB' `${PKG_CONFIG} zlib --cflags` >> $CONFIG
+	echo 'LDLIBS += ' `${PKG_CONFIG} zlib --libs` >>$CONFIG
+    else
+	echo "missing - this is required"
+        return 1
+    fi
+}
+
 check_libbpf()
 {
     local libbpf_err
@@ -59,8 +73,10 @@ check_libbpf()
         cat >$TMPDIR/libbpftest.c <<EOF
 #include <bpf/libbpf.h>
 int main(int argc, char **argv) {
+	void *ptr;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts, .pin_root_path = "/path");
-        (void) bpf_object__open_file("file", &opts);
+	(void) bpf_object__open_file("file", &opts);
+	(void) bpf_program__name(ptr);
 	return 0;
 }
 EOF
@@ -98,6 +114,9 @@ EOF
 
     echo -n "ELF support: "
     check_elf || exit 1
+
+    echo -n "zlib support: "
+    check_zlib || exit 1
 }
 
 quiet_config()
