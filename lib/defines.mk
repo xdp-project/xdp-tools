@@ -12,6 +12,7 @@ BPF_DIR_MNT ?=/sys/fs/bpf
 BPF_OBJECT_DIR ?=$(LIBDIR)/bpf
 
 HEADER_DIR = $(LIB_DIR)/../headers
+LIBXDP_DIR := $(LIB_DIR)/libxdp
 DEFINES := -DBPF_DIR_MNT=\"$(BPF_DIR_MNT)\" -DBPF_OBJECT_PATH=\"$(BPF_OBJECT_DIR)\"
 
 ifneq ($(PRODUCTION),1)
