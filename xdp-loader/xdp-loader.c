@@ -70,6 +70,7 @@ int do_load(const void *cfg, const char *pin_root_path)
 {
 	const struct loadopt *opt = cfg;
 	struct bpf_object *obj = NULL;
+	struct bpf_program *prog;
 	char errmsg[STRERR_BUFSIZE];
 	int err = EXIT_SUCCESS;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
@@ -100,6 +101,11 @@ retry:
 
 		bpf_object__for_each_map(map, obj)
 			bpf_map__set_pin_path(map, NULL);
+	}
+
+	bpf_object__for_each_program(prog, obj) {
+		bpf_program__set_type(prog, BPF_PROG_TYPE_XDP);
+		bpf_program__set_expected_attach_type(prog, BPF_PROG_TYPE_XDP);
 	}
 
 	err = bpf_object__load(obj);
