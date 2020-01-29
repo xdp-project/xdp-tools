@@ -73,7 +73,7 @@ static int __get_xdp_prog_info(int ifindex, struct bpf_prog_info *info,
 {
 	__u32 prog_id, info_len = sizeof(*info);
 	struct xdp_link_info xinfo = {};
-	int prog_fd, err = 0;
+	int prog_fd = -1, err = 0;
 
 	err = bpf_get_link_xdp_info(ifindex, &xinfo, sizeof(xinfo), 0);
 	if (err)
@@ -115,6 +115,9 @@ static int __get_xdp_prog_info(int ifindex, struct bpf_prog_info *info,
 	}
 
 out:
+	if (prog_fd >= 0)
+		close(prog_fd);
+
 	return err;
 }
 
@@ -182,30 +185,25 @@ static bool program_is_loaded(int ifindex, const char *pin_path,
 {
 	struct bpf_prog_info if_info = {}, pinned_info = {};
 	__u32 info_len = sizeof(if_info);
-	int if_fd, pinned_fd;
+	int err, pinned_fd;
 	bool ret;
 
-	if_fd = __get_xdp_prog_info(ifindex, &if_info, mode);
-	if (if_fd < 0) {
+	err = __get_xdp_prog_info(ifindex, &if_info, mode);
+	if (err)
 		return false;
-	}
 
 	if (!pin_path) {
-		close(if_fd);
 		ret = true;
 		goto out;
 	}
 
 	pinned_fd = get_pinned_object_fd(pin_path, &pinned_info, &info_len);
-	if (pinned_fd < 0) {
-		close(if_fd);
+	if (pinned_fd < 0)
 		return false;
-	}
 
 	ret = if_info.id == pinned_info.id;
 
 	close(pinned_fd);
-	close(if_fd);
 
 out:
 	if (ret && info)
