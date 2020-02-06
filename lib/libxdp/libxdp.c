@@ -135,7 +135,7 @@ static int xdp_parse_run_order(const struct bpf_object *obj,
 	}
 
 	if (!sec) {
-//		pr_warn("DATASEC '%s' not found.\n", XDP_RUN_ORDER_SEC);
+		pr_debug("DATASEC '%s' not found.\n", XDP_RUN_ORDER_SEC);
 		return -ENOENT;
 	}
 
@@ -150,25 +150,25 @@ static int xdp_parse_run_order(const struct bpf_object *obj,
 			continue;
 
 		if (!btf_is_var(var)) {
-//			pr_warn("map '%s': unexpected var kind %u.\n",
-//				map_name, btf_kind(var));
+			pr_warn("struct '%s': unexpected var kind %u.\n",
+				name, btf_kind(var));
 			return -EINVAL;
 		}
 		if (var_extra->linkage != BTF_VAR_GLOBAL_ALLOCATED &&
 		    var_extra->linkage != BTF_VAR_STATIC) {
-//			pr_warn("map '%s': unsupported var linkage %u.\n",
-//				map_name, var_extra->linkage);
+			pr_warn("struct '%s': unsupported var linkage %u.\n",
+				name, var_extra->linkage);
 			return -EOPNOTSUPP;
 		}
 
 		def = skip_mods_and_typedefs(btf, var->type, NULL);
 		if (!btf_is_struct(def)) {
-//			pr_warn("map '%s': unexpected def kind %u.\n",
-//				map_name, btf_kind(var));
+			pr_warn("struct '%s': unexpected def kind %u.\n",
+				name, btf_kind(var));
 			return -EINVAL;
 		}
 		if (def->size > vi->size) {
-//			pr_warn("map '%s': invalid def size.\n", map_name);
+			pr_warn("struct '%s': invalid def size.\n", name);
 			return -EINVAL;
 		}
 
@@ -179,7 +179,7 @@ static int xdp_parse_run_order(const struct bpf_object *obj,
 			unsigned int val, act;
 
 			if (!mname) {
-				//	pr_warn("map '%s': invalid field #%d.\n", map_name, i);
+				pr_warn("struct '%s': invalid field #%d.\n", name, i);
 				return -EINVAL;
 			}
 			if (strcmp(mname, "priority")) {
@@ -193,6 +193,7 @@ static int xdp_parse_run_order(const struct bpf_object *obj,
 					return -EINVAL;
 				set_chain_call_action(xdp_prog, act, val);
 			} else {
+				pr_warn("Invalid mname: %s\n", mname);
 				return -ENOTSUP;
 			}
 		}
