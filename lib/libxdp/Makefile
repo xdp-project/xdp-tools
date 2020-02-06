@@ -32,24 +32,24 @@ clean::
 
 
 $(OBJDIR)/libxdp.a: $(STATIC_OBJS)
-	$(AR) rcs $@ $^
+	$(QUIET_LINK)$(AR) rcs $@ $^
 
 $(OBJDIR)/libxdp.so: $(OBJDIR)/libxdp.so.$(LIBXDP_MAJOR_VERSION)
-	ln -sf $(^F) $@
+	$(Q)ln -sf $(^F) $@
 
 $(OBJDIR)/libxdp.so.$(LIBXDP_MAJOR_VERSION): $(OBJDIR)/libxdp.so.$(LIBXDP_VERSION)
-	ln -sf $(^F) $@
+	$(Q)ln -sf $(^F) $@
 
 $(OBJDIR)/libxdp.so.$(LIBXDP_VERSION): $(SHARED_OBJS)
-	$(QUIET_CC)$(CC) -shared -Wl,-soname,libxdp.so.$(LIBXDP_MAJOR_VERSION) \
+	$(QUIET_LINK)$(CC) -shared -Wl,-soname,libxdp.so.$(LIBXDP_MAJOR_VERSION) \
 		      $^ $(ALL_LDFLAGS) -o $@
 
 
 $(STATIC_OBJDIR):
-	mkdir -p $(STATIC_OBJDIR)
+	$(Q)mkdir -p $(STATIC_OBJDIR)
 
 $(SHARED_OBJDIR):
-	mkdir -p $(SHARED_OBJDIR)
+	$(Q)mkdir -p $(SHARED_OBJDIR)
 
 $(STATIC_OBJDIR)/%.o: %.c $(EXTRA_LIB_DEPS) | $(STATIC_OBJDIR)
 	$(QUIET_CC)$(CC) $(CFLAGS) $(LDFLAGS)  -Wall -I../../headers -c $< -o $@
