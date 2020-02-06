@@ -8,6 +8,7 @@
 
 #include <linux/bpf.h>
 #include <bpf/bpf.h>
+#include "xdp_helpers.h"
 
 struct xdp_program {
 	struct bpf_program *prog;

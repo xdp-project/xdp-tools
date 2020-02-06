@@ -225,8 +225,10 @@ struct xdp_program *xdp_get_program(const struct bpf_object *obj,
 	memset(xdp_prog, 0, sizeof(*xdp_prog));
 
 	xdp_prog->prog = bpf_prog;
+	xdp_prog->run_prio = XDP_DEFAULT_RUN_PRIO;
+	xdp_prog->chain_call_actions = XDP_DEFAULT_CHAIN_CALL_ACTIONS;
 	err = xdp_parse_run_order(obj, xdp_prog);
-	if (err)
+	if (err && err != -ENOENT)
 		goto err;
 
 	return xdp_prog;
