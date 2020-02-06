@@ -20,6 +20,7 @@ LIB_DIR ?= ../lib
 LDLIBS ?= $(USER_LIBS)
 
 include $(LIB_DIR)/defines.mk
+include $(LIBXDP_DIR)/libxdp.mk
 
 # get list of objects in util
 include $(LIB_DIR)/util/util.mk
@@ -29,6 +30,15 @@ LIB_OBJS += $(foreach obj,$(UTIL_OBJS),$(LIB_DIR)/util/$(obj))
 
 EXTRA_DEPS +=
 EXTRA_USER_DEPS +=
+
+LDFLAGS+=-L$(LIBXDP_DIR)
+ifeq ($(DYNAMIC_LIBXDP),1)
+	LDLIBS+=-lxdp
+	OBJEXT_LIBXDP:=$(LIBXDP_DIR)/libxdp.so.$(LIBXDP_VERSION)
+else
+	LDLIBS+=-l:libxdp.a
+	OBJECT_LIBXDP:=$(LIBXDP_DIR)/libxdp.a
+endif
 
 # BPF-prog kern and userspace shares struct via header file:
 KERN_USER_H ?= $(wildcard common_kern_user.h)
@@ -43,10 +53,8 @@ all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS)
 
 .PHONY: clean
 
-clean:
-	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ)
-	$(Q)rm -f *.ll
-	$(Q)rm -f *~
+clean::
+	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) *.ll
 
 install:
 	install -m 0755 -d $(DESTDIR)$(SBINDIR)
@@ -59,6 +67,9 @@ install:
 $(OBJECT_LIBBPF):
 	$(Q)$(MAKE) -C $(LIB_DIR) libbpf
 
+$(OBJECT_LIBXDP): $(wildcard $(LIBXDP_DIR)/*.[ch])
+	$(Q)$(MAKE) -C $(LIBXDP_DIR)
+
 $(CONFIGMK):
 	$(Q)$(MAKE) -C $(LIB_DIR)/.. config.mk
 
@@ -69,7 +80,7 @@ LIB_H := ${LIB_OBJS:.o=.h}
 $(LIB_OBJS): %.o: %.c %.h $(LIB_H)
 	$(Q)$(MAKE) -C $(dir $@) $(notdir $@)
 
-$(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) $(LIBMK) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
+$(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) $(OBJECT_LIBXDP) $(LIBMK) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
 	$(QUIET_CC)$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $(LIB_OBJS) \
 	 $< $(LDLIBS)
 
