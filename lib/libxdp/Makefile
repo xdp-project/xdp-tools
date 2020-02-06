@@ -25,6 +25,11 @@ ifndef BUILD_STATIC_ONLY
 	VERSION_SCRIPT := libxdp.map
 endif
 
+clean::
+	$(Q)rm -f $(STATIC_LIBS) $(STATIC_OBJS) $(SHARED_LIBS) $(SHARED_OBJS)
+	$(Q)for d in $(SHARED_OBJDIR) $(STATIC_OBJDIR); do \
+		[ -d "$$d" ] && rmdir "$$d"; done || true
+
 
 $(OBJDIR)/libxdp.a: $(STATIC_OBJS)
 	$(AR) rcs $@ $^

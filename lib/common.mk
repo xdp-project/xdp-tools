@@ -43,10 +43,8 @@ all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS)
 
 .PHONY: clean
 
-clean:
-	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ)
-	$(Q)rm -f *.ll
-	$(Q)rm -f *~
+clean::
+	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) *.ll
 
 install:
 	install -m 0755 -d $(DESTDIR)$(SBINDIR)
