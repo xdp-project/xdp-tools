@@ -182,7 +182,7 @@ static int xdp_parse_run_order(const struct bpf_object *obj,
 				pr_warn("struct '%s': invalid field #%d.\n", name, i);
 				return -EINVAL;
 			}
-			if (strcmp(mname, "priority")) {
+			if (!strcmp(mname, "priority")) {
 				if (!get_field_int(struct_name, btf, def, m,
 						   &xdp_prog->run_prio))
 					return -EINVAL;
