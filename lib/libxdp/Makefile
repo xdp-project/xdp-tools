@@ -2,8 +2,6 @@
 
 EXTRA_TARGETS := libxdp.so libxdp.a
 LIB_DIR = ..
-LIBXDP_MAJOR_VERSION := 0
-LIBXDP_VERSION := 0.0.1
 
 include $(LIB_DIR)/common.mk
 
