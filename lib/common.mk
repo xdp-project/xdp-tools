@@ -30,6 +30,13 @@ LIB_OBJS += $(foreach obj,$(UTIL_OBJS),$(LIB_DIR)/util/$(obj))
 EXTRA_DEPS +=
 EXTRA_USER_DEPS +=
 
+LDFLAGS+=-L$(LIBXDP_DIR)
+ifeq ($(DYNAMIC_LIBXDP),1)
+	LDLIBS+=-lxdp
+else
+	LDLIBS+=-l:libxdp.a
+endif
+
 # BPF-prog kern and userspace shares struct via header file:
 KERN_USER_H ?= $(wildcard common_kern_user.h)
 

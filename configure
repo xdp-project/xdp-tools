@@ -13,7 +13,9 @@ trap 'status=$?; rm -rf $TMPDIR; exit $status' EXIT HUP INT QUIT TERM
 check_opts()
 {
     : ${PRODUCTION:=0}
+    : ${DYNAMIC_LIBXDP:=0}
     echo "PRODUCTION:=${PRODUCTION}" >>$CONFIG
+    echo "DYNAMIC_LIBXDP:=${DYNAMIC_LIBXDP}" >>$CONFIG
 }
 
 check_toolchain()
