@@ -97,7 +97,7 @@ static bool get_xdp_action(const char *act_name, unsigned int *act)
 }
 
 
-static int xdp_parse_run_order(const struct bpf_object *obj,
+static int xdp_parse_run_order(const struct btf *btf,
 			       struct xdp_program *xdp_prog)
 {
 
@@ -107,14 +107,9 @@ static int xdp_parse_run_order(const struct bpf_object *obj,
 	const struct btf_var *var_extra;
 	const struct btf_member *m;
 	char struct_name[100];
-	struct btf *btf;
 	const char *name;
 
 	if (!xdp_prog->prog)
-		return -EINVAL;
-
-	btf = bpf_object__btf(obj);
-	if (!btf)
 		return -EINVAL;
 
 	err = check_snprintf(struct_name, sizeof(struct_name), "_%s",
@@ -208,6 +203,7 @@ struct xdp_program *xdp_get_program(const struct bpf_object *obj,
 {
 	struct xdp_program *xdp_prog;
 	struct bpf_program *bpf_prog;
+	struct btf *btf;
 	int err;
 
 	if (prog_name)
@@ -227,9 +223,13 @@ struct xdp_program *xdp_get_program(const struct bpf_object *obj,
 	xdp_prog->prog = bpf_prog;
 	xdp_prog->run_prio = XDP_DEFAULT_RUN_PRIO;
 	xdp_prog->chain_call_actions = XDP_DEFAULT_CHAIN_CALL_ACTIONS;
-	err = xdp_parse_run_order(obj, xdp_prog);
-	if (err && err != -ENOENT)
-		goto err;
+
+	btf = bpf_object__btf(obj);
+	if (btf) {
+		err = xdp_parse_run_order(btf, xdp_prog);
+		if (err && err != -ENOENT)
+			goto err;
+	}
 
 	return xdp_prog;
 err:
