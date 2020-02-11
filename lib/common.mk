@@ -46,7 +46,7 @@ KERN_USER_H ?= $(wildcard common_kern_user.h)
 CFLAGS += -I$(HEADER_DIR) -I$(LIB_DIR)/util
 BPF_CFLAGS += -I$(HEADER_DIR)
 
-BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h)
+BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(HEADER_DIR)/xdp/xdp_helpers.h
 MAN_FILES := $(wildcard ${USER_TARGETS:=.8})
 
 all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS)
