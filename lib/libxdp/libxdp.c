@@ -96,6 +96,31 @@ static bool get_xdp_action(const char *act_name, unsigned int *act)
 	return false;
 }
 
+static int xdp_program_print_name(char *buf, size_t buf_len, const char *fmt,
+				  struct xdp_program *xdp_prog)
+{
+	struct bpf_prog_info info = {};
+	__u32 len = sizeof(info);
+	const char *prog_name;
+	int err;
+
+	if (xdp_prog->prog) {
+		prog_name = bpf_program__name(xdp_prog->prog);
+	} else if (xdp_prog->prog_fd > -1) {
+		err = bpf_obj_get_info_by_fd(xdp_prog->prog_fd, &info, &len);
+		if (err) {
+			err = -errno;
+			pr_warn("couldn't get program info: %s", strerror(-err));
+			return err;
+		}
+		prog_name = info.name;
+	}
+	else
+		return -EINVAL;
+
+	return check_snprintf(buf, buf_len, fmt, prog_name);
+}
+
 
 static int xdp_parse_run_order(const struct btf *btf,
 			       struct xdp_program *xdp_prog)
@@ -109,11 +134,8 @@ static int xdp_parse_run_order(const struct btf *btf,
 	char struct_name[100];
 	const char *name;
 
-	if (!xdp_prog->prog)
-		return -EINVAL;
-
-	err = check_snprintf(struct_name, sizeof(struct_name), "_%s",
-			     bpf_program__name(xdp_prog->prog));
+	err = xdp_program_print_name(struct_name, sizeof(struct_name), "_%s",
+				     xdp_prog);
 	if (err)
 		return err;
 
@@ -198,6 +220,23 @@ static int xdp_parse_run_order(const struct btf *btf,
 	return -ENOENT;
 }
 
+static struct xdp_program *xdp_program_new()
+{
+	struct xdp_program *xdp_prog;
+
+	xdp_prog = malloc(sizeof(*xdp_prog));
+	if (!xdp_prog)
+		return ERR_PTR(-ENOMEM);
+
+	memset(xdp_prog, 0, sizeof(*xdp_prog));
+
+	xdp_prog->prog_fd = -1;
+	xdp_prog->run_prio = XDP_DEFAULT_RUN_PRIO;
+	xdp_prog->chain_call_actions = XDP_DEFAULT_CHAIN_CALL_ACTIONS;
+
+	return xdp_prog;
+}
+
 struct xdp_program *xdp_get_program(const struct bpf_object *obj,
 				    const char *prog_name)
 {
@@ -214,16 +253,11 @@ struct xdp_program *xdp_get_program(const struct bpf_object *obj,
 	if(!bpf_prog)
 		return ERR_PTR(-ENOENT);
 
-	xdp_prog = malloc(sizeof(*xdp_prog));
-	if (!xdp_prog)
-		return ERR_PTR(-ENOMEM);
-
-	memset(xdp_prog, 0, sizeof(*xdp_prog));
+	xdp_prog = xdp_program_new();
+	if (IS_ERR(xdp_prog))
+		return xdp_prog;
 
 	xdp_prog->prog = bpf_prog;
-	xdp_prog->run_prio = XDP_DEFAULT_RUN_PRIO;
-	xdp_prog->chain_call_actions = XDP_DEFAULT_CHAIN_CALL_ACTIONS;
-
 	btf = bpf_object__btf(obj);
 	if (btf) {
 		err = xdp_parse_run_order(btf, xdp_prog);
@@ -232,6 +266,52 @@ struct xdp_program *xdp_get_program(const struct bpf_object *obj,
 	}
 
 	return xdp_prog;
+err:
+	free(xdp_prog);
+	return ERR_PTR(err);
+}
+
+struct xdp_program *xdp_get_program_by_id(__u32 id)
+{
+	struct xdp_program *xdp_prog = NULL;
+	struct bpf_prog_info info = {};
+	__u32 len = sizeof(info);
+	struct btf *btf;
+	int fd, err;
+
+	fd = bpf_prog_get_fd_by_id(id);
+	if (fd < 0) {
+		pr_warn("couldn't get program fd: %s", strerror(errno));
+		err = -errno;
+		goto err;
+	}
+
+	err = bpf_obj_get_info_by_fd(fd, &info, &len);
+	if (err) {
+		pr_warn("couldn't get program info: %s", strerror(errno));
+		err = -errno;
+		goto err;
+	}
+
+	xdp_prog = xdp_program_new();
+	if (IS_ERR(xdp_prog))
+		return xdp_prog;
+
+	xdp_prog->prog_fd = fd;
+
+	if (info.btf_id) {
+		err = btf__get_from_id(info.btf_id, &btf);
+		if (err) {
+			pr_warn("Couldn't get BTF for ID %ul\n", info.btf_id);
+			goto err;
+		}
+		err = xdp_parse_run_order(btf, xdp_prog);
+		if (err && err != -ENOENT)
+			goto err;
+	}
+
+	return xdp_prog;
+
 err:
 	free(xdp_prog);
 	return ERR_PTR(err);
