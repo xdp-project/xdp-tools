@@ -11,6 +11,7 @@
 #include <linux/in.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
+#include <xdp/xdp_helpers.h>
 
 #include "common_kern_user.h"
 
@@ -173,6 +174,11 @@ static int __always_inline lookup_verdict_ethernet(struct ethhdr *eth)
 #ifndef FUNCNAME
 #define FUNCNAME xdp_filt_unknown
 #endif
+
+struct {
+	__uint(priority, 10);
+	__uint(XDP_PASS, 1);
+} XDP_RUN_CONFIG(FUNCNAME);
 
 SEC("xdp_filter")
 int FUNCNAME(struct xdp_md *ctx)
