@@ -10,6 +10,8 @@
 
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
+#include <xdp/libxdp.h>
+#include <linux/err.h>
 
 #include "params.h"
 #include "logging.h"
@@ -71,6 +73,7 @@ int do_load(const void *cfg, const char *pin_root_path)
 	const struct loadopt *opt = cfg;
 	struct bpf_object *obj = NULL;
 	struct bpf_program *prog;
+	struct xdp_program *xdp_prog;
 	char errmsg[STRERR_BUFSIZE];
 	int err = EXIT_SUCCESS;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
@@ -95,6 +98,16 @@ retry:
 		obj = NULL;
 		goto out;
 	}
+
+	xdp_prog = xdp_program__from_bpf_obj(obj, opt->section_name);
+	if (IS_ERR(xdp_prog)) {
+		libbpf_strerror(PTR_ERR(xdp_prog), errmsg, sizeof(errmsg));
+		pr_warn("Couldn't get XDP program: %s\n", errmsg);
+		goto out;
+	}
+	xdp_program__print_chain_call_actions(xdp_prog, errmsg, sizeof(errmsg));
+	pr_debug("XDP program run prio: %d. Chain call actions: %s\n",
+		 xdp_program__run_prio(xdp_prog), errmsg);
 
 	if (!opt->pin_path) {
 		struct bpf_map *map;
@@ -214,19 +227,30 @@ static struct prog_option status_options[] = {
 int print_iface_status(const struct iface *iface, const struct bpf_prog_info *info,
 		       enum xdp_attach_mode mode, void *arg)
 {
+	struct xdp_program *xdp_prog;
+	char errmsg[STRERR_BUFSIZE];
 	char tag[BPF_TAG_SIZE*2+1];
-	int i;
+	int i, err;
 
 	for (i = 0; i < BPF_TAG_SIZE; i++) {
 		sprintf(&tag[i*2], "%02x", info->tag[i]);
 	}
 	tag[BPF_TAG_SIZE*2] = '\0';
 
-	printf("%-16s %-16s %-8s %-4d %s\n",
+	xdp_prog = xdp_program__from_id(info->id);
+	if (IS_ERR(xdp_prog)) {
+		err = PTR_ERR(xdp_prog);
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		printf("err: %s\n", errmsg);
+		return err;
+	}
+	xdp_program__print_chain_call_actions(xdp_prog, errmsg, sizeof(errmsg));
+	printf("%-16s %-5d %-16s %-8s %-4d %-17s %s\n",
 	       iface->ifname,
+	       xdp_program__run_prio(xdp_prog),
 	       info->name,
 	       get_enum_name(xdp_modes, mode),
-	       info->id, tag);
+	       info->id, tag, errmsg);
 	return 0;
 }
 
@@ -235,8 +259,9 @@ int do_status(const void *cfg, const char *pin_root_path)
 	int err = EXIT_SUCCESS;
 
 	printf("CURRENT XDP PROGRAM STATUS:\n\n");
-	printf("%-16s %-16s Mode     ID   tag\n", "Interface", "Program name");
-	printf("----------------------------------------------------------------\n");
+	printf("%-16s %-5s %-16s Mode     ID   %-17s %s\n",
+	       "Interface", "Prio", "Program name", "Tag", "Chain actions");
+	printf("-------------------------------------------------------------------------------------\n");
 
 	err = iterate_iface_programs_all(pin_root_path, print_iface_status, NULL);
 	printf("\n");
