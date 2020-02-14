@@ -24,10 +24,12 @@ check_toolchain()
     : ${CC=gcc}
     : ${CLANG=clang}
     : ${LLC=llc}
+    : ${XXD=xxd}
     echo "PKG_CONFIG:=${PKG_CONFIG}" >>$CONFIG
     echo "CC:=${CC}" >>$CONFIG
     echo "CLANG:=${CLANG}" >>$CONFIG
     echo "LLC:=${LLC}" >>$CONFIG
+    echo "XXD:=${XXD}" >>$CONFIG
 }
 
 check_elf()
@@ -147,6 +149,7 @@ ifeq (\$(VERBOSE), 0)
     QUIET_LLC      = @echo '    LLC      '\$@;
     QUIET_LINK     = @echo '    LINK     '\$@;
     QUIET_INSTALL  = @echo '    INSTALL  '\$@;
+    QUIET_XXD      = @echo '    XXD      '\${@:.o=_o.c};
 endif
 EOF
 }

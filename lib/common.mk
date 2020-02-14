@@ -12,6 +12,7 @@
 #
 XDP_C = ${XDP_TARGETS:=.c}
 XDP_OBJ = ${XDP_C:.c=.o}
+XDP_BLOB = ${XDP_OBJ:.o=_o.c}
 USER_C := ${USER_TARGETS:=.c}
 USER_OBJ := ${USER_C:.c=.o}
 
@@ -54,7 +55,7 @@ all: $(XDP_OBJ) $(USER_TARGETS) $(EXTRA_TARGETS)
 .PHONY: clean
 
 clean::
-	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) *.ll
+	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(XDP_BLOB) $(USER_OBJ) *.ll
 
 install:
 	install -m 0755 -d $(DESTDIR)$(SBINDIR)
@@ -96,3 +97,6 @@ $(XDP_OBJ): %.o: %.c $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEADERS) $(LIBMK)
 	    -Werror \
 	    -O2 -emit-llvm -c -g -o ${@:.o=.ll} $<
 	$(QUIET_LLC)$(LLC) -march=bpf -filetype=obj -o $@ ${@:.o=.ll}
+ifeq ($(CREATE_XDP_BLOB),true)
+	$(QUIET_XXD)$(XXD) -i $@ > ${@:.o=_o.c}
+endif
