@@ -147,6 +147,7 @@ ifeq (\$(VERBOSE), 0)
     QUIET_LLC      = @echo '    LLC      '\$@;
     QUIET_LINK     = @echo '    LINK     '\$@;
     QUIET_INSTALL  = @echo '    INSTALL  '\$@;
+    QUIET_M4       = @echo '    M4       '\$@;
 endif
 EOF
 }

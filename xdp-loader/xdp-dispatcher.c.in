@@ -1,0 +1,52 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+divert(-1)
+#forloop definition taken from example in the M4 manual
+define(`forloop', `pushdef(`$1', `$2')_forloop($@)popdef(`$1')')
+define(`_forloop',`$4`'ifelse($1, decr(`$3'), `', `define(`$1', incr($1))$0($@)')')
+define(`NUM_PROGS',ifdef(`NUM_PROGS', NUM_PROGS, `2'))
+divert(0)dnl
+
+#include <linux/bpf.h>
+#include <linux/in.h>
+#include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
+
+/* While 'const volatile' sounds a little like an oxymoron, there's reason
+ * behind the madness:
+ *
+ * - const places the data in rodata, where libbpf will mark it as read-only and
+ *   frozen on program load, letting the kernel do dead code elimination based
+ *   on the values.
+ *
+ * - volatile prevents the compiler from optimising away the checks based on the
+ *   compile-time value of the variables, which is important since we will be
+ *   changing the values before loading the program into the kernel.
+ */
+static volatile const __u8 prog_enabled[NUM_PROGS] = {};
+static volatile const __u32 chain_call_actions[NUM_PROGS] = {};
+
+/* The 'optnone' attribute prevents both inlining and any optimisations
+ * based on the known return value.
+ */
+forloop(`i', `0', NUM_PROGS,
+`__attribute__ ((noinline))
+int format(`prog%d', i)(struct xdp_md *ctx) {
+        volatile int ret = XDP_PASS;
+        return ret;
+}
+')
+
+SEC("xdp_dispatcher")
+int xdp_main(struct xdp_md *ctx)
+{
+        int ret;
+
+forloop(`i', `0', NUM_PROGS,
+`        if (prog_enabled[i]) {
+                ret = format(`prog%d', i)(ctx);
+                if (!((1 << ret) & chain_call_actions[i]))
+                        return ret;
+        }
+')
+        return XDP_PASS;
+}
