@@ -50,3 +50,5 @@ forloop(`i', `0', NUM_PROGS,
 ')
         return XDP_PASS;
 }
+
+char _license[] SEC("license") = "GPL";
