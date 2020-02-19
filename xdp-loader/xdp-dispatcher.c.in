@@ -25,8 +25,8 @@ divert(0)dnl
 static volatile const __u8 prog_enabled[NUM_PROGS] = {};
 static volatile const __u32 chain_call_actions[NUM_PROGS] = {};
 
-/* The 'optnone' attribute prevents both inlining and any optimisations
- * based on the known return value.
+/* The volatile return value prevents the compiler from assuming it knows the
+ * return value and optimising based on that.
  */
 forloop(`i', `0', NUM_PROGS,
 `__attribute__ ((noinline))
