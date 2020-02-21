@@ -9,9 +9,15 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+
 #include <linux/err.h> /* ERR_PTR */
-#include <bpf/libbpf.h> /* ERR_PTR */
-#include <bpf/btf.h> /* ERR_PTR */
+#include <linux/if_link.h>
+
+#include <bpf/libbpf.h>
+#include <bpf/btf.h>
 #include <xdp/libxdp.h>
 #include "logging.h"
 #include "util.h"
@@ -25,6 +31,8 @@ struct xdp_program {
 	struct btf *btf;
 	int prog_fd;
 	const char *prog_name;
+	__u8 prog_tag[BPF_TAG_SIZE];
+	__u64 load_time;
 	bool from_external_obj;
 	unsigned int run_prio;
 	unsigned int chain_call_actions; // bitmap
@@ -353,12 +361,51 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 	return xdp_prog;
 }
 
-struct xdp_program *xdp_program__from_id(__u32 id)
+static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
 {
-	struct xdp_program *xdp_prog = NULL;
 	struct bpf_prog_info info = {};
 	__u32 len = sizeof(info);
 	struct btf *btf = NULL;
+	int err = 0;
+
+	err = bpf_obj_get_info_by_fd(fd, &info, &len);
+	if (err) {
+		pr_warn("couldn't get program info: %s", strerror(errno));
+		err = -errno;
+		goto err;
+	}
+
+	if (!xdp_prog->prog_name) {
+		xdp_prog->prog_name = strdup(info.name);
+		if (!xdp_prog->prog_name) {
+			err = -ENOMEM;
+			pr_warn("failed to strdup program title");
+			goto err;
+		}
+	}
+
+	if (info.btf_id && !xdp_prog->btf) {
+		err = btf__get_from_id(info.btf_id, &btf);
+		if (err) {
+			pr_warn("Couldn't get BTF for ID %ul\n", info.btf_id);
+			goto err;
+		}
+		xdp_prog->btf = btf;
+	}
+
+	memcpy(xdp_prog->prog_tag, info.tag, BPF_TAG_SIZE);
+	xdp_prog->load_time = info.load_time;
+	xdp_prog->prog_fd = fd;
+
+	return 0;
+err:
+	btf__free(btf);
+	return err;
+}
+
+struct xdp_program *xdp_program__from_id(__u32 id)
+{
+	struct xdp_program *xdp_prog = NULL;
 	int fd, err;
 
 	fd = bpf_prog_get_fd_by_id(id);
@@ -368,43 +415,349 @@ struct xdp_program *xdp_program__from_id(__u32 id)
 		goto err;
 	}
 
-	err = bpf_obj_get_info_by_fd(fd, &info, &len);
-	if (err) {
-		pr_warn("couldn't get program info: %s", strerror(errno));
-		err = -errno;
-		goto err;
-	}
-
 	xdp_prog = xdp_program__new();
 	if (IS_ERR(xdp_prog))
 		return xdp_prog;
 
-	xdp_prog->prog_name = strdup(info.name);
-	if (!xdp_prog->prog_name) {
-		err = -ENOMEM;
-		pr_warn("failed to strdup program title");
+	err = xdp_program__fill_from_fd(xdp_prog, fd);
+	if (err)
 		goto err;
-	}
-
-	if (info.btf_id) {
-		err = btf__get_from_id(info.btf_id, &btf);
-		if (err) {
-			pr_warn("Couldn't get BTF for ID %ul\n", info.btf_id);
-			goto err;
-		}
-	}
-
-	xdp_prog->prog_fd = fd;
-	xdp_prog->btf = btf;
 
 	err = xdp_parse_run_order(xdp_prog);
 	if (err && err != -ENOENT)
 		goto err;
 
 	return xdp_prog;
-
 err:
 	free(xdp_prog);
-	btf__free(btf);
 	return ERR_PTR(err);
+}
+
+static int cmp_xdp_programs(const void *_a, const void *_b)
+{
+	const struct xdp_program *a = _a;
+	const struct xdp_program *b = _b;
+	int cmp;
+
+	if (a->run_prio != b->run_prio)
+		return a->run_prio < b->run_prio ? -1 : 1;
+
+	cmp = strcmp(a->prog_name, b->prog_name);
+	if (cmp)
+		return cmp;
+
+	/* Hopefully the two checks above will resolve most comparisons; in
+	 * cases where they don't, hopefully the checks below will keep the
+	 * order stable.
+	 */
+
+	/* loaded before non-loaded */
+	if (a->prog_fd >= 0 && b->prog_fd < 0)
+		return -1;
+	else if (a->prog_fd < 0 && b->prog_fd >= 0)
+		return 1;
+
+	/* two unloaded programs - compare by size */
+	if (a->bpf_prog && b->bpf_prog) {
+		size_t size_a, size_b;
+
+		size_a = bpf_program__size(a->bpf_prog);
+		size_b = bpf_program__size(b->bpf_prog);
+		if (size_a != size_b)
+			return size_a < size_b ? -1 : 1;
+	}
+
+	cmp = memcmp(a->prog_tag, b->prog_tag, BPF_TAG_SIZE);
+	if (cmp)
+		return cmp;
+
+	/* at this point we are really grasping for straws */
+	if (a->load_time != b->load_time)
+		return a->load_time < b->load_time ? -1 : 1;
+
+	return 0;
+}
+
+int xdp_program__get_from_ifindex(int ifindex, struct xdp_program **progs,
+				  size_t *num_progs)
+{
+	struct xdp_link_info xinfo = {};
+	struct xdp_program *p;
+	__u32 prog_id;
+	int err;
+
+	err = bpf_get_link_xdp_info(ifindex, &xinfo, sizeof(xinfo), 0);
+	if (err)
+		return err;
+
+	if (xinfo.attach_mode == XDP_ATTACHED_SKB)
+		prog_id = xinfo.skb_prog_id;
+	else
+		prog_id = xinfo.drv_prog_id;
+
+	if (!prog_id)
+		return -ENOENT;
+
+	p = xdp_program__from_id(prog_id);
+	if (IS_ERR(p))
+		return PTR_ERR(p);
+
+	*progs = p;
+	*num_progs = 1;
+
+	return 0;
+}
+
+int xdp_program__load(struct xdp_program *prog)
+{
+	int err;
+
+	if (prog->prog_fd)
+		return -EEXIST;
+
+	if (!prog->bpf_obj)
+		return -EINVAL;
+
+	err = bpf_object__load(prog->bpf_obj);
+	if (err)
+		return err;
+
+	return xdp_program__fill_from_fd(prog, bpf_program__fd(prog->bpf_prog));
+}
+
+#define MAX_ACTIONS 10
+
+struct prog_config {
+	__u8 prog_enabled[MAX_ACTIONS];
+	__u32 chain_call_actions[MAX_ACTIONS];
+};
+
+int gen_xdp_multiprog(struct xdp_program *progs, size_t num_progs)
+{
+	struct bpf_program *dispatcher_prog;
+	struct bpf_map *prog_config_map;
+	struct prog_config *rodata;
+	int fd, prog_fd, err, i;
+	struct bpf_object *obj;
+	struct stat sb = {};
+	char buf[PATH_MAX];
+	void *ptr = NULL;
+	size_t sz = 0;
+
+	struct bpf_prog_skeleton prog = {
+		.name = "xdp_main",
+		.prog = &dispatcher_prog
+	};
+	struct bpf_map_skeleton map = {
+		.name = "xdp_disp.rodata",
+		.map = &prog_config_map,
+		.mmaped = (void **)&rodata
+	};
+
+	struct bpf_object_skeleton s = {
+		.sz = sizeof(s),
+		.name = "xdp_dispatcher",
+		.obj = &obj,
+		.map_cnt = 1,
+		.map_skel_sz = sizeof(map),
+		.maps = &map,
+		.prog_cnt = 1,
+		.prog_skel_sz = sizeof(prog),
+		.progs = &prog
+	};
+
+	err = find_bpf_file(buf, sizeof(buf), "xdp-dispatcher.o");
+	if (err)
+		return err;
+
+	fd = open(buf, O_RDONLY);
+	if (fd < 0) {
+		err = -errno;
+		pr_warn("Couldn't open BPF file %s\n", buf);
+		return err;
+	}
+
+	err = fstat(fd, &sb);
+	if (err)
+		goto err;
+	sz = sb.st_size;
+
+	ptr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+	if (ptr == MAP_FAILED) {
+		err = -errno;
+		ptr = NULL;
+		pr_warn("Couldn't mmap BPF file\n");
+		goto err;
+	}
+	s.data = ptr;
+	s.data_sz = sz;
+
+	err = bpf_object__open_skeleton(&s, NULL);
+	if (err)
+		goto err;
+
+	munmap(ptr, sz);
+	ptr = NULL;
+	close(fd);
+	fd = -1;
+
+	if (!rodata) {
+		pr_warn("No mmaped rodat map area\n");
+		err = -EINVAL;
+		goto err;
+	}
+
+	/* set dispatcher parameters before loading */
+	for (i = 0; i < num_progs; i++) {
+		rodata->prog_enabled[i] = 1;
+		rodata->chain_call_actions[i] = progs[i].chain_call_actions;
+	}
+
+	err = bpf_object__load(obj);
+	if (err)
+		goto err;
+
+	prog_fd = bpf_program__fd(dispatcher_prog);
+	for (i = 0; i < num_progs; i++) {
+		err = check_snprintf(buf, sizeof(buf), "prog%d", i);
+		if (err)
+			goto err_obj;
+
+		err = bpf_program__set_attach_target(progs[i].bpf_prog, prog_fd,
+						     buf);
+		if (err)
+			goto err_obj;
+
+		err = xdp_program__load(&progs[i]);
+		if (err)
+			goto err_obj;
+	}
+
+	return prog_fd;
+
+err_obj:
+	bpf_object__close(obj);
+err:
+	if (ptr)
+		munmap(ptr, sz);
+	if (fd > -1)
+		close(fd);
+	return err;
+}
+
+int xdp_attach_programs(struct xdp_program *progs, size_t num_progs,
+		       int ifindex, bool force, enum xdp_attach_mode mode)
+{
+	int err = 0, xdp_flags = 0, prog_fd;
+
+	if (!num_progs)
+		return -EINVAL;
+
+	if (num_progs > 1) {
+		qsort(progs, num_progs, sizeof(*progs), cmp_xdp_programs);
+		prog_fd = gen_xdp_multiprog(progs, num_progs);
+	} else if (progs->prog_fd >= 0) {
+		prog_fd = progs->prog_fd;
+	} else {
+		prog_fd = xdp_program__load(progs);
+	}
+
+	if (prog_fd < 0) {
+		err = prog_fd;
+		goto out;
+	}
+
+	switch (mode) {
+	case XDP_MODE_SKB:
+		xdp_flags |= XDP_FLAGS_SKB_MODE;
+		break;
+	case XDP_MODE_NATIVE:
+		xdp_flags |= XDP_FLAGS_DRV_MODE;
+		break;
+	case XDP_MODE_HW:
+		xdp_flags |= XDP_FLAGS_HW_MODE;
+		break;
+	case XDP_MODE_UNSPEC:
+		break;
+	}
+
+	if (!force)
+		xdp_flags |= XDP_FLAGS_UPDATE_IF_NOEXIST;
+
+	err = bpf_set_link_xdp_fd(ifindex, prog_fd, xdp_flags);
+	if (err == -EEXIST && !(xdp_flags & XDP_FLAGS_UPDATE_IF_NOEXIST)) {
+		/* Program replace didn't work, probably because a program of
+		 * the opposite type is loaded. Let's unload that and try
+		 * loading again.
+		 */
+
+		__u32 old_flags = xdp_flags;
+
+		xdp_flags &= ~XDP_FLAGS_MODES;
+		xdp_flags |= (mode == XDP_MODE_SKB) ? XDP_FLAGS_DRV_MODE :
+			XDP_FLAGS_SKB_MODE;
+		err = bpf_set_link_xdp_fd(ifindex, -1, xdp_flags);
+		if (!err)
+			err = bpf_set_link_xdp_fd(ifindex, prog_fd, old_flags);
+	}
+	if (err < 0) {
+		pr_warn("Error attaching XDP program to ifindex %d: %s\n",
+			ifindex, strerror(-err));
+
+		switch (-err) {
+		case EBUSY:
+		case EEXIST:
+			pr_warn("XDP already loaded on device;"
+				" use --force to replace\n");
+			break;
+		case EOPNOTSUPP:
+			pr_warn("Native XDP not supported;"
+				" try using --skb-mode\n");
+			break;
+		default:
+			break;
+		}
+		goto out;
+	}
+
+	pr_debug("Loaded %zu programs on ifindex '%d'%s\n",
+		 num_progs, ifindex,
+		 mode == XDP_MODE_SKB ? " in skb mode" : "");
+
+out:
+	return err;
+}
+
+
+int xdp_program__attach(const struct xdp_program *prog,
+			int ifindex, bool replace, enum xdp_attach_mode mode)
+{
+	struct xdp_program *old_progs = NULL, *all_progs = NULL;
+	size_t num_old_progs = 0, num_progs;
+	int err;
+
+	err = xdp_program__get_from_ifindex(ifindex, &old_progs, &num_old_progs);
+	if (err && err != -ENOENT)
+		return err;
+
+	if (replace) {
+		num_progs = 1;
+		all_progs = (struct xdp_program *)prog;
+	} else {
+		num_progs = num_old_progs +1;
+		all_progs = reallocarray(old_progs, sizeof(*old_progs),
+					 num_progs);
+		if (!all_progs) {
+			err = -errno;
+			goto out;
+		}
+		old_progs = NULL;
+		memcpy(&all_progs[num_old_progs], prog, sizeof(*prog));
+	}
+
+	err = xdp_attach_programs(all_progs, num_progs, ifindex, true, mode);
+out:
+	free(old_progs);
+	free(all_progs);
+	return err;
 }

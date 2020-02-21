@@ -9,6 +9,7 @@
 #include <linux/bpf.h>
 #include <bpf/bpf.h>
 #include "xdp_helpers.h"
+#include "util.h"
 
 struct xdp_program;
 
@@ -30,3 +31,6 @@ bool xdp_program__chain_call_enabled(struct xdp_program *xdp_prog,
 int xdp_program__print_chain_call_actions(struct xdp_program *prog,
 					  char *buf,
 					  size_t buf_len);
+
+int xdp_attach_programs(struct xdp_program *progs, size_t num_progs,
+                        int ifindex, bool force, enum xdp_attach_mode mode);
