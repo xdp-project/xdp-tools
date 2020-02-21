@@ -22,6 +22,7 @@ enum option_type {
                   OPT_IFNAME,
                   OPT_IPADDR,
                   OPT_ENUM,
+                  OPT_MULTISTRING,
                   __OPT_MAX
 };
 
@@ -48,6 +49,11 @@ struct flag_val {
 struct enum_val {
         const char *name;
         unsigned int value;
+};
+
+struct multistring {
+        const char **strings;
+        size_t num_strings;
 };
 
 struct iface {
