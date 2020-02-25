@@ -23,7 +23,7 @@
 static const struct loadopt {
 	bool help;
 	struct iface iface;
-	char *filename;
+	struct multistring filenames;
 	char *pin_path;
 	char *section_name;
 	bool force;
@@ -60,13 +60,63 @@ static struct prog_option load_options[] = {
 		      .metavar = "<ifname>",
 		      .required = true,
 		      .help = "Load on device <ifname>"),
-	DEFINE_OPTION("filename", OPT_STRING, struct loadopt, filename,
+	DEFINE_OPTION("filenames", OPT_MULTISTRING, struct loadopt, filenames,
 		      .positional = true,
-		      .metavar = "<filename>",
+		      .metavar = "<filenames>",
 		      .required = true,
-		      .help = "Load program from <progfile>"),
+		      .help = "Load programs from <filenames>"),
 	END_OPTIONS
 };
+
+int load_multiprog(const struct loadopt *opt)
+{
+	size_t num_progs = opt->filenames.num_strings;
+	struct xdp_program **progs, *p;
+	int err = 0, i, fd;
+	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
+			    .pin_root_path = opt->pin_path);
+
+	progs = calloc(sizeof(*progs), num_progs);
+	if (!progs) {
+		pr_warn("Couldn't allocate memory\n");
+		return EXIT_FAILURE;
+	}
+	memset(progs, 0, sizeof(*progs) * num_progs);
+
+	for (i = 0; i < num_progs; i++) {
+		p = xdp_program__open_file(opt->filenames.strings[i],
+						  opt->section_name, &opts);
+		if (IS_ERR(p)) {
+			err = PTR_ERR(p);
+			pr_warn("Couldn't open file '%s': %s",
+				opt->filenames.strings[i], strerror(-err));
+			goto out;
+		}
+		progs[i] = p;
+	}
+
+	fd = xdp_attach_programs(progs, num_progs, opt->iface.ifindex,
+				 opt->force, opt->mode);
+
+	if (fd < 0) {
+		err = fd;
+		pr_warn("Failed to load program: %s\n", strerror(-err));
+		goto out;
+	}
+
+	close(fd);
+
+	/* Since the trace attachments will disappear when the fds are closed,
+	 * sleep for a while to keep them around for testing
+	 */
+	sleep(30);
+
+out:
+	for (i = 0; i < num_progs; i++)
+		if (progs[i])
+			xdp_program__free(progs[i]);
+	return err ? EXIT_FAILURE : EXIT_SUCCESS;
+}
 
 int do_load(const void *cfg, const char *pin_root_path)
 {
@@ -76,11 +126,20 @@ int do_load(const void *cfg, const char *pin_root_path)
 	struct xdp_program *xdp_prog;
 	char errmsg[STRERR_BUFSIZE];
 	int err = EXIT_SUCCESS;
+	const char *filename;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = opt->pin_path);
 
+	if (!opt->filenames.num_strings) {
+		pr_warn("Need at least one filename to load\n");
+		return EXIT_FAILURE;
+	} else if (opt->filenames.num_strings > 1) {
+		return load_multiprog(opt);
+	}
+	filename = opt->filenames.strings[0];
+
 	pr_debug("Loading file '%s' on interface '%s'.\n",
-		 opt->filename, opt->iface.ifname);
+		 filename, opt->iface.ifname);
 
 	/* libbpf spits out a lot of unhelpful error messages while loading.
 	 * Silence the logging so we can provide our own messages instead; this
@@ -90,7 +149,7 @@ int do_load(const void *cfg, const char *pin_root_path)
 
 retry:
 
-	obj = bpf_object__open_file(opt->filename, &opts);
+	obj = bpf_object__open_file(filename, &opts);
 	err = libbpf_get_error(obj);
 	if (err) {
 		libbpf_strerror(err, errmsg, sizeof(errmsg));
