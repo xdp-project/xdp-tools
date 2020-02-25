@@ -20,7 +20,6 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 					   struct bpf_object_open_opts *opts);
 struct xdp_program *xdp_program__from_id(__u32 prog_id);
 
-struct xdp_program *xdp_program__new();
 void xdp_program__free(struct xdp_program *xdp_prog);
 
 const char *xdp_program__name(struct xdp_program *xdp_prog);
@@ -32,5 +31,5 @@ int xdp_program__print_chain_call_actions(struct xdp_program *prog,
 					  char *buf,
 					  size_t buf_len);
 
-int xdp_attach_programs(struct xdp_program *progs, size_t num_progs,
+int xdp_attach_programs(struct xdp_program **progs, size_t num_progs,
                         int ifindex, bool force, enum xdp_attach_mode mode);

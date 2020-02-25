@@ -30,6 +30,7 @@ struct xdp_program {
 	struct bpf_object *bpf_obj;
 	struct btf *btf;
 	int prog_fd;
+	int link_fd;
 	const char *prog_name;
 	__u8 prog_tag[BPF_TAG_SIZE];
 	__u64 load_time;
@@ -269,7 +270,7 @@ static int xdp_parse_run_order(struct xdp_program *xdp_prog)
 	return -ENOENT;
 }
 
-struct xdp_program *xdp_program__new()
+static struct xdp_program *xdp_program__new()
 {
 	struct xdp_program *xdp_prog;
 
@@ -280,6 +281,7 @@ struct xdp_program *xdp_program__new()
 	memset(xdp_prog, 0, sizeof(*xdp_prog));
 
 	xdp_prog->prog_fd = -1;
+	xdp_prog->link_fd = -1;
 	xdp_prog->run_prio = XDP_DEFAULT_RUN_PRIO;
 	xdp_prog->chain_call_actions = XDP_DEFAULT_CHAIN_CALL_ACTIONS;
 
@@ -288,6 +290,8 @@ struct xdp_program *xdp_program__new()
 
 void xdp_program__free(struct xdp_program *xdp_prog)
 {
+	if (xdp_prog->link_fd >= 0)
+		close(xdp_prog->link_fd);
 	if (xdp_prog->prog_fd >= 0)
 		close(xdp_prog->prog_fd);
 
@@ -299,11 +303,11 @@ void xdp_program__free(struct xdp_program *xdp_prog)
 	}
 }
 
-static struct xdp_program *xdp_program__from_obj(struct bpf_object *obj,
-						 const char *prog_name,
-						 bool external)
+static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
+				      struct bpf_object *obj,
+				      const char *prog_name,
+				      bool external)
 {
-	struct xdp_program *xdp_prog;
 	struct bpf_program *bpf_prog;
 	int err;
 
@@ -313,11 +317,7 @@ static struct xdp_program *xdp_program__from_obj(struct bpf_object *obj,
 		bpf_prog = bpf_program__next(NULL, obj);
 
 	if(!bpf_prog)
-		return ERR_PTR(-ENOENT);
-
-	xdp_prog = xdp_program__new();
-	if (IS_ERR(xdp_prog))
-		return xdp_prog;
+		return -ENOENT;
 
 	xdp_prog->bpf_prog = bpf_prog;
 	xdp_prog->bpf_obj = obj;
@@ -327,18 +327,29 @@ static struct xdp_program *xdp_program__from_obj(struct bpf_object *obj,
 
 	err = xdp_parse_run_order(xdp_prog);
 	if (err && err != -ENOENT)
-		goto err;
+		return err;
 
-	return xdp_prog;
-err:
-	free(xdp_prog);
-	return ERR_PTR(err);
+	return 0;
 }
 
 struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
 					      const char *prog_name)
 {
-	return xdp_program__from_obj(obj, prog_name, true);
+	struct xdp_program *xdp_prog;
+	int err;
+
+	xdp_prog = xdp_program__new();
+	if (IS_ERR(xdp_prog))
+		return xdp_prog;
+
+	err = xdp_program__fill_from_obj(xdp_prog, obj, prog_name, true);
+	if (err)
+		goto err;
+
+	return xdp_prog;
+err:
+	xdp_program__free(xdp_prog);
+	return ERR_PTR(err);
 }
 
 struct xdp_program *xdp_program__open_file(const char *filename,
@@ -354,11 +365,21 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 	if (err)
 		return ERR_PTR(err);
 
-	xdp_prog = xdp_program__from_obj(obj, prog_name, false);
-	if (IS_ERR(xdp_prog))
+	xdp_prog = xdp_program__new();
+	if (IS_ERR(xdp_prog)) {
 		bpf_object__close(obj);
+		return xdp_prog;
+	}
+
+	err = xdp_program__fill_from_obj(xdp_prog, obj, prog_name, false);
+	if (err)
+		goto err;
 
 	return xdp_prog;
+err:
+	xdp_program__free(xdp_prog);
+	bpf_object__close(obj);
+	return ERR_PTR(err);
 }
 
 static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
@@ -435,8 +456,8 @@ err:
 
 static int cmp_xdp_programs(const void *_a, const void *_b)
 {
-	const struct xdp_program *a = _a;
-	const struct xdp_program *b = _b;
+	const struct xdp_program *a = *(struct xdp_program * const *)_a;
+	const struct xdp_program *b = *(struct xdp_program * const *)_b;
 	int cmp;
 
 	if (a->run_prio != b->run_prio)
@@ -502,7 +523,7 @@ int xdp_program__get_from_ifindex(int ifindex, struct xdp_program **progs,
 	if (IS_ERR(p))
 		return PTR_ERR(p);
 
-	*progs = p;
+	progs[0] = p;
 	*num_progs = 1;
 
 	return 0;
@@ -512,7 +533,7 @@ int xdp_program__load(struct xdp_program *prog)
 {
 	int err;
 
-	if (prog->prog_fd)
+	if (prog->prog_fd >= 0)
 		return -EEXIST;
 
 	if (!prog->bpf_obj)
@@ -521,6 +542,9 @@ int xdp_program__load(struct xdp_program *prog)
 	err = bpf_object__load(prog->bpf_obj);
 	if (err)
 		return err;
+
+	pr_debug("Loaded XDP program %s, got fd %d\n",
+		 xdp_program__name(prog), bpf_program__fd(prog->bpf_prog));
 
 	return xdp_program__fill_from_fd(prog, bpf_program__fd(prog->bpf_prog));
 }
@@ -532,23 +556,24 @@ struct prog_config {
 	__u32 chain_call_actions[MAX_ACTIONS];
 };
 
-int gen_xdp_multiprog(struct xdp_program *progs, size_t num_progs)
+int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 {
 	struct bpf_program *dispatcher_prog;
 	struct bpf_map *prog_config_map;
+	int fd, prog_fd, err, i, lfd;
 	struct prog_config *rodata;
-	int fd, prog_fd, err, i;
+	struct xdp_program *prog;
 	struct bpf_object *obj;
 	struct stat sb = {};
 	char buf[PATH_MAX];
 	void *ptr = NULL;
 	size_t sz = 0;
 
-	struct bpf_prog_skeleton prog = {
+	struct bpf_prog_skeleton prog_skel = {
 		.name = "xdp_main",
 		.prog = &dispatcher_prog
 	};
-	struct bpf_map_skeleton map = {
+	struct bpf_map_skeleton map_skel = {
 		.name = "xdp_disp.rodata",
 		.map = &prog_config_map,
 		.mmaped = (void **)&rodata
@@ -559,12 +584,14 @@ int gen_xdp_multiprog(struct xdp_program *progs, size_t num_progs)
 		.name = "xdp_dispatcher",
 		.obj = &obj,
 		.map_cnt = 1,
-		.map_skel_sz = sizeof(map),
-		.maps = &map,
+		.map_skel_sz = sizeof(map_skel),
+		.maps = &map_skel,
 		.prog_cnt = 1,
-		.prog_skel_sz = sizeof(prog),
-		.progs = &prog
+		.prog_skel_sz = sizeof(prog_skel),
+		.progs = &prog_skel
 	};
+
+	pr_debug("Generating multi-prog dispatcher for %zu programs\n", num_progs);
 
 	err = find_bpf_file(buf, sizeof(buf), "xdp-dispatcher.o");
 	if (err)
@@ -610,7 +637,7 @@ int gen_xdp_multiprog(struct xdp_program *progs, size_t num_progs)
 	/* set dispatcher parameters before loading */
 	for (i = 0; i < num_progs; i++) {
 		rodata->prog_enabled[i] = 1;
-		rodata->chain_call_actions[i] = progs[i].chain_call_actions;
+		rodata->chain_call_actions[i] = progs[i]->chain_call_actions;
 	}
 
 	err = bpf_object__load(obj);
@@ -619,18 +646,38 @@ int gen_xdp_multiprog(struct xdp_program *progs, size_t num_progs)
 
 	prog_fd = bpf_program__fd(dispatcher_prog);
 	for (i = 0; i < num_progs; i++) {
+		prog = progs[i];
 		err = check_snprintf(buf, sizeof(buf), "prog%d", i);
 		if (err)
 			goto err_obj;
 
-		err = bpf_program__set_attach_target(progs[i].bpf_prog, prog_fd,
+		err = bpf_program__set_attach_target(prog->bpf_prog, prog_fd,
 						     buf);
-		if (err)
+		if (err) {
+			pr_debug("Failed to set attach target: %s\n", strerror(-err));
 			goto err_obj;
+		}
 
-		err = xdp_program__load(&progs[i]);
-		if (err)
+		bpf_program__set_type(prog->bpf_prog, BPF_PROG_TYPE_EXT);
+		err = xdp_program__load(prog);
+		if (err) {
+			pr_warn("Failed to load program %d ('%s'): %s\n",
+				i, xdp_program__name(prog), strerror(-err));
 			goto err_obj;
+		}
+
+		lfd = bpf_raw_tracepoint_open(NULL, prog->prog_fd);
+		if (lfd < 0) {
+			err = lfd;
+			pr_warn("Failed to attach program %d ('%s') to dispatcher: %s\n",
+				i, xdp_program__name(prog), strerror(-err));
+			goto err_obj;
+		}
+
+		pr_debug("Attached prog '%s' with priority %d in dispatcher entry '%s' with fd %d\n",
+			 xdp_program__name(prog), xdp_program__run_prio(prog),
+			 buf, lfd);
+		prog->link_fd = lfd;
 	}
 
 	return prog_fd;
@@ -645,8 +692,8 @@ err:
 	return err;
 }
 
-int xdp_attach_programs(struct xdp_program *progs, size_t num_progs,
-		       int ifindex, bool force, enum xdp_attach_mode mode)
+int xdp_attach_programs(struct xdp_program **progs, size_t num_progs,
+			int ifindex, bool force, enum xdp_attach_mode mode)
 {
 	int err = 0, xdp_flags = 0, prog_fd;
 
@@ -656,16 +703,18 @@ int xdp_attach_programs(struct xdp_program *progs, size_t num_progs,
 	if (num_progs > 1) {
 		qsort(progs, num_progs, sizeof(*progs), cmp_xdp_programs);
 		prog_fd = gen_xdp_multiprog(progs, num_progs);
-	} else if (progs->prog_fd >= 0) {
-		prog_fd = progs->prog_fd;
+	} else if (progs[0]->prog_fd >= 0) {
+		prog_fd = progs[0]->prog_fd;
 	} else {
-		prog_fd = xdp_program__load(progs);
+		prog_fd = xdp_program__load(progs[0]);
 	}
 
 	if (prog_fd < 0) {
 		err = prog_fd;
 		goto out;
 	}
+
+	pr_debug("Loading XDP fd %d onto ifindex %d\n", prog_fd, ifindex);
 
 	switch (mode) {
 	case XDP_MODE_SKB:
@@ -724,6 +773,7 @@ int xdp_attach_programs(struct xdp_program *progs, size_t num_progs,
 		 num_progs, ifindex,
 		 mode == XDP_MODE_SKB ? " in skb mode" : "");
 
+	return prog_fd;
 out:
 	return err;
 }
@@ -732,32 +782,25 @@ out:
 int xdp_program__attach(const struct xdp_program *prog,
 			int ifindex, bool replace, enum xdp_attach_mode mode)
 {
-	struct xdp_program *old_progs = NULL, *all_progs = NULL;
-	size_t num_old_progs = 0, num_progs;
-	int err;
+	struct xdp_program *old_progs[10], *all_progs[10];
+	size_t num_old_progs = 10, num_progs;
+	int err, i;
 
-	err = xdp_program__get_from_ifindex(ifindex, &old_progs, &num_old_progs);
+	err = xdp_program__get_from_ifindex(ifindex, old_progs, &num_old_progs);
 	if (err && err != -ENOENT)
 		return err;
 
 	if (replace) {
 		num_progs = 1;
-		all_progs = (struct xdp_program *)prog;
+		all_progs[0] = (struct xdp_program *)prog;
 	} else {
+		for (i = 0; i < num_old_progs; i++)
+			all_progs[i] = old_progs[i];
 		num_progs = num_old_progs +1;
-		all_progs = reallocarray(old_progs, sizeof(*old_progs),
-					 num_progs);
-		if (!all_progs) {
-			err = -errno;
-			goto out;
-		}
-		old_progs = NULL;
-		memcpy(&all_progs[num_old_progs], prog, sizeof(*prog));
 	}
 
 	err = xdp_attach_programs(all_progs, num_progs, ifindex, true, mode);
-out:
-	free(old_progs);
-	free(all_progs);
-	return err;
+	if (err)
+		return err;
+	return 0;
 }
