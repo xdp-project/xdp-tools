@@ -32,6 +32,9 @@ forloop(`i', `0', NUM_PROGS,
 `__attribute__ ((noinline))
 int format(`prog%d', i)(struct xdp_md *ctx) {
         volatile int ret = XDP_PASS;
+
+        if (!ctx)
+          return XDP_ABORTED;
         return ret;
 }
 ')
