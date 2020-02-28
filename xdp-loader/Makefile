@@ -5,11 +5,9 @@ XDP_TARGETS := xdp-dispatcher
 
 LIB_DIR = ../lib
 
-NUM_CHAIN_PROGS ?= 10
-
 include $(LIB_DIR)/common.mk
 
 xdp-dispatcher.c: xdp-dispatcher.c.in Makefile
-	$(QUIET_M4)m4 -DNUM_PROGS=$(NUM_CHAIN_PROGS) $< > $@
+	$(QUIET_M4)m4 $(DEFINES) $< > $@
 
 

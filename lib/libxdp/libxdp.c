@@ -19,6 +19,7 @@
 #include <bpf/libbpf.h>
 #include <bpf/btf.h>
 #include <xdp/libxdp.h>
+#include <xdp/prog_dispatcher.h>
 #include "logging.h"
 #include "util.h"
 
@@ -549,19 +550,12 @@ int xdp_program__load(struct xdp_program *prog)
 	return xdp_program__fill_from_fd(prog, bpf_program__fd(prog->bpf_prog));
 }
 
-#define MAX_ACTIONS 10
-
-struct prog_config {
-	__u8 prog_enabled[MAX_ACTIONS];
-	__u32 chain_call_actions[MAX_ACTIONS];
-};
-
 int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 {
 	struct bpf_program *dispatcher_prog;
 	struct bpf_map *prog_config_map;
 	int fd, prog_fd, err, i, lfd;
-	struct prog_config *rodata;
+	struct xdp_dispatcher_config *rodata;
 	struct xdp_program *prog;
 	struct bpf_object *obj;
 	struct stat sb = {};
@@ -635,10 +629,9 @@ int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 	}
 
 	/* set dispatcher parameters before loading */
-	for (i = 0; i < num_progs; i++) {
-		rodata->prog_enabled[i] = 1;
+	rodata->num_progs_enabled = num_progs;
+	for (i = 0; i < num_progs; i++)
 		rodata->chain_call_actions[i] = progs[i]->chain_call_actions;
-	}
 
 	err = bpf_object__load(obj);
 	if (err)

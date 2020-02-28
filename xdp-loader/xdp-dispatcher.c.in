@@ -3,13 +3,15 @@ divert(-1)
 #forloop definition taken from example in the M4 manual
 define(`forloop', `pushdef(`$1', `$2')_forloop($@)popdef(`$1')')
 define(`_forloop',`$4`'ifelse($1, decr(`$3'), `', `define(`$1', incr($1))$0($@)')')
-define(`NUM_PROGS',ifdef(`NUM_PROGS', NUM_PROGS, `2'))
+define(`NUM_PROGS',ifdef(`MAX_DISPATCHER_ACTIONS', MAX_DISPATCHER_ACTIONS, `10'))
 divert(0)dnl
 
 #include <linux/bpf.h>
 #include <linux/in.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
+
+#include <xdp/prog_dispatcher.h>
 
 /* While 'const volatile' sounds a little like an oxymoron, there's reason
  * behind the madness:
@@ -22,8 +24,7 @@ divert(0)dnl
  *   compile-time value of the variables, which is important since we will be
  *   changing the values before loading the program into the kernel.
  */
-static volatile const __u8 prog_enabled[NUM_PROGS] = {};
-static volatile const __u32 chain_call_actions[NUM_PROGS] = {};
+static volatile const struct xdp_dispatcher_config conf = {};
 
 /* The volatile return value prevents the compiler from assuming it knows the
  * return value and optimising based on that.
@@ -42,15 +43,17 @@ int format(`prog%d', i)(struct xdp_md *ctx) {
 SEC("xdp_dispatcher")
 int xdp_main(struct xdp_md *ctx)
 {
+        __u8 num_progs_enabled = conf.num_progs_enabled;
         int ret;
-
 forloop(`i', `0', NUM_PROGS,
-`        if (prog_enabled[i]) {
-                ret = format(`prog%d', i)(ctx);
-                if (!((1 << ret) & chain_call_actions[i]))
-                        return ret;
-        }
+`
+        if (num_progs_enabled < incr(i))
+                goto out;
+        ret = format(`prog%d', i)(ctx);
+        if (!((1 << ret) & conf.chain_call_actions[i]))
+                return ret;
 ')
+out:
         return XDP_PASS;
 }
 
