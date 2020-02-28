@@ -167,9 +167,32 @@ static bool get_xdp_action(const char *act_name, unsigned int *act)
 	return false;
 }
 
-static int xdp_parse_run_order(struct xdp_program *xdp_prog)
+/**
+ * This function parses the run config information attached to an XDP program.
+ *
+ * This information is specified using BTF, in a format similar to how
+ * BTF-defined maps are done. The definition looks like this:
+ *
+ * struct {
+ *	__uint(priority, 10);
+ *	__uint(XDP_PASS, 1);
+ * } XDP_RUN_CONFIG(FUNCNAME);
+ *
+ * The priority is simply an integer that will be used to sort programs as they
+ * are attached on the interface (see cmp_xdp_programs() for full sort order).
+ * In addition to the priority, the run config can define an integer value for
+ * each XDP action. A non-zero value means that execution will continue to the
+ * next loaded program if the current program returns that action. I.e., in the
+ * above example, any return value other than XDP_PASS will cause the dispatcher
+ * to exit with that return code, whereas XDP_PASS means execution will
+ * continue.
+ *
+ * Since this information becomes part of the object file BTF info, it will
+ * survive loading into the kernel, and so it can be retrieved for
+ * already-loaded programs as well.
+ */
+static int xdp_parse_run_config(struct xdp_program *xdp_prog)
 {
-
 	const struct btf_type *t, *var, *def, *sec = NULL;
 	struct btf *btf = xdp_program__btf(xdp_prog);
 	int err, nr_types, i, j, vlen, mlen;
@@ -326,7 +349,7 @@ static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 	xdp_prog->from_external_obj = external;
 	xdp_prog->prog_name = bpf_program__name(bpf_prog);
 
-	err = xdp_parse_run_order(xdp_prog);
+	err = xdp_parse_run_config(xdp_prog);
 	if (err && err != -ENOENT)
 		return err;
 
@@ -445,7 +468,7 @@ struct xdp_program *xdp_program__from_id(__u32 id)
 	if (err)
 		goto err;
 
-	err = xdp_parse_run_order(xdp_prog);
+	err = xdp_parse_run_config(xdp_prog);
 	if (err && err != -ENOENT)
 		goto err;
 
@@ -524,6 +547,10 @@ int xdp_program__get_from_ifindex(int ifindex, struct xdp_program **progs,
 	if (IS_ERR(p))
 		return PTR_ERR(p);
 
+	/* FIXME: This should figure out whether the loaded program is a
+	 * dispatcher, and if it is, go find the component programs and return
+	 * those instead.
+	 */
 	progs[0] = p;
 	*num_progs = 1;
 
@@ -563,6 +590,11 @@ int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 	void *ptr = NULL;
 	size_t sz = 0;
 
+	/* The only way libbpf exposes access to the rodata section is through
+	 * the skeleton API. We need to modify it before loading a program,
+	 * hence all this boilerplate code, until we can fix libbpf to just
+	 * expose map->mmaped directly.
+	 */
 	struct bpf_prog_skeleton prog_skel = {
 		.name = "xdp_main",
 		.prog = &dispatcher_prog
@@ -644,6 +676,14 @@ int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 		if (err)
 			goto err_obj;
 
+		/* FIXME: The following assumes the component XDP programs are
+		 * not already loaded. We do want to be able to re-attach
+		 * already-loaded programs into a new dispatcher here; but the
+		 * kernel doesn't currently allow this. So for now, just assume
+		 * programs are not already loaded and load them as TYPE_EXT
+		 * programs.
+		 */
+
 		err = bpf_program__set_attach_target(prog->bpf_prog, prog_fd,
 						     buf);
 		if (err) {
@@ -659,6 +699,7 @@ int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 			goto err_obj;
 		}
 
+		/* The attach will disappear once this fd is closed */
 		lfd = bpf_raw_tracepoint_open(NULL, prog->prog_fd);
 		if (lfd < 0) {
 			err = lfd;
@@ -779,6 +820,15 @@ int xdp_program__attach(const struct xdp_program *prog,
 	size_t num_old_progs = 10, num_progs;
 	int err, i;
 
+	/* FIXME: The idea here is that the API should allow the caller to just
+	 * attach a program; and the library will take care of finding the
+	 * already-attached programs, inserting the new one into the sequence
+	 * based on its priority, build a new dispatcher, and atomically replace
+	 * the old one. This needs a kernel API to allow re-attaching already
+	 * loaded freplace programs, as well as the ability to attach each
+	 * program to multiple places. So for now, this function doesn't really
+	 * work.
+	 */
 	err = xdp_program__get_from_ifindex(ifindex, old_progs, &num_old_progs);
 	if (err && err != -ENOENT)
 		return err;
