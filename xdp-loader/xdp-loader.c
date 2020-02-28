@@ -109,6 +109,9 @@ int load_multiprog(const struct loadopt *opt)
 	/* Since the trace attachments will disappear when the fds are closed,
 	 * sleep for a while to keep them around for testing
 	 */
+	pr_warn("XDP multi-prog loaded, but component programs will disappear on "
+		"xdp-loader exit!\nSleeping for 30 seconds to give you time to "
+		"inspect things.\nPress Ctrl-Z to background if you need more time.\n");
 	sleep(30);
 
 out:
