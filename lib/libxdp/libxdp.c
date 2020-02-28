@@ -23,7 +23,7 @@
 #include "logging.h"
 #include "util.h"
 
-#define XDP_RUN_ORDER_SEC ".xdp_run_order"
+#define XDP_RUN_CONFIG_SEC ".xdp_run_config"
 
 struct xdp_program {
 	/* one of prog or prog_fd should be set */
@@ -218,14 +218,14 @@ static int xdp_parse_run_config(struct xdp_program *xdp_prog)
 		if (!btf_is_datasec(t))
 			continue;
 		name = btf__name_by_offset(btf, t->name_off);
-		if (strcmp(name, XDP_RUN_ORDER_SEC) == 0) {
+		if (strcmp(name, XDP_RUN_CONFIG_SEC) == 0) {
 			sec = t;
 			break;
 		}
 	}
 
 	if (!sec) {
-		pr_debug("DATASEC '%s' not found.\n", XDP_RUN_ORDER_SEC);
+		pr_debug("DATASEC '%s' not found.\n", XDP_RUN_CONFIG_SEC);
 		return -ENOENT;
 	}
 
