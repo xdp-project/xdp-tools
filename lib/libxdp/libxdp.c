@@ -54,10 +54,11 @@ static struct btf *xdp_program__btf(struct xdp_program *xdp_prog)
 	return xdp_prog->btf;
 }
 
-static void set_chain_call_action(struct xdp_program *prog, unsigned int action,
-				  bool value)
+void xdp_program__set_chain_call_enabled(struct xdp_program *prog, unsigned int action,
+					 bool enabled)
 {
-	if (value)
+	/* FIXME: Should this also update the BTF info? */
+	if (enabled)
 		prog->chain_call_actions |= (1<<action);
 	else
 		prog->chain_call_actions &= ~(1<<action);
@@ -72,6 +73,12 @@ bool xdp_program__chain_call_enabled(struct xdp_program *prog,
 unsigned int xdp_program__run_prio(struct xdp_program *prog)
 {
 	return prog->run_prio;
+}
+
+void xdp_program__set_run_prio(struct xdp_program *prog, unsigned int run_prio)
+{
+	/* FIXME: Should this also update the BTF info? */
+	prog->run_prio = run_prio;
 }
 
 const char *xdp_program__name(struct xdp_program *prog)
@@ -281,7 +288,7 @@ static int xdp_parse_run_config(struct xdp_program *xdp_prog)
 				if (!get_field_int(struct_name, btf, def, m,
 						   &val))
 					return -EINVAL;
-				set_chain_call_action(xdp_prog, act, val);
+				xdp_program__set_chain_call_enabled(xdp_prog, act, val);
 			} else {
 				pr_warn("Invalid mname: %s\n", mname);
 				return -ENOTSUP;

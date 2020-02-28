@@ -24,8 +24,11 @@ void xdp_program__free(struct xdp_program *xdp_prog);
 
 const char *xdp_program__name(struct xdp_program *xdp_prog);
 unsigned int xdp_program__run_prio(struct xdp_program *xdp_prog);
+void xdp_program__set_run_prio(struct xdp_program *xdp_prog, unsigned int run_prio);
 bool xdp_program__chain_call_enabled(struct xdp_program *xdp_prog,
 				     enum xdp_action action);
+void xdp_program__set_chain_call_enabled(struct xdp_program *prog, unsigned int action,
+                                         bool enabled);
 
 int xdp_program__print_chain_call_actions(struct xdp_program *prog,
 					  char *buf,
