@@ -34,6 +34,7 @@ struct enum_val xdp_modes[] = {
        {"native", XDP_MODE_NATIVE},
        {"skb", XDP_MODE_SKB},
        {"hw", XDP_MODE_HW},
+       {NULL, 0}
 };
 
 
