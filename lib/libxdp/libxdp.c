@@ -6,15 +6,22 @@
  * Copyright (C) 2020 Toke Høiland-Jørgensen <toke@redhat.com>
  */
 
+#define _GNU_SOURCE
+
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/file.h>
+#include <sys/vfs.h>
 #include <fcntl.h>
+#include <dirent.h>
 
 #include <linux/err.h> /* ERR_PTR */
 #include <linux/if_link.h>
+#include <linux/magic.h>
 
 #include <bpf/libbpf.h>
 #include <bpf/btf.h>
@@ -49,6 +56,131 @@ static const char *xdp_action_names[] = {
 	[XDP_TX] = "XDP_TX",
 	[XDP_REDIRECT] = "XDP_REDIRECT",
 };
+
+
+static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
+{
+	struct statfs st_fs;
+
+	if (statfs(mnt, &st_fs) < 0)
+		return false;
+	if ((unsigned long)st_fs.f_type != magic)
+		return false;
+
+	return true;
+}
+
+static const char *bpf_find_mntpt_single(unsigned long magic, char *mnt,
+					 int len, const char *mntpt)
+{
+	if (bpf_is_valid_mntpt(mntpt, magic)) {
+		strncpy(mnt, mntpt, len-1);
+		mnt[len-1] = '\0';
+		return mnt;
+	}
+
+	return NULL;
+}
+
+static const char *find_bpffs()
+{
+	static bool bpf_mnt_cached = false;
+	static char bpf_wrk_dir[PATH_MAX];
+	static const char *mnt = NULL;
+	char *envdir;
+
+	if (bpf_mnt_cached)
+		return mnt;
+
+	envdir = secure_getenv(XDP_BPFFS_ENVVAR);
+	mnt = bpf_find_mntpt_single(BPF_FS_MAGIC,
+				    bpf_wrk_dir,
+				    sizeof(bpf_wrk_dir),
+				    envdir ?: BPF_DIR_MNT);
+	if (!mnt)
+		pr_warn("No bpffs found at %s\n", envdir ?: BPF_DIR_MNT);
+	else
+		bpf_mnt_cached = 1;
+
+	return mnt;
+}
+
+static const char *get_bpffs_dir()
+{
+	static char bpffs_dir[PATH_MAX];
+	static bool dir_cached = false;
+	static const char *dir;
+	const char *parent;
+	int err;
+
+	if (dir_cached)
+		return dir;
+
+	parent = find_bpffs();
+	if (!parent) {
+		err = -ENOENT;
+		goto err;
+	}
+
+	err = check_snprintf(bpffs_dir, sizeof(bpffs_dir), "%s/xdp", parent);
+	if (err)
+		goto err;
+
+	err = mkdir(bpffs_dir, S_IRWXU);
+	if (err && errno != EEXIST) {
+		err = -errno;
+		goto err;
+	}
+	dir = bpffs_dir;
+	dir_cached = true;
+	return dir;
+err:
+	return ERR_PTR(err);
+}
+
+static int xdp_lock_acquire()
+{
+	int lock_fd, err;
+	const char *dir;
+
+	dir = get_bpffs_dir();
+	if (IS_ERR(dir))
+		return PTR_ERR(dir);
+
+	lock_fd = open(dir, O_DIRECTORY);
+	if (lock_fd < 0) {
+		err = -errno;
+		pr_warn("Couldn't open lock directory at %s: %s\n",
+			dir, strerror(-err));
+		return err;
+	}
+
+	err = flock(lock_fd, LOCK_EX);
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't flock fd %d: %s\n", lock_fd, strerror(-err));
+		close(lock_fd);
+		return err;
+	}
+
+	pr_debug("Acquired lock from %s with fd %d\n", dir, lock_fd);
+	return lock_fd;
+}
+
+static int xdp_lock_release(int lock_fd)
+{
+	int err;
+
+	err = flock(lock_fd, LOCK_UN);
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't unlock fd %d: %s\n", lock_fd, strerror(-err));
+	} else {
+		pr_debug("Released lock fd %d\n", lock_fd);
+	}
+	close(lock_fd);
+	return err;
+}
 
 static struct btf *xdp_program__btf(struct xdp_program *xdp_prog)
 {
@@ -537,7 +669,8 @@ static int cmp_xdp_programs(const void *_a, const void *_b)
 	return 0;
 }
 
-int xdp_program__get_from_ifindex(int ifindex, struct xdp_program **progs,
+int xdp_program__get_from_ifindex(int ifindex,
+				  struct xdp_program **progs,
 				  size_t *num_progs)
 {
 	struct xdp_link_info xinfo = {};
@@ -591,14 +724,160 @@ int xdp_program__load(struct xdp_program *prog)
 	return xdp_program__fill_from_fd(prog, bpf_program__fd(prog->bpf_prog));
 }
 
-int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
+static int pin_multiprog(int dispatcher_fd, struct xdp_program **progs,
+			 size_t num_progs)
 {
 	__u32 info_size = sizeof(struct bpf_prog_info);
+	struct bpf_prog_info info = {};
+	struct xdp_program *prog;
+	char pin_path[PATH_MAX];
+	const char *bpffs_dir;
+	int err = 0, lock_fd, i;
+
+	bpffs_dir = get_bpffs_dir();
+	if (IS_ERR(bpffs_dir))
+		return PTR_ERR(bpffs_dir);
+
+	err = bpf_obj_get_info_by_fd(dispatcher_fd, &info, &info_size);
+	if (err)
+		return err;
+
+	lock_fd = xdp_lock_acquire();
+	if (lock_fd < 0)
+		return lock_fd;
+
+	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
+			     bpffs_dir, info.id);
+	if (err)
+		goto out;
+
+	pr_debug("Pinning multiprog fd %d beneath %s\n", dispatcher_fd, pin_path);
+
+	err = mkdir(pin_path, S_IRWXU);
+	if (err && errno != EEXIST) {
+		err = -errno;
+		goto out;
+	}
+
+	for (i = 0; i < num_progs; i++) {
+		char buf[PATH_MAX];
+		prog = progs[i];
+
+		if (prog->link_fd < 0) {
+			err = -EINVAL;
+			pr_warn("Prog %s not linked\n", xdp_program__name(prog));
+			goto err_unpin;
+		}
+
+		err = check_snprintf(buf, sizeof(buf), "%s/link-prog%d",
+				     pin_path, i);
+		if (err)
+			goto err_unpin;
+
+		err = bpf_obj_pin(prog->link_fd, buf);
+		if (err) {
+			pr_warn("Couldn't pin link FD at %s: %s\n", buf, strerror(-err));
+			goto err_unpin;
+		}
+
+		prog->link_pin_path = strdup(pin_path);
+		if (!prog->link_pin_path) {
+			err = -ENOMEM;
+			unlink(pin_path);
+			goto err_unpin;
+		}
+
+		pr_debug("Pinned link for prog %s at %s\n",
+			 xdp_program__name(prog), buf);
+	}
+out:
+	xdp_lock_release(lock_fd);
+	return err;
+
+err_unpin:
+	for (; i >= 0; i--) {
+		if (progs[i]->link_pin_path) {
+			unlink(progs[i]->link_pin_path);
+			free(progs[i]->link_pin_path);
+			progs[i]->link_pin_path = NULL;
+		}
+	}
+	goto out;
+}
+
+static int unpin_multiprog(int dispatcher_fd)
+{
+	__u32 info_size = sizeof(struct bpf_prog_info);
+	struct bpf_prog_info info = {};
+	char pin_path[PATH_MAX];
+	const char *bpffs_dir;
+	int err = 0, lock_fd;
+	struct dirent *de;
+	DIR *dr;
+
+	bpffs_dir = get_bpffs_dir();
+	if (IS_ERR(bpffs_dir))
+		return PTR_ERR(bpffs_dir);
+
+	err = bpf_obj_get_info_by_fd(dispatcher_fd, &info, &info_size);
+	if (err)
+		return err;
+
+	lock_fd = xdp_lock_acquire();
+	if (lock_fd < 0)
+		return lock_fd;
+
+	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
+			     bpffs_dir, info.id);
+	if (err)
+		goto out;
+
+	dr = opendir(pin_path);
+	if (!dr) {
+		err = -ENOENT;
+		goto out;
+	}
+
+	pr_debug("Unpinning multiprog fd %d beneath %s\n",
+		 dispatcher_fd, pin_path);
+
+	while ((de = readdir(dr)) != NULL) {
+		char buf[PATH_MAX];
+
+		if (!strcmp(".", de->d_name) ||
+		    !strcmp("..", de->d_name))
+			continue;
+
+		err = check_snprintf(buf, sizeof(buf), "%s/%s",
+				     pin_path, de->d_name);
+		if (err)
+			goto out_dir;
+
+		err = unlink(buf);
+		if (err) {
+			err = -errno;
+			pr_warn("Couldn't unlink file %s: %s\n",
+				buf, strerror(-err));
+			goto out_dir;
+		}
+	}
+
+	err = rmdir(pin_path);
+	if (err)
+		err = -errno;
+out_dir:
+	closedir(dr);
+out:
+	xdp_lock_release(lock_fd);
+	return err;
+}
+
+static int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
+{
 	struct bpf_program *dispatcher_prog;
 	struct bpf_map *prog_config_map;
 	int fd, prog_fd, err, i, lfd;
 	struct xdp_dispatcher_config *rodata;
-	struct bpf_prog_info info = {};
 	struct xdp_program *prog;
 	struct bpf_object *obj;
 	struct stat sb = {};
@@ -686,13 +965,7 @@ int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 		goto err;
 
 	prog_fd = bpf_program__fd(dispatcher_prog);
-	err = bpf_obj_get_info_by_fd(prog_fd, &info, &info_size);
-	if (err)
-		goto err_obj;
-
 	for (i = 0; i < num_progs; i++) {
-		char pin_path[PATH_MAX];
-
 		prog = progs[i];
 		err = check_snprintf(buf, sizeof(buf), "prog%d", i);
 		if (err)
@@ -710,7 +983,7 @@ int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 						     buf);
 		if (err) {
 			pr_debug("Failed to set attach target: %s\n", strerror(-err));
-			goto err_unpin;
+			goto err_obj;
 		}
 
 		bpf_program__set_type(prog->bpf_prog, BPF_PROG_TYPE_EXT);
@@ -718,7 +991,7 @@ int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 		if (err) {
 			pr_warn("Failed to load program %d ('%s'): %s\n",
 				i, xdp_program__name(prog), strerror(-err));
-			goto err_unpin;
+			goto err_obj;
 		}
 
 		/* The attach will disappear once this fd is closed */
@@ -727,45 +1000,17 @@ int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 			err = lfd;
 			pr_warn("Failed to attach program %d ('%s') to dispatcher: %s\n",
 				i, xdp_program__name(prog), strerror(-err));
-			goto err_unpin;
+			goto err_obj;
 		}
 
 		pr_debug("Attached prog '%s' with priority %d in dispatcher entry '%s' with fd %d\n",
 			 xdp_program__name(prog), xdp_program__run_prio(prog),
 			 buf, lfd);
 		prog->link_fd = lfd;
-
-		err = check_snprintf(pin_path, sizeof(pin_path), "dispatch-%d", info.id);
-		err = err ?: make_dir_subdir("/sys/fs/bpf/xdp", pin_path);
-		err = err ?: check_snprintf(pin_path, sizeof(pin_path),
-					    "/sys/fs/bpf/xdp/dispatch-%d/link-%s",
-					    info.id, buf);
-		if (err)
-			goto err_unpin;
-
-		err = bpf_obj_pin(lfd, pin_path);
-		if (err) {
-			pr_warn("Couldn't pin link FD at %s: %s\n", pin_path, strerror(-err));
-			goto err_unpin;
-		}
-
-		prog->link_pin_path = strdup(pin_path);
-		if (!prog->link_pin_path) {
-			unlink(pin_path);
-			goto err_unpin;
-		}
 	}
 
 	return prog_fd;
 
-err_unpin:
-	for (; i >= 0; i--) {
-		if (progs[i]->link_pin_path) {
-			unlink(progs[i]->link_pin_path);
-			free(progs[i]->link_pin_path);
-			progs[i]->link_pin_path = NULL;
-		}
-	}
 err_obj:
 	bpf_object__close(obj);
 err:
@@ -796,6 +1041,12 @@ int xdp_attach_programs(struct xdp_program **progs, size_t num_progs,
 	if (prog_fd < 0) {
 		err = prog_fd;
 		goto out;
+	}
+
+	if (num_progs > 1) {
+		err = pin_multiprog(prog_fd, progs, num_progs);
+		if (err)
+			goto out;
 	}
 
 	pr_debug("Loading XDP fd %d onto ifindex %d\n", prog_fd, ifindex);

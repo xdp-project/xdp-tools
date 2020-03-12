@@ -11,6 +11,8 @@
 #include "xdp_helpers.h"
 #include "util.h"
 
+#define XDP_BPFFS_ENVVAR "LIBXDP_BPFFS"
+
 struct xdp_program;
 
 struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
