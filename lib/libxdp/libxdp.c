@@ -32,7 +32,8 @@ struct xdp_program {
 	struct btf *btf;
 	int prog_fd;
 	int link_fd;
-	const char *prog_name;
+	char *link_pin_path;
+	char *prog_name;
 	__u8 prog_tag[BPF_TAG_SIZE];
 	__u64 load_time;
 	bool from_external_obj;
@@ -326,6 +327,9 @@ void xdp_program__free(struct xdp_program *xdp_prog)
 	if (xdp_prog->prog_fd >= 0)
 		close(xdp_prog->prog_fd);
 
+	free(xdp_prog->link_pin_path);
+	free(xdp_prog->prog_name);
+
 	if (!xdp_prog->from_external_obj) {
 		if (xdp_prog->bpf_obj)
 			bpf_object__close(xdp_prog->bpf_obj);
@@ -350,11 +354,14 @@ static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 	if(!bpf_prog)
 		return -ENOENT;
 
+	xdp_prog->prog_name = strdup(bpf_program__name(bpf_prog));
+	if (!xdp_prog->prog_name)
+		return -ENOMEM;
+
 	xdp_prog->bpf_prog = bpf_prog;
 	xdp_prog->bpf_obj = obj;
 	xdp_prog->btf = bpf_object__btf(obj);
 	xdp_prog->from_external_obj = external;
-	xdp_prog->prog_name = bpf_program__name(bpf_prog);
 
 	err = xdp_parse_run_config(xdp_prog);
 	if (err && err != -ENOENT)
@@ -586,10 +593,12 @@ int xdp_program__load(struct xdp_program *prog)
 
 int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 {
+	__u32 info_size = sizeof(struct bpf_prog_info);
 	struct bpf_program *dispatcher_prog;
 	struct bpf_map *prog_config_map;
 	int fd, prog_fd, err, i, lfd;
 	struct xdp_dispatcher_config *rodata;
+	struct bpf_prog_info info = {};
 	struct xdp_program *prog;
 	struct bpf_object *obj;
 	struct stat sb = {};
@@ -677,7 +686,13 @@ int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 		goto err;
 
 	prog_fd = bpf_program__fd(dispatcher_prog);
+	err = bpf_obj_get_info_by_fd(prog_fd, &info, &info_size);
+	if (err)
+		goto err_obj;
+
 	for (i = 0; i < num_progs; i++) {
+		char pin_path[PATH_MAX];
+
 		prog = progs[i];
 		err = check_snprintf(buf, sizeof(buf), "prog%d", i);
 		if (err)
@@ -695,7 +710,7 @@ int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 						     buf);
 		if (err) {
 			pr_debug("Failed to set attach target: %s\n", strerror(-err));
-			goto err_obj;
+			goto err_unpin;
 		}
 
 		bpf_program__set_type(prog->bpf_prog, BPF_PROG_TYPE_EXT);
@@ -703,7 +718,7 @@ int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 		if (err) {
 			pr_warn("Failed to load program %d ('%s'): %s\n",
 				i, xdp_program__name(prog), strerror(-err));
-			goto err_obj;
+			goto err_unpin;
 		}
 
 		/* The attach will disappear once this fd is closed */
@@ -712,17 +727,45 @@ int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 			err = lfd;
 			pr_warn("Failed to attach program %d ('%s') to dispatcher: %s\n",
 				i, xdp_program__name(prog), strerror(-err));
-			goto err_obj;
+			goto err_unpin;
 		}
 
 		pr_debug("Attached prog '%s' with priority %d in dispatcher entry '%s' with fd %d\n",
 			 xdp_program__name(prog), xdp_program__run_prio(prog),
 			 buf, lfd);
 		prog->link_fd = lfd;
+
+		err = check_snprintf(pin_path, sizeof(pin_path), "dispatch-%d", info.id);
+		err = err ?: make_dir_subdir("/sys/fs/bpf/xdp", pin_path);
+		err = err ?: check_snprintf(pin_path, sizeof(pin_path),
+					    "/sys/fs/bpf/xdp/dispatch-%d/link-%s",
+					    info.id, buf);
+		if (err)
+			goto err_unpin;
+
+		err = bpf_obj_pin(lfd, pin_path);
+		if (err) {
+			pr_warn("Couldn't pin link FD at %s: %s\n", pin_path, strerror(-err));
+			goto err_unpin;
+		}
+
+		prog->link_pin_path = strdup(pin_path);
+		if (!prog->link_pin_path) {
+			unlink(pin_path);
+			goto err_unpin;
+		}
 	}
 
 	return prog_fd;
 
+err_unpin:
+	for (; i >= 0; i--) {
+		if (progs[i]->link_pin_path) {
+			unlink(progs[i]->link_pin_path);
+			free(progs[i]->link_pin_path);
+			progs[i]->link_pin_path = NULL;
+		}
+	}
 err_obj:
 	bpf_object__close(obj);
 err:
