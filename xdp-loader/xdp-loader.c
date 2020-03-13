@@ -72,7 +72,8 @@ int load_multiprog(const struct loadopt *opt)
 {
 	size_t num_progs = opt->filenames.num_strings;
 	struct xdp_program **progs, *p;
-	int err = 0, i, fd;
+	struct xdp_multiprog *mp;
+	int err = 0, i;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = opt->pin_path);
 
@@ -95,17 +96,29 @@ int load_multiprog(const struct loadopt *opt)
 		progs[i] = p;
 	}
 
-	fd = xdp_attach_programs(progs, num_progs, opt->iface.ifindex,
-				 opt->force, opt->mode);
+	mp = xdp_multiprog__generate(progs, num_progs);
 
-	if (fd < 0) {
-		err = fd;
+	if (IS_ERR(mp)) {
+		err = PTR_ERR(mp);
 		pr_warn("Failed to load program: %s\n", strerror(-err));
 		goto out;
 	}
 
-	close(fd);
+	err = xdp_multiprog__pin(mp);
+	if (err) {
+		pr_warn("Failed to pin program: %s\n", strerror(-err));
+		goto out_free_mp;
+	}
 
+	err = xdp_multiprog__attach(mp, opt->iface.ifindex,
+				    opt->force, opt->mode);
+	if (err) {
+		pr_warn("Failed to attach program: %s\n", strerror(-err));
+		goto out_free_mp;
+	}
+
+out_free_mp:
+	xdp_multiprog__free(mp);
 out:
 	for (i = 0; i < num_progs; i++)
 		if (progs[i])
