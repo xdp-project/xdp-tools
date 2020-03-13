@@ -874,43 +874,13 @@ out:
 
 static int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 {
-	struct bpf_program *dispatcher_prog;
-	struct bpf_map *prog_config_map;
-	int fd, prog_fd, err, i, lfd;
 	struct xdp_dispatcher_config *rodata;
+	struct bpf_program *dispatcher_prog;
+	int prog_fd, err, i, lfd;
 	struct xdp_program *prog;
 	struct bpf_object *obj;
-	struct stat sb = {};
 	char buf[PATH_MAX];
-	void *ptr = NULL;
 	size_t sz = 0;
-
-	/* The only way libbpf exposes access to the rodata section is through
-	 * the skeleton API. We need to modify it before loading a program,
-	 * hence all this boilerplate code, until we can fix libbpf to just
-	 * expose map->mmaped directly.
-	 */
-	struct bpf_prog_skeleton prog_skel = {
-		.name = "xdp_main",
-		.prog = &dispatcher_prog
-	};
-	struct bpf_map_skeleton map_skel = {
-		.name = "xdp_disp.rodata",
-		.map = &prog_config_map,
-		.mmaped = (void **)&rodata
-	};
-
-	struct bpf_object_skeleton s = {
-		.sz = sizeof(s),
-		.name = "xdp_dispatcher",
-		.obj = &obj,
-		.map_cnt = 1,
-		.map_skel_sz = sizeof(map_skel),
-		.maps = &map_skel,
-		.prog_cnt = 1,
-		.prog_skel_sz = sizeof(prog_skel),
-		.progs = &prog_skel
-	};
 
 	pr_debug("Generating multi-prog dispatcher for %zu programs\n", num_progs);
 
@@ -918,39 +888,21 @@ static int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 	if (err)
 		return err;
 
-	fd = open(buf, O_RDONLY);
-	if (fd < 0) {
-		err = -errno;
+	obj = bpf_object__open_file(buf, NULL);
+	err = libbpf_get_error(obj);
+	if (err) {
 		pr_warn("Couldn't open BPF file %s\n", buf);
 		return err;
 	}
 
-	err = fstat(fd, &sb);
-	if (err)
-		goto err;
-	sz = sb.st_size;
-
-	ptr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-	if (ptr == MAP_FAILED) {
-		err = -errno;
-		ptr = NULL;
-		pr_warn("Couldn't mmap BPF file\n");
-		goto err;
-	}
-	s.data = ptr;
-	s.data_sz = sz;
-
-	err = bpf_object__open_skeleton(&s, NULL);
-	if (err)
-		goto err;
-
-	munmap(ptr, sz);
-	ptr = NULL;
-	close(fd);
-	fd = -1;
-
+	rodata = bpf_object__rodata(obj, &sz);
 	if (!rodata) {
-		pr_warn("No mmaped rodat map area\n");
+		pr_warn("No rodata for object file %s\n", buf);
+		err = -ENOENT;
+		goto err;
+	} else if (sz != sizeof(*rodata)) {
+		pr_warn("Object rodata size %zu different from expected %zu\n",
+			sz, sizeof(*rodata));
 		err = -EINVAL;
 		goto err;
 	}
@@ -964,12 +916,19 @@ static int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 	if (err)
 		goto err;
 
+	dispatcher_prog = bpf_object__find_program_by_title(obj, "xdp_dispatcher");
+	if (!dispatcher_prog) {
+		pr_warn("Couldn't find XDP dispatcher program in %s\n", buf);
+		err = -ENOENT;
+		goto err;
+	}
+
 	prog_fd = bpf_program__fd(dispatcher_prog);
 	for (i = 0; i < num_progs; i++) {
 		prog = progs[i];
 		err = check_snprintf(buf, sizeof(buf), "prog%d", i);
 		if (err)
-			goto err_obj;
+			goto err;
 
 		/* FIXME: The following assumes the component XDP programs are
 		 * not already loaded. We do want to be able to re-attach
@@ -983,7 +942,7 @@ static int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 						     buf);
 		if (err) {
 			pr_debug("Failed to set attach target: %s\n", strerror(-err));
-			goto err_obj;
+			goto err;
 		}
 
 		bpf_program__set_type(prog->bpf_prog, BPF_PROG_TYPE_EXT);
@@ -991,7 +950,7 @@ static int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 		if (err) {
 			pr_warn("Failed to load program %d ('%s'): %s\n",
 				i, xdp_program__name(prog), strerror(-err));
-			goto err_obj;
+			goto err;
 		}
 
 		/* The attach will disappear once this fd is closed */
@@ -1000,7 +959,7 @@ static int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 			err = lfd;
 			pr_warn("Failed to attach program %d ('%s') to dispatcher: %s\n",
 				i, xdp_program__name(prog), strerror(-err));
-			goto err_obj;
+			goto err;
 		}
 
 		pr_debug("Attached prog '%s' with priority %d in dispatcher entry '%s' with fd %d\n",
@@ -1011,13 +970,8 @@ static int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 
 	return prog_fd;
 
-err_obj:
-	bpf_object__close(obj);
 err:
-	if (ptr)
-		munmap(ptr, sz);
-	if (fd > -1)
-		close(fd);
+	bpf_object__close(obj);
 	return err;
 }
 
