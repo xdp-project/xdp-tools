@@ -41,7 +41,9 @@ struct xdp_program {
 	int link_fd;
 	char *link_pin_path;
 	char *prog_name;
+	char *attach_name;
 	__u8 prog_tag[BPF_TAG_SIZE];
+	__u32 prog_id;
 	__u64 load_time;
 	bool from_external_obj;
 	unsigned int run_prio;
@@ -461,6 +463,7 @@ void xdp_program__free(struct xdp_program *xdp_prog)
 
 	free(xdp_prog->link_pin_path);
 	free(xdp_prog->prog_name);
+	free(xdp_prog->attach_name);
 
 	if (!xdp_prog->from_external_obj) {
 		if (xdp_prog->bpf_obj)
@@ -587,6 +590,7 @@ static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
 	memcpy(xdp_prog->prog_tag, info.tag, BPF_TAG_SIZE);
 	xdp_prog->load_time = info.load_time;
 	xdp_prog->prog_fd = fd;
+	xdp_prog->prog_id = info.id;
 
 	return 0;
 err:
