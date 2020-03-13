@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 
 EXTRA_TARGETS := libxdp.so libxdp.a
+XDP_TARGETS := xdp-dispatcher
+
 LIB_DIR = ..
 
 include $(LIB_DIR)/common.mk
@@ -56,3 +58,5 @@ $(SHARED_OBJDIR)/%.o: %.c $(EXTRA_LIB_DEPS) | $(SHARED_OBJDIR)
 	$(QUIET_CC)$(CC) $(CFLAGS) $(SHARED_CFLAGS) -Wall -I../../headers -c $< -o $@
 
 
+xdp-dispatcher.c: xdp-dispatcher.c.in Makefile
+	$(QUIET_M4)m4 $(DEFINES) $< > $@
