@@ -39,7 +39,6 @@ struct xdp_program {
 	struct btf *btf;
 	int prog_fd;
 	int link_fd;
-	char *link_pin_path;
 	char *prog_name;
 	char *attach_name;
 	__u8 prog_tag[BPF_TAG_SIZE];
@@ -48,6 +47,17 @@ struct xdp_program {
 	bool from_external_obj;
 	unsigned int run_prio;
 	unsigned int chain_call_actions; // bitmap
+
+	/* for building list of attached programs to multiprog */
+	struct xdp_program *next;
+};
+
+struct xdp_multiprog {
+	struct xdp_dispatcher_config *config;
+	struct xdp_program *dispatcher;
+	struct xdp_program *first_prog; // uses xdp_program->next to build a list
+	size_t num_links;
+	bool is_loaded;
 };
 
 
@@ -456,6 +466,9 @@ static struct xdp_program *xdp_program__new()
 
 void xdp_program__free(struct xdp_program *xdp_prog)
 {
+	if (!xdp_prog)
+		return;
+
 	if (xdp_prog->link_fd >= 0)
 		close(xdp_prog->link_fd);
 	if (xdp_prog->prog_fd >= 0)
@@ -598,17 +611,10 @@ err:
 	return err;
 }
 
-struct xdp_program *xdp_program__from_id(__u32 id)
+struct xdp_program *xdp_program__from_fd(int fd)
 {
 	struct xdp_program *xdp_prog = NULL;
-	int fd, err;
-
-	fd = bpf_prog_get_fd_by_id(id);
-	if (fd < 0) {
-		pr_warn("couldn't get program fd: %s", strerror(errno));
-		err = -errno;
-		goto err;
-	}
+	int err;
 
 	xdp_prog = xdp_program__new();
 	if (IS_ERR(xdp_prog))
@@ -626,6 +632,24 @@ struct xdp_program *xdp_program__from_id(__u32 id)
 err:
 	free(xdp_prog);
 	return ERR_PTR(err);
+}
+
+struct xdp_program *xdp_program__from_id(__u32 id)
+{
+	struct xdp_program *prog;
+	int fd, err;
+
+	fd = bpf_prog_get_fd_by_id(id);
+	if (fd < 0) {
+		err = -errno;
+		pr_warn("couldn't get program fd: %s", strerror(-err));
+		return ERR_PTR(err);
+	}
+
+	prog = xdp_program__from_fd(fd);
+	if (IS_ERR(prog))
+		close(fd);
+	return prog;
 }
 
 static int cmp_xdp_programs(const void *_a, const void *_b)
@@ -728,221 +752,113 @@ int xdp_program__load(struct xdp_program *prog)
 	return xdp_program__fill_from_fd(prog, bpf_program__fd(prog->bpf_prog));
 }
 
-static int pin_multiprog(int dispatcher_fd, struct xdp_program **progs,
-			 size_t num_progs)
+static struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 {
-	__u32 info_size = sizeof(struct bpf_prog_info);
-	struct bpf_prog_info info = {};
-	struct xdp_program *prog;
-	char pin_path[PATH_MAX];
-	const char *bpffs_dir;
-	int err = 0, lock_fd, i;
+	struct xdp_program *new_prog;
+	int new_fd, err;
 
-	bpffs_dir = get_bpffs_dir();
-	if (IS_ERR(bpffs_dir))
-		return PTR_ERR(bpffs_dir);
+	/* Clone a loaded program struct by duplicating the fd and creating a
+	 * new structure from th ekernel state.
+	 */
 
-	err = bpf_obj_get_info_by_fd(dispatcher_fd, &info, &info_size);
-	if (err)
-		return err;
+	if (!prog->prog_fd)
+		return ERR_PTR(-EINVAL);
 
-	lock_fd = xdp_lock_acquire();
-	if (lock_fd < 0)
-		return lock_fd;
-
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
-			     bpffs_dir, info.id);
-	if (err)
-		goto out;
-
-	pr_debug("Pinning multiprog fd %d beneath %s\n", dispatcher_fd, pin_path);
-
-	err = mkdir(pin_path, S_IRWXU);
-	if (err && errno != EEXIST) {
+	new_fd = fcntl(prog->prog_fd, F_DUPFD_CLOEXEC);
+	if (new_fd < 0) {
 		err = -errno;
-		goto out;
+		pr_warn("Error on fcntl: %s\n", strerror(-err));
+		return ERR_PTR(err);
 	}
 
-	for (i = 0; i < num_progs; i++) {
-		char buf[PATH_MAX];
-		prog = progs[i];
-
-		if (prog->link_fd < 0) {
-			err = -EINVAL;
-			pr_warn("Prog %s not linked\n", xdp_program__name(prog));
-			goto err_unpin;
-		}
-
-		err = check_snprintf(buf, sizeof(buf), "%s/link-prog%d",
-				     pin_path, i);
-		if (err)
-			goto err_unpin;
-
-		err = bpf_obj_pin(prog->link_fd, buf);
-		if (err) {
-			pr_warn("Couldn't pin link FD at %s: %s\n", buf, strerror(-err));
-			goto err_unpin;
-		}
-
-		prog->link_pin_path = strdup(pin_path);
-		if (!prog->link_pin_path) {
-			err = -ENOMEM;
-			unlink(pin_path);
-			goto err_unpin;
-		}
-
-		pr_debug("Pinned link for prog %s at %s\n",
-			 xdp_program__name(prog), buf);
-	}
-out:
-	xdp_lock_release(lock_fd);
-	return err;
-
-err_unpin:
-	for (; i >= 0; i--) {
-		if (progs[i]->link_pin_path) {
-			unlink(progs[i]->link_pin_path);
-			free(progs[i]->link_pin_path);
-			progs[i]->link_pin_path = NULL;
-		}
-	}
-	goto out;
+	new_prog = xdp_program__from_fd(new_fd);
+	if (IS_ERR(new_prog))
+		close(new_fd);
+	return new_prog;
 }
 
-static int unpin_multiprog(int dispatcher_fd)
+
+void xdp_multiprog__free(struct xdp_multiprog *mp)
 {
-	__u32 info_size = sizeof(struct bpf_prog_info);
-	struct bpf_prog_info info = {};
-	char pin_path[PATH_MAX];
-	const char *bpffs_dir;
-	int err = 0, lock_fd;
-	struct dirent *de;
-	DIR *dr;
+	struct xdp_program *p, *next = NULL;
 
-	bpffs_dir = get_bpffs_dir();
-	if (IS_ERR(bpffs_dir))
-		return PTR_ERR(bpffs_dir);
+	if (!mp)
+		return;
 
-	err = bpf_obj_get_info_by_fd(dispatcher_fd, &info, &info_size);
-	if (err)
-		return err;
-
-	lock_fd = xdp_lock_acquire();
-	if (lock_fd < 0)
-		return lock_fd;
-
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
-			     bpffs_dir, info.id);
-	if (err)
-		goto out;
-
-	dr = opendir(pin_path);
-	if (!dr) {
-		err = -ENOENT;
-		goto out;
+	xdp_program__free(mp->dispatcher);
+	for (p = mp->first_prog; p; p = next) {
+		next = p->next;
+		xdp_program__free(p);
 	}
-
-	pr_debug("Unpinning multiprog fd %d beneath %s\n",
-		 dispatcher_fd, pin_path);
-
-	while ((de = readdir(dr)) != NULL) {
-		char buf[PATH_MAX];
-
-		if (!strcmp(".", de->d_name) ||
-		    !strcmp("..", de->d_name))
-			continue;
-
-		err = check_snprintf(buf, sizeof(buf), "%s/%s",
-				     pin_path, de->d_name);
-		if (err)
-			goto out_dir;
-
-		err = unlink(buf);
-		if (err) {
-			err = -errno;
-			pr_warn("Couldn't unlink file %s: %s\n",
-				buf, strerror(-err));
-			goto out_dir;
-		}
-	}
-
-	err = rmdir(pin_path);
-	if (err)
-		err = -errno;
-out_dir:
-	closedir(dr);
-out:
-	xdp_lock_release(lock_fd);
-	return err;
 }
 
-static int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
+int xdp_multiprog__main_fd(struct xdp_multiprog *mp)
 {
-	struct xdp_dispatcher_config *rodata;
-	struct bpf_program *dispatcher_prog;
-	int prog_fd, err, i, lfd;
-	struct xdp_program *prog;
-	struct bpf_object *obj;
-	char buf[PATH_MAX];
-	size_t sz = 0;
+	if (!mp->dispatcher)
+		return -ENOENT;
+	return mp->dispatcher->prog_fd;
+}
 
-	pr_debug("Generating multi-prog dispatcher for %zu programs\n", num_progs);
+static struct xdp_multiprog *xdp_multiprog__new()
+{
+	struct xdp_multiprog *mp;
 
-	err = find_bpf_file(buf, sizeof(buf), "xdp-dispatcher.o");
-	if (err)
-		return err;
 
-	obj = bpf_object__open_file(buf, NULL);
-	err = libbpf_get_error(obj);
+	mp = malloc(sizeof *mp);
+	if (!mp)
+		return ERR_PTR(-ENOMEM);
+	memset(mp, 0, sizeof(*mp));
+
+	return mp;
+}
+
+static int xdp_multiprog__load(struct xdp_multiprog *mp)
+{
+	int err = 0;
+
+	if (!mp->dispatcher || mp->is_loaded)
+		return -EINVAL;
+
+	pr_debug("Loading multiprog dispatcher for %d programs\n",
+		mp->config->num_progs_enabled);
+
+	err = xdp_program__load(mp->dispatcher);
 	if (err) {
-		pr_warn("Couldn't open BPF file %s\n", buf);
-		return err;
+		pr_warn("Failed to load dispatcher: %s\n", strerror(-err));
+		goto out;
 	}
+	mp->is_loaded = true;
+out:
+	return err;
+}
 
-	rodata = bpf_object__rodata(obj, &sz);
-	if (!rodata) {
-		pr_warn("No rodata for object file %s\n", buf);
-		err = -ENOENT;
-		goto err;
-	} else if (sz != sizeof(*rodata)) {
-		pr_warn("Object rodata size %zu different from expected %zu\n",
-			sz, sizeof(*rodata));
-		err = -EINVAL;
-		goto err;
-	}
+static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
+				    struct xdp_program *prog)
+{
+	struct xdp_program *new_prog, *p;
+	char buf[PATH_MAX];
+	int err, lfd;
 
-	/* set dispatcher parameters before loading */
-	rodata->num_progs_enabled = num_progs;
-	for (i = 0; i < num_progs; i++)
-		rodata->chain_call_actions[i] = progs[i]->chain_call_actions;
+	if (!mp->config || !mp->is_loaded ||
+	    mp->num_links >= mp->config->num_progs_enabled)
+		return -EINVAL;
 
-	err = bpf_object__load(obj);
+	pr_debug("Linking prog %s as multiprog entry %zu\n",
+		 xdp_program__name(prog), mp->num_links);
+
+	err = check_snprintf(buf, sizeof(buf), "prog%d", mp->num_links);
 	if (err)
 		goto err;
 
-	dispatcher_prog = bpf_object__find_program_by_title(obj, "xdp_dispatcher");
-	if (!dispatcher_prog) {
-		pr_warn("Couldn't find XDP dispatcher program in %s\n", buf);
-		err = -ENOENT;
-		goto err;
-	}
-
-	prog_fd = bpf_program__fd(dispatcher_prog);
-	for (i = 0; i < num_progs; i++) {
-		prog = progs[i];
-		err = check_snprintf(buf, sizeof(buf), "prog%d", i);
-		if (err)
-			goto err;
-
-		/* FIXME: The following assumes the component XDP programs are
-		 * not already loaded. We do want to be able to re-attach
-		 * already-loaded programs into a new dispatcher here; but the
-		 * kernel doesn't currently allow this. So for now, just assume
-		 * programs are not already loaded and load them as TYPE_EXT
-		 * programs.
+	if (prog->prog_fd >= 0) {
+		/* FIXME: We want to be able to re-attach already-loaded
+		 * programs into a new dispatcher here; but the kernel doesn't
+		 * currently allow this.
 		 */
-
-		err = bpf_program__set_attach_target(prog->bpf_prog, prog_fd,
+		return -EOPNOTSUPP;
+	} else {
+		err = bpf_program__set_attach_target(prog->bpf_prog,
+						     mp->dispatcher->prog_fd,
 						     buf);
 		if (err) {
 			pr_debug("Failed to set attach target: %s\n", strerror(-err));
@@ -952,61 +868,274 @@ static int gen_xdp_multiprog(struct xdp_program **progs, size_t num_progs)
 		bpf_program__set_type(prog->bpf_prog, BPF_PROG_TYPE_EXT);
 		err = xdp_program__load(prog);
 		if (err) {
-			pr_warn("Failed to load program %d ('%s'): %s\n",
-				i, xdp_program__name(prog), strerror(-err));
+			pr_warn("Failed to load program %s: %s\n",
+				xdp_program__name(prog), strerror(-err));
+			goto err;
+		}
+
+		/* clone the xdp_program ref so we can keep it */
+		new_prog = xdp_program__clone(prog);
+		if (IS_ERR(new_prog)) {
+			err = PTR_ERR(new_prog);
+			pr_warn("Failed to clone xdp_program: %s\n",
+				strerror(-err));
 			goto err;
 		}
 
 		/* The attach will disappear once this fd is closed */
-		lfd = bpf_raw_tracepoint_open(NULL, prog->prog_fd);
+		lfd = bpf_raw_tracepoint_open(NULL, new_prog->prog_fd);
 		if (lfd < 0) {
 			err = lfd;
-			pr_warn("Failed to attach program %d ('%s') to dispatcher: %s\n",
-				i, xdp_program__name(prog), strerror(-err));
-			goto err;
+			pr_warn("Failed to attach program %s to dispatcher: %s\n",
+				xdp_program__name(new_prog), strerror(-err));
+			goto err_free;
+		}
+
+		new_prog->attach_name = strdup(buf);
+		if (!new_prog->attach_name) {
+			err = -ENOMEM;
+			goto err_free;
 		}
 
 		pr_debug("Attached prog '%s' with priority %d in dispatcher entry '%s' with fd %d\n",
-			 xdp_program__name(prog), xdp_program__run_prio(prog),
-			 buf, lfd);
-		prog->link_fd = lfd;
+			 xdp_program__name(new_prog), xdp_program__run_prio(new_prog),
+			 new_prog->attach_name, lfd);
+		new_prog->link_fd = lfd;
+
+		if (!mp->first_prog) {
+			mp->first_prog = new_prog;
+		} else {
+			p = mp->first_prog;
+			while (p->next)
+				p = p->next;
+			p->next = new_prog;
+		}
 	}
 
-	return prog_fd;
+	mp->num_links++;
+	return 0;
 
+err_free:
+	xdp_program__free(new_prog);
 err:
-	bpf_object__close(obj);
 	return err;
 }
 
-int xdp_attach_programs(struct xdp_program **progs, size_t num_progs,
-			int ifindex, bool force, enum xdp_attach_mode mode)
+int xdp_multiprog__pin(struct xdp_multiprog *mp)
 {
-	int err = 0, xdp_flags = 0, prog_fd;
+	char pin_path[PATH_MAX], buf[PATH_MAX];
+	struct xdp_program *prog;
+	const char *bpffs_dir;
+	int err = 0, lock_fd;
 
-	if (!num_progs)
-		return -EINVAL;
+	bpffs_dir = get_bpffs_dir();
+	if (IS_ERR(bpffs_dir))
+		return PTR_ERR(bpffs_dir);
 
-	if (num_progs > 1) {
-		qsort(progs, num_progs, sizeof(*progs), cmp_xdp_programs);
-		prog_fd = gen_xdp_multiprog(progs, num_progs);
-	} else if (progs[0]->prog_fd >= 0) {
-		prog_fd = progs[0]->prog_fd;
-	} else {
-		prog_fd = xdp_program__load(progs[0]);
-	}
+	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
+			     bpffs_dir, mp->dispatcher->prog_id);
+	if (err)
+		return err;
 
-	if (prog_fd < 0) {
-		err = prog_fd;
+	lock_fd = xdp_lock_acquire();
+	if (lock_fd < 0)
+		return lock_fd;
+
+	pr_debug("Pinning multiprog fd %d beneath %s\n",
+		 mp->dispatcher->prog_fd, pin_path);
+
+	err = mkdir(pin_path, S_IRWXU);
+	if (err && errno != EEXIST) {
+		err = -errno;
 		goto out;
 	}
 
-	if (num_progs > 1) {
-		err = pin_multiprog(prog_fd, progs, num_progs);
+	for (prog = mp->first_prog; prog; prog = prog->next) {
+		if (prog->link_fd < 0) {
+			err = -EINVAL;
+			pr_warn("Prog %s not linked\n", xdp_program__name(prog));
+			goto err_unpin;
+		}
+
+		err = check_snprintf(buf, sizeof(buf), "%s/%s-link",
+				     pin_path, prog->attach_name);
+		if (err)
+			goto err_unpin;
+
+		err = bpf_obj_pin(prog->link_fd, buf);
+		if (err) {
+			pr_warn("Couldn't pin link FD at %s: %s\n", buf, strerror(-err));
+			goto err_unpin;
+		}
+		pr_debug("Pinned link for prog %s at %s\n",
+			 xdp_program__name(prog), buf);
+
+		err = check_snprintf(buf, sizeof(buf), "%s/%s-prog",
+				     pin_path, prog->attach_name);
+		if (err)
+			goto err_unpin;
+
+		err = bpf_obj_pin(prog->prog_fd, buf);
+		if (err) {
+			pr_warn("Couldn't pin prog FD at %s: %s\n", buf, strerror(-err));
+			goto err_unpin;
+		}
+
+		pr_debug("Pinned prog %s at %s\n", xdp_program__name(prog), buf);
+	}
+out:
+	xdp_lock_release(lock_fd);
+	return err;
+
+err_unpin:
+	for (prog = mp->first_prog; prog; prog = prog->next) {
+		if (!check_snprintf(buf, sizeof(buf), "%s/%s-link",
+				    pin_path, prog->attach_name))
+			unlink(buf);
+		if (!check_snprintf(buf, sizeof(buf), "%s/%s-prog",
+				    pin_path, prog->attach_name))
+			unlink(buf);
+	}
+	rmdir(pin_path);
+	goto out;
+}
+
+int xdp_multiprog__unpin(struct xdp_multiprog *mp)
+{
+	char pin_path[PATH_MAX], buf[PATH_MAX];
+	struct xdp_program *prog;
+	const char *bpffs_dir;
+	int err = 0, lock_fd;
+
+	bpffs_dir = get_bpffs_dir();
+	if (IS_ERR(bpffs_dir))
+		return PTR_ERR(bpffs_dir);
+
+	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
+			     bpffs_dir, mp->dispatcher->prog_id);
+	if (err)
+		return err;
+
+	lock_fd = xdp_lock_acquire();
+	if (lock_fd < 0)
+		return lock_fd;
+
+	pr_debug("Unpinning multiprog fd %d beneath %s\n",
+		 mp->dispatcher->prog_fd, pin_path);
+
+	for (prog = mp->first_prog; prog; prog = prog->next) {
+		err = check_snprintf(buf, sizeof(buf), "%s/%s-link",
+				     pin_path, prog->attach_name);
 		if (err)
 			goto out;
+
+		err = unlink(buf);
+		if (err) {
+			err = -errno;
+			pr_warn("Couldn't unlink file %s: %s\n",
+				buf, strerror(-err));
+			goto out;
+		}
+		pr_debug("Unpinned link for prog %s from %s\n",
+			 xdp_program__name(prog), buf);
+
+		err = check_snprintf(buf, sizeof(buf), "%s/%s-prog",
+				     pin_path, prog->attach_name);
+		if (err)
+			goto out;
+
+		err = unlink(buf);
+		if (err) {
+			err = -errno;
+			pr_warn("Couldn't unlink file %s: %s\n",
+				buf, strerror(-err));
+			goto out;
+		}
+
+		pr_debug("Unpinned prog %s from %s\n",
+			 xdp_program__name(prog), buf);
 	}
 
+	err = rmdir(pin_path);
+	if (err)
+		err = -errno;
+out:
+	xdp_lock_release(lock_fd);
+	return err;
+}
+
+struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
+					      size_t num_progs)
+{
+	struct xdp_program *dispatcher;
+	struct xdp_multiprog *mp;
+	char buf[PATH_MAX];
+	size_t sz = 0;
+	int err, i;
+
+	if (!num_progs || num_progs > MAX_DISPATCHER_ACTIONS)
+		return ERR_PTR(-EINVAL);
+
+	pr_debug("Generating multi-prog dispatcher for %zu programs\n", num_progs);
+
+	if (num_progs > 1)
+		qsort(progs, num_progs, sizeof(*progs), cmp_xdp_programs);
+
+	mp = xdp_multiprog__new(num_progs);
+	if (IS_ERR(mp))
+		return mp;
+
+	err = find_bpf_file(buf, sizeof(buf), "xdp-dispatcher.o");
+	if (err)
+		goto err;
+
+	dispatcher = xdp_program__open_file(buf, "xdp_dispatcher", NULL);
+	if (IS_ERR(dispatcher)) {
+		err = PTR_ERR(dispatcher);
+		pr_warn("Couldn't open BPF file %s\n", buf);
+		goto err;
+	}
+
+	mp->dispatcher = dispatcher;
+	mp->config = bpf_object__rodata(mp->dispatcher->bpf_obj, &sz);
+	if (!mp->config) {
+		pr_warn("No rodata for object file %s\n", buf);
+		err = -ENOENT;
+		goto err;
+	} else if (sz != sizeof(*mp->config)) {
+		pr_warn("Object rodata size %zu different from expected %zu\n",
+			sz, sizeof(*mp->config));
+		err = -EINVAL;
+		goto err;
+	}
+	mp->config->num_progs_enabled = num_progs;
+	for (i = 0; i < num_progs; i++)
+		mp->config->chain_call_actions[i] = progs[i]->chain_call_actions;
+
+	err = xdp_multiprog__load(mp);
+	if (err)
+		goto err;
+
+	for (i = 0; i < num_progs; i++) {
+		err = xdp_multiprog__link_prog(mp, progs[i]);
+		if (err)
+			goto err;
+	}
+
+	return mp;
+
+err:
+	xdp_multiprog__free(mp);
+	return ERR_PTR(err);
+}
+
+int xdp_multiprog__attach(struct xdp_multiprog *mp,
+			  int ifindex, bool force,
+			  enum xdp_attach_mode mode)
+{
+	int err = 0, xdp_flags = 0, prog_fd;
+
+	prog_fd = xdp_multiprog__main_fd(mp);
 	pr_debug("Loading XDP fd %d onto ifindex %d\n", prog_fd, ifindex);
 
 	switch (mode) {
@@ -1059,27 +1188,28 @@ int xdp_attach_programs(struct xdp_program **progs, size_t num_progs,
 		default:
 			break;
 		}
-		goto out;
+		goto err;
 	}
 
 	pr_debug("Loaded %zu programs on ifindex '%d'%s\n",
-		 num_progs, ifindex,
+		 mp->num_links, ifindex,
 		 mode == XDP_MODE_SKB ? " in skb mode" : "");
 
-	return prog_fd;
-out:
+	return 0;
+err:
 	return err;
 }
 
 
-int xdp_program__attach(const struct xdp_program *prog,
+/*int xdp_program__attach(const struct xdp_program *prog,
 			int ifindex, bool replace, enum xdp_attach_mode mode)
 {
 	struct xdp_program *old_progs[10], *all_progs[10];
 	size_t num_old_progs = 10, num_progs;
+	struct xdp_multiprog *mp;
 	int err, i;
 
-	/* FIXME: The idea here is that the API should allow the caller to just
+	/ * FIXME: The idea here is that the API should allow the caller to just
 	 * attach a program; and the library will take care of finding the
 	 * already-attached programs, inserting the new one into the sequence
 	 * based on its priority, build a new dispatcher, and atomically replace
@@ -1087,8 +1217,8 @@ int xdp_program__attach(const struct xdp_program *prog,
 	 * loaded freplace programs, as well as the ability to attach each
 	 * program to multiple places. So for now, this function doesn't really
 	 * work.
-	 */
-	err = xdp_program__get_from_ifindex(ifindex, old_progs, &num_old_progs);
+	 *\/
+	mp = xdp_multiprog__get_from_ifindex(ifindex);
 	if (err && err != -ENOENT)
 		return err;
 
@@ -1105,4 +1235,4 @@ int xdp_program__attach(const struct xdp_program *prog,
 	if (err)
 		return err;
 	return 0;
-}
+	}*/
