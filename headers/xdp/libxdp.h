@@ -46,3 +46,4 @@ int xdp_multiprog__unpin(struct xdp_multiprog *mp);
 int xdp_multiprog__attach(struct xdp_multiprog *mp,
                           int ifindex, bool force,
                           enum xdp_attach_mode mode);
+struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex);

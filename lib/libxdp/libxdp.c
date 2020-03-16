@@ -53,7 +53,13 @@ struct xdp_program {
 };
 
 struct xdp_multiprog {
+	/* config holds pointer to active config; when loading, this points to
+	 * mmaped area from libbpf (so it can be edited). _config_store holds
+	 * the actual data when reading the config back from the kernel, in
+	 * which case config becomes a pointer to _config_store
+	 */
 	struct xdp_dispatcher_config *config;
+	struct xdp_dispatcher_config _config_store;
 	struct xdp_program *dispatcher;
 	struct xdp_program *first_prog; // uses xdp_program->next to build a list
 	size_t num_links;
@@ -474,7 +480,6 @@ void xdp_program__free(struct xdp_program *xdp_prog)
 	if (xdp_prog->prog_fd >= 0)
 		close(xdp_prog->prog_fd);
 
-	free(xdp_prog->link_pin_path);
 	free(xdp_prog->prog_name);
 	free(xdp_prog->attach_name);
 
@@ -697,41 +702,6 @@ static int cmp_xdp_programs(const void *_a, const void *_b)
 	return 0;
 }
 
-int xdp_program__get_from_ifindex(int ifindex,
-				  struct xdp_program **progs,
-				  size_t *num_progs)
-{
-	struct xdp_link_info xinfo = {};
-	struct xdp_program *p;
-	__u32 prog_id;
-	int err;
-
-	err = bpf_get_link_xdp_info(ifindex, &xinfo, sizeof(xinfo), 0);
-	if (err)
-		return err;
-
-	if (xinfo.attach_mode == XDP_ATTACHED_SKB)
-		prog_id = xinfo.skb_prog_id;
-	else
-		prog_id = xinfo.drv_prog_id;
-
-	if (!prog_id)
-		return -ENOENT;
-
-	p = xdp_program__from_id(prog_id);
-	if (IS_ERR(p))
-		return PTR_ERR(p);
-
-	/* FIXME: This should figure out whether the loaded program is a
-	 * dispatcher, and if it is, go find the component programs and return
-	 * those instead.
-	 */
-	progs[0] = p;
-	*num_progs = 1;
-
-	return 0;
-}
-
 int xdp_program__load(struct xdp_program *prog)
 {
 	int err;
@@ -832,6 +802,251 @@ out:
 	return err;
 }
 
+static int check_dispatcher_version(struct btf *btf)
+{
+	return 0;
+}
+
+static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
+{
+	struct xdp_program *prog, *p = mp->first_prog;
+	char buf[PATH_MAX], pin_path[PATH_MAX];
+	int err, prog_fd, lock_fd, i;
+	const char *bpffs_dir;
+	struct stat sb = {};
+
+	bpffs_dir = get_bpffs_dir();
+	if (IS_ERR(bpffs_dir))
+		return PTR_ERR(bpffs_dir);
+
+	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
+			     bpffs_dir, mp->dispatcher->prog_id);
+	if (err)
+		return err;
+
+	lock_fd = xdp_lock_acquire();
+	if (lock_fd < 0)
+		return lock_fd;
+
+	pr_debug("Reading multiprog component programs from pinned directory\n");
+	err = stat(pin_path, &sb);
+	if (err) {
+		err = -errno;
+		pr_debug("Couldn't stat pin_path '%s': %s\n",
+			 pin_path, strerror(-err));
+		goto out;
+	}
+
+	for (i = 0; i < mp->config->num_progs_enabled; i++) {
+
+		err = check_snprintf(buf, sizeof(buf), "%s/prog%d-prog",
+				     pin_path, i);
+		if (err)
+			goto err;
+
+		prog_fd = bpf_obj_get(buf);
+		if (prog_fd < 0) {
+			err = -errno;
+			pr_warn("Couldn't get prog at %s: %s\n",
+				buf, strerror(-err));
+			goto err;
+		}
+
+		prog = xdp_program__from_fd(prog_fd);
+		if (IS_ERR(prog)) {
+			err = PTR_ERR(prog);
+			pr_warn("Couldn't get XDP prog from fd %d: %s\n",
+				prog_fd, strerror(-err));
+			goto err;
+		}
+		err = check_snprintf(buf, sizeof(buf), "prog%d", i);
+		if (err)
+			goto err;
+		prog->attach_name = strdup(buf);
+		if (!prog->attach_name) {
+			err = -ENOMEM;
+			goto err;
+		}
+
+		if (!p) {
+			mp->first_prog = prog;
+			p = mp->first_prog;
+		} else {
+			p->next = prog;
+			p = prog;
+		}
+		mp->num_links++;
+	}
+
+out:
+	xdp_lock_release(lock_fd);
+	return err;
+err:
+	prog = mp->first_prog;
+	while (prog) {
+		p = prog->next;
+		xdp_program__free(prog);
+		prog = p;
+	}
+	mp->first_prog = NULL;
+	goto out;
+}
+
+static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp, int prog_fd)
+{
+	__u32 *map_id, map_key = 0, map_info_len = sizeof(struct bpf_map_info);
+	struct bpf_prog_info_linear *info_linear;
+	struct bpf_map_info map_info = {};
+	struct bpf_prog_info *info;
+	struct xdp_program *prog;
+	struct btf *btf = NULL;
+	__u64 arrays;
+	int err = 0;
+	int map_fd;
+
+	arrays = (1UL << BPF_PROG_INFO_MAP_IDS);
+	info_linear = bpf_program__get_prog_info_linear(prog_fd, arrays);
+	if (IS_ERR_OR_NULL(info_linear)) {
+		pr_warn("couldn't get program info for fd: %d", prog_fd);
+		return -EINVAL;
+	}
+
+	info = &info_linear->info;
+	if (!info->btf_id) {
+		pr_warn("No BTF for prog ID %u\n", info->id);
+		err = -ENOENT;
+		goto out;
+	}
+
+	err = check_dispatcher_version(btf);
+	if (err) {
+		if (err != -ENOENT)
+			pr_warn("Dispatcher version check failed for ID %d\n",
+				info->id);
+		goto out;
+	}
+
+	if (info->nr_map_ids != 1) {
+		pr_warn("Expected a single map for dispatcher, found %d\n",
+			info->nr_map_ids);
+		err = -EINVAL;
+		goto out;
+	}
+	map_id = (void *)info_linear->data;
+
+	err = btf__get_from_id(info->btf_id, &btf);
+	if (err) {
+		pr_warn("Couldn't get BTF for ID %ul\n", info->btf_id);
+		goto out;
+	}
+
+	map_fd = bpf_map_get_fd_by_id(*map_id);
+	if (map_fd < 0) {
+		err = map_fd;
+		pr_warn("Could not get config map fd: %s\n", strerror(-err));
+		goto out;
+	}
+	err = bpf_obj_get_info_by_fd(map_fd, &map_info, &map_info_len);
+	if (err) {
+		pr_warn("Couldn't get map info: %s\n", strerror(-err));
+		goto out;
+	}
+
+	if (map_info.key_size != sizeof(map_key) ||
+	    map_info.value_size != sizeof(mp->_config_store)) {
+		pr_warn("Map key or value size mismatch\n");
+		err = -EINVAL;
+		goto out;
+	}
+
+	err = bpf_map_lookup_elem(map_fd, &map_key, &mp->_config_store);
+	if (err) {
+		pr_warn("Could not lookup map value: %s\n", strerror(-err));
+		goto out;
+	}
+	mp->config = &mp->_config_store;
+
+	prog = xdp_program__from_fd(prog_fd);
+	if (IS_ERR(prog)) {
+		err = PTR_ERR(prog);
+		goto out;
+	}
+	mp->dispatcher = prog;
+
+	err = xdp_multiprog__link_pinned_progs(mp);
+	if (err)
+		goto err;
+
+	pr_debug("Found multiprog with id %d and %zu component progs\n",
+		 mp->dispatcher->prog_id, mp->num_links);
+
+out:
+	free(info_linear);
+	return err;
+
+err:
+	xdp_program__free(prog);
+	goto out;
+}
+
+static struct xdp_multiprog *xdp_multiprog__from_fd(int fd)
+{
+	struct xdp_multiprog *mp = NULL;
+	int err;
+
+	mp = xdp_multiprog__new();
+	if (IS_ERR(mp))
+		return mp;
+
+	err = xdp_multiprog__fill_from_fd(mp, fd);
+	if (err)
+		goto err;
+
+	return mp;
+err:
+	free(mp);
+	return ERR_PTR(err);
+}
+
+
+static struct xdp_multiprog *xdp_multiprog__from_id(__u32 id)
+{
+	struct xdp_multiprog *mp;
+	int fd, err;
+
+	fd = bpf_prog_get_fd_by_id(id);
+	if (fd < 0) {
+		err = -errno;
+		pr_warn("couldn't get program fd: %s", strerror(-err));
+		return ERR_PTR(err);
+	}
+	mp = xdp_multiprog__from_fd(fd);
+	if (IS_ERR_OR_NULL(mp))
+		close(fd);
+	return mp;
+}
+
+struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex)
+{
+	struct xdp_link_info xinfo = {};
+	__u32 prog_id;
+	int err;
+
+	err = bpf_get_link_xdp_info(ifindex, &xinfo, sizeof(xinfo), 0);
+	if (err)
+		return ERR_PTR(err);
+
+	if (xinfo.attach_mode == XDP_ATTACHED_SKB)
+		prog_id = xinfo.skb_prog_id;
+	else
+		prog_id = xinfo.drv_prog_id;
+
+	if (!prog_id)
+		return ERR_PTR(-ENOENT);
+
+	return xdp_multiprog__from_id(prog_id);
+}
+
 static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 				    struct xdp_program *prog)
 {
@@ -919,6 +1134,71 @@ err_free:
 	xdp_program__free(new_prog);
 err:
 	return err;
+}
+
+struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
+					      size_t num_progs)
+{
+	struct xdp_program *dispatcher;
+	struct xdp_multiprog *mp;
+	char buf[PATH_MAX];
+	size_t sz = 0;
+	int err, i;
+
+	if (!num_progs || num_progs > MAX_DISPATCHER_ACTIONS)
+		return ERR_PTR(-EINVAL);
+
+	pr_debug("Generating multi-prog dispatcher for %zu programs\n", num_progs);
+
+	if (num_progs > 1)
+		qsort(progs, num_progs, sizeof(*progs), cmp_xdp_programs);
+
+	mp = xdp_multiprog__new(num_progs);
+	if (IS_ERR(mp))
+		return mp;
+
+	err = find_bpf_file(buf, sizeof(buf), "xdp-dispatcher.o");
+	if (err)
+		goto err;
+
+	dispatcher = xdp_program__open_file(buf, "xdp_dispatcher", NULL);
+	if (IS_ERR(dispatcher)) {
+		err = PTR_ERR(dispatcher);
+		pr_warn("Couldn't open BPF file %s\n", buf);
+		goto err;
+	}
+
+	mp->dispatcher = dispatcher;
+	mp->config = bpf_object__rodata(mp->dispatcher->bpf_obj, &sz);
+	if (!mp->config) {
+		pr_warn("No rodata for object file %s\n", buf);
+		err = -ENOENT;
+		goto err;
+	} else if (sz != sizeof(*mp->config)) {
+		pr_warn("Object rodata size %zu different from expected %zu\n",
+			sz, sizeof(*mp->config));
+		err = -EINVAL;
+		goto err;
+	}
+	mp->config->num_progs_enabled = num_progs;
+	for (i = 0; i < num_progs; i++)
+		mp->config->chain_call_actions[i] = progs[i]->chain_call_actions;
+
+	err = xdp_multiprog__load(mp);
+	if (err)
+		goto err;
+
+	for (i = 0; i < num_progs; i++) {
+		err = xdp_multiprog__link_prog(mp, progs[i]);
+		if (err)
+			goto err;
+	}
+
+	return mp;
+
+err:
+	xdp_multiprog__free(mp);
+	return ERR_PTR(err);
 }
 
 int xdp_multiprog__pin(struct xdp_multiprog *mp)
@@ -1059,74 +1339,10 @@ int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 	err = rmdir(pin_path);
 	if (err)
 		err = -errno;
+	pr_debug("Removed pin directory %s\n", pin_path);
 out:
 	xdp_lock_release(lock_fd);
 	return err;
-}
-
-struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
-					      size_t num_progs)
-{
-	struct xdp_program *dispatcher;
-	struct xdp_multiprog *mp;
-	char buf[PATH_MAX];
-	size_t sz = 0;
-	int err, i;
-
-	if (!num_progs || num_progs > MAX_DISPATCHER_ACTIONS)
-		return ERR_PTR(-EINVAL);
-
-	pr_debug("Generating multi-prog dispatcher for %zu programs\n", num_progs);
-
-	if (num_progs > 1)
-		qsort(progs, num_progs, sizeof(*progs), cmp_xdp_programs);
-
-	mp = xdp_multiprog__new(num_progs);
-	if (IS_ERR(mp))
-		return mp;
-
-	err = find_bpf_file(buf, sizeof(buf), "xdp-dispatcher.o");
-	if (err)
-		goto err;
-
-	dispatcher = xdp_program__open_file(buf, "xdp_dispatcher", NULL);
-	if (IS_ERR(dispatcher)) {
-		err = PTR_ERR(dispatcher);
-		pr_warn("Couldn't open BPF file %s\n", buf);
-		goto err;
-	}
-
-	mp->dispatcher = dispatcher;
-	mp->config = bpf_object__rodata(mp->dispatcher->bpf_obj, &sz);
-	if (!mp->config) {
-		pr_warn("No rodata for object file %s\n", buf);
-		err = -ENOENT;
-		goto err;
-	} else if (sz != sizeof(*mp->config)) {
-		pr_warn("Object rodata size %zu different from expected %zu\n",
-			sz, sizeof(*mp->config));
-		err = -EINVAL;
-		goto err;
-	}
-	mp->config->num_progs_enabled = num_progs;
-	for (i = 0; i < num_progs; i++)
-		mp->config->chain_call_actions[i] = progs[i]->chain_call_actions;
-
-	err = xdp_multiprog__load(mp);
-	if (err)
-		goto err;
-
-	for (i = 0; i < num_progs; i++) {
-		err = xdp_multiprog__link_prog(mp, progs[i]);
-		if (err)
-			goto err;
-	}
-
-	return mp;
-
-err:
-	xdp_multiprog__free(mp);
-	return ERR_PTR(err);
 }
 
 int xdp_multiprog__attach(struct xdp_multiprog *mp,
@@ -1136,6 +1352,9 @@ int xdp_multiprog__attach(struct xdp_multiprog *mp,
 	int err = 0, xdp_flags = 0, prog_fd;
 
 	prog_fd = xdp_multiprog__main_fd(mp);
+	if (prog_fd < 0)
+		return -EINVAL;
+
 	pr_debug("Loading XDP fd %d onto ifindex %d\n", prog_fd, ifindex);
 
 	switch (mode) {
