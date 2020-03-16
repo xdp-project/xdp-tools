@@ -280,30 +280,29 @@ skip_mods_and_typedefs(const struct btf *btf, __u32 id, __u32 *res_id)
 	return t;
 }
 
-static bool get_field_int(const char *prog_name, const struct btf *btf,
-			  const struct btf_type *def,
-			  const struct btf_member *m, __u32 *res)
+static bool get_field_int(const struct btf *btf,
+			  const char *t_name,
+			  const struct btf_type *t,
+			  __u32 *res)
 {
-	const struct btf_type *t = skip_mods_and_typedefs(btf, m->type, NULL);
-	const char *name = btf__name_by_offset(btf, m->name_off);
 	const struct btf_array *arr_info;
 	const struct btf_type *arr_t;
 
 	if (!btf_is_ptr(t)) {
-		pr_warn("prog '%s': attr '%s': expected PTR, got %u.\n",
-			prog_name, name, btf_kind(t));
+		pr_warn("attr '%s': expected PTR, got %u.\n",
+			t_name, btf_kind(t));
 		return false;
 	}
 
 	arr_t = btf__type_by_id(btf, t->type);
 	if (!arr_t) {
-		pr_warn("prog '%s': attr '%s': type [%u] not found.\n",
-			prog_name, name, t->type);
+		pr_warn("attr '%s': type [%u] not found.\n",
+			t_name, t->type);
 		return false;
 	}
 	if (!btf_is_array(arr_t)) {
-		pr_warn("prog '%s': attr '%s': expected ARRAY, got %u.\n",
-			prog_name, name, btf_kind(arr_t));
+		pr_warn("attr '%s': expected ARRAY, got %u.\n",
+			t_name, btf_kind(arr_t));
 		return false;
 	}
 	arr_info = btf_array(arr_t);
@@ -323,6 +322,80 @@ static bool get_xdp_action(const char *act_name, unsigned int *act)
 		}
 	}
 	return false;
+}
+
+static const struct btf_type *btf_get_datasec(const struct btf *btf,
+					      const char *sec_name)
+{
+	const struct btf_type *t;
+	int nr_types, i;
+	const char *name;
+
+	if (!btf) {
+		pr_debug("No BTF found for program\n");
+		return NULL;
+	}
+
+	nr_types = btf__get_nr_types(btf);
+	for (i = 1; i <= nr_types; i++) {
+		t = btf__type_by_id(btf, i);
+		if (!btf_is_datasec(t))
+			continue;
+		name = btf__name_by_offset(btf, t->name_off);
+		if (strcmp(name, sec_name) == 0)
+			return t;
+	}
+
+	pr_debug("DATASEC '%s' not found.\n", sec_name);
+	return NULL;
+}
+
+static const struct btf_type *btf_get_section_var(const struct btf *btf,
+						  const struct btf_type *sec,
+						  const char *var_name,
+						  __u16 kind)
+{
+	const struct btf_var_secinfo *vi;
+	const struct btf_var *var_extra;
+	const struct btf_type *var, *def;
+	const char *name;
+	int vlen, i;
+
+	vlen = btf_vlen(sec);
+	vi = btf_var_secinfos(sec);
+	for (i = 0; i < vlen; i++, vi++) {
+		var = btf__type_by_id(btf, vi->type);
+		var_extra = btf_var(var);
+		name = btf__name_by_offset(btf, var->name_off);
+
+		if (strcmp(name, var_name))
+			continue;
+
+		if (!btf_is_var(var)) {
+			pr_warn("struct '%s': unexpected var kind %u.\n",
+				name, btf_kind(var));
+			return ERR_PTR(-EINVAL);
+		}
+		if (var_extra->linkage != BTF_VAR_GLOBAL_ALLOCATED &&
+		    var_extra->linkage != BTF_VAR_STATIC) {
+			pr_warn("struct '%s': unsupported var linkage %u.\n",
+				name, var_extra->linkage);
+			return ERR_PTR(-EOPNOTSUPP);
+		}
+
+		def = skip_mods_and_typedefs(btf, var->type, NULL);
+		if (btf_kind(def) != kind) {
+			pr_warn("var '%s': unexpected def kind %u.\n",
+				name, btf_kind(def));
+			return ERR_PTR(-EINVAL);
+		}
+		if (def->size > vi->size) {
+			pr_warn("struct '%s': invalid def size.\n", name);
+			return ERR_PTR(-EINVAL);
+		}
+		return def;
+	}
+	return ERR_PTR(-ENOENT);
 }
 
 /**
@@ -351,105 +424,55 @@ static bool get_xdp_action(const char *act_name, unsigned int *act)
  */
 static int xdp_parse_run_config(struct xdp_program *xdp_prog)
 {
-	const struct btf_type *t, *var, *def, *sec = NULL;
 	struct btf *btf = xdp_program__btf(xdp_prog);
-	int err, nr_types, i, j, vlen, mlen;
-	const struct btf_var_secinfo *vi;
-	const struct btf_var *var_extra;
+	const struct btf_type *def, *sec;
 	const struct btf_member *m;
 	char struct_name[100];
-	const char *name;
-
-	if (!btf) {
-		pr_debug("No BTF found for program\n");
-		return -ENOENT;
-	}
+	int err, i, mlen;
 
 	err = check_snprintf(struct_name, sizeof(struct_name), "_%s",
 			     xdp_program__name(xdp_prog));
 	if (err)
 		return err;
 
-	nr_types = btf__get_nr_types(btf);
-	for (i = 1; i <= nr_types; i++) {
-		t = btf__type_by_id(btf, i);
-		if (!btf_is_datasec(t))
-			continue;
-		name = btf__name_by_offset(btf, t->name_off);
-		if (strcmp(name, XDP_RUN_CONFIG_SEC) == 0) {
-			sec = t;
-			break;
-		}
-	}
-
-	if (!sec) {
-		pr_debug("DATASEC '%s' not found.\n", XDP_RUN_CONFIG_SEC);
+	sec = btf_get_datasec(btf, XDP_RUN_CONFIG_SEC);
+	if (!sec)
 		return -ENOENT;
+
+	def = btf_get_section_var(btf, sec, struct_name, BTF_KIND_STRUCT);
+	if (IS_ERR(def)) {
+		pr_debug("Couldn't find run order struct %s\n", struct_name);
+		return PTR_ERR(def);
 	}
 
-	vlen = btf_vlen(sec);
-	vi = btf_var_secinfos(sec);
-	for (i = 0; i < vlen; i++, vi++) {
-		var = btf__type_by_id(btf, vi->type);
-		var_extra = btf_var(var);
-		name = btf__name_by_offset(btf, var->name_off);
+	mlen = btf_vlen(def);
+	m = btf_members(def);
+	for (i = 0; i < mlen; i++, m++) {
+		const char *mname = btf__name_by_offset(btf, m->name_off);
+		const struct btf_type *m_t;
+		unsigned int val, act;
 
-		if (strcmp(name, struct_name))
-			continue;
-
-		if (!btf_is_var(var)) {
-			pr_warn("struct '%s': unexpected var kind %u.\n",
-				name, btf_kind(var));
+		if (!mname) {
+			pr_warn("struct '%s': invalid field #%d.\n", struct_name, i);
 			return -EINVAL;
 		}
-		if (var_extra->linkage != BTF_VAR_GLOBAL_ALLOCATED &&
-		    var_extra->linkage != BTF_VAR_STATIC) {
-			pr_warn("struct '%s': unsupported var linkage %u.\n",
-				name, var_extra->linkage);
-			return -EOPNOTSUPP;
-		}
+		m_t = skip_mods_and_typedefs(btf, m->type, NULL);
 
-		def = skip_mods_and_typedefs(btf, var->type, NULL);
-		if (!btf_is_struct(def)) {
-			pr_warn("struct '%s': unexpected def kind %u.\n",
-				name, btf_kind(var));
-			return -EINVAL;
-		}
-		if (def->size > vi->size) {
-			pr_warn("struct '%s': invalid def size.\n", name);
-			return -EINVAL;
-		}
-
-		mlen = btf_vlen(def);
-		m = btf_members(def);
-		for (j = 0; j < mlen; j++, m++) {
-			const char *mname = btf__name_by_offset(btf, m->name_off);
-			unsigned int val, act;
-
-			if (!mname) {
-				pr_warn("struct '%s': invalid field #%d.\n", name, i);
+		if (!strcmp(mname, "priority")) {
+			if (!get_field_int(btf, mname, m_t, &xdp_prog->run_prio))
 				return -EINVAL;
-			}
-			if (!strcmp(mname, "priority")) {
-				if (!get_field_int(struct_name, btf, def, m,
-						   &xdp_prog->run_prio))
-					return -EINVAL;
-				continue;
-			} else if(get_xdp_action(mname, &act)) {
-				if (!get_field_int(struct_name, btf, def, m,
-						   &val))
-					return -EINVAL;
-				xdp_program__set_chain_call_enabled(xdp_prog, act, val);
-			} else {
-				pr_warn("Invalid mname: %s\n", mname);
-				return -ENOTSUP;
-			}
+			continue;
+		} else if(get_xdp_action(mname, &act)) {
+			if (!get_field_int(btf, mname, m_t, &val))
+				return -EINVAL;
+			xdp_program__set_chain_call_enabled(xdp_prog, act, val);
+		} else {
+			pr_warn("Invalid mname: %s\n", mname);
+			return -ENOTSUP;
 		}
-		return 0;
 	}
+	return 0;
 
-	pr_debug("Couldn't find run order struct %s\n", struct_name);
-	return -ENOENT;
 }
 
 static struct xdp_program *xdp_program__new()
