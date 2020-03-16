@@ -16,7 +16,8 @@ STATIC_OBJS := $(addprefix $(STATIC_OBJDIR)/,$(OBJS))
 STATIC_LIBS := $(OBJDIR)/libxdp.a
 
 SHARED_CFLAGS += -fPIC -fvisibility=hidden -DSHARED
-EXTRA_LIB_DEPS := $(OBJECT_LIBBPF) $(LIBMK) $(LIB_OBJS)
+EXTRA_LIB_DEPS := $(OBJECT_LIBBPF) $(LIBMK) $(LIB_OBJS) $(LIB_HEADERS)
+LIB_HEADERS := ../../headers/xdp/*.h
 
 ifndef BUILD_STATIC_ONLY
 	SHARED_LIBS := $(OBJDIR)/libxdp.so \
