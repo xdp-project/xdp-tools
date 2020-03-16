@@ -389,10 +389,6 @@ static const struct btf_type *btf_get_section_var(const struct btf *btf,
 				name, btf_kind(def));
 			return ERR_PTR(-EINVAL);
 		}
-		if (def->size > vi->size) {
-			pr_warn("struct '%s': invalid def size.\n", name);
-			return ERR_PTR(-EINVAL);
-		}
 		return def;
 	}
 	return ERR_PTR(-ENOENT);
@@ -827,6 +823,28 @@ out:
 
 static int check_dispatcher_version(struct btf *btf)
 {
+	const char *name = "dispatcher_version";
+	const struct btf_type *sec, *def;
+	__u32 version;
+
+	sec = btf_get_datasec(btf, XDP_METADATA_SECTION);
+	if (!sec)
+		return -ENOENT;
+
+	def = btf_get_section_var(btf, sec, name, BTF_KIND_PTR);
+	if (IS_ERR(def))
+		return PTR_ERR(def);
+
+	if (!get_field_int(btf, name, def, &version))
+		return -ENOENT;
+
+	if (version > XDP_DISPATCHER_VERSION) {
+		pr_warn("XDP dispatcher version %d higher than supported %d\n",
+			version, XDP_DISPATCHER_VERSION);
+		return -EOPNOTSUPP;
+	}
+	pr_debug("Verified XDP dispatcher version %d <= %d\n",
+		 version, XDP_DISPATCHER_VERSION);
 	return 0;
 }
 
@@ -941,6 +959,12 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp, int prog_fd)
 		goto out;
 	}
 
+	err = btf__get_from_id(info->btf_id, &btf);
+	if (err) {
+		pr_warn("Couldn't get BTF for ID %ul\n", info->btf_id);
+		goto out;
+	}
+
 	err = check_dispatcher_version(btf);
 	if (err) {
 		if (err != -ENOENT)
@@ -956,12 +980,6 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp, int prog_fd)
 		goto out;
 	}
 	map_id = (void *)info_linear->data;
-
-	err = btf__get_from_id(info->btf_id, &btf);
-	if (err) {
-		pr_warn("Couldn't get BTF for ID %ul\n", info->btf_id);
-		goto out;
-	}
 
 	map_fd = bpf_map_get_fd_by_id(*map_id);
 	if (map_fd < 0) {
@@ -1188,6 +1206,12 @@ struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	if (IS_ERR(dispatcher)) {
 		err = PTR_ERR(dispatcher);
 		pr_warn("Couldn't open BPF file %s\n", buf);
+		goto err;
+	}
+
+	err = check_dispatcher_version(dispatcher->btf);
+	if (err) {
+		pr_warn("XDP dispatcher object version check failed\n");
 		goto err;
 	}
 

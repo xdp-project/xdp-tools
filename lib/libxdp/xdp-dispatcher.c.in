@@ -58,3 +58,4 @@ out:
 }
 
 char _license[] SEC("license") = "GPL";
+__uint(dispatcher_version, 1) SEC(XDP_METADATA_SECTION);

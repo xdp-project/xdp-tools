@@ -5,6 +5,9 @@
 
 #include <linux/types.h>
 
+#define XDP_METADATA_SECTION "xdp_metadata"
+#define XDP_DISPATCHER_VERSION 1
+
 #ifndef MAX_DISPATCHER_ACTIONS
 #define MAX_DISPATCHER_ACTIONS 10
 #endif
