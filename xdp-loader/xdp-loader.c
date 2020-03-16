@@ -255,6 +255,7 @@ int do_unload(const void *cfg, const char *pin_root_path)
 {
 	const struct unloadopt *opt = cfg;
 	struct bpf_prog_info info;
+	struct xdp_multiprog *mp;
 	int err = EXIT_SUCCESS;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
@@ -269,6 +270,13 @@ int do_unload(const void *cfg, const char *pin_root_path)
 	if (!opt->iface.ifindex) {
 		pr_warn("Must specify ifname or --all\n");
 		err = EXIT_FAILURE;
+		goto out;
+	}
+
+	mp = xdp_multiprog__get_from_ifindex(opt->iface.ifindex);
+	if (!IS_ERR_OR_NULL(mp)) {
+		err = xdp_multiprog__unpin(mp);
+		xdp_multiprog__free(mp);
 		goto out;
 	}
 
