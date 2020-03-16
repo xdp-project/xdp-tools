@@ -1,4 +1,4 @@
-CFLAGS ?= -O2 -g
+CFLAGS ?= -O2 -g -Werror
 
 include $(LIB_DIR)/../config.mk
 

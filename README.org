@@ -10,6 +10,7 @@ easier to re-use.
 The repository contains the following:
 
 - [[xdp-filter/][xdp-filter/]] - a simple packet filtering utility powered by XDP
+- [[xdp-dump/][xdp-dump/]] - a simple tcpdump like tool for capturing packets at the XDP layer
 - [[headers/xdp/][headers/xdp/]] - reusable eBPF code snippets for XDP (installed in /usr/include/xdp by =make install=).
 - [[lib/util/][lib/util/]] - common code shared between the different utilities
 - [[packaging/][packaging/]] - files used for distro packaging
