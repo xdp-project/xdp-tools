@@ -11,6 +11,7 @@
 *.ilk
 *.map
 *.exp
+*.ll
 
 # Precompiled Headers
 *.gch
@@ -53,4 +54,3 @@ dkms.conf
 
 config.mk
 xdp-dispatcher.c
-xdp-dispatcher.ll

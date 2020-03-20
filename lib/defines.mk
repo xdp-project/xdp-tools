@@ -1,4 +1,5 @@
-CFLAGS ?= -O2 -g
+CFLAGS ?= -O2 -g -Werror
+BPF_CFLAGS ?= -Wno-visibility
 
 include $(LIB_DIR)/../config.mk
 

@@ -32,6 +32,25 @@
 #define min(x,y) ((x)<(y) ? x : y)
 #define max(x,y) ((x)>(y) ? x : y)
 
+#ifndef offsetof
+#define offsetof(type, member) ((size_t) &((type *)0)->member)
+#endif
+
+#ifndef container_of
+#define container_of(ptr, type, member) ({                    \
+	const typeof( ((type *)0)->member ) *__mptr = (ptr);  \
+	(type *)( (char *)__mptr - offsetof(type,member) );})
+#endif
+
+#ifndef roundup
+#define roundup(x, y) (                  \
+{                                        \
+	typeof(y) __y = y;               \
+	(((x) + (__y - 1)) / __y) * __y; \
+}                                        \
+)
+#endif
+
 enum xdp_attach_mode {
                       XDP_MODE_UNSPEC = 0,
                       XDP_MODE_NATIVE,

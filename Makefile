@@ -13,7 +13,7 @@ ifeq ($(VERBOSE),0)
 MAKEFLAGS += --no-print-directory
 endif
 
-SUBDIRS=lib xdp-filter xdp-loader
+SUBDIRS=lib xdp-filter xdp-loader xdp-dump
 
 all: config.mk
 	@set -e; \

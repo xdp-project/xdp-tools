@@ -1,0 +1,128 @@
+#+EXPORT_FILE_NAME: xdpdump
+# This file serves both as a README on github, and as the source for the man
+# page; the latter through the org-mode man page export support.
+# .
+# To export the man page, simply use the org-mode exporter; (require 'ox-man) if
+# it's not available.
+# .
+# The org-mode export doesn't support extended title lines, so manually copy
+# over the first line of the resulting .man file before exporting and
+# committing.
+
+* xdpdump - a simple tcpdump like tool for capturing packets at the XDP layer
+=xdpdump= is a simple XDP packet capture tool that tries to behave similar to
+=tcpdump=, however, it has no packet filter or decode capabilities.
+
+=xdpdump= works by attaching a bpf trace program to the XDP entry and/or exit
+function which stores the raw packet in a perf trace buffer. If no XDP program
+is loaded this approach can not be used and the tool will use a libpcap
+live-capture to be backward compatible.
+
+** Running xdpdump
+The syntax for running =xdpdump= is:
+
+#+begin_src
+Usage: xdpdump [options]
+
+ XDPDump tool to dump network traffic
+
+Options:
+     --rx-capture <mode>    Capture point for the rx direction (valid values: entry,exit)
+ -D, --list-interfaces      Print the list of available interfaces
+ -i, --interface <ifname>   Name of interface to capture on
+ -s, --snapshot-length <snaplen>  Minimum bytes of packet to capture
+ -w, --write <file>         Write raw packets to pcap file
+ -x, --hex                  Print the full packet in hex
+ -v, --verbose              Enable verbose logging (-vv: more verbose)
+ -h, --help                 Show this help
+#+end_src
+
+* The options explained
+The =xdpdump= tool tries to mimic the basic =tcpdump= options, but just in case
+below each of the available options is explained:
+
+** --rx-capture <mode>
+Specify where the ingress packet gets captured. Either at the entry of the XDP
+program and/or exit of the XDP program. Valid options are *entry*, *exit*,
+or both *entry,exit*. The packet at *exit* can be modified by the XDP
+program. If you are interested to see both the original and modified packet,
+use the *entry,exit* option. With this, each packet is captured twice. The
+default value for this is *entry*.
+** -D, --list-interfaces
+Display a list of available interfaces and any XDP program loaded
+** -i, --interface <ifname>
+Listen on interface =ifname=. Note that if no XDP program is loaded on the
+interface it will use libpcap's live capture mode to capture the packets.
+** -s, --snapshot-length <snaplen>
+Capture *snaplen* bytes of a packet rather than the default 262144 bytes.
+** -w, --write <file>
+Write the raw packets to a pcap file rather than printing them out hexadecimal. Standard output is used if *file* is =-=.
+** -x, --hex
+When dumping packets on the console also print the full packet content in hex.
+** -v, --verbose
+Enable debug logging. Specify twice for even more verbosity.
+** -h, --help
+Display a summary of the available options
+
+* Examples
+The below will load the =xdp-filter= program on eth0, but it does not do any
+actual filtering:
+
+#+begin_src
+# xdp-filter load --mode skb eth0
+#
+# xdpdump -D
+if_index  if_name           XDP program entry function
+--------  ----------------  --------------------------------------------------
+1         lo                <No XDP program loaded!>
+2         eth0              xdpfilt_blk_all()
+#+end_src
+
+Now we can try =xdpdump=:
+
+#+begin_src
+# xdpdump -i eth0
+1584373839.460733895: packet size 102 bytes, captured 102 bytes on if_index 2, rx queue 0, @entry
+  0x0000:  52 54 00 db 44 b6 52 54 00 34 38 da 08 00 45 48  RT..D.RT.48...EH
+  0x0010:  00 58 d7 dd 40 00 40 06 ec c3 c0 a8 7a 01 c0 a8  .X..@.@.....z...
+  0x0020:  7a 64 9c de 00 16 0d d5 c6 bc 46 c9 bb 11 80 18  zd........F.....
+  0x0030:  01 f5 7b b4 00 00 01 01 08 0a 77 0a 8c b8 40 12  ..{.......w...@.
+  0x0040:  cc a6 00 00 00 10 54 ce 6e 20 c3 e7 da 6c 08 42  ......T.n ...l.B
+  0x0050:  d6 d9 ee 42 42 f0 82 c9 4f 12 ed 7b 19 ab 22 0d  ...BB...O..{..".
+  0x0060:  09 29 a9 ee df 89                                .)....
+
+1584373839.462340808: packet size 66 bytes, captured 66 bytes on if_index 2, rx queue 0, @entry
+  0x0000:  52 54 00 db 44 b6 52 54 00 34 38 da 08 00 45 48  RT..D.RT.48...EH
+  0x0010:  00 34 d7 de 40 00 40 06 ec e6 c0 a8 7a 01 c0 a8  .4..@.@.....z...
+  0x0020:  7a 64 9c de 00 16 0d d5 c6 e0 46 c9 bc 85 80 10  zd........F.....
+  0x0030:  01 f5 74 0c 00 00 01 01 08 0a 77 0a 8c ba 40 12  ..t.......w...@.
+  0x0040:  d2 34                                            .4
+^C
+2 packets captured
+0 packets dropped by perf ring
+#+end_src
+
+Below are two more examples redirecting the capture file to =tcpdump= or
+=tshark=:
+
+#+begin_src
+# xdpdump -i eth0 -w - | tcpdump -r - -n
+reading from file -, link-type EN10MB (Ethernet)
+15:55:09.075887 IP 192.168.122.1.40928 > 192.168.122.100.ssh: Flags [P.], seq 3857553815:3857553851, ack 3306438882, win 501, options [nop,nop,TS val 1997449167 ecr 1075234328], length 36
+15:55:09.077756 IP 192.168.122.1.40928 > 192.168.122.100.ssh: Flags [.], ack 37, win 501, options [nop,nop,TS val 1997449169 ecr 1075244363], length 0
+15:55:09.750230 IP 192.168.122.1.40928 > 192.168.122.100.ssh: Flags [P.], seq 36:72, ack 37, win 501, options [nop,nop,TS val 1997449842 ecr 1075244363], length 36
+#+end_src
+
+#+begin_src
+# xdpdump -i eth0 -w - | tshark -r - -n
+    1   0.000000 192.168.122.1 → 192.168.122.100 SSH 102 Client: Encrypted packet (len=36)
+    2   0.000646 192.168.122.1 → 192.168.122.100 TCP 66 40158 → 22 [ACK] Seq=37 Ack=37 Win=1467 Len=0 TSval=1997621571 TSecr=1075416765
+    3  12.218164 192.168.122.1 → 192.168.122.100 SSH 102 Client: Encrypted packet (len=36)
+#+end_src
+
+* BUGS
+Please report any bugs on Github: https://github.com/xdp-project/xdp-tools/issues
+
+* AUTHOR
+
+=xdpdump= was written by Eelco Chaudron
