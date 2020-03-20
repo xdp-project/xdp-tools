@@ -15,18 +15,10 @@ endif
 
 SUBDIRS=lib xdp-filter xdp-loader
 
-all: llvm-check config.mk
+all: config.mk
 	@set -e; \
 	for i in $(SUBDIRS); \
 	do echo; echo $$i; $(MAKE) -C $$i; done
-
-llvm-check: $(CLANG) $(LLC)
-	@for TOOL in $^ ; do \
-		if [ ! $$(command -v $${TOOL} 2>/dev/null) ]; then \
-			echo "*** ERROR: Cannot find tool $${TOOL}" ;\
-			exit 1; \
-		else true; fi; \
-	done
 
 help:
 	@echo "Make Targets:"

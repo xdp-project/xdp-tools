@@ -24,6 +24,14 @@ check_toolchain()
     : ${CC=gcc}
     : ${CLANG=clang}
     : ${LLC=llc}
+
+    for TOOL in $PKG_CONFIG $CC $CLANG $LLC; do
+	if [ ! $(command -v ${TOOL} 2>/dev/null) ]; then
+	    echo "*** ERROR: Cannot find tool ${TOOL}" ;
+	    exit 1;
+	fi;
+    done
+
     echo "PKG_CONFIG:=${PKG_CONFIG}" >>$CONFIG
     echo "CC:=${CC}" >>$CONFIG
     echo "CLANG:=${CLANG}" >>$CONFIG
