@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -50,6 +51,7 @@ struct flag_val rx_capture_flags[] = {
 
 static const struct dumpopt {
 	bool                  list_interfaces;
+	bool                  hex_dump;
 	struct iface          iface;
 	uint32_t              snaplen;
 	char                 *pcap_file;
@@ -82,6 +84,9 @@ static struct prog_option xdpdump_options[] = {
 		      .short_opt = 'w',
 		      .metavar = "<file>",
 		      .help = "Write raw packets to pcap file"),
+	DEFINE_OPTION("hex", OPT_BOOL, struct dumpopt, hex_dump,
+		      .short_opt = 'x',
+		      .help = "Print the full packet in hex"),
 	END_OPTIONS
 };
 
@@ -96,6 +101,26 @@ struct perf_handler_ctx {
 
 bool    exit_xdpdump;
 pcap_t *exit_pcap;
+
+/*****************************************************************************
+ * get_xdp_return_string()
+ *****************************************************************************/
+static const char *get_xdp_action_string(enum xdp_action act)
+{
+	switch (act) {
+	case XDP_ABORTED:
+		return "[ABORTED]";
+	case XDP_DROP:
+		return "[DROP]";
+	case XDP_PASS:
+		return "[PASS]";
+	case XDP_TX:
+		return "[TX]";
+	case XDP_REDIRECT:
+		return "[REDIRECT]";
+	}
+	return "[*unknown*]";
+}
 
 /*****************************************************************************
  * snprinth()
@@ -190,25 +215,45 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 			h.len = e->metadata.pkt_len;
 			pcap_dump((u_char *) ctx->pcap_dumper, &h,
 				  e->packet);
+
+			if (ctx->cfg->pcap_file[0] == '-' &&
+			    ctx->cfg->pcap_file[1] == 0)
+				pcap_dump_flush(ctx->pcap_dumper);
 		} else {
 			int i;
 			char hline[SNPRINTH_MIN_BUFFER_SIZE];
 			bool fexit = e->metadata.flags & MDF_DIRECTION_FEXIT;
 
-			printf("%llu.%09lld: packet size %u bytes, "
-			       "captured %u bytes on "
-			       "if_index %u, rx queue %u, @%s\n",
-			       ts / 1000000000ULL,
-			       ts % 1000000000ULL,
-			       e->metadata.pkt_len,
-			       e->metadata.cap_len, e->metadata.ifindex,
-			       e->metadata.rx_queue,
-			       fexit ? "exit" : "entry");
 
-			for (i = 0; i < e->metadata.cap_len; i += 16) {
-				snprinth(hline, sizeof(hline),
-					 e->packet, e->metadata.cap_len, i);
-				printf("  %s\n", hline);
+			if (ctx->cfg->hex_dump) {
+				printf("%llu.%09lld: @%s%s: packet size %u "
+				       "bytes, captured %u bytes on "
+				       "if_index %u, rx queue %u\n",
+				       ts / 1000000000ULL,
+				       ts % 1000000000ULL,
+				       fexit ? "exit" : "entry",
+				       fexit ? get_xdp_action_string(
+					       e->metadata.action) : "",
+				       e->metadata.pkt_len,
+				       e->metadata.cap_len, e->metadata.ifindex,
+				       e->metadata.rx_queue);
+
+				for (i = 0; i < e->metadata.cap_len; i += 16) {
+					snprinth(hline, sizeof(hline),
+						 e->packet,
+						 e->metadata.cap_len, i);
+					printf("  %s\n", hline);
+				}
+			} else {
+				printf("%llu.%09lld: @%s%s: packet size %u "
+				       "bytes on if_index %u, rx queue %u\n",
+				       ts / 1000000000ULL,
+				       ts % 1000000000ULL,
+				       fexit ? "exit" : "entry",
+				       fexit ? get_xdp_action_string(
+					       e->metadata.action) : "",
+				       e->metadata.pkt_len,e->metadata.ifindex,
+				       e->metadata.rx_queue);
 			}
 		}
 		ctx->captured_packets++;
@@ -291,19 +336,29 @@ static bool capture_on_legacy_interface(struct dumpopt *cfg)
 
 		if (pcap_dumper) {
 			pcap_dump((u_char *) pcap_dumper, &h, packet);
+
+			if (cfg->pcap_file[0] == '-' && cfg->pcap_file[1] == 0)
+				pcap_dump_flush(pcap_dumper);
 		} else {
 			int i;
 			char hline[SNPRINTH_MIN_BUFFER_SIZE];
 
-			printf("%lu.%06lu: packet size %u bytes, "
-			       "captured %u bytes\n",
-			       h.ts.tv_sec, h.ts.tv_usec,
-			       h.len, h.caplen);
+			if (cfg->hex_dump) {
+				printf("%lu.%06lu: packet size %u bytes, "
+				       "captured %u bytes on if_name \"%s\"\n",
+				       h.ts.tv_sec, h.ts.tv_usec,
+				       h.len, h.caplen, cfg->iface.ifname);
 
-			for (i = 0; i < h.caplen; i += 16) {
-				snprinth(hline, sizeof(hline),
-					 packet, h.caplen, i);
-				printf("  %s\n", hline);
+				for (i = 0; i < h.caplen; i += 16) {
+					snprinth(hline, sizeof(hline),
+						 packet, h.caplen, i);
+					printf("  %s\n", hline);
+				}
+			} else {
+				printf("%lu.%06lu: packet size %u bytes on "
+				       "if_name \"%s\"\n",
+				       h.ts.tv_sec, h.ts.tv_usec,
+				       h.len, cfg->iface.ifname);
 			}
 		}
 		captured_packets++;

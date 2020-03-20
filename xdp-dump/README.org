@@ -18,7 +18,6 @@ function which stores the raw packet in a perf trace buffer. If no XDP program
 is loaded this approach can not be used and the tool will use a libpcap
 live-capture to be backward compatible.
 
-
 ** Running xdpdump
 The syntax for running =xdpdump= is:
 
@@ -33,6 +32,7 @@ Options:
  -i, --interface <ifname>   Name of interface to capture on
  -s, --snapshot-length <snaplen>  Minimum bytes of packet to capture
  -w, --write <file>         Write raw packets to pcap file
+ -x, --hex                  Print the full packet in hex
  -v, --verbose              Enable verbose logging (-vv: more verbose)
  -h, --help                 Show this help
 #+end_src
@@ -46,10 +46,8 @@ Specify where the ingress packet gets captured. Either at the entry of the XDP
 program and/or exit of the XDP program. Valid options are *entry*, *exit*,
 or both *entry,exit*. The packet at *exit* can be modified by the XDP
 program. If you are interested to see both the original and modified packet,
-use the *entry,exit* option. With this, each packet is captured twice. In the
-XDP context, it means the XDP program's entry and exit points.
-
-
+use the *entry,exit* option. With this, each packet is captured twice. The
+default value for this is *entry*.
 ** -D, --list-interfaces
 Display a list of available interfaces and any XDP program loaded
 ** -i, --interface <ifname>
@@ -59,6 +57,8 @@ interface it will use libpcap's live capture mode to capture the packets.
 Capture *snaplen* bytes of a packet rather than the default 262144 bytes.
 ** -w, --write <file>
 Write the raw packets to a pcap file rather than printing them out hexadecimal. Standard output is used if *file* is =-=.
+** -x, --hex
+When dumping packets on the console also print the full packet content in hex.
 ** -v, --verbose
 Enable debug logging. Specify twice for even more verbosity.
 ** -h, --help

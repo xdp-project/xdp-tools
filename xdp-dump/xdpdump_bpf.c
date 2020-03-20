@@ -49,7 +49,8 @@ struct bpf_map_def SEC("maps") xdpdump_perf_map = {
 /*****************************************************************************
  * trace_to_perf_buffer()
  *****************************************************************************/
-static inline void trace_to_perf_buffer(struct xdp_buff *xdp, bool fexit)
+static inline void trace_to_perf_buffer(struct xdp_buff *xdp, bool fexit,
+					int action)
 {
 	void *data_end = (void *)(long)xdp->data_end;
 	void *data = (void *)(long)xdp->data;
@@ -62,6 +63,7 @@ static inline void trace_to_perf_buffer(struct xdp_buff *xdp, bool fexit)
 	metadata.rx_queue = xdp->rxq->queue_index;
 	metadata.pkt_len = (__u16)(data_end - data);
 	metadata.cap_len = metadata.pkt_len;
+	metadata.action = action;
 	metadata.flags = 0;
 
 	if (fexit)
@@ -79,7 +81,7 @@ static inline void trace_to_perf_buffer(struct xdp_buff *xdp, bool fexit)
 SEC("fentry/func")
 int BPF_PROG(trace_on_entry, struct xdp_buff *xdp)
 {
-	trace_to_perf_buffer(xdp, false);
+	trace_to_perf_buffer(xdp, false, 0);
 	return 0;
 }
 
@@ -89,7 +91,7 @@ int BPF_PROG(trace_on_entry, struct xdp_buff *xdp)
 SEC("fexit/func")
 int BPF_PROG(trace_on_exit, struct xdp_buff *xdp, int ret)
 {
-	trace_to_perf_buffer(xdp, true);
+	trace_to_perf_buffer(xdp, true, ret);
 	return 0;
 }
 

@@ -30,6 +30,7 @@ struct pkt_trace_metadata {
 	__u16 pkt_len;
 	__u16 cap_len;
 	__u16 flags;
+	int   action;
 } __packed;
 
 #ifndef __bpf__
