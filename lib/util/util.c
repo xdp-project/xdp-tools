@@ -749,6 +749,10 @@ int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir)
 	const char *bpf_dir;
 
 	bpf_dir = bpf_get_work_dir();
+	if (!bpf_dir) {
+		pr_warn("Could not find BPF working dir - bpffs not mounted?\n");
+		return -ENOENT;
+	}
 
 	if (subdir)
 		return check_snprintf(buf, buf_len, "%s/%s", bpf_dir, subdir);
