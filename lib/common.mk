@@ -81,7 +81,7 @@ $(LIB_OBJS): %.o: %.c %.h $(LIB_H)
 	$(Q)$(MAKE) -C $(dir $@) $(notdir $@)
 
 $(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) $(OBJECT_LIBXDP) $(LIBMK) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
-	$(QUIET_CC)$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $(LIB_OBJS) \
+	$(QUIET_CC)$(CC) -Wall $(CFLAGS) $(USER_CFLAGS) $(LDFLAGS) -o $@ $(LIB_OBJS) \
 	 $< $(LDLIBS)
 
 $(XDP_OBJ): %.o: %.c $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEADERS) $(LIBMK)
