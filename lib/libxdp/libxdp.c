@@ -53,13 +53,7 @@ struct xdp_program {
 };
 
 struct xdp_multiprog {
-	/* config holds pointer to active config; when loading, this points to
-	 * mmaped area from libbpf (so it can be edited). _config_store holds
-	 * the actual data when reading the config back from the kernel, in
-	 * which case config becomes a pointer to _config_store
-	 */
-	struct xdp_dispatcher_config *config;
-	struct xdp_dispatcher_config _config_store;
+	struct xdp_dispatcher_config config;
 	struct xdp_program *dispatcher;
 	struct xdp_program *first_prog; // uses xdp_program->next to build a list
 	size_t num_links;
@@ -809,7 +803,7 @@ static int xdp_multiprog__load(struct xdp_multiprog *mp)
 		return -EINVAL;
 
 	pr_debug("Loading multiprog dispatcher for %d programs\n",
-		mp->config->num_progs_enabled);
+		mp->config.num_progs_enabled);
 
 	err = xdp_program__load(mp->dispatcher);
 	if (err) {
@@ -878,7 +872,7 @@ static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 		goto out;
 	}
 
-	for (i = 0; i < mp->config->num_progs_enabled; i++) {
+	for (i = 0; i < mp->config.num_progs_enabled; i++) {
 
 		err = check_snprintf(buf, sizeof(buf), "%s/prog%d-prog",
 				     pin_path, i);
@@ -994,18 +988,17 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp, int prog_fd)
 	}
 
 	if (map_info.key_size != sizeof(map_key) ||
-	    map_info.value_size != sizeof(mp->_config_store)) {
+	    map_info.value_size != sizeof(mp->config)) {
 		pr_warn("Map key or value size mismatch\n");
 		err = -EINVAL;
 		goto out;
 	}
 
-	err = bpf_map_lookup_elem(map_fd, &map_key, &mp->_config_store);
+	err = bpf_map_lookup_elem(map_fd, &map_key, &mp->config);
 	if (err) {
 		pr_warn("Could not lookup map value: %s\n", strerror(-err));
 		goto out;
 	}
-	mp->config = &mp->_config_store;
 
 	prog = xdp_program__from_fd(prog_fd);
 	if (IS_ERR(prog)) {
@@ -1095,8 +1088,7 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 	char buf[PATH_MAX];
 	int err, lfd;
 
-	if (!mp->config || !mp->is_loaded ||
-	    mp->num_links >= mp->config->num_progs_enabled)
+	if (!mp->is_loaded || mp->num_links >= mp->config.num_progs_enabled)
 		return -EINVAL;
 
 	pr_debug("Linking prog %s as multiprog entry %zu\n",
@@ -1182,8 +1174,8 @@ struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 {
 	struct xdp_program *dispatcher;
 	struct xdp_multiprog *mp;
+	struct bpf_map *map;
 	char buf[PATH_MAX];
-	size_t sz = 0;
 	int err, i;
 
 	if (!num_progs || num_progs > MAX_DISPATCHER_ACTIONS)
@@ -1216,20 +1208,23 @@ struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	}
 
 	mp->dispatcher = dispatcher;
-	mp->config = bpf_object__rodata(mp->dispatcher->bpf_obj, &sz);
-	if (!mp->config) {
-		pr_warn("No rodata for object file %s\n", buf);
+
+	map = bpf_map__next(NULL, mp->dispatcher->bpf_obj);
+	if (!map) {
+		pr_warn("Couldn't find rodata map in object file %s\n", buf);
 		err = -ENOENT;
 		goto err;
-	} else if (sz != sizeof(*mp->config)) {
-		pr_warn("Object rodata size %zu different from expected %zu\n",
-			sz, sizeof(*mp->config));
-		err = -EINVAL;
+	}
+
+	mp->config.num_progs_enabled = num_progs;
+	for (i = 0; i < num_progs; i++)
+		mp->config.chain_call_actions[i] = progs[i]->chain_call_actions;
+
+	err = bpf_map__set_initial_value(map, &mp->config, sizeof(mp->config));
+	if (err) {
+		pr_warn("Failed to set rodata for object file %s\n", buf);
 		goto err;
 	}
-	mp->config->num_progs_enabled = num_progs;
-	for (i = 0; i < num_progs; i++)
-		mp->config->chain_call_actions[i] = progs[i]->chain_call_actions;
 
 	err = xdp_multiprog__load(mp);
 	if (err)
