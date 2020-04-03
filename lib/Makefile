@@ -17,7 +17,7 @@ clean: libbpf_clean
 
 install:
 	install -m 0755 -d $(DESTDIR)$(HDRDIR)
-	install -m 0644 $(HEADER_DIR)/xdp/*.h $(DESTDIR)$(HDRDIR)
+	$(MAKE) -C libxdp install
 
 libbpf: $(OBJECT_LIBBPF)
 
