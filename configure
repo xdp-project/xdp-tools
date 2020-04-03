@@ -89,6 +89,7 @@ int main(int argc, char **argv) {
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts, .pin_root_path = "/path");
 	(void) bpf_object__open_file("file", &opts);
 	(void) bpf_program__name(ptr);
+	(void) bpf_map__set_initial_value(ptr, ptr, 0);
 	return 0;
 }
 EOF
