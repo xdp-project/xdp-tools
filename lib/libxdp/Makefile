@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 
 EXTRA_TARGETS := libxdp.so libxdp.a
+XDP_TARGETS := xdp-dispatcher
+
 LIB_DIR = ..
 
 include $(LIB_DIR)/common.mk
@@ -14,7 +16,8 @@ STATIC_OBJS := $(addprefix $(STATIC_OBJDIR)/,$(OBJS))
 STATIC_LIBS := $(OBJDIR)/libxdp.a
 
 SHARED_CFLAGS += -fPIC -fvisibility=hidden -DSHARED
-EXTRA_LIB_DEPS := $(OBJECT_LIBBPF) $(LIBMK) $(LIB_OBJS)
+EXTRA_LIB_DEPS := $(OBJECT_LIBBPF) $(LIBMK) $(LIB_OBJS) $(LIB_HEADERS)
+LIB_HEADERS := ../../headers/xdp/*.h
 
 ifndef BUILD_STATIC_ONLY
 	SHARED_LIBS := $(OBJDIR)/libxdp.so \
@@ -56,3 +59,5 @@ $(SHARED_OBJDIR)/%.o: %.c $(EXTRA_LIB_DEPS) | $(SHARED_OBJDIR)
 	$(QUIET_CC)$(CC) $(CFLAGS) $(SHARED_CFLAGS) -Wall -I../../headers -c $< -o $@
 
 
+xdp-dispatcher.c: xdp-dispatcher.c.in Makefile
+	$(QUIET_M4)m4 $(DEFINES) $< > $@

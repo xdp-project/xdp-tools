@@ -14,8 +14,10 @@ check_opts()
 {
     : ${PRODUCTION:=0}
     : ${DYNAMIC_LIBXDP:=0}
+    : ${MAX_DISPATCHER_ACTIONS:=10}
     echo "PRODUCTION:=${PRODUCTION}" >>$CONFIG
     echo "DYNAMIC_LIBXDP:=${DYNAMIC_LIBXDP}" >>$CONFIG
+    echo "MAX_DISPATCHER_ACTIONS:=${MAX_DISPATCHER_ACTIONS}" >>$CONFIG
 }
 
 check_toolchain()
