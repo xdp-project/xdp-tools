@@ -5,7 +5,9 @@ XDP_TARGETS := xdp-dispatcher
 
 LIB_DIR = ..
 
-include $(LIB_DIR)/common.mk
+include libxdp.mk
+include $(LIB_DIR)/defines.mk
+include $(LIB_DIR)/util/util.mk
 
 OBJDIR ?= .
 SHARED_OBJDIR := $(OBJDIR)/sharedobjs
@@ -15,9 +17,12 @@ SHARED_OBJS := $(addprefix $(SHARED_OBJDIR)/,$(OBJS))
 STATIC_OBJS := $(addprefix $(STATIC_OBJDIR)/,$(OBJS))
 STATIC_LIBS := $(OBJDIR)/libxdp.a
 
-SHARED_CFLAGS += -fPIC -fvisibility=hidden -DSHARED
+SHARED_CFLAGS += -fPIC -DSHARED
+LIB_HEADERS := $(wildcard ../../headers/xdp/*.h)
 EXTRA_LIB_DEPS := $(OBJECT_LIBBPF) $(LIBMK) $(LIB_OBJS) $(LIB_HEADERS)
-LIB_HEADERS := ../../headers/xdp/*.h
+
+CFLAGS += -I$(HEADER_DIR) -I$(LIB_DIR)/util
+BPF_CFLAGS += -I$(HEADER_DIR)
 
 ifndef BUILD_STATIC_ONLY
 	SHARED_LIBS := $(OBJDIR)/libxdp.so \
@@ -26,10 +31,16 @@ ifndef BUILD_STATIC_ONLY
 	VERSION_SCRIPT := libxdp.map
 endif
 
-clean::
+all: $(STATIC_LIBS) $(SHARED_LIBS)
+
+clean:
 	$(Q)rm -f $(STATIC_LIBS) $(STATIC_OBJS) $(SHARED_LIBS) $(SHARED_OBJS)
 	$(Q)for d in $(SHARED_OBJDIR) $(STATIC_OBJDIR); do \
 		[ -d "$$d" ] && rmdir "$$d"; done || true
+
+install:
+	$(Q)install -m 0644 $(LIB_HEADERS) $(DESTDIR)$(HDRDIR)/
+	$(Q)install -m 0644 $(SHARED_LIBS) $(STATIC_LIBS) $(DESTDIR)$(LIBDIR)
 
 
 $(OBJDIR)/libxdp.a: $(STATIC_OBJS)
