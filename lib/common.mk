@@ -34,7 +34,7 @@ EXTRA_USER_DEPS +=
 LDFLAGS+=-L$(LIBXDP_DIR)
 ifeq ($(DYNAMIC_LIBXDP),1)
 	LDLIBS+=-lxdp
-	OBJEXT_LIBXDP:=$(LIBXDP_DIR)/libxdp.so.$(LIBXDP_VERSION)
+	OBJECT_LIBXDP:=$(LIBXDP_DIR)/libxdp.so.$(LIBXDP_VERSION)
 else
 	LDLIBS+=-l:libxdp.a
 	OBJECT_LIBXDP:=$(LIBXDP_DIR)/libxdp.a
@@ -46,7 +46,7 @@ KERN_USER_H ?= $(wildcard common_kern_user.h)
 CFLAGS += -I$(HEADER_DIR) -I$(LIB_DIR)/util
 BPF_CFLAGS += -I$(HEADER_DIR)
 
-BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(HEADER_DIR)/xdp/xdp_helpers.h
+BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(wildcard $(HEADER_DIR)/xdp/*.h)
 MAN_FILES := $(wildcard ${USER_TARGETS:=.8})
 
 all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS)
@@ -60,7 +60,7 @@ install:
 	install -m 0755 -d $(DESTDIR)$(SBINDIR)
 	install -m 0755 -d $(DESTDIR)$(BPF_OBJECT_DIR)
 	install -m 0755 $(USER_TARGETS) $(DESTDIR)$(SBINDIR)
-	install -m 0644 $(XDP_OBJ) $(DESTDIR)$(BPF_OBJECT_DIR)
+	$(if $(XDP_OBJ),install -m 0644 $(XDP_OBJ) $(DESTDIR)$(BPF_OBJECT_DIR))
 	$(if $(MAN_FILES),install -m 0755 -d $(DESTDIR)$(MANDIR)/man8)
 	$(if $(MAN_FILES),install -m 0644 $(MAN_FILES) $(DESTDIR)$(MANDIR)/man8)
 
