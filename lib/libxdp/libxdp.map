@@ -1,0 +1,18 @@
+LIBXDP_0.0.3 {
+	global:
+		xdp_multiprog__attach;
+		xdp_multiprog__free;
+		xdp_multiprog__generate;
+		xdp_multiprog__get_from_ifindex;
+		xdp_program__chain_call_enabled;
+		xdp_program__free;
+		xdp_program__from_bpf_obj;
+		xdp_program__from_fd;
+		xdp_program__from_id;
+		xdp_program__name;
+		xdp_program__open_file;
+		xdp_program__print_chain_call_actions;
+		xdp_program__run_prio;
+		xdp_program__set_chain_call_enabled;
+		xdp_program__set_run_prio;
+};
