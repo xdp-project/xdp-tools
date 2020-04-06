@@ -42,7 +42,7 @@ install:
 	$(Q)install -d -m 0755 $(DESTDIR)$(HDRDIR)
 	$(Q)install -d -m 0755 $(DESTDIR)$(LIBDIR)
 	$(Q)install -m 0644 $(LIB_HEADERS) $(DESTDIR)$(HDRDIR)/
-	$(Q)install -m 0644 $(SHARED_LIBS) $(STATIC_LIBS) $(DESTDIR)$(LIBDIR)
+	$(Q)install -m 0755 $(SHARED_LIBS) $(STATIC_LIBS) $(DESTDIR)$(LIBDIR)
 
 
 $(OBJDIR)/libxdp.a: $(STATIC_OBJS)
