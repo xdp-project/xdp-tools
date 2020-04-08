@@ -54,6 +54,17 @@ check_elf()
     fi
 }
 
+check_pcap()
+{
+    if ${PKG_CONFIG} libpcap --exists; then
+        echo "HAVE_PCAP:=y" >>$CONFIG
+        echo "yes"
+    else
+        echo "missing - this is required"
+        return 1
+    fi
+}
+
 check_zlib()
 {
     if ${PKG_CONFIG} zlib --exists; then
@@ -127,6 +138,9 @@ EOF
 
     echo -n "ELF support: "
     check_elf || exit 1
+
+    echo -n "pcap support: "
+    check_pcap || exit 1
 
     echo -n "zlib support: "
     check_zlib || exit 1
