@@ -16,13 +16,15 @@ BuildRequires:    llvm >= 10.0.0
 BuildRequires:    make
 BuildRequires:    gcc
 BuildRequires:    pkgconfig
+BuildRequires:    m4
 
 # find-debuginfo produces empty debugsourcefiles.list
 # disable the debug package to avoid rpmbuild error'ing out because of this
 %global debug_package %{nil}
 %global _hardened_build 1
-# brp_strip_lto barfs on BPF files, override it as a workaround
+# strip barfs on BPF files, override it as a workaround
 %global __brp_strip_lto %{_bindir}/true
+%global __brp_strip %{_bindir}/true
 
 %description
 Utilities and example programs for use with XDP
@@ -84,12 +86,14 @@ rm -f %{buildroot}%{_libdir}/libxdp.so
 %{_sbindir}/xdp-loader
 %{_sbindir}/xdpdump
 %{_mandir}/man8/*
-%{_libdir}/bpf/*.o
+%{_libdir}/bpf/xdpfilt_*.o
+%{_libdir}/bpf/xdpdump_*.o
 %license LICENSE
 
 %files -n libxdp
 %{_libdir}/libxdp.so.0
 %{_libdir}/libxdp.so.%{version}
+%{_libdir}/bpf/xdp-dispatcher.o
 
 %files -n libxdp-static
 %{_libdir}/libxdp.a
