@@ -395,11 +395,14 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	int                          perf_map_fd;
 	int                          prog_fd;
 	int                          rc = false;
+	uint32_t                     filter_ifindex;
 	pcap_t                      *pcap = NULL;
 	pcap_dumper_t               *pcap_dumper = NULL;
 	struct bpf_link             *trace_link_fentry = NULL;
 	struct bpf_link             *trace_link_fexit = NULL;
 	struct bpf_map              *perf_map;
+	struct bpf_map              *data_map;
+	const struct bpf_map_def    *data_map_def;
 	struct bpf_object           *trace_obj = NULL;
 	struct bpf_prog_info         info = {};
 	struct bpf_program          *trace_prog_fentry;
@@ -439,6 +442,26 @@ rlimit_loop:
 			strerror(err), err);
 		goto error_exit;
 	}
+
+	/* Set the ifIndex in the DATA map */
+	data_map = bpf_object__find_map_by_name(trace_obj, "xdpdump_.data");
+	if (!data_map) {
+		pr_warn("ERROR: Can't find the .data MAP in the trace "
+			"program!\n");
+		goto error_exit;
+	}
+
+	data_map_def = bpf_map__def(data_map);
+	if (!data_map_def ||
+	    data_map_def->value_size != sizeof(filter_ifindex)) {
+		pr_warn("ERROR: Can't find the correct sized .data MAP in the "
+			"trace program!\n");
+		goto error_exit;
+	}
+
+	filter_ifindex = cfg->iface.ifindex;
+	bpf_map__set_initial_value(data_map, &filter_ifindex,
+				   sizeof(filter_ifindex));
 
 	/* Locate the fentry and fexit functions */
 	trace_prog_fentry = bpf_object__find_program_by_title(trace_obj,
