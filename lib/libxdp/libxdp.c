@@ -196,12 +196,18 @@ static int xdp_lock_release(int lock_fd)
 
 static struct btf *xdp_program__btf(struct xdp_program *xdp_prog)
 {
+	if (!xdp_prog)
+		return NULL;
+
 	return xdp_prog->btf;
 }
 
-void xdp_program__set_chain_call_enabled(struct xdp_program *prog, unsigned int action,
-					 bool enabled)
+void xdp_program__set_chain_call_enabled(struct xdp_program *prog,
+					 unsigned int action, bool enabled)
 {
+	if (!prog)
+		return;
+
 	/* FIXME: Should this also update the BTF info? */
 	if (enabled)
 		prog->chain_call_actions |= (1<<action);
@@ -212,22 +218,34 @@ void xdp_program__set_chain_call_enabled(struct xdp_program *prog, unsigned int 
 bool xdp_program__chain_call_enabled(struct xdp_program *prog,
 				     enum xdp_action action)
 {
+	if (!prog)
+		return false;
+
 	return !!(prog->chain_call_actions & (1<<action));
 }
 
 unsigned int xdp_program__run_prio(struct xdp_program *prog)
 {
+	if (!prog)
+		return XDP_DEFAULT_RUN_PRIO;
+
 	return prog->run_prio;
 }
 
 void xdp_program__set_run_prio(struct xdp_program *prog, unsigned int run_prio)
 {
+	if (!prog)
+		return;
+
 	/* FIXME: Should this also update the BTF info? */
 	prog->run_prio = run_prio;
 }
 
 const char *xdp_program__name(struct xdp_program *prog)
 {
+	if (!prog)
+		return NULL;
+
 	return prog->prog_name;
 }
 
@@ -239,6 +257,9 @@ int xdp_program__print_chain_call_actions(struct xdp_program *prog,
 	char *pos = buf;
 	size_t len = 0;
 	int i;
+
+	if (!prog || !buf)
+		return -EINVAL;
 
 	for (i = 0; i <= XDP_REDIRECT; i++) {
 		if (xdp_program__chain_call_enabled(prog, i)) {
@@ -512,6 +533,9 @@ static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 	struct bpf_program *bpf_prog;
 	int err;
 
+	if (!xdp_prog || !obj)
+		return -EINVAL;
+
 	if (prog_name)
 		bpf_prog = bpf_object__find_program_by_title(obj, prog_name);
 	else
@@ -542,6 +566,9 @@ struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
 	struct xdp_program *xdp_prog;
 	int err;
 
+	if (!obj)
+		return ERR_PTR(-EINVAL);
+
 	xdp_prog = xdp_program__new();
 	if (IS_ERR(xdp_prog))
 		return xdp_prog;
@@ -563,6 +590,9 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 	struct xdp_program *xdp_prog;
 	struct bpf_object *obj;
 	int err;
+
+	if (!filename)
+		return ERR_PTR(-EINVAL);
 
 	obj = bpf_object__open_file(filename, opts);
 	err = libbpf_get_error(obj);
@@ -592,6 +622,9 @@ static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
 	__u32 len = sizeof(info);
 	struct btf *btf = NULL;
 	int err = 0;
+
+	if (!xdp_prog)
+		return -EINVAL;
 
 	err = bpf_obj_get_info_by_fd(fd, &info, &len);
 	if (err) {
@@ -719,6 +752,9 @@ int xdp_program__load(struct xdp_program *prog)
 {
 	int err;
 
+	if (!prog)
+		return -EINVAL;
+
 	if (prog->prog_fd >= 0)
 		return -EEXIST;
 
@@ -743,8 +779,7 @@ static struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 	/* Clone a loaded program struct by duplicating the fd and creating a
 	 * new structure from th ekernel state.
 	 */
-
-	if (!prog->prog_fd)
+	if (!prog || !prog->prog_fd)
 		return ERR_PTR(-EINVAL);
 
 	new_fd = fcntl(prog->prog_fd, F_DUPFD_CLOEXEC);
@@ -777,15 +812,18 @@ void xdp_multiprog__free(struct xdp_multiprog *mp)
 
 int xdp_multiprog__main_fd(struct xdp_multiprog *mp)
 {
+	if (!mp)
+		return -EINVAL;
+
 	if (!mp->dispatcher)
 		return -ENOENT;
+
 	return mp->dispatcher->prog_fd;
 }
 
 static struct xdp_multiprog *xdp_multiprog__new()
 {
 	struct xdp_multiprog *mp;
-
 
 	mp = malloc(sizeof *mp);
 	if (!mp)
@@ -799,7 +837,7 @@ static int xdp_multiprog__load(struct xdp_multiprog *mp)
 {
 	int err = 0;
 
-	if (!mp->dispatcher || mp->is_loaded)
+	if (!mp || !mp->dispatcher || mp->is_loaded)
 		return -EINVAL;
 
 	pr_debug("Loading multiprog dispatcher for %d programs\n",
@@ -849,6 +887,9 @@ static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 	int err, prog_fd, lock_fd, i;
 	const char *bpffs_dir;
 	struct stat sb = {};
+
+	if (!mp)
+		return -EINVAL;
 
 	bpffs_dir = get_bpffs_dir();
 	if (IS_ERR(bpffs_dir))
@@ -938,6 +979,9 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp, int prog_fd)
 	__u64 arrays;
 	int err = 0;
 	int map_fd;
+
+	if (!mp)
+		return -EINVAL;
 
 	arrays = (1UL << BPF_PROG_INFO_MAP_IDS);
 	info_linear = bpf_program__get_prog_info_linear(prog_fd, arrays);
@@ -1088,7 +1132,8 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 	char buf[PATH_MAX];
 	int err, lfd;
 
-	if (!mp->is_loaded || mp->num_links >= mp->config.num_progs_enabled)
+	if (!mp || !prog || !mp->is_loaded ||
+	    mp->num_links >= mp->config.num_progs_enabled)
 		return -EINVAL;
 
 	pr_debug("Linking prog %s as multiprog entry %zu\n",
@@ -1178,7 +1223,7 @@ struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	char buf[PATH_MAX];
 	int err, i;
 
-	if (!num_progs || num_progs > MAX_DISPATCHER_ACTIONS)
+	if (!progs || !num_progs || num_progs > MAX_DISPATCHER_ACTIONS)
 		return ERR_PTR(-EINVAL);
 
 	pr_debug("Generating multi-prog dispatcher for %zu programs\n", num_progs);
@@ -1249,6 +1294,9 @@ int xdp_multiprog__pin(struct xdp_multiprog *mp)
 	struct xdp_program *prog;
 	const char *bpffs_dir;
 	int err = 0, lock_fd;
+
+	if (!mp)
+		return -EINVAL;
 
 	bpffs_dir = get_bpffs_dir();
 	if (IS_ERR(bpffs_dir))
@@ -1329,6 +1377,9 @@ int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 	const char *bpffs_dir;
 	int err = 0, lock_fd;
 
+	if (!mp)
+		return -EINVAL;
+
 	bpffs_dir = get_bpffs_dir();
 	if (IS_ERR(bpffs_dir))
 		return PTR_ERR(bpffs_dir);
@@ -1392,6 +1443,9 @@ int xdp_multiprog__attach(struct xdp_multiprog *mp,
 			  enum xdp_attach_mode mode)
 {
 	int err = 0, xdp_flags = 0, prog_fd;
+
+	if (!mp)
+		return -EINVAL;
 
 	prog_fd = xdp_multiprog__main_fd(mp);
 	if (prog_fd < 0)
