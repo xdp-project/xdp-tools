@@ -249,6 +249,22 @@ const char *xdp_program__name(struct xdp_program *prog)
 	return prog->prog_name;
 }
 
+const unsigned char *xdp_program__tag(struct xdp_program *prog)
+{
+	if (!prog)
+		return NULL;
+
+	return prog->prog_tag;
+}
+
+uint32_t xdp_program__id(struct xdp_program *xdp_prog)
+{
+	if (!xdp_prog)
+		return 0;
+
+	return xdp_prog->prog_id;
+}
+
 int xdp_program__print_chain_call_actions(struct xdp_program *prog,
 					  char *buf,
 					  size_t buf_len)
@@ -1515,6 +1531,17 @@ err:
 	return err;
 }
 
+struct xdp_program *xdp_multiprog__next_prog(struct xdp_program *prog,
+					     struct xdp_multiprog *mp)
+{
+	if (!mp)
+		return NULL;
+
+	if (prog)
+		return prog->next;
+
+	return mp->first_prog;
+}
 
 /*int xdp_program__attach(const struct xdp_program *prog,
 			int ifindex, bool replace, enum xdp_attach_mode mode)
