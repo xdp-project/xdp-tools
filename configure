@@ -57,11 +57,33 @@ check_elf()
 
 check_pcap()
 {
+    local libpcap_err
+
     if ${PKG_CONFIG} libpcap --exists; then
+        LIBPCAP_CFLAGS=$(${PKG_CONFIG} libpcap --cflags)
+        LIBPCAP_LDLIBS=$(${PKG_CONFIG} libpcap --libs)
+    else
+        LIBPCAP_CFLAGS=""
+        LIBPCAP_LDLIBS="-lpcap"
+    fi
+
+    cat >$TMPDIR/libpcaptest.c <<EOF
+#define PCAP_DONT_INCLUDE_PCAP_BPF_H
+#include <pcap/dlt.h>
+#include <pcap/pcap.h>
+int main(int argc, char **argv) {
+    pcap_t *pcap = pcap_open_live("ifname", 100, 1, 1000, NULL);
+    return 0;
+}
+EOF
+    libpcap_err=$($CC -o $TMPDIR/libpcaptest $TMPDIR/libpcaptest.c  $LIBPCAP_CFLAGS $LIBPCAP_LDLIBS 2>&1)
+    if [ "$?" -eq "0" ]; then
         echo "HAVE_PCAP:=y" >>$CONFIG
+	[ -n "$LIBPCAP_CFLAGS" ] && echo 'CFLAGS += ' $LIBPCAP_CFLAGS >> $CONFIG
         echo "yes"
     else
         echo "missing - this is required"
+        echo "error: $libpcap_err"
         return 1
     fi
 }
