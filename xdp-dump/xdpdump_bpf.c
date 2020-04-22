@@ -47,6 +47,11 @@ struct bpf_map_def SEC("maps") xdpdump_perf_map = {
 };
 
 /*****************************************************************************
+ * .data section value storing the ifindex to capture
+ *****************************************************************************/
+__u32 capture_if_ifindex = 0xffffffff;
+
+/*****************************************************************************
  * trace_to_perf_buffer()
  *****************************************************************************/
 static inline void trace_to_perf_buffer(struct xdp_buff *xdp, bool fexit,
@@ -56,7 +61,7 @@ static inline void trace_to_perf_buffer(struct xdp_buff *xdp, bool fexit,
 	void *data = (void *)(long)xdp->data;
 	struct pkt_trace_metadata metadata;
 
-	if (data >= data_end)
+	if (data >= data_end || capture_if_ifindex != xdp->rxq->dev->ifindex)
 		return;
 
 	metadata.ifindex = xdp->rxq->dev->ifindex;
