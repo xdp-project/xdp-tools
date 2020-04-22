@@ -305,8 +305,8 @@ int print_iface_status(const struct iface *iface, const struct bpf_prog_info *in
 {
 	struct xdp_program *xdp_prog;
 	struct xdp_multiprog *mp;
-	char errmsg[STRERR_BUFSIZE];
 	char tag[BPF_TAG_SIZE*2+1];
+	char buf[STRERR_BUFSIZE];
 	int i, err;
 
 	for (i = 0; i < BPF_TAG_SIZE; i++) {
@@ -317,17 +317,16 @@ int print_iface_status(const struct iface *iface, const struct bpf_prog_info *in
 	xdp_prog = xdp_program__from_id(info->id);
 	if (IS_ERR(xdp_prog)) {
 		err = PTR_ERR(xdp_prog);
-		libbpf_strerror(err, errmsg, sizeof(errmsg));
-		printf("err: %s\n", errmsg);
+		libbpf_strerror(err, buf, sizeof(buf));
+		printf("err: %s\n", buf);
 		return err;
 	}
-	xdp_program__print_chain_call_actions(xdp_prog, errmsg, sizeof(errmsg));
-	printf("%-16s %-5d %-16s %-8s %-4d %-17s %s\n",
+	printf("%-16s %-5s %-16s %-8s %-4d %-17s\n",
 	       iface->ifname,
-	       xdp_program__run_prio(xdp_prog),
+	       "",
 	       info->name,
 	       get_enum_name(xdp_modes, mode),
-	       info->id, tag, errmsg);
+	       info->id, tag);
 
 	mp = xdp_multiprog__get_from_ifindex(iface->ifindex);
 	if (!IS_ERR_OR_NULL(mp)) {
@@ -339,8 +338,8 @@ int print_iface_status(const struct iface *iface, const struct bpf_prog_info *in
 
 			const uint8_t *raw_tag = xdp_program__tag(sub_prog);
 
-			xdp_program__print_chain_call_actions(xdp_prog, errmsg,
-							      sizeof(errmsg));
+			xdp_program__print_chain_call_actions(xdp_prog, buf,
+							      sizeof(buf));
 
 			for (i = 0; i < BPF_TAG_SIZE; i++)
 				sprintf(&tag[i*2], "%02x", raw_tag[i]);
@@ -351,7 +350,7 @@ int print_iface_status(const struct iface *iface, const struct bpf_prog_info *in
 			       " =>", xdp_program__run_prio(sub_prog),
 			       xdp_program__name(sub_prog),
 			       "", xdp_program__id(sub_prog),
-			       tag, errmsg);
+			       tag, buf);
 		}
 
 		xdp_multiprog__free(mp);
