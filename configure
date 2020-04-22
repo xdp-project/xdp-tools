@@ -4,11 +4,12 @@
 #
 
 # Output file which is input to Makefile
-CONFIG=config.mk
+CONFIG_FINAL=config.mk
+CONFIG=".${CONFIG}.tmp"
 
 # Make a temp directory in build tree.
 TMPDIR=$(mktemp -d config.XXXXXX)
-trap 'status=$?; rm -rf $TMPDIR; exit $status' EXIT HUP INT QUIT TERM
+trap 'status=$?; rm -rf $TMPDIR; rm -f $CONFIG; exit $status' EXIT HUP INT QUIT TERM
 
 check_opts()
 {
@@ -191,3 +192,5 @@ if [ -n "$KERNEL_HEADERS" ]; then
     echo "CFLAGS += -I$KERNEL_HEADERS" >>$CONFIG
     echo "BPF_CFLAGS += -I$KERNEL_HEADERS" >>$CONFIG
 fi
+
+mv $CONFIG $CONFIG_FINAL
