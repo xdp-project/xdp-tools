@@ -304,6 +304,7 @@ int print_iface_status(const struct iface *iface, const struct bpf_prog_info *in
 		       enum xdp_attach_mode mode, void *arg)
 {
 	struct xdp_program *xdp_prog;
+	struct xdp_multiprog *mp;
 	char errmsg[STRERR_BUFSIZE];
 	char tag[BPF_TAG_SIZE*2+1];
 	int i, err;
@@ -327,6 +328,35 @@ int print_iface_status(const struct iface *iface, const struct bpf_prog_info *in
 	       info->name,
 	       get_enum_name(xdp_modes, mode),
 	       info->id, tag, errmsg);
+
+	mp = xdp_multiprog__get_from_ifindex(iface->ifindex);
+	if (!IS_ERR_OR_NULL(mp)) {
+		struct xdp_program *sub_prog;
+
+		for (sub_prog = xdp_multiprog__next_prog(NULL, mp);
+		     sub_prog;
+		     sub_prog = xdp_multiprog__next_prog(sub_prog, mp)) {
+
+			const uint8_t *raw_tag = xdp_program__tag(sub_prog);
+
+			xdp_program__print_chain_call_actions(xdp_prog, errmsg,
+							      sizeof(errmsg));
+
+			for (i = 0; i < BPF_TAG_SIZE; i++)
+				sprintf(&tag[i*2], "%02x", raw_tag[i]);
+
+			tag[BPF_TAG_SIZE*2] = '\0';
+
+			printf("%-16s %-5d %-16s %-8s %-4u %-17s %s\n",
+			       " =>", xdp_program__run_prio(sub_prog),
+			       xdp_program__name(sub_prog),
+			       "", xdp_program__id(sub_prog),
+			       tag, errmsg);
+		}
+
+		xdp_multiprog__free(mp);
+	}
+
 	return 0;
 }
 
