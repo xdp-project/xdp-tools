@@ -22,9 +22,6 @@ BuildRequires:    m4
 # disable the debug package to avoid rpmbuild error'ing out because of this
 %global debug_package %{nil}
 %global _hardened_build 1
-# strip barfs on BPF files, override it as a workaround
-%global __brp_strip_lto %{_bindir}/true
-%global __brp_strip %{_bindir}/true
 
 %description
 Utilities and example programs for use with XDP
