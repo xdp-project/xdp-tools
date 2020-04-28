@@ -492,9 +492,11 @@ rlimit_loop:
 	if (err) {
 		char err_msg[STRERR_BUFSIZE];
 
-		if (err == -EPERM) {
-			pr_debug("Permission denied when loading eBPF object; "
-				 "raising rlimit and retrying\n");
+		if (err == -EPERM || err == -ENOTSUP) {
+			pr_debug("%s when loading eBPF object; "
+				 "raising rlimit and retrying\n",
+				 err == -EPERM ? "Permission denied" :
+				 "Operation not supported");
 
 			if (!double_rlimit()) {
 				bpf_object__close(trace_obj);
