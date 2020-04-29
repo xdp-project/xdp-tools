@@ -33,12 +33,18 @@ help:
 config.mk:
 	sh configure
 
+clobber_submodules:
+	@if [ -d "lib/libbpf/src" ]; then \
+		rm -r lib/libbpf && mkdir lib/libbpf ;\
+		echo "removed submodule" ;\
+	fi
+
 clobber:
 	touch config.mk
 	$(MAKE) clean
 	rm -f config.mk cscope.*
 
-distclean: clobber
+distclean: clobber clobber_submodules
 
 clean:
 	@for i in $(SUBDIRS); \
