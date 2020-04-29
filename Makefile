@@ -15,7 +15,7 @@ endif
 
 SUBDIRS=lib xdp-filter xdp-loader xdp-dump
 
-all: config.mk
+all: config.mk check_submodule
 	@set -e; \
 	for i in $(SUBDIRS); \
 	do echo; echo $$i; $(MAKE) -C $$i; done
@@ -33,6 +33,14 @@ help:
 config.mk:
 	sh configure
 
+check_submodule:
+	@if `git submodule status lib/libbpf | grep -q '^+'`; then \
+		echo "" ;\
+		echo "** WARNING **: git submodule SHA-1 out-of-sync" ;\
+		echo " consider running: git submodule update"  ;\
+		echo "" ;\
+	fi\
+
 clobber:
 	touch config.mk
 	$(MAKE) clean
@@ -40,7 +48,7 @@ clobber:
 
 distclean: clobber
 
-clean:
+clean: check_submodule
 	@for i in $(SUBDIRS); \
 	do $(MAKE) -C $$i clean; done
 
