@@ -13,6 +13,12 @@
 =xdpdump= is a simple XDP packet capture tool that tries to behave similar to
 =tcpdump=, however, it has no packet filter or decode capabilities.
 
+This can be used for debugging XDP programs that are already loaded on an
+interface.  Packets can be dumped/inspected before on *entry* to XDP program,
+or after at *exit* from an XDP program.  Further more, at *exit* the XDP
+action is also captured.  This means that even packets that are dropped at
+XDP-layer can be captured via this tool.
+
 =xdpdump= works by attaching a bpf trace program to the XDP entry and/or exit
 function which stores the raw packet in a perf trace buffer. If no XDP program
 is loaded this approach can not be used and the tool will use a libpcap
