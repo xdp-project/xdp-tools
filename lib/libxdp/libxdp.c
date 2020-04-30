@@ -28,9 +28,10 @@
 #include <xdp/libxdp.h>
 #include <xdp/prog_dispatcher.h>
 #include "logging.h"
-#include "util.h"
 
 #define XDP_RUN_CONFIG_SEC ".xdp_run_config"
+
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
 
 struct xdp_program {
 	/* one of prog or prog_fd should be set */
@@ -69,6 +70,32 @@ static const char *xdp_action_names[] = {
 	[XDP_REDIRECT] = "XDP_REDIRECT",
 };
 
+long libxdp_get_error(const void *ptr)
+{
+	return libbpf_get_error(ptr);
+}
+
+int libxdp_strerror(int err, char *buf, size_t size)
+{
+	return libbpf_strerror(err, buf, size);
+}
+
+static int check_snprintf(char *buf, size_t buf_len, const char *format, ...)
+{
+	va_list args;
+	int len;
+
+	va_start(args, format);
+	len = vsnprintf(buf, buf_len, format, args);
+	va_end(args);
+
+	if (len < 0)
+		return -EINVAL;
+	else if ((size_t)len >= buf_len)
+		return -ENAMETOOLONG;
+
+	return 0;
+}
 
 static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
 {
@@ -612,8 +639,13 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 
 	obj = bpf_object__open_file(filename, opts);
 	err = libbpf_get_error(obj);
-	if (err)
+	if (err) {
+		if (err == -ENOENT)
+			pr_debug("Couldn't load the eBPF program (libbpf said 'no such file').\n"
+				 "Maybe the program was compiled with a too old "
+				 "version of LLVM (need v9.0+)?\n");
 		return ERR_PTR(err);
+	}
 
 	xdp_prog = xdp_program__new();
 	if (IS_ERR(xdp_prog)) {
@@ -630,6 +662,51 @@ err:
 	xdp_program__close(xdp_prog);
 	bpf_object__close(obj);
 	return ERR_PTR(err);
+}
+
+static int find_bpf_file(char *buf, size_t buf_size, const char *progname)
+{
+	static char *bpf_obj_paths[] = {
+#ifdef DEBUG
+		".",
+#endif
+		BPF_OBJECT_PATH,
+		NULL
+	};
+	struct stat sb = {};
+	char **path;
+	int err;
+
+	for (path = bpf_obj_paths; *path; path++) {
+		err = check_snprintf(buf, buf_size, "%s/%s", *path, progname);
+		if (err)
+			return err;
+
+		pr_debug("Looking for '%s'\n", buf);
+		err = stat(buf, &sb);
+		if (err)
+			continue;
+
+		return 0;
+	}
+
+	pr_warn("Couldn't find a BPF file with name %s\n", progname);
+	return -ENOENT;
+}
+
+struct xdp_program *xdp_program__find_file(const char *filename,
+					   const char *prog_name,
+					   struct bpf_object_open_opts *opts)
+{
+	char buf[PATH_MAX];
+	int err;
+
+	err = find_bpf_file(buf, sizeof(buf), filename);
+	if (err)
+		return ERR_PTR(err);
+
+	pr_debug("Loading XDP program '%s' from '%s'\n", prog_name, buf);
+	return xdp_program__open_file(buf, prog_name, opts);
 }
 
 static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
@@ -1251,11 +1328,8 @@ struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	if (IS_ERR(mp))
 		return mp;
 
-	err = find_bpf_file(buf, sizeof(buf), "xdp-dispatcher.o");
-	if (err)
-		goto err;
-
-	dispatcher = xdp_program__open_file(buf, "xdp_dispatcher", NULL);
+	dispatcher = xdp_program__find_file("xdp-dispatcher.o",
+					    "xdp_dispatcher", NULL);
 	if (IS_ERR(dispatcher)) {
 		err = PTR_ERR(dispatcher);
 		pr_warn("Couldn't open BPF file %s\n", buf);

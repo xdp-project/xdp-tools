@@ -6,18 +6,34 @@
  * Copyright (C) 2020 Toke Høiland-Jørgensen <toke@redhat.com>
  */
 
+#ifndef __LIBXDP_LIBXDP_H
+#define __LIBXDP_LIBXDP_H
+
 #include <linux/bpf.h>
 #include <bpf/bpf.h>
 #include "xdp_helpers.h"
-#include "util.h"
 
 #define XDP_BPFFS_ENVVAR "LIBXDP_BPFFS"
+
+enum xdp_attach_mode {
+                      XDP_MODE_UNSPEC = 0,
+                      XDP_MODE_NATIVE,
+                      XDP_MODE_SKB,
+                      XDP_MODE_HW
+};
 
 struct xdp_program;
 struct xdp_multiprog;
 
+long libxdp_get_error(const void *ptr);
+int libxdp_strerror(int err, char *buf, size_t size);
+
+
 struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
 					      const char *prog_name);
+struct xdp_program *xdp_program__find_file(const char *filename,
+					   const char *prog_name,
+					   struct bpf_object_open_opts *opts);
 struct xdp_program *xdp_program__open_file(const char *filename,
 					   const char *prog_name,
 					   struct bpf_object_open_opts *opts);
@@ -51,3 +67,5 @@ int xdp_multiprog__attach(struct xdp_multiprog *mp,
 struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex);
 struct xdp_program *xdp_multiprog__next_prog(struct xdp_program *prog,
 					     struct xdp_multiprog *mp);
+
+#endif
