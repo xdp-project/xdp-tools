@@ -30,6 +30,7 @@ Options:
      --rx-capture <mode>    Capture point for the rx direction (valid values: entry,exit)
  -D, --list-interfaces      Print the list of available interfaces
  -i, --interface <ifname>   Name of interface to capture on
+ -p, --program-names <prog>  Specific program to attach to
  -s, --snapshot-length <snaplen>  Minimum bytes of packet to capture
  -w, --write <file>         Write raw packets to pcap file
  -x, --hex                  Print the full packet in hex
@@ -53,6 +54,13 @@ Display a list of available interfaces and any XDP program loaded
 ** -i, --interface <ifname>
 Listen on interface =ifname=. Note that if no XDP program is loaded on the
 interface it will use libpcap's live capture mode to capture the packets.
+** -p, --program-names <prog>
+The Linux API does not provide the full name of the attached eBPF entry function
+if it's longer than 15 characters. xdpdump will try to guess the correct
+function name from the available BTF debug information. However, if multiple
+functions exist with the same leading name, it can not pick the correct one. It
+will dump the available functions, and you can choose the correct one, and
+supply it with this option.
 ** -s, --snapshot-length <snaplen>
 Capture *snaplen* bytes of a packet rather than the default 262144 bytes.
 ** -w, --write <file>
