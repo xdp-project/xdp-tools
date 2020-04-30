@@ -13,12 +13,17 @@ ifeq ($(VERBOSE),0)
 MAKEFLAGS += --no-print-directory
 endif
 
-SUBDIRS=lib xdp-filter xdp-loader xdp-dump
+UTILS := xdp-filter xdp-loader xdp-dump
+SUBDIRS := lib $(UTILS)
+.PHONY: check_submodule help clobber distclean clean install $(SUBDIRS)
 
-all: config.mk check_submodule
-	@set -e; \
-	for i in $(SUBDIRS); \
-	do echo; echo $$i; $(MAKE) -C $$i; done
+all: $(SUBDIRS)
+
+lib: config.mk check_submodule
+	@echo; echo $@; $(MAKE) -C $@
+
+$(UTILS): lib
+	@echo; echo $@; $(MAKE) -C $@
 
 help:
 	@echo "Make Targets:"
