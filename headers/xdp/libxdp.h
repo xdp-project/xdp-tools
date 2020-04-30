@@ -24,7 +24,7 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 struct xdp_program *xdp_program__from_fd(int fd);
 struct xdp_program *xdp_program__from_id(__u32 prog_id);
 
-void xdp_program__free(struct xdp_program *xdp_prog);
+void xdp_program__close(struct xdp_program *xdp_prog);
 
 const char *xdp_program__name(struct xdp_program *xdp_prog);
 const unsigned char *xdp_program__tag(struct xdp_program *xdp_prog);
@@ -42,7 +42,7 @@ int xdp_program__print_chain_call_actions(struct xdp_program *prog,
 
 struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
                                               size_t num_progs);
-void xdp_multiprog__free(struct xdp_multiprog *mp);
+void xdp_multiprog__close(struct xdp_multiprog *mp);
 int xdp_multiprog__pin(struct xdp_multiprog *mp);
 int xdp_multiprog__unpin(struct xdp_multiprog *mp);
 int xdp_multiprog__attach(struct xdp_multiprog *mp,

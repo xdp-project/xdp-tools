@@ -520,7 +520,7 @@ static struct xdp_program *xdp_program__new()
 	return xdp_prog;
 }
 
-void xdp_program__free(struct xdp_program *xdp_prog)
+void xdp_program__close(struct xdp_program *xdp_prog)
 {
 	if (!xdp_prog)
 		return;
@@ -595,7 +595,7 @@ struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
 
 	return xdp_prog;
 err:
-	xdp_program__free(xdp_prog);
+	xdp_program__close(xdp_prog);
 	return ERR_PTR(err);
 }
 
@@ -627,7 +627,7 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 
 	return xdp_prog;
 err:
-	xdp_program__free(xdp_prog);
+	xdp_program__close(xdp_prog);
 	bpf_object__close(obj);
 	return ERR_PTR(err);
 }
@@ -812,17 +812,17 @@ static struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 }
 
 
-void xdp_multiprog__free(struct xdp_multiprog *mp)
+void xdp_multiprog__close(struct xdp_multiprog *mp)
 {
 	struct xdp_program *p, *next = NULL;
 
 	if (!mp)
 		return;
 
-	xdp_program__free(mp->dispatcher);
+	xdp_program__close(mp->dispatcher);
 	for (p = mp->first_prog; p; p = next) {
 		next = p->next;
-		xdp_program__free(p);
+		xdp_program__close(p);
 	}
 }
 
@@ -977,7 +977,7 @@ err:
 	prog = mp->first_prog;
 	while (prog) {
 		p = prog->next;
-		xdp_program__free(prog);
+		xdp_program__close(prog);
 		prog = p;
 	}
 	mp->first_prog = NULL;
@@ -1079,7 +1079,7 @@ out:
 	return err;
 
 err:
-	xdp_program__free(prog);
+	xdp_program__close(prog);
 	goto out;
 }
 
@@ -1225,7 +1225,7 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 	return 0;
 
 err_free:
-	xdp_program__free(new_prog);
+	xdp_program__close(new_prog);
 err:
 	return err;
 }
@@ -1300,7 +1300,7 @@ struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	return mp;
 
 err:
-	xdp_multiprog__free(mp);
+	xdp_multiprog__close(mp);
 	return ERR_PTR(err);
 }
 
