@@ -89,7 +89,8 @@ if_index  if_name           XDP program entry function
 Now we can try =xdpdump=:
 
 #+begin_src
-# xdpdump -i eth0
+# xdpdump -i eth0 -x
+listening on eth0, ingress XDP program xdpfilt_blk_all, capture mode entry, capture size 262144 bytes
 1584373839.460733895: packet size 102 bytes, captured 102 bytes on if_index 2, rx queue 0, @entry
   0x0000:  52 54 00 db 44 b6 52 54 00 34 38 da 08 00 45 48  RT..D.RT.48...EH
   0x0010:  00 58 d7 dd 40 00 40 06 ec c3 c0 a8 7a 01 c0 a8  .X..@.@.....z...
@@ -115,6 +116,7 @@ Below are two more examples redirecting the capture file to =tcpdump= or
 
 #+begin_src
 # xdpdump -i eth0 -w - | tcpdump -r - -n
+listening on eth0, ingress XDP program xdpfilt_blk_all, capture mode entry, capture size 262144 bytes
 reading from file -, link-type EN10MB (Ethernet)
 15:55:09.075887 IP 192.168.122.1.40928 > 192.168.122.100.ssh: Flags [P.], seq 3857553815:3857553851, ack 3306438882, win 501, options [nop,nop,TS val 1997449167 ecr 1075234328], length 36
 15:55:09.077756 IP 192.168.122.1.40928 > 192.168.122.100.ssh: Flags [.], ack 37, win 501, options [nop,nop,TS val 1997449169 ecr 1075244363], length 0
@@ -123,6 +125,7 @@ reading from file -, link-type EN10MB (Ethernet)
 
 #+begin_src
 # xdpdump -i eth0 -w - | tshark -r - -n
+listening on eth0, ingress XDP program xdpfilt_blk_all, capture mode entry, capture size 262144 bytes
     1   0.000000 192.168.122.1 → 192.168.122.100 SSH 102 Client: Encrypted packet (len=36)
     2   0.000646 192.168.122.1 → 192.168.122.100 TCP 66 40158 → 22 [ACK] Seq=37 Ack=37 Win=1467 Len=0 TSval=1997621571 TSecr=1075416765
     3  12.218164 192.168.122.1 → 192.168.122.100 SSH 102 Client: Encrypted packet (len=36)

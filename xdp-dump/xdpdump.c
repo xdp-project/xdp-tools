@@ -130,6 +130,22 @@ static const char *get_xdp_action_string(enum xdp_action act)
 }
 
 /*****************************************************************************
+ * get_capture_mode_string()
+ *****************************************************************************/
+static const char *get_capture_mode_string(unsigned int mode)
+{
+	switch(mode) {
+	case RX_FLAG_FENTRY:
+		return "entry";
+	case RX_FLAG_FEXIT:
+		return "exit";
+	case RX_FLAG_FENTRY | RX_FLAG_FEXIT:
+		return "entry/exit";
+	}
+	return "unknown";
+}
+
+/*****************************************************************************
  * snprinth()
  *****************************************************************************/
 #define SNPRINTH_MIN_BUFFER_SIZE sizeof("0xffff:  00 11 22 33 44 55 66 77 88" \
@@ -330,6 +346,13 @@ static bool capture_on_legacy_interface(struct dumpopt *cfg)
 			goto error_exit;
 		}
 	}
+
+	/* No more error conditions, display some capture information */
+	fprintf(stderr, "listening on %s, link-type %s (%s), "
+		"capture size %d bytes\n", cfg->iface.ifname,
+		pcap_datalink_val_to_name(pcap_datalink(pcap)),
+		pcap_datalink_val_to_description(pcap_datalink(pcap)),
+		cfg->snaplen);
 
 	/* Loop for receive packets on live interface. */
 	exit_pcap = pcap;
@@ -647,6 +670,12 @@ rlimit_loop:
 			goto error_exit;
 		}
 	}
+
+	/* No more error conditions, display some capture information */
+	fprintf(stderr, "listening on %s, ingress XDP program %s, "
+		"capture mode %s, capture size %d bytes\n",
+		cfg->iface.ifname, prog_name,
+		get_capture_mode_string(cfg->rx_capture), cfg->snaplen);
 
 	/* Setup perf context */
 	memset(&perf_ctx, 0, sizeof(perf_ctx));
