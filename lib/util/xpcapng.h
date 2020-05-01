@@ -39,7 +39,9 @@ extern bool xpcapng_dump_enhanced_pkt(struct xpcapng_dumper *pd, uint32_t ifid,
 				      enum pcapng_epb_flags flags,
 				      uint64_t timestamp, uint32_t len,
 				      uint32_t caplen, const uint8_t *pkt,
-				      uint64_t dropcount, const char *comment);
+				      uint64_t dropcount, const char *comment,
+				      uint64_t *packetid, uint32_t *queue,
+				      int64_t *xdp_verdict);
 
 /*****************************************************************************
  * End-of include file

@@ -144,7 +144,20 @@ struct pcapng_enhanced_packet_block {
 enum pcapng_opt_epb {
 	PCAPNG_OPT_EPB_FLAGS = 2,
 	PCAPNG_OPT_EPB_HASH,
-	PCAPNG_OPT_EPB_DROPCOUNT
+	PCAPNG_OPT_EPB_DROPCOUNT,
+
+	/* The below are suggestions based on the following pull request:
+	 *   https://github.com/pcapng/pcapng/pull/91
+	 */
+	PCAPNG_OPT_EPB_PACKETID,
+	PCAPNG_OPT_EPB_QUEUE,
+	PCAPNG_OPT_EPB_VERDICT
+};
+
+enum pcapng_epb_vedict_type {
+	PCAPNG_EPB_VEDRICT_TYPE_HARDWARE = 0,
+	PCAPNG_EPB_VEDRICT_TYPE_EBPF_TC,
+	PCAPNG_EPB_VEDRICT_TYPE_EBPF_XDP
 };
 
 /*****************************************************************************
@@ -356,7 +369,9 @@ static bool pcapng_write_idb(struct xpcapng_dumper *pd, const char *name,
 static bool pcapng_write_epb(struct xpcapng_dumper *pd, uint32_t ifid,
 			     enum pcapng_epb_flags flags, uint64_t timestamp,
 			     uint32_t len, uint32_t caplen, const uint8_t *pkt,
-			     uint64_t dropcount, const char *comment)
+			     uint64_t dropcount, const char *comment,
+			     uint64_t *packetid, uint32_t *queue,
+			     int64_t *xdp_verdict)
 {
 	int                                  i = 0;
 	int                                  rc;
@@ -367,12 +382,21 @@ static bool pcapng_write_epb(struct xpcapng_dumper *pd, uint32_t ifid,
 	struct pcapng_option                *opt;
 	struct iovec                         iov[7];
 	static uint8_t                       pad[4] = {0, 0, 0, 0};
-	uint8_t                              options[8 + 12 + 4 + 4];
-					     /* PCAPNG_OPT_EPB_FLAGS +
-					      * PCAPNG_OPT_EPB_DROPCOUNT +
-					      * PCAPNG_OPT_END +
+	uint8_t                              options[8 + 12 + 12 + 8 + 16 + 4 + 4];
+					     /* PCAPNG_OPT_EPB_FLAGS[8] +
+					      * PCAPNG_OPT_EPB_DROPCOUNT[12] +
+					      * PCAPNG_OPT_EPB_PACKETID[12] +
+					      * PCAPNG_OPT_EPB_QUEUE[8] +
+					      * PCAPNG_OPT_EPB_VERDICT[16] +
+					      * PCAPNG_OPT_END[4] +
 					      * epb_block_length
 					      */
+	static struct xdp_verdict {
+		uint8_t type;
+		int64_t verdict;
+	}__attribute__((__packed__)) verdict = {
+		PCAPNG_EPB_VEDRICT_TYPE_EBPF_XDP, 0 };
+
 	if (pd == NULL) {
 		errno = EINVAL;
 		return false;
@@ -389,6 +413,15 @@ static bool pcapng_write_epb(struct xpcapng_dumper *pd, uint32_t ifid,
 
 	if (dropcount)
 		epb_length += pcapng_get_option_length(sizeof(uint64_t));
+
+	if (packetid)
+		epb_length += pcapng_get_option_length(sizeof(uint64_t));
+
+	if (queue)
+		epb_length += pcapng_get_option_length(sizeof(uint32_t));
+
+	if (xdp_verdict)
+		epb_length += pcapng_get_option_length(sizeof(verdict));
 
 	if (comment) {
 		com_length = strlen(comment);
@@ -417,6 +450,20 @@ static bool pcapng_write_epb(struct xpcapng_dumper *pd, uint32_t ifid,
 	if (dropcount)
 		opt = pcapng_add_option(opt, PCAPNG_OPT_EPB_DROPCOUNT,
 					sizeof(uint64_t), &dropcount);
+
+	if (packetid)
+		opt = pcapng_add_option(opt, PCAPNG_OPT_EPB_PACKETID,
+					sizeof(uint64_t), &packetid);
+
+	if (queue)
+		opt = pcapng_add_option(opt, PCAPNG_OPT_EPB_QUEUE,
+					sizeof(uint32_t), &queue);
+
+	if (xdp_verdict) {
+		verdict.verdict = *xdp_verdict;
+		opt = pcapng_add_option(opt, PCAPNG_OPT_EPB_VERDICT,
+					sizeof(verdict), &verdict);
+	}
 
 	opt = pcapng_add_option(opt, PCAPNG_OPT_END, 0, NULL);
 	memcpy(opt, &epb.epb_block_length, sizeof(epb.epb_block_length));
@@ -462,7 +509,8 @@ static bool pcapng_write_epb(struct xpcapng_dumper *pd, uint32_t ifid,
 
 	/* Write other options and final EPB size. */
 	iov[i].iov_base = options;
-	iov[i++].iov_len = 8 + (flags ? 8 : 0) + (dropcount ? 12 : 0);
+	iov[i++].iov_len = 8 + (flags ? 8 : 0) + (dropcount ? 12 : 0) +
+		(packetid ? 12 : 0) + (queue ? 8 : 0) + (xdp_verdict ? 16 : 0);
 	rc = writev(pd->pd_fd, iov, i);
 	if (rc != epb_length)
 		return false;
@@ -564,8 +612,10 @@ bool xpcapng_dump_enhanced_pkt(struct xpcapng_dumper *pd, uint32_t ifid,
 			       enum pcapng_epb_flags flags, uint64_t timestamp,
 			       uint32_t len, uint32_t caplen,
 			       const uint8_t *pkt, uint64_t dropcount,
-			       const char *comment)
+			       const char *comment, uint64_t *packetid,
+			       uint32_t *queue, int64_t *xdp_verdict)
 {
 	return pcapng_write_epb(pd, ifid, flags, timestamp, len, caplen, pkt,
-				dropcount, comment);
+				dropcount, comment, packetid, queue,
+				xdp_verdict);
 }

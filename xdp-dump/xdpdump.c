@@ -338,22 +338,25 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 				pcap_dump_flush(ctx->pcap_dumper);
 
 		} else if (ctx->pcapng_dumper) {
-			char meta[80];
+			char     meta[80];
+			int64_t  action = e->metadata.action;
+			uint32_t queue = e->metadata.rx_queue;
+			uint64_t pktid = ctx->cpu_packet_id[cpu];
 
+			/* For now we keep the id/queue/action information in
+			 * the packet comment until tools like WireShark
+			 * support the specific EPB options
+			 */
 			if (fexit)
 				snprintf(meta, sizeof(meta),
 					 "id: %"PRIu64", queue: %u, "
-					 "action: %d%s",
-					 ctx->cpu_packet_id[cpu],
-					 e->metadata.rx_queue,
-					 e->metadata.action,
-					 get_xdp_action_string(
-						 e->metadata.action));
+					 "action: %"PRId64"%s",
+					 pktid, queue, action,
+					 get_xdp_action_string(action));
 			else
 				snprintf(meta, sizeof(meta),
 					 "id: %"PRIu64", queue: %u",
-					 ctx->cpu_packet_id[cpu],
-					 e->metadata.rx_queue);
+					 pktid, queue);
 
 			xpcapng_dump_enhanced_pkt(ctx->pcapng_dumper,
 						  fexit ? 1 : 0,
@@ -363,7 +366,8 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 						      ctx->cfg->snaplen),
 						  e->packet,
 						  ctx->last_missed_events,
-						  meta);
+						  meta, &pktid, &queue,
+						  fexit ? &action : NULL);
 
 			ctx->last_missed_events = 0;
 			if (ctx->cfg->pcap_file[0] == '-' &&
