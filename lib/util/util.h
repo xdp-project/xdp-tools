@@ -58,9 +58,6 @@ int make_dir_subdir(const char *parent, const char *dir);
 int check_bpf_environ(const char *pin_root_path);
 int double_rlimit();
 
-int find_bpf_file(char *buf, size_t buf_size, const char *progname);
-struct bpf_object *open_bpf_file(const char *progname,
-                                 struct bpf_object_open_opts *opts);
 int load_bpf_object(struct bpf_object *obj, bool raise_rlimit);
 int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
                        const struct iface *iface, bool force,
