@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
+#define _GNU_SOURCE
+
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -24,6 +26,11 @@ static bool opt_needs_arg(const struct prog_option *opt)
 	return opt->type > OPT_BOOL && !opt->positional;
 }
 
+static bool opt_is_multi(const struct prog_option *opt)
+{
+	return opt->type == OPT_MULTISTRING;
+}
+
 static int handle_bool(char *optarg, void *tgt, void *typearg)
 {
 	bool *opt_set = tgt;
@@ -37,6 +44,21 @@ static int handle_string(char *optarg, void *tgt, void *typearg)
 	char **opt_set = tgt;
 
 	*opt_set = optarg;
+	return 0;
+}
+
+static int handle_multistring(char *optarg, void *tgt, void *typearg)
+{
+	struct multistring *opt_set = tgt;
+	void *ptr;
+
+	ptr = reallocarray(opt_set->strings, sizeof(*opt_set->strings),
+			   opt_set->num_strings + 1);
+	if (!ptr)
+		return -errno;
+
+	opt_set->strings = ptr;
+	opt_set->strings[opt_set->num_strings++] = optarg;
 	return 0;
 }
 
@@ -255,7 +277,8 @@ static const struct opthandler {
 			 {handle_macaddr},
 			 {handle_ifname},
 			 {handle_ipaddr},
-			 {handle_enum}
+			 {handle_enum},
+			 {handle_multistring}
 };
 
 void print_flags(char *buf, size_t buf_len, const struct flag_val *flags,
@@ -319,7 +342,8 @@ static const struct helprinter {
 	{NULL},
 	{NULL},
 	{NULL},
-	{print_help_enum}
+	{print_help_enum},
+	{NULL}
 };
 
 
@@ -503,7 +527,7 @@ static int set_pos_opt(void *cfg, struct prog_option *all_opts, char *optarg)
 	int ret;
 
 	FOR_EACH_OPTION(all_opts, o) {
-		if (o->positional && !o->was_set) {
+		if (o->positional && (!o->was_set || opt_is_multi(o))) {
 			opt = o;
 			break;
 		}

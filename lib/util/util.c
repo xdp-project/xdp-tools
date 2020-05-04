@@ -249,7 +249,7 @@ int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
 	return 0;
 }
 
-static int make_dir_subdir(const char *parent, const char *dir)
+int make_dir_subdir(const char *parent, const char *dir)
 {
 	char path[PATH_MAX];
 	int err;
