@@ -29,7 +29,7 @@ static const struct loadopt {
 	bool force;
 	enum xdp_attach_mode mode;
 } defaults_load = {
-	.mode = XDP_MODE_NATIVE
+	.mode = XDP_MODE_UNSPEC
 };
 
 struct enum_val xdp_modes[] = {
@@ -48,7 +48,7 @@ static struct prog_option load_options[] = {
 		      .short_opt = 'm',
 		      .typearg = xdp_modes,
 		      .metavar = "<mode>",
-		      .help = "Load XDP program in <mode>; default native"),
+		      .help = "Load XDP program in <mode>; default unspecified"),
 	DEFINE_OPTION("pin-path", OPT_STRING, struct loadopt, pin_path,
 		      .short_opt = 'p',
 		      .help = "Path to pin maps under (must be in bpffs)."),

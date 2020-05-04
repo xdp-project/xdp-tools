@@ -6,6 +6,13 @@
 \fItcpdump\fP, however, it has no packet filter or decode capabilities.
 
 .PP
+This can be used for debugging XDP programs that are already loaded on an
+interface.  Packets can be dumped/inspected before on \fBentry\fP to XDP program,
+or after at \fBexit\fP from an XDP program.  Furthermore, at \fBexit\fP the XDP
+action is also captured.  This means that even packets that are dropped at the
+XDP layer can be captured via this tool.
+
+.PP
 \fIxdpdump\fP works by attaching a bpf trace program to the XDP entry and/or exit
 function which stores the raw packet in a perf trace buffer. If no XDP program
 is loaded this approach can not be used and the tool will use a libpcap

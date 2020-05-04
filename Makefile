@@ -13,12 +13,17 @@ ifeq ($(VERBOSE),0)
 MAKEFLAGS += --no-print-directory
 endif
 
-SUBDIRS=lib xdp-filter xdp-loader xdp-dump
+UTILS := xdp-filter xdp-loader xdp-dump
+SUBDIRS := lib $(UTILS)
+.PHONY: check_submodule help clobber distclean clean install $(SUBDIRS)
 
-all: config.mk
-	@set -e; \
-	for i in $(SUBDIRS); \
-	do echo; echo $$i; $(MAKE) -C $$i; done
+all: $(SUBDIRS)
+
+lib: config.mk check_submodule
+	@echo; echo $@; $(MAKE) -C $@
+
+$(UTILS): lib
+	@echo; echo $@; $(MAKE) -C $@
 
 help:
 	@echo "Make Targets:"
@@ -33,6 +38,14 @@ help:
 config.mk:
 	sh configure
 
+check_submodule:
+	@if `git submodule status lib/libbpf | grep -q '^+'`; then \
+		echo "" ;\
+		echo "** WARNING **: git submodule SHA-1 out-of-sync" ;\
+		echo " consider running: git submodule update"  ;\
+		echo "" ;\
+	fi\
+
 clobber:
 	touch config.mk
 	$(MAKE) clean
@@ -40,7 +53,7 @@ clobber:
 
 distclean: clobber
 
-clean:
+clean: check_submodule
 	@for i in $(SUBDIRS); \
 	do $(MAKE) -C $$i clean; done
 

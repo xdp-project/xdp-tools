@@ -13,6 +13,12 @@
 =xdpdump= is a simple XDP packet capture tool that tries to behave similar to
 =tcpdump=, however, it has no packet filter or decode capabilities.
 
+This can be used for debugging XDP programs that are already loaded on an
+interface.  Packets can be dumped/inspected before on *entry* to XDP program,
+or after at *exit* from an XDP program.  Furthermore, at *exit* the XDP
+action is also captured.  This means that even packets that are dropped at the
+XDP layer can be captured via this tool.
+
 =xdpdump= works by attaching a bpf trace program to the XDP entry and/or exit
 function which stores the raw packet in a perf trace buffer. If no XDP program
 is loaded this approach can not be used and the tool will use a libpcap
@@ -30,6 +36,7 @@ Options:
      --rx-capture <mode>    Capture point for the rx direction (valid values: entry,exit)
  -D, --list-interfaces      Print the list of available interfaces
  -i, --interface <ifname>   Name of interface to capture on
+ -p, --program-names <prog>  Specific program to attach to
  -s, --snapshot-length <snaplen>  Minimum bytes of packet to capture
      --use-pcap             Use legacy pcap format for XDP traces
      --version              Print version information and exit
@@ -55,6 +62,13 @@ Display a list of available interfaces and any XDP program loaded
 ** -i, --interface <ifname>
 Listen on interface =ifname=. Note that if no XDP program is loaded on the
 interface it will use libpcap's live capture mode to capture the packets.
+** -p, --program-names <prog>
+The Linux API does not provide the full name of the attached eBPF entry function
+if it's longer than 15 characters. xdpdump will try to guess the correct
+function name from the available BTF debug information. However, if multiple
+functions exist with the same leading name, it can not pick the correct one. It
+will dump the available functions, and you can choose the correct one, and
+supply it with this option.
 ** -s, --snapshot-length <snaplen>
 Capture *snaplen* bytes of a packet rather than the default 262144 bytes.
 ** --use-pcap
@@ -88,7 +102,8 @@ if_index  if_name           XDP program entry function
 Now we can try =xdpdump=:
 
 #+begin_src
-# xdpdump -i eth0
+# xdpdump -i eth0 -x
+listening on eth0, ingress XDP program xdpfilt_blk_all, capture mode entry, capture size 262144 bytes
 1584373839.460733895: packet size 102 bytes, captured 102 bytes on if_index 2, rx queue 0, @entry
   0x0000:  52 54 00 db 44 b6 52 54 00 34 38 da 08 00 45 48  RT..D.RT.48...EH
   0x0010:  00 58 d7 dd 40 00 40 06 ec c3 c0 a8 7a 01 c0 a8  .X..@.@.....z...
@@ -114,6 +129,7 @@ Below are two more examples redirecting the capture file to =tcpdump= or
 
 #+begin_src
 # xdpdump -i eth0 -w - | tcpdump -r - -n
+listening on eth0, ingress XDP program xdpfilt_blk_all, capture mode entry, capture size 262144 bytes
 reading from file -, link-type EN10MB (Ethernet)
 15:55:09.075887 IP 192.168.122.1.40928 > 192.168.122.100.ssh: Flags [P.], seq 3857553815:3857553851, ack 3306438882, win 501, options [nop,nop,TS val 1997449167 ecr 1075234328], length 36
 15:55:09.077756 IP 192.168.122.1.40928 > 192.168.122.100.ssh: Flags [.], ack 37, win 501, options [nop,nop,TS val 1997449169 ecr 1075244363], length 0
@@ -122,6 +138,7 @@ reading from file -, link-type EN10MB (Ethernet)
 
 #+begin_src
 # xdpdump -i eth0 -w - | tshark -r - -n
+listening on eth0, ingress XDP program xdpfilt_blk_all, capture mode entry, capture size 262144 bytes
     1   0.000000 192.168.122.1 → 192.168.122.100 SSH 102 Client: Encrypted packet (len=36)
     2   0.000646 192.168.122.1 → 192.168.122.100 TCP 66 40158 → 22 [ACK] Seq=37 Ack=37 Win=1467 Len=0 TSval=1997621571 TSecr=1075416765
     3  12.218164 192.168.122.1 → 192.168.122.100 SSH 102 Client: Encrypted packet (len=36)

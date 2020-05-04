@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include <bpf/bpf.h>
+#include <bpf/btf.h>
 #include <bpf/libbpf.h>
 
 #include <linux/ethtool.h>
@@ -62,6 +63,7 @@ static const struct dumpopt {
 	struct iface          iface;
 	uint32_t              snaplen;
 	char                 *pcap_file;
+	char                 *program_names;
 	unsigned int          rx_capture;
 } defaults_dumpopt = {
 	.list_interfaces = false,
@@ -87,6 +89,11 @@ static struct prog_option xdpdump_options[] = {
 		      .short_opt = 'i',
 		      .metavar = "<ifname>",
 		      .help = "Name of interface to capture on"),
+	DEFINE_OPTION("program-names", OPT_STRING, struct dumpopt,
+		      program_names,
+		      .short_opt = 'p',
+		      .metavar = "<prog>",
+		      .help = "Specific program to attach to"),
 	DEFINE_OPTION("snapshot-length", OPT_U32, struct dumpopt, snaplen,
 		      .short_opt = 's',
 		      .metavar = "<snaplen>",
@@ -231,6 +238,22 @@ static const char *get_xdp_action_string(enum xdp_action act)
 		return "[REDIRECT]";
 	}
 	return "[*unknown*]";
+}
+
+/*****************************************************************************
+ * get_capture_mode_string()
+ *****************************************************************************/
+static const char *get_capture_mode_string(unsigned int mode)
+{
+	switch(mode) {
+	case RX_FLAG_FENTRY:
+		return "entry";
+	case RX_FLAG_FEXIT:
+		return "exit";
+	case RX_FLAG_FENTRY | RX_FLAG_FEXIT:
+		return "entry/exit";
+	}
+	return "unknown";
 }
 
 /*****************************************************************************
@@ -481,6 +504,13 @@ static bool capture_on_legacy_interface(struct dumpopt *cfg)
 		}
 	}
 
+	/* No more error conditions, display some capture information */
+	fprintf(stderr, "listening on %s, link-type %s (%s), "
+		"capture size %d bytes\n", cfg->iface.ifname,
+		pcap_datalink_val_to_name(pcap_datalink(pcap)),
+		pcap_datalink_val_to_description(pcap_datalink(pcap)),
+		cfg->snaplen);
+
 	/* Loop for receive packets on live interface. */
 	exit_pcap = pcap;
 	while (!exit_xdpdump) {
@@ -543,6 +573,85 @@ error_exit:
 }
 
 /*****************************************************************************
+ * guess_full_main_function()
+ *****************************************************************************/
+static char *guess_full_main_function(struct bpf_prog_info *info,
+				      char *function_override)
+{
+	int         nr_types;
+	int         matches = 0;
+	char       *func_name_ptr = NULL;
+	struct btf *btf = NULL;
+
+	/*
+	 * If the function name is longer than 15 characters the bpf_prog_info
+	 * structure will truncate it to 15 characters. Here we try to see if
+	 * we need to check BTF information to figure out the full function
+	 * name.
+	 */
+	if ((strlen(info->name) < (BPF_OBJ_NAME_LEN - 1)
+	     && !function_override) ||
+	    btf__get_from_id(info->btf_id, &btf))
+		return strdup(function_override ? function_override :
+			      info->name);
+
+
+	nr_types = btf__get_nr_types(btf);
+	for (int i = 1; i <= nr_types; i++) {
+		const        char     *name;
+		const struct btf_type *t = btf__type_by_id(btf, i);
+
+		if (!btf_is_func(t))
+			continue;
+
+		name = btf__name_by_offset(btf, t->name_off);
+		if (name) {
+			if (function_override) {
+				if (!strcmp(function_override, name)) {
+					func_name_ptr = (char *)name;
+					matches++;
+					break;
+				}
+			} else if (!strncmp(info->name, name,
+					    BPF_OBJ_NAME_LEN - 1)) {
+				func_name_ptr = (char *)name;
+				matches++;
+			}
+		}
+	}
+
+	if (matches == 0) {
+		pr_warn("ERROR: Can't find function, %s, in BTF information!\n",
+			function_override ? function_override : info->name);
+		func_name_ptr = NULL;
+	} else if (matches > 1) {
+		pr_warn("ERROR: Can't identify the full XDP main function!\n"
+			"The following is a list of candidates:\n");
+
+		for (int i = 1; i <= nr_types; i++) {
+			const        char     *name;
+			const struct btf_type *t = btf__type_by_id(btf, i);
+
+			if (!btf_is_func(t))
+				continue;
+
+			name = btf__name_by_offset(btf, t->name_off);
+			if (name &&
+			    !strncmp(info->name, name, BPF_OBJ_NAME_LEN - 1))
+				pr_warn("  %s\n", name);
+		}
+
+		pr_warn("Please use the -p option to pick the correct one.\n");
+		func_name_ptr = NULL;
+	} else {
+		func_name_ptr = strdup(func_name_ptr);
+	}
+
+	btf__free(btf);
+	return func_name_ptr;
+}
+
+/*****************************************************************************
  * capture_on_interface()
  *****************************************************************************/
 static bool capture_on_interface(struct dumpopt *cfg)
@@ -551,7 +660,8 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	int                          err;
 	int                          perf_map_fd;
 	int                          prog_fd;
-	int                          rc = false;
+	char                        *prog_name;
+	bool                         rc = false;
 	uint32_t                     filter_ifindex;
 	pcap_t                      *pcap = NULL;
 	pcap_dumper_t               *pcap_dumper = NULL;
@@ -581,6 +691,10 @@ static bool capture_on_interface(struct dumpopt *cfg)
 			"program loaded, capturing\n         in legacy mode!\n");
 		return capture_on_legacy_interface(cfg);
 	}
+
+	prog_name = guess_full_main_function(&info, cfg->program_names);
+	if (!prog_name)
+		return false;
 
 	prog_fd = bpf_prog_get_fd_by_id(info.id);
 	if (prog_fd < 0) {
@@ -642,8 +756,8 @@ rlimit_loop:
 					      BPF_TRACE_FENTRY);
 	bpf_program__set_expected_attach_type(trace_prog_fexit,
 					      BPF_TRACE_FEXIT);
-	bpf_program__set_attach_target(trace_prog_fentry, prog_fd, info.name);
-	bpf_program__set_attach_target(trace_prog_fexit, prog_fd, info.name);
+	bpf_program__set_attach_target(trace_prog_fentry, prog_fd, prog_name);
+	bpf_program__set_attach_target(trace_prog_fexit, prog_fd, prog_name);
 
 	/* Load the bpf object into memory */
 	err = bpf_object__load(trace_obj);
@@ -771,6 +885,12 @@ rlimit_loop:
 		}
 	}
 
+	/* No more error conditions, display some capture information */
+	fprintf(stderr, "listening on %s, ingress XDP program %s, "
+		"capture mode %s, capture size %d bytes\n",
+		cfg->iface.ifname, prog_name,
+		get_capture_mode_string(cfg->rx_capture), cfg->snaplen);
+
 	/* Setup perf context */
 	memset(&perf_ctx, 0, sizeof(perf_ctx));
 	perf_ctx.cfg = cfg;
@@ -822,6 +942,9 @@ error_exit:
 
 	if (trace_obj)
 		bpf_object__close(trace_obj);
+
+	if (prog_name)
+		free(prog_name);
 
 	return rc;
 }
