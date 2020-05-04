@@ -505,7 +505,6 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	int                          prog_fd;
 	char                        *prog_name;
 	bool                         rc = false;
-	uint32_t                     filter_ifindex;
 	pcap_t                      *pcap = NULL;
 	pcap_dumper_t               *pcap_dumper = NULL;
 	struct bpf_link             *trace_link_fentry = NULL;
@@ -517,6 +516,7 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	struct bpf_prog_info         info = {};
 	struct bpf_program          *trace_prog_fentry;
 	struct bpf_program          *trace_prog_fexit;
+	struct trace_configuration   trace_cfg;
 	struct perf_buffer          *perf_buf;
 	struct perf_buffer_raw_opts  perf_opts = {};
 	struct perf_event_attr       perf_attr = {
@@ -554,6 +554,7 @@ rlimit_loop:
 	if (err) {
 		pr_warn("ERROR: Can't open XDP trace program: %s(%d)\n",
 			strerror(err), err);
+		trace_obj = NULL;
 		goto error_exit;
 	}
 
@@ -567,15 +568,20 @@ rlimit_loop:
 
 	data_map_def = bpf_map__def(data_map);
 	if (!data_map_def ||
-	    data_map_def->value_size != sizeof(filter_ifindex)) {
+	    data_map_def->value_size != sizeof(trace_cfg)) {
 		pr_warn("ERROR: Can't find the correct sized .data MAP in the "
 			"trace program!\n");
 		goto error_exit;
 	}
 
-	filter_ifindex = cfg->iface.ifindex;
-	bpf_map__set_initial_value(data_map, &filter_ifindex,
-				   sizeof(filter_ifindex));
+	trace_cfg.capture_if_ifindex = cfg->iface.ifindex;
+	trace_cfg.capture_snaplen = cfg->snaplen;
+	if (bpf_map__set_initial_value(data_map, &trace_cfg,
+				       sizeof(trace_cfg))) {
+		pr_warn("ERROR: Can't set initial .data MAP in the trace "
+			"program!\n");
+		goto error_exit;
+	}
 
 	/* Locate the fentry and fexit functions */
 	trace_prog_fentry = bpf_object__find_program_by_title(trace_obj,
