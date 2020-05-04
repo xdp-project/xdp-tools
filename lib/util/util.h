@@ -4,6 +4,7 @@
 #define __UTIL_H
 
 #include <bpf/libbpf.h>
+#include <xdp/libxdp.h>
 #include "params.h"
 
 #ifndef PATH_MAX
@@ -50,13 +51,6 @@
 }                                        \
 )
 #endif
-
-enum xdp_attach_mode {
-                      XDP_MODE_UNSPEC = 0,
-                      XDP_MODE_NATIVE,
-                      XDP_MODE_SKB,
-                      XDP_MODE_HW
-};
 
 int check_snprintf(char *buf, size_t buf_len, const char *format, ...);
 int make_dir_subdir(const char *parent, const char *dir);
