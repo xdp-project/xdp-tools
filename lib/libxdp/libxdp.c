@@ -59,6 +59,7 @@ struct xdp_multiprog {
 	struct xdp_program *first_prog; // uses xdp_program->next to build a list
 	size_t num_links;
 	bool is_loaded;
+	enum xdp_attach_mode attach_mode;
 };
 
 
@@ -69,6 +70,16 @@ static const char *xdp_action_names[] = {
 	[XDP_TX] = "XDP_TX",
 	[XDP_REDIRECT] = "XDP_REDIRECT",
 };
+
+static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
+				 struct xdp_multiprog *mp,
+				 int ifindex, enum xdp_attach_mode mode);
+static struct xdp_multiprog *
+xdp_multiprog__generate(struct xdp_program **progs,
+			size_t num_progs);
+static int xdp_multiprog__pin(struct xdp_multiprog *mp);
+static int xdp_multiprog__unpin(struct xdp_multiprog *mp);
+
 
 long libxdp_get_error(const void *ptr)
 {
@@ -275,6 +286,15 @@ const char *xdp_program__name(struct xdp_program *prog)
 
 	return prog->prog_name;
 }
+
+struct bpf_object *xdp_program__bpf_obj(struct xdp_program *prog)
+{
+	if (!prog)
+		return NULL;
+
+	return prog->bpf_obj;
+}
+
 
 const unsigned char *xdp_program__tag(struct xdp_program *prog)
 {
@@ -841,7 +861,7 @@ static int cmp_xdp_programs(const void *_a, const void *_b)
 	return 0;
 }
 
-int xdp_program__load(struct xdp_program *prog)
+static int xdp_program__load(struct xdp_program *prog)
 {
 	int err;
 
@@ -886,6 +906,118 @@ static struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 	if (IS_ERR(new_prog))
 		close(new_fd);
 	return new_prog;
+}
+
+int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
+			      int ifindex, enum xdp_attach_mode mode)
+{
+	struct xdp_multiprog *old_mp, *mp;
+	int err = 0;
+
+	old_mp = xdp_multiprog__get_from_ifindex(ifindex);
+	if (!IS_ERR(old_mp)) {
+		pr_warn("XDP program already loaded on ifindex %d; "
+			"replacing not yet supported", ifindex);
+		xdp_multiprog__close(old_mp);
+		return -EEXIST;
+	}
+
+	mp = xdp_multiprog__generate(progs, num_progs);
+	if (IS_ERR(mp)) {
+		err = PTR_ERR(mp);
+		mp = NULL;
+		goto out;
+	}
+
+	err = xdp_multiprog__pin(mp);
+	if (err) {
+		pr_warn("Failed to pin program: %s\n", strerror(-err));
+		goto out_close;
+	}
+
+	err = xdp_multiprog__attach(NULL, mp, ifindex, mode);
+	if (err) {
+		xdp_multiprog__unpin(mp);
+		goto out_close;
+	}
+
+out_close:
+	xdp_multiprog__close(mp);
+out:
+	return err;
+}
+
+int xdp_program__attach(struct xdp_program *prog, int ifindex,
+			enum xdp_attach_mode mode)
+{
+	return xdp_program__attach_multi(&prog, 1, ifindex, mode);
+}
+
+
+int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
+			      int ifindex, enum xdp_attach_mode mode)
+{
+	struct xdp_multiprog *mp;
+	int err = 0, i;
+
+	mp = xdp_multiprog__get_from_ifindex(ifindex);
+	if (IS_ERR_OR_NULL(mp)) {
+		pr_warn("No XDP dispatcher found on ifindex %d\n", ifindex);
+		return -ENOENT;
+	}
+
+	if (mode != XDP_MODE_UNSPEC && mp->attach_mode != mode) {
+		pr_warn("XDP dispatcher attached in mode %d, requested %d\n",
+			mp->attach_mode, mode);
+		err = -ENOENT;
+		goto out;
+	}
+
+	/* fist pass - check progs and count number still loaded */
+	for (i = 0; i < num_progs; i++) {
+		struct xdp_program *p = NULL;
+		bool found = false;
+
+		if (!progs[i]->prog_id) {
+			pr_warn("Program %d not loaded\n", i);
+			err = -EINVAL;
+			goto out;
+		}
+
+		while ((p = xdp_multiprog__next_prog(p, mp))) {
+			if (progs[i]->prog_id == p->prog_id)
+				found = true;
+		}
+
+		if (!found) {
+			pr_warn("Couldn't find program with id %d on ifindex %d\n",
+				progs[i]->prog_id, ifindex);
+			err = -ENOENT;
+			goto out;
+		}
+	}
+
+	if (num_progs == mp->num_links) {
+		err = xdp_multiprog__detach(mp, ifindex);
+		if (err)
+			goto out;
+	} else {
+		pr_warn("Asked to detach %zu progs, but %zu loaded on ifindex %d; "
+			"partial detach not yet supported.\n",
+			num_progs, mp->num_links, ifindex);
+		err = -EINVAL;
+		goto out;
+	}
+
+out:
+	xdp_multiprog__close(mp);
+	return err;
+}
+
+int xdp_program__detach(struct xdp_program *prog, int ifindex,
+			enum xdp_attach_mode mode)
+{
+	return xdp_program__detach_multi(&prog, 1, ifindex, mode);
 }
 
 
@@ -1200,22 +1332,30 @@ static struct xdp_multiprog *xdp_multiprog__from_id(__u32 id)
 struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex)
 {
 	struct xdp_link_info xinfo = {};
-	__u32 prog_id;
+	enum xdp_attach_mode mode;
+	struct xdp_multiprog *mp;
+	__u32 prog_id = 0;
 	int err;
 
 	err = bpf_get_link_xdp_info(ifindex, &xinfo, sizeof(xinfo), 0);
 	if (err)
 		return ERR_PTR(err);
 
-	if (xinfo.attach_mode == XDP_ATTACHED_SKB)
+	if (xinfo.attach_mode == XDP_ATTACHED_SKB) {
 		prog_id = xinfo.skb_prog_id;
-	else
+		mode = XDP_MODE_SKB;
+	} else {
 		prog_id = xinfo.drv_prog_id;
+		mode = XDP_MODE_NATIVE;
+	}
 
 	if (!prog_id)
 		return ERR_PTR(-ENOENT);
 
-	return xdp_multiprog__from_id(prog_id);
+	mp = xdp_multiprog__from_id(prog_id);
+	if (!IS_ERR_OR_NULL(mp))
+		mp->attach_mode = mode;
+	return mp;
 }
 
 static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
@@ -1307,8 +1447,9 @@ err:
 	return err;
 }
 
-struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
-					      size_t num_progs)
+static struct xdp_multiprog *
+xdp_multiprog__generate(struct xdp_program **progs,
+			size_t num_progs)
 {
 	struct xdp_program *dispatcher;
 	struct xdp_multiprog *mp;
@@ -1378,7 +1519,7 @@ err:
 	return ERR_PTR(err);
 }
 
-int xdp_multiprog__pin(struct xdp_multiprog *mp)
+static int xdp_multiprog__pin(struct xdp_multiprog *mp)
 {
 	char pin_path[PATH_MAX], buf[PATH_MAX];
 	struct xdp_program *prog;
@@ -1460,7 +1601,7 @@ err_unpin:
 	goto out;
 }
 
-int xdp_multiprog__unpin(struct xdp_multiprog *mp)
+static int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 {
 	char pin_path[PATH_MAX], buf[PATH_MAX];
 	struct xdp_program *prog;
@@ -1528,20 +1669,33 @@ out:
 	return err;
 }
 
-int xdp_multiprog__attach(struct xdp_multiprog *mp,
-			  int ifindex, bool force,
-			  enum xdp_attach_mode mode)
+static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
+				 struct xdp_multiprog *mp,
+				 int ifindex, enum xdp_attach_mode mode)
 {
-	int err = 0, xdp_flags = 0, prog_fd;
+	int err = 0, xdp_flags = 0, prog_fd = -1;
+	DECLARE_LIBBPF_OPTS(bpf_xdp_set_link_opts, opts,
+		.old_fd = -1);
 
-	if (!mp)
+	if (!mp && !old_mp)
 		return -EINVAL;
 
-	prog_fd = xdp_multiprog__main_fd(mp);
-	if (prog_fd < 0)
-		return -EINVAL;
+	if (mp) {
+		prog_fd = xdp_multiprog__main_fd(mp);
+		if (prog_fd < 0)
+			return -EINVAL;
+	}
 
-	pr_debug("Loading XDP fd %d onto ifindex %d\n", prog_fd, ifindex);
+	if (old_mp) {
+		opts.old_fd = xdp_multiprog__main_fd(old_mp);
+		if (opts.old_fd < 0)
+			return -EINVAL;
+	} else {
+		xdp_flags |= XDP_FLAGS_UPDATE_IF_NOEXIST;
+	}
+
+	pr_debug("Replacing XDP fd %d with %d on ifindex %d\n",
+		 opts.old_fd, prog_fd, ifindex);
 
 	switch (mode) {
 	case XDP_MODE_SKB:
@@ -1551,31 +1705,13 @@ int xdp_multiprog__attach(struct xdp_multiprog *mp,
 		xdp_flags |= XDP_FLAGS_DRV_MODE;
 		break;
 	case XDP_MODE_HW:
-		xdp_flags |= XDP_FLAGS_HW_MODE;
+		return -EOPNOTSUPP;
 		break;
 	case XDP_MODE_UNSPEC:
 		break;
 	}
 
-	if (!force)
-		xdp_flags |= XDP_FLAGS_UPDATE_IF_NOEXIST;
-
-	err = bpf_set_link_xdp_fd(ifindex, prog_fd, xdp_flags);
-	if (err == -EEXIST && !(xdp_flags & XDP_FLAGS_UPDATE_IF_NOEXIST)) {
-		/* Program replace didn't work, probably because a program of
-		 * the opposite type is loaded. Let's unload that and try
-		 * loading again.
-		 */
-
-		__u32 old_flags = xdp_flags;
-
-		xdp_flags &= ~XDP_FLAGS_MODES;
-		xdp_flags |= (mode == XDP_MODE_SKB) ? XDP_FLAGS_DRV_MODE :
-			XDP_FLAGS_SKB_MODE;
-		err = bpf_set_link_xdp_fd(ifindex, -1, xdp_flags);
-		if (!err)
-			err = bpf_set_link_xdp_fd(ifindex, prog_fd, old_flags);
-	}
+	err = bpf_set_link_xdp_fd_opts(ifindex, prog_fd, xdp_flags, &opts);
 	if (err < 0) {
 		pr_warn("Error attaching XDP program to ifindex %d: %s\n",
 			ifindex, strerror(-err));
@@ -1583,12 +1719,10 @@ int xdp_multiprog__attach(struct xdp_multiprog *mp,
 		switch (-err) {
 		case EBUSY:
 		case EEXIST:
-			pr_warn("XDP already loaded on device;"
-				" use --force to replace\n");
+			pr_debug("XDP already loaded on device\n");
 			break;
 		case EOPNOTSUPP:
-			pr_warn("Native XDP not supported;"
-				" try using --skb-mode\n");
+			pr_debug("Native XDP not supported; try using SKB mode\n");
 			break;
 		default:
 			break;
@@ -1596,14 +1730,33 @@ int xdp_multiprog__attach(struct xdp_multiprog *mp,
 		goto err;
 	}
 
-	pr_debug("Loaded %zu programs on ifindex '%d'%s\n",
-		 mp->num_links, ifindex,
-		 mode == XDP_MODE_SKB ? " in skb mode" : "");
+	if (mp)
+		pr_debug("Loaded %zu programs on ifindex '%d'%s\n",
+			 mp->num_links, ifindex,
+			 mode == XDP_MODE_SKB ? " in skb mode" : "");
+	else
+		pr_debug("Detached multiprog on ifindex '%d'%s\n",
+			 ifindex, mode == XDP_MODE_SKB ? " in skb mode" : "");
 
 	return 0;
 err:
 	return err;
 }
+
+int xdp_multiprog__detach(struct xdp_multiprog *mp, int ifindex)
+{
+	int err;
+
+	if (!mp || !mp->is_loaded)
+		return -EINVAL;
+
+	err = xdp_multiprog__attach(mp, NULL, ifindex, mp->attach_mode);
+	if (err)
+		return err;
+
+	return xdp_multiprog__unpin(mp);
+}
+
 
 struct xdp_program *xdp_multiprog__next_prog(struct xdp_program *prog,
 					     struct xdp_multiprog *mp)
@@ -1617,38 +1770,10 @@ struct xdp_program *xdp_multiprog__next_prog(struct xdp_program *prog,
 	return mp->first_prog;
 }
 
-/*int xdp_program__attach(const struct xdp_program *prog,
-			int ifindex, bool replace, enum xdp_attach_mode mode)
+enum xdp_attach_mode xdp_multiprog__attach_mode(struct xdp_multiprog *mp)
 {
-	struct xdp_program *old_progs[10], *all_progs[10];
-	size_t num_old_progs = 10, num_progs;
-	struct xdp_multiprog *mp;
-	int err, i;
+	if (!mp)
+		return XDP_MODE_UNSPEC;
 
-	/ * FIXME: The idea here is that the API should allow the caller to just
-	 * attach a program; and the library will take care of finding the
-	 * already-attached programs, inserting the new one into the sequence
-	 * based on its priority, build a new dispatcher, and atomically replace
-	 * the old one. This needs a kernel API to allow re-attaching already
-	 * loaded freplace programs, as well as the ability to attach each
-	 * program to multiple places. So for now, this function doesn't really
-	 * work.
-	 *\/
-	mp = xdp_multiprog__get_from_ifindex(ifindex);
-	if (err && err != -ENOENT)
-		return err;
-
-	if (replace) {
-		num_progs = 1;
-		all_progs[0] = (struct xdp_program *)prog;
-	} else {
-		for (i = 0; i < num_old_progs; i++)
-			all_progs[i] = old_progs[i];
-		num_progs = num_old_progs +1;
-	}
-
-	err = xdp_attach_programs(all_progs, num_progs, ifindex, true, mode);
-	if (err)
-		return err;
-	return 0;
-	}*/
+	return mp->attach_mode;
+}
