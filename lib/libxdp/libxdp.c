@@ -643,6 +643,12 @@ static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 	if (!xdp_prog->prog_name)
 		return -ENOMEM;
 
+	if (strlen(xdp_prog->prog_name) > BPF_OBJ_NAME_LEN - 1) {
+		pr_warn("Please keep XDP function names shorter than %d characters\n",
+			BPF_OBJ_NAME_LEN);
+		return -EINVAL;
+	}
+
 	xdp_prog->bpf_prog = bpf_prog;
 	xdp_prog->bpf_obj = obj;
 	xdp_prog->btf = bpf_object__btf(obj);
