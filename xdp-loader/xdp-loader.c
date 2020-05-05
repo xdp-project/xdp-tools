@@ -232,60 +232,56 @@ static struct prog_option status_options[] = {
 	END_OPTIONS
 };
 
-int print_iface_status(const struct iface *iface, const struct bpf_prog_info *info,
-		       enum xdp_attach_mode mode, void *arg)
+static char *print_bpf_tag(char buf[BPF_TAG_SIZE*2+1],
+			   const unsigned char tag[BPF_TAG_SIZE])
 {
-	struct xdp_program *xdp_prog;
-	struct xdp_multiprog *mp;
+	int i;
+
+	for (i = 0; i < BPF_TAG_SIZE; i++)
+		sprintf(&buf[i*2], "%02x", tag[i]);
+	buf[BPF_TAG_SIZE*2] = '\0';
+	return buf;
+}
+
+int print_iface_status(const struct iface *iface,
+		       const struct xdp_multiprog *mp,
+		       void *arg)
+{
 	char tag[BPF_TAG_SIZE*2+1];
 	char buf[STRERR_BUFSIZE];
-	int i, err;
+	struct xdp_program *prog;
+	int err;
 
-	for (i = 0; i < BPF_TAG_SIZE; i++) {
-		sprintf(&tag[i*2], "%02x", info->tag[i]);
+	if (!mp) {
+		printf("%-16s <no XDP program>\n",
+		       iface->ifname);
+		return 0;
 	}
-	tag[BPF_TAG_SIZE*2] = '\0';
 
-	xdp_prog = xdp_program__from_id(info->id);
-	if (IS_ERR(xdp_prog)) {
-		err = PTR_ERR(xdp_prog);
-		libbpf_strerror(err, buf, sizeof(buf));
-		printf("err: %s\n", buf);
-		return err;
-	}
 	printf("%-16s %-5s %-16s %-8s %-4d %-17s\n",
 	       iface->ifname,
 	       "",
-	       info->name,
-	       get_enum_name(xdp_modes, mode),
-	       info->id, tag);
+	       "",
+	       get_enum_name(xdp_modes, xdp_multiprog__attach_mode(mp)),
+	       xdp_multiprog__dispatcher_id(mp),
+	       print_bpf_tag(tag, xdp_multiprog__dispatcher_tag(mp)));
 
-	mp = xdp_multiprog__get_from_ifindex(iface->ifindex);
-	if (!IS_ERR_OR_NULL(mp)) {
-		struct xdp_program *sub_prog;
 
-		for (sub_prog = xdp_multiprog__next_prog(NULL, mp);
-		     sub_prog;
-		     sub_prog = xdp_multiprog__next_prog(sub_prog, mp)) {
+	for (prog = xdp_multiprog__next_prog(NULL, mp);
+	     prog;
+	     prog = xdp_multiprog__next_prog(prog, mp)) {
 
-			const uint8_t *raw_tag = xdp_program__tag(sub_prog);
+		err = xdp_program__print_chain_call_actions(prog, buf,
+							    sizeof(buf));
+		if(err)
+			return err;
 
-			xdp_program__print_chain_call_actions(xdp_prog, buf,
-							      sizeof(buf));
-
-			for (i = 0; i < BPF_TAG_SIZE; i++)
-				sprintf(&tag[i*2], "%02x", raw_tag[i]);
-
-			tag[BPF_TAG_SIZE*2] = '\0';
-
-			printf("%-16s %-5d %-16s %-8s %-4u %-17s %s\n",
-			       " =>", xdp_program__run_prio(sub_prog),
-			       xdp_program__name(sub_prog),
-			       "", xdp_program__id(sub_prog),
-			       tag, buf);
-		}
-
-		xdp_multiprog__close(mp);
+		printf("%-16s %-5d %-16s %-8s %-4u %-17s %s\n",
+		       " =>", xdp_program__run_prio(prog),
+		       xdp_program__name(prog),
+		       "", xdp_program__id(prog),
+		       print_bpf_tag(tag, xdp_program__tag(prog)),
+		       buf);
 	}
 
 	return 0;
@@ -300,7 +296,7 @@ int do_status(const void *cfg, const char *pin_root_path)
 	       "Interface", "Prio", "Program name", "Tag", "Chain actions");
 	printf("-------------------------------------------------------------------------------------\n");
 
-	err = iterate_iface_programs_all(pin_root_path, print_iface_status, NULL);
+	err = iterate_iface_programs_all(print_iface_status, NULL);
 	printf("\n");
 
 	return err;
