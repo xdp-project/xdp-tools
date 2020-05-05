@@ -305,7 +305,7 @@ int do_status(const void *cfg, const char *pin_root_path)
 	       "Interface", "Prio", "Program name", "Tag", "Chain actions");
 	printf("-------------------------------------------------------------------------------------\n");
 
-	err = iterate_iface_programs_all(print_iface_status, NULL);
+	err = iterate_iface_multiprogs(print_iface_status, NULL);
 	printf("\n");
 
 	return err;

@@ -553,7 +553,7 @@ out:
 	return err;
 }
 
-int iterate_iface_programs_all(program_callback cb, void *arg)
+int iterate_iface_multiprogs(multiprog_callback cb, void *arg)
 {
 	struct if_nameindex *idx, *indexes = NULL;
 	int err = 0;

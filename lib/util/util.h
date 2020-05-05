@@ -75,7 +75,7 @@ int get_loaded_program(const struct iface *iface, enum xdp_attach_mode *mode,
                        struct bpf_prog_info *info);
 int iterate_iface_programs_pinned(const char *pin_root_path, program_callback cb,
                                   void *arg);
-int iterate_iface_programs_all(program_callback cb, void *arg);
+int iterate_iface_multiprogs(multiprog_callback cb, void *arg);
 
 int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
                       enum xdp_attach_mode *mode, const char *pin_root_path);
