@@ -1280,6 +1280,7 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp, int prog_fd)
 	if (err)
 		goto err;
 
+	mp->is_loaded = true;
 	pr_debug("Found multiprog with id %d and %zu component progs\n",
 		 mp->dispatcher->prog_id, mp->num_links);
 
