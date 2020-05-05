@@ -141,7 +141,6 @@ static const struct loadopt {
 	bool help;
 	struct iface iface;
 	unsigned int features;
-	bool force;
 	enum xdp_attach_mode mode;
 	bool whitelist_mode;
 } defaults_load = {
@@ -178,9 +177,6 @@ struct enum_val xdp_modes[] = {
 };
 
 static struct prog_option load_options[] = {
-	DEFINE_OPTION("force", OPT_BOOL, struct loadopt, force,
-		      .short_opt = 'F',
-		      .help = "Force loading of XDP program"),
 	DEFINE_OPTION("mode", OPT_ENUM, struct loadopt, mode,
 		      .short_opt = 'm',
 		      .typearg = xdp_modes,
