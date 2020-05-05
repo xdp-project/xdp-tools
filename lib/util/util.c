@@ -68,6 +68,50 @@ int double_rlimit()
 	return 0;
 }
 
+int find_bpf_file(char *buf, size_t buf_size, const char *progname)
+{
+	static char *bpf_obj_paths[] = {
+#ifdef DEBUG
+		".",
+#endif
+		BPF_OBJECT_PATH,
+		NULL
+	};
+	struct stat sb = {};
+	char **path;
+	int err;
+
+	for (path = bpf_obj_paths; *path; path++) {
+		err = check_snprintf(buf, buf_size, "%s/%s", *path, progname);
+		if (err)
+			return err;
+
+		pr_debug("Looking for '%s'\n", buf);
+		err = stat(buf, &sb);
+		if (err)
+			continue;
+
+		return 0;
+	}
+
+	pr_warn("Couldn't find a BPF file with name %s\n", progname);
+	return -ENOENT;
+}
+
+struct bpf_object *open_bpf_file(const char *progname,
+                                 struct bpf_object_open_opts *opts)
+{
+	char buf[PATH_MAX];
+	int err;
+
+	err = find_bpf_file(buf, sizeof(buf), progname);
+	if (err)
+		return ERR_PTR(err);
+
+	pr_debug("Loading bpf file '%s' from '%s'\n", progname, buf);
+	return bpf_object__open_file(buf, opts);
+}
+
 static int get_pinned_object_fd(const char *path, void *info, __u32 *info_len)
 {
 	char errmsg[STRERR_BUFSIZE];

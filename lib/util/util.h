@@ -63,6 +63,10 @@ int attach_xdp_program(struct xdp_program *prog, const struct iface *iface,
 int detach_xdp_program(struct xdp_program *prog, const struct iface *iface,
                        enum xdp_attach_mode mode, const char *pin_root_dir);
 
+int find_bpf_file(char *buf, size_t buf_size, const char *progname);
+struct bpf_object *open_bpf_file(const char *progname,
+                                 struct bpf_object_open_opts *opts);
+
 typedef int (*program_callback)(const struct iface *iface,
                                 struct xdp_program *prog,
                                 enum xdp_attach_mode mode,
