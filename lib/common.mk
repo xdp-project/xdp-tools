@@ -33,10 +33,10 @@ EXTRA_USER_DEPS +=
 
 LDFLAGS+=-L$(LIBXDP_DIR)
 ifeq ($(DYNAMIC_LIBXDP),1)
-	LDLIBS+=-lxdp
+	LDLIBS:=-lxdp $(LDLIBS)
 	OBJECT_LIBXDP:=$(LIBXDP_DIR)/libxdp.so.$(LIBXDP_VERSION)
 else
-	LDLIBS+=-l:libxdp.a
+	LDLIBS:=-l:libxdp.a $(LDLIBS)
 	OBJECT_LIBXDP:=$(LIBXDP_DIR)/libxdp.a
 endif
 
