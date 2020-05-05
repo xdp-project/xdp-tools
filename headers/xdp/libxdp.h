@@ -73,7 +73,6 @@ struct xdp_program *xdp_multiprog__next_prog(const struct xdp_program *prog,
 void xdp_multiprog__close(struct xdp_multiprog *mp);
 int xdp_multiprog__detach(struct xdp_multiprog *mp, int ifindex);
 enum xdp_attach_mode xdp_multiprog__attach_mode(const struct xdp_multiprog *mp);
-uint32_t xdp_multiprog__dispatcher_id(const struct xdp_multiprog *mp);
-const unsigned char *xdp_multiprog__dispatcher_tag(const struct xdp_multiprog *mp);
+struct xdp_program *xdp_multiprog__dispatcher(const struct xdp_multiprog *mp);
 
 #endif

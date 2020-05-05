@@ -252,9 +252,9 @@ int print_iface_status(const struct iface *iface,
 		       const struct xdp_multiprog *mp,
 		       void *arg)
 {
+	struct xdp_program *prog, *dispatcher;
 	char tag[BPF_TAG_SIZE*2+1];
 	char buf[STRERR_BUFSIZE];
-	struct xdp_program *prog;
 	int err;
 
 	if (!mp) {
@@ -263,13 +263,15 @@ int print_iface_status(const struct iface *iface,
 		return 0;
 	}
 
+	dispatcher = xdp_multiprog__dispatcher(mp);
+
 	printf("%-16s %-5s %-16s %-8s %-4d %-17s\n",
 	       iface->ifname,
 	       "",
 	       "",
 	       get_enum_name(xdp_modes, xdp_multiprog__attach_mode(mp)),
-	       xdp_multiprog__dispatcher_id(mp),
-	       print_bpf_tag(tag, xdp_multiprog__dispatcher_tag(mp)));
+	       xdp_program__id(dispatcher),
+	       print_bpf_tag(tag, xdp_program__tag(dispatcher)));
 
 
 	for (prog = xdp_multiprog__next_prog(NULL, mp);

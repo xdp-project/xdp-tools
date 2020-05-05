@@ -1829,18 +1829,10 @@ enum xdp_attach_mode xdp_multiprog__attach_mode(const struct xdp_multiprog *mp)
 	return mp->attach_mode;
 }
 
-uint32_t xdp_multiprog__dispatcher_id(const struct xdp_multiprog *mp)
+struct xdp_program *xdp_multiprog__dispatcher(const struct xdp_multiprog *mp)
 {
 	if (!mp)
-		return 0;
+		return NULL;
 
-	return xdp_program__id(mp->dispatcher);
-}
-
-const unsigned char *xdp_multiprog__dispatcher_tag(const struct xdp_multiprog *mp)
-{
-	if (!mp)
-		return 0;
-
-	return xdp_program__tag(mp->dispatcher);
+	return mp->dispatcher;
 }

@@ -5,8 +5,7 @@ LIBXDP_0.0.3 {
 		xdp_multiprog__attach_mode;
 		xdp_multiprog__close;
 		xdp_multiprog__detach;
-		xdp_multiprog__dispatcher_id;
-		xdp_multiprog__dispatcher_tag;
+		xdp_multiprog__dispatcher;
 		xdp_multiprog__get_from_ifindex;
 		xdp_multiprog__next_prog;
 		xdp_program__attach;
