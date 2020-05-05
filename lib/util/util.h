@@ -58,27 +58,25 @@ int make_dir_subdir(const char *parent, const char *dir);
 int check_bpf_environ(const char *pin_root_path);
 int double_rlimit();
 
-int load_bpf_object(struct bpf_object *obj, bool raise_rlimit);
-int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
-                       const struct iface *iface, bool force,
+int attach_xdp_program(struct xdp_program *prog, const struct iface *iface,
                        enum xdp_attach_mode mode, const char *pin_root_dir);
-int detach_xdp_program(const struct iface *iface, const char *pin_root_dir);
+int detach_xdp_program(struct xdp_program *prog, const struct iface *iface,
+                       enum xdp_attach_mode mode, const char *pin_root_dir);
 
 typedef int (*program_callback)(const struct iface *iface,
-                                const struct xdp_multiprog *mp,
+                                struct xdp_program *prog,
+                                enum xdp_attach_mode mode,
                                 void *arg);
-int get_pinned_program(const struct iface *iface, const char *pin_root_path,
-                       char *prog_name, size_t prog_name_len,
-                       enum xdp_attach_mode *mode,
-                       struct bpf_prog_info *info);
-int get_loaded_program(const struct iface *iface, enum xdp_attach_mode *mode,
-                       struct bpf_prog_info *info);
-int iterate_iface_programs_pinned(const char *pin_root_path, program_callback cb,
+typedef int (*multiprog_callback)(const struct iface *iface,
+                                  const struct xdp_multiprog *mp,
                                   void *arg);
+int get_pinned_program(const struct iface *iface, const char *pin_root_path,
+                       enum xdp_attach_mode *mode,
+                       struct xdp_program **prog);
+int iterate_pinned_programs(const char *pin_root_path, program_callback cb,
+                            void *arg);
 int iterate_iface_multiprogs(multiprog_callback cb, void *arg);
 
-int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
-                      enum xdp_attach_mode *mode, const char *pin_root_path);
 int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir);
 int get_pinned_map_fd(const char *bpf_root, const char *map_name,
                       struct bpf_map_info *info);
