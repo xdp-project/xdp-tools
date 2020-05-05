@@ -336,6 +336,14 @@ uint32_t xdp_program__id(const struct xdp_program *xdp_prog)
 	return xdp_prog->prog_id;
 }
 
+int xdp_program__fd(const struct xdp_program *xdp_prog)
+{
+	if (!xdp_prog)
+		return -1;
+
+	return xdp_prog->prog_fd;
+}
+
 int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 					  char *buf,
 					  size_t buf_len)

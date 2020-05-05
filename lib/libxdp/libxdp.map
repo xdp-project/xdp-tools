@@ -20,6 +20,7 @@ LIBXDP_0.0.3 {
 		xdp_program__from_fd;
 		xdp_program__from_id;
 		xdp_program__from_pin;
+		xdp_program__fd;
 		xdp_program__id;
 		xdp_program__is_attached;
 		xdp_program__name;

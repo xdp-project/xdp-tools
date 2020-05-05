@@ -48,6 +48,7 @@ const char *xdp_program__name(const struct xdp_program *xdp_prog);
 const unsigned char *xdp_program__tag(const struct xdp_program *xdp_prog);
 struct bpf_object *xdp_program__bpf_obj(struct xdp_program *xdp_prog);
 uint32_t xdp_program__id(const struct xdp_program *xdp_prog);
+int xdp_program__fd(const struct xdp_program *xdp_prog);
 unsigned int xdp_program__run_prio(const struct xdp_program *xdp_prog);
 void xdp_program__set_run_prio(struct xdp_program *xdp_prog, unsigned int run_prio);
 bool xdp_program__chain_call_enabled(const struct xdp_program *xdp_prog,
