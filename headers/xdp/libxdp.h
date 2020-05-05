@@ -42,17 +42,17 @@ struct xdp_program *xdp_program__from_id(__u32 prog_id);
 
 void xdp_program__close(struct xdp_program *xdp_prog);
 
-const char *xdp_program__name(struct xdp_program *xdp_prog);
-const unsigned char *xdp_program__tag(struct xdp_program *xdp_prog);
+const char *xdp_program__name(const struct xdp_program *xdp_prog);
+const unsigned char *xdp_program__tag(const struct xdp_program *xdp_prog);
 struct bpf_object *xdp_program__bpf_obj(struct xdp_program *xdp_prog);
-uint32_t xdp_program__id(struct xdp_program *xdp_prog);
-unsigned int xdp_program__run_prio(struct xdp_program *xdp_prog);
+uint32_t xdp_program__id(const struct xdp_program *xdp_prog);
+unsigned int xdp_program__run_prio(const struct xdp_program *xdp_prog);
 void xdp_program__set_run_prio(struct xdp_program *xdp_prog, unsigned int run_prio);
-bool xdp_program__chain_call_enabled(struct xdp_program *xdp_prog,
+bool xdp_program__chain_call_enabled(const struct xdp_program *xdp_prog,
 				     enum xdp_action action);
 void xdp_program__set_chain_call_enabled(struct xdp_program *prog, unsigned int action,
                                          bool enabled);
-int xdp_program__print_chain_call_actions(struct xdp_program *prog,
+int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 					  char *buf,
 					  size_t buf_len);
 int xdp_program__attach(struct xdp_program *xdp_prog,
@@ -65,10 +65,12 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
                               int ifindex, enum xdp_attach_mode mode);
 
 struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex);
-struct xdp_program *xdp_multiprog__next_prog(struct xdp_program *prog,
-					     struct xdp_multiprog *mp);
+struct xdp_program *xdp_multiprog__next_prog(const struct xdp_program *prog,
+					     const struct xdp_multiprog *mp);
 void xdp_multiprog__close(struct xdp_multiprog *mp);
 int xdp_multiprog__detach(struct xdp_multiprog *mp, int ifindex);
-enum xdp_attach_mode xdp_multiprog__attach_mode(struct xdp_multiprog *mp);
+enum xdp_attach_mode xdp_multiprog__attach_mode(const struct xdp_multiprog *mp);
+uint32_t xdp_multiprog__dispatcher_id(const struct xdp_multiprog *mp);
+const unsigned char *xdp_multiprog__dispatcher_tag(const struct xdp_multiprog *mp);
 
 #endif

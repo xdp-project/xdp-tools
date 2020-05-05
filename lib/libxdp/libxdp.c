@@ -253,7 +253,7 @@ void xdp_program__set_chain_call_enabled(struct xdp_program *prog,
 		prog->chain_call_actions &= ~(1<<action);
 }
 
-bool xdp_program__chain_call_enabled(struct xdp_program *prog,
+bool xdp_program__chain_call_enabled(const struct xdp_program *prog,
 				     enum xdp_action action)
 {
 	if (!prog)
@@ -262,7 +262,7 @@ bool xdp_program__chain_call_enabled(struct xdp_program *prog,
 	return !!(prog->chain_call_actions & (1<<action));
 }
 
-unsigned int xdp_program__run_prio(struct xdp_program *prog)
+unsigned int xdp_program__run_prio(const struct xdp_program *prog)
 {
 	if (!prog)
 		return XDP_DEFAULT_RUN_PRIO;
@@ -279,7 +279,7 @@ void xdp_program__set_run_prio(struct xdp_program *prog, unsigned int run_prio)
 	prog->run_prio = run_prio;
 }
 
-const char *xdp_program__name(struct xdp_program *prog)
+const char *xdp_program__name(const struct xdp_program *prog)
 {
 	if (!prog)
 		return NULL;
@@ -296,7 +296,7 @@ struct bpf_object *xdp_program__bpf_obj(struct xdp_program *prog)
 }
 
 
-const unsigned char *xdp_program__tag(struct xdp_program *prog)
+const unsigned char *xdp_program__tag(const struct xdp_program *prog)
 {
 	if (!prog)
 		return NULL;
@@ -304,7 +304,7 @@ const unsigned char *xdp_program__tag(struct xdp_program *prog)
 	return prog->prog_tag;
 }
 
-uint32_t xdp_program__id(struct xdp_program *xdp_prog)
+uint32_t xdp_program__id(const struct xdp_program *xdp_prog)
 {
 	if (!xdp_prog)
 		return 0;
@@ -312,7 +312,7 @@ uint32_t xdp_program__id(struct xdp_program *xdp_prog)
 	return xdp_prog->prog_id;
 }
 
-int xdp_program__print_chain_call_actions(struct xdp_program *prog,
+int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 					  char *buf,
 					  size_t buf_len)
 {
@@ -1758,8 +1758,8 @@ int xdp_multiprog__detach(struct xdp_multiprog *mp, int ifindex)
 }
 
 
-struct xdp_program *xdp_multiprog__next_prog(struct xdp_program *prog,
-					     struct xdp_multiprog *mp)
+struct xdp_program *xdp_multiprog__next_prog(const struct xdp_program *prog,
+					     const struct xdp_multiprog *mp)
 {
 	if (!mp)
 		return NULL;
@@ -1770,10 +1770,26 @@ struct xdp_program *xdp_multiprog__next_prog(struct xdp_program *prog,
 	return mp->first_prog;
 }
 
-enum xdp_attach_mode xdp_multiprog__attach_mode(struct xdp_multiprog *mp)
+enum xdp_attach_mode xdp_multiprog__attach_mode(const struct xdp_multiprog *mp)
 {
 	if (!mp)
 		return XDP_MODE_UNSPEC;
 
 	return mp->attach_mode;
+}
+
+uint32_t xdp_multiprog__dispatcher_id(const struct xdp_multiprog *mp)
+{
+	if (!mp)
+		return 0;
+
+	return xdp_program__id(mp->dispatcher);
+}
+
+const unsigned char *xdp_multiprog__dispatcher_tag(const struct xdp_multiprog *mp)
+{
+	if (!mp)
+		return 0;
+
+	return xdp_program__tag(mp->dispatcher);
 }
