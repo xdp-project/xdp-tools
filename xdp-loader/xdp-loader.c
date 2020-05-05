@@ -203,8 +203,11 @@ int do_unload(const void *cfg, const char *pin_root_path)
 
 	if (opt->all) {
 		err = xdp_multiprog__detach(mp, opt->iface.ifindex);
-		if (err)
+		if (err) {
+			pr_warn("Unable to detach XDP program: %s\n",
+				strerror(-err));
 			goto out;
+		}
 	} else {
 		struct xdp_program *prog = NULL;
 
@@ -213,14 +216,20 @@ int do_unload(const void *cfg, const char *pin_root_path)
 				break;
 		}
 		if (!prog) {
-			pr_warn("Program with ID %u no loaded on %s\n",
+			pr_warn("Program with ID %u not loaded on %s\n",
 				opt->prog_id, opt->iface.ifname);
+			err = -ENOENT;
 			goto out;
 		}
+		pr_debug("Detaching XDP program with ID %u from %s\n",
+			 xdp_program__id(prog), opt->iface.ifname);
 		err = xdp_program__detach(prog, opt->iface.ifindex,
 					  XDP_MODE_UNSPEC);
-		if (err)
+		if (err) {
+			pr_warn("Unable to detach XDP program: %s\n",
+				strerror(-err));
 			goto out;
+		}
 	}
 
 out:
