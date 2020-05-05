@@ -240,6 +240,30 @@ static struct btf *xdp_program__btf(struct xdp_program *xdp_prog)
 	return xdp_prog->btf;
 }
 
+bool xdp_program__is_attached(const struct xdp_program *xdp_prog, int ifindex)
+{
+	struct xdp_program *prog = NULL;
+	struct xdp_multiprog *mp;
+	bool ret = false;
+
+	if (!xdp_prog->prog_id)
+		return false;
+
+	mp = xdp_multiprog__get_from_ifindex(ifindex);
+	if (IS_ERR_OR_NULL(mp))
+		return false;
+
+	while ((prog = xdp_multiprog__next_prog(prog, mp))) {
+		if (xdp_program__id(prog) == xdp_prog->prog_id) {
+			ret = true;
+			break;
+		}
+	}
+
+	xdp_multiprog__close(mp);
+	return ret;
+}
+
 void xdp_program__set_chain_call_enabled(struct xdp_program *prog,
 					 unsigned int action, bool enabled)
 {
@@ -816,6 +840,24 @@ struct xdp_program *xdp_program__from_id(__u32 id)
 	return prog;
 }
 
+struct xdp_program *xdp_program__from_pin(const char *pin_path)
+{
+	struct xdp_program *prog;
+	int fd, err;
+
+	fd = bpf_obj_get(pin_path);
+	if (fd < 0) {
+		err = -errno;
+		pr_warn("couldn't get program fd: %s", strerror(-err));
+		return ERR_PTR(err);
+	}
+
+	prog = xdp_program__from_fd(fd);
+	if (IS_ERR(prog))
+		close(fd);
+	return prog;
+}
+
 static int cmp_xdp_programs(const void *_a, const void *_b)
 {
 	const struct xdp_program *a = *(struct xdp_program * const *)_a;
@@ -859,6 +901,14 @@ static int cmp_xdp_programs(const void *_a, const void *_b)
 		return a->load_time < b->load_time ? -1 : 1;
 
 	return 0;
+}
+
+int xdp_program__pin(struct xdp_program *prog, const char *pin_path)
+{
+	if (!prog->prog_fd)
+		return -EINVAL;
+
+	return bpf_program__pin(prog->bpf_prog, pin_path);
 }
 
 static int xdp_program__load(struct xdp_program *prog)

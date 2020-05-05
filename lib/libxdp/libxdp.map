@@ -20,9 +20,12 @@ LIBXDP_0.0.3 {
 		xdp_program__from_bpf_obj;
 		xdp_program__from_fd;
 		xdp_program__from_id;
+		xdp_program__from_pin;
 		xdp_program__id;
+		xdp_program__is_attached;
 		xdp_program__name;
 		xdp_program__open_file;
+		xdp_program__pin;
 		xdp_program__print_chain_call_actions;
 		xdp_program__run_prio;
 		xdp_program__set_chain_call_enabled;

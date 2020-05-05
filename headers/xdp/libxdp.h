@@ -39,9 +39,11 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 					   struct bpf_object_open_opts *opts);
 struct xdp_program *xdp_program__from_fd(int fd);
 struct xdp_program *xdp_program__from_id(__u32 prog_id);
+struct xdp_program *xdp_program__from_pin(const char *pin_path);
 
 void xdp_program__close(struct xdp_program *xdp_prog);
 
+bool xdp_program__is_attached(const struct xdp_program *xdp_prog, int ifindex);
 const char *xdp_program__name(const struct xdp_program *xdp_prog);
 const unsigned char *xdp_program__tag(const struct xdp_program *xdp_prog);
 struct bpf_object *xdp_program__bpf_obj(struct xdp_program *xdp_prog);
@@ -55,6 +57,7 @@ void xdp_program__set_chain_call_enabled(struct xdp_program *prog, unsigned int 
 int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 					  char *buf,
 					  size_t buf_len);
+int xdp_program__pin(struct xdp_program *xdp_prog, const char *pin_path);
 int xdp_program__attach(struct xdp_program *xdp_prog,
                         int ifindex, enum xdp_attach_mode mode);
 int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
