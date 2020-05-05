@@ -65,8 +65,7 @@ int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
 int detach_xdp_program(const struct iface *iface, const char *pin_root_dir);
 
 typedef int (*program_callback)(const struct iface *iface,
-                                const struct bpf_prog_info *info,
-                                enum xdp_attach_mode mode,
+                                const struct xdp_multiprog *mp,
                                 void *arg);
 int get_pinned_program(const struct iface *iface, const char *pin_root_path,
                        char *prog_name, size_t prog_name_len,
@@ -76,8 +75,7 @@ int get_loaded_program(const struct iface *iface, enum xdp_attach_mode *mode,
                        struct bpf_prog_info *info);
 int iterate_iface_programs_pinned(const char *pin_root_path, program_callback cb,
                                   void *arg);
-int iterate_iface_programs_all(const char *pin_root_path, program_callback cb,
-                               void *arg);
+int iterate_iface_programs_all(program_callback cb, void *arg);
 
 int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
                       enum xdp_attach_mode *mode, const char *pin_root_path);

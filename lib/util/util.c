@@ -543,7 +543,7 @@ int iterate_iface_programs_pinned(const char *pin_root_path,
 			goto out;
 		}
 
-		err = cb(&iface, &info, mode, arg);
+		err = cb(&iface, NULL, arg);
 		if (err)
 			goto out;
 	}
@@ -553,8 +553,7 @@ out:
 	return err;
 }
 
-int iterate_iface_programs_all(const char *pin_root_path,
-			       program_callback cb, void *arg)
+int iterate_iface_programs_all(program_callback cb, void *arg)
 {
 	struct if_nameindex *idx, *indexes = NULL;
 	int err = 0;
@@ -567,18 +566,23 @@ int iterate_iface_programs_all(const char *pin_root_path,
 	}
 
 	for (idx = indexes; idx->if_index; idx++){
-		struct bpf_prog_info info = {};
+		struct xdp_multiprog *mp;
 		struct iface iface = {
 			.ifindex = idx->if_index,
 			.ifname = idx->if_name,
 		};
-		enum xdp_attach_mode mode;
 
+		mp = xdp_multiprog__get_from_ifindex(iface.ifindex);
+		if (IS_ERR_OR_NULL(mp)) {
+			if (PTR_ERR(mp) != -ENOENT) {
+				err = PTR_ERR(mp);
+				goto out;
+			}
+			mp = NULL;
+		}
 
-		if (!program_is_loaded(iface.ifindex, NULL, &mode, &info))
-			continue;
-
-		err = cb(&iface, &info, mode, arg);
+		err = cb(&iface, mp, arg);
+		xdp_multiprog__close(mp);
 		if (err)
 			goto out;
 	}
