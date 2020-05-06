@@ -453,11 +453,11 @@ static bool pcapng_write_epb(struct xpcapng_dumper *pd, uint32_t ifid,
 
 	if (packetid)
 		opt = pcapng_add_option(opt, PCAPNG_OPT_EPB_PACKETID,
-					sizeof(uint64_t), &packetid);
+					sizeof(uint64_t), packetid);
 
 	if (queue)
 		opt = pcapng_add_option(opt, PCAPNG_OPT_EPB_QUEUE,
-					sizeof(uint32_t), &queue);
+					sizeof(uint32_t), queue);
 
 	if (xdp_verdict) {
 		verdict.verdict = *xdp_verdict;
