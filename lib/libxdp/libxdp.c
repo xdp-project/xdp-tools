@@ -434,6 +434,54 @@ static bool get_xdp_action(const char *act_name, unsigned int *act)
 	return false;
 }
 
+/*
+ * Find BTF func definition for func_name, which may be a truncated prefix of
+ * the real function name.
+ * Return NULL on no, or ambiguous, match.
+ */
+static const struct btf_type *btf_get_function(const struct btf *btf,
+					       const char *func_name)
+{
+	const struct btf_type *t, *match;
+	size_t len, matches = 0;
+	const char *name;
+	int nr_types, i;
+
+	if (!btf) {
+		pr_debug("No BTF found for program\n");
+		return NULL;
+	}
+
+	len = strlen(func_name);
+
+	nr_types = btf__get_nr_types(btf);
+	for (i = 1; i <= nr_types; i++) {
+		t = btf__type_by_id(btf, i);
+		if (!btf_is_func(t))
+			continue;
+
+		name = btf__name_by_offset(btf, t->name_off);
+		if (!strncmp(name, func_name, len)) {
+			pr_debug("Found func %s matching %s\n",
+				 name, func_name);
+
+			if (strlen(name) == len)
+				return t; /* exact match */
+
+			/* prefix, may not be unique */
+			matches++;
+			match = t;
+		}
+	}
+
+	if (matches == 1) /* unique match */
+		return match;
+
+	pr_debug("Function '%s' not found or ambiguous (%zu matches).\n",
+		 func_name, matches);
+	return NULL;
+}
+
 static const struct btf_type *btf_get_datasec(const struct btf *btf,
 					      const char *sec_name)
 {
@@ -528,13 +576,31 @@ static const struct btf_type *btf_get_section_var(const struct btf *btf,
  * survive loading into the kernel, and so it can be retrieved for
  * already-loaded programs as well.
  */
-static int xdp_parse_run_config(struct xdp_program *xdp_prog)
+static int xdp_program__parse_btf(struct xdp_program *xdp_prog)
 {
 	struct btf *btf = xdp_program__btf(xdp_prog);
 	const struct btf_type *def, *sec;
 	const struct btf_member *m;
 	char struct_name[100];
 	int err, i, mlen;
+
+	/* If the program name is the maximum allowed object name in the kernel,
+	 * it may have been truncated, in which case we try to expand it by
+	 * looking for a match in the BTF data.
+	 */
+	if (strlen(xdp_prog->prog_name) >= BPF_OBJ_NAME_LEN - 1) {
+		const struct btf_type *func;
+		char *name;
+
+		func = btf_get_function(btf, xdp_prog->prog_name);
+		if (func) {
+			name = strdup(btf__name_by_offset(btf, func->name_off));
+			if (!name)
+				return -ENOMEM;
+			free(xdp_prog->prog_name);
+			xdp_prog->prog_name = name;
+		}
+	}
 
 	err = check_snprintf(struct_name, sizeof(struct_name), "_%s",
 			     xdp_program__name(xdp_prog));
@@ -643,18 +709,12 @@ static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 	if (!xdp_prog->prog_name)
 		return -ENOMEM;
 
-	if (strlen(xdp_prog->prog_name) > BPF_OBJ_NAME_LEN - 1) {
-		pr_warn("Please keep XDP function names shorter than %d characters\n",
-			BPF_OBJ_NAME_LEN);
-		return -EINVAL;
-	}
-
 	xdp_prog->bpf_prog = bpf_prog;
 	xdp_prog->bpf_obj = obj;
 	xdp_prog->btf = bpf_object__btf(obj);
 	xdp_prog->from_external_obj = external;
 
-	err = xdp_parse_run_config(xdp_prog);
+	err = xdp_program__parse_btf(xdp_prog);
 	if (err && err != -ENOENT)
 		return err;
 
@@ -826,7 +886,7 @@ struct xdp_program *xdp_program__from_fd(int fd)
 	if (err)
 		goto err;
 
-	err = xdp_parse_run_config(xdp_prog);
+	err = xdp_program__parse_btf(xdp_prog);
 	if (err && err != -ENOENT)
 		goto err;
 
