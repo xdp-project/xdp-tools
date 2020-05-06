@@ -197,7 +197,9 @@ int do_unload(const void *cfg, const char *pin_root_path)
 		goto out;
 	}
 
-	if (opt->all) {
+	if (opt->all || (xdp_multiprog__is_legacy(mp) &&
+			 (xdp_program__id(xdp_multiprog__main_prog(mp)) ==
+			  opt->prog_id))) {
 		err = xdp_multiprog__detach(mp, opt->iface.ifindex);
 		if (err) {
 			pr_warn("Unable to detach XDP program: %s\n",
@@ -263,12 +265,12 @@ int print_iface_status(const struct iface *iface,
 		return 0;
 	}
 
-	dispatcher = xdp_multiprog__dispatcher(mp);
+	dispatcher = xdp_multiprog__main_prog(mp);
 
 	printf("%-16s %-5s %-16s %-8s %-4d %-17s\n",
 	       iface->ifname,
 	       "",
-	       "",
+	       xdp_program__name(dispatcher),
 	       get_enum_name(xdp_modes, xdp_multiprog__attach_mode(mp)),
 	       xdp_program__id(dispatcher),
 	       print_bpf_tag(tag, xdp_program__tag(dispatcher)));

@@ -55,10 +55,11 @@ struct xdp_program {
 
 struct xdp_multiprog {
 	struct xdp_dispatcher_config config;
-	struct xdp_program *dispatcher;
+	struct xdp_program *main_prog;  // dispatcher or legacy prog pointer
 	struct xdp_program *first_prog; // uses xdp_program->next to build a list
 	size_t num_links;
 	bool is_loaded;
+	bool is_legacy;
 	enum xdp_attach_mode attach_mode;
 };
 
@@ -253,13 +254,21 @@ bool xdp_program__is_attached(const struct xdp_program *xdp_prog, int ifindex)
 	if (IS_ERR_OR_NULL(mp))
 		return false;
 
+	if (xdp_multiprog__is_legacy(mp)) {
+		prog = xdp_multiprog__main_prog(mp);
+		if (xdp_program__id(prog) == xdp_program__id(xdp_prog))
+			ret = true;
+		goto out;
+	}
+
 	while ((prog = xdp_multiprog__next_prog(prog, mp))) {
-		if (xdp_program__id(prog) == xdp_prog->prog_id) {
+		if (xdp_program__id(prog) == xdp_program__id(xdp_prog)) {
 			ret = true;
 			break;
 		}
 	}
 
+out:
 	xdp_multiprog__close(mp);
 	return ret;
 }
@@ -1039,7 +1048,7 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 	int err = 0;
 
 	old_mp = xdp_multiprog__get_from_ifindex(ifindex);
-	if (!IS_ERR(old_mp)) {
+	if (!IS_ERR_OR_NULL(old_mp)) {
 		pr_warn("XDP program already loaded on ifindex %d; "
 			"replacing not yet supported", ifindex);
 		xdp_multiprog__close(old_mp);
@@ -1085,7 +1094,7 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 	int err = 0, i;
 
 	mp = xdp_multiprog__get_from_ifindex(ifindex);
-	if (IS_ERR_OR_NULL(mp)) {
+	if (IS_ERR_OR_NULL(mp) || mp->is_legacy) {
 		pr_warn("No XDP dispatcher found on ifindex %d\n", ifindex);
 		return -ENOENT;
 	}
@@ -1152,22 +1161,22 @@ void xdp_multiprog__close(struct xdp_multiprog *mp)
 	if (!mp)
 		return;
 
-	xdp_program__close(mp->dispatcher);
+	xdp_program__close(mp->main_prog);
 	for (p = mp->first_prog; p; p = next) {
 		next = p->next;
 		xdp_program__close(p);
 	}
 }
 
-int xdp_multiprog__main_fd(struct xdp_multiprog *mp)
+static int xdp_multiprog__main_fd(struct xdp_multiprog *mp)
 {
 	if (!mp)
 		return -EINVAL;
 
-	if (!mp->dispatcher)
+	if (!mp->main_prog)
 		return -ENOENT;
 
-	return mp->dispatcher->prog_fd;
+	return mp->main_prog->prog_fd;
 }
 
 static struct xdp_multiprog *xdp_multiprog__new()
@@ -1186,13 +1195,13 @@ static int xdp_multiprog__load(struct xdp_multiprog *mp)
 {
 	int err = 0;
 
-	if (!mp || !mp->dispatcher || mp->is_loaded)
+	if (!mp || !mp->main_prog || mp->is_loaded || mp->is_legacy)
 		return -EINVAL;
 
 	pr_debug("Loading multiprog dispatcher for %d programs\n",
 		mp->config.num_progs_enabled);
 
-	err = xdp_program__load(mp->dispatcher);
+	err = xdp_program__load(mp->main_prog);
 	if (err) {
 		pr_warn("Failed to load dispatcher: %s\n", strerror(-err));
 		goto out;
@@ -1245,7 +1254,7 @@ static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 		return PTR_ERR(bpffs_dir);
 
 	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
-			     bpffs_dir, mp->dispatcher->prog_id);
+			     bpffs_dir, mp->main_prog->prog_id);
 	if (err)
 		return err;
 
@@ -1354,10 +1363,16 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp, int prog_fd)
 
 	err = check_dispatcher_version(btf);
 	if (err) {
-		if (err != -ENOENT)
+		if (err != -ENOENT) {
 			pr_warn("Dispatcher version check failed for ID %d\n",
 				info->id);
-		goto out;
+			goto out;
+		} else {
+			/* no dispatcher, mark as legacy prog */
+			mp->is_legacy = true;
+			err = 0;
+			goto legacy;
+		}
 	}
 
 	if (info->nr_map_ids != 1) {
@@ -1393,20 +1408,23 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp, int prog_fd)
 		goto out;
 	}
 
+legacy:
 	prog = xdp_program__from_fd(prog_fd);
 	if (IS_ERR(prog)) {
 		err = PTR_ERR(prog);
 		goto out;
 	}
-	mp->dispatcher = prog;
+	mp->main_prog = prog;
 
-	err = xdp_multiprog__link_pinned_progs(mp);
-	if (err)
-		goto err;
+	if (!mp->is_legacy) {
+		err = xdp_multiprog__link_pinned_progs(mp);
+		if (err)
+			goto err;
+	}
 
 	mp->is_loaded = true;
 	pr_debug("Found multiprog with id %d and %zu component progs\n",
-		 mp->dispatcher->prog_id, mp->num_links);
+		 mp->main_prog->prog_id, mp->num_links);
 
 out:
 	free(info_linear);
@@ -1509,7 +1527,7 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 		return -EOPNOTSUPP;
 	} else {
 		err = bpf_program__set_attach_target(prog->bpf_prog,
-						     mp->dispatcher->prog_fd,
+						     mp->main_prog->prog_fd,
 						     buf);
 		if (err) {
 			pr_debug("Failed to set attach target: %s\n", strerror(-err));
@@ -1608,9 +1626,9 @@ xdp_multiprog__generate(struct xdp_program **progs,
 		goto err;
 	}
 
-	mp->dispatcher = dispatcher;
+	mp->main_prog = dispatcher;
 
-	map = bpf_map__next(NULL, mp->dispatcher->bpf_obj);
+	map = bpf_map__next(NULL, mp->main_prog->bpf_obj);
 	if (!map) {
 		pr_warn("Couldn't find rodata map in object file %s\n", buf);
 		err = -ENOENT;
@@ -1659,7 +1677,7 @@ static int xdp_multiprog__pin(struct xdp_multiprog *mp)
 		return PTR_ERR(bpffs_dir);
 
 	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
-			     bpffs_dir, mp->dispatcher->prog_id);
+			     bpffs_dir, mp->main_prog->prog_id);
 	if (err)
 		return err;
 
@@ -1668,7 +1686,7 @@ static int xdp_multiprog__pin(struct xdp_multiprog *mp)
 		return lock_fd;
 
 	pr_debug("Pinning multiprog fd %d beneath %s\n",
-		 mp->dispatcher->prog_fd, pin_path);
+		 mp->main_prog->prog_fd, pin_path);
 
 	err = mkdir(pin_path, S_IRWXU);
 	if (err && errno != EEXIST) {
@@ -1741,7 +1759,7 @@ static int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 		return PTR_ERR(bpffs_dir);
 
 	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
-			     bpffs_dir, mp->dispatcher->prog_id);
+			     bpffs_dir, mp->main_prog->prog_id);
 	if (err)
 		return err;
 
@@ -1750,7 +1768,7 @@ static int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 		return lock_fd;
 
 	pr_debug("Unpinning multiprog fd %d beneath %s\n",
-		 mp->dispatcher->prog_fd, pin_path);
+		 mp->main_prog->prog_fd, pin_path);
 
 	for (prog = mp->first_prog; prog; prog = prog->next) {
 		err = check_snprintf(buf, sizeof(buf), "%s/%s-link",
@@ -1886,7 +1904,7 @@ int xdp_multiprog__detach(struct xdp_multiprog *mp, int ifindex)
 struct xdp_program *xdp_multiprog__next_prog(const struct xdp_program *prog,
 					     const struct xdp_multiprog *mp)
 {
-	if (!mp)
+	if (!mp || mp->is_legacy)
 		return NULL;
 
 	if (prog)
@@ -1903,10 +1921,15 @@ enum xdp_attach_mode xdp_multiprog__attach_mode(const struct xdp_multiprog *mp)
 	return mp->attach_mode;
 }
 
-struct xdp_program *xdp_multiprog__dispatcher(const struct xdp_multiprog *mp)
+struct xdp_program *xdp_multiprog__main_prog(const struct xdp_multiprog *mp)
 {
 	if (!mp)
 		return NULL;
 
-	return mp->dispatcher;
+	return mp->main_prog;
+}
+
+bool xdp_multiprog__is_legacy(const struct xdp_multiprog *mp)
+{
+	return !!(mp && mp->is_legacy);
 }

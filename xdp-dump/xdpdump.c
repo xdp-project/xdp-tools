@@ -425,7 +425,7 @@ static struct xdp_program *find_target_program(struct xdp_multiprog *mp,
 	struct xdp_program *prog = NULL;
 
 	if (!function_override)
-		return xdp_multiprog__dispatcher(mp);
+		return xdp_multiprog__main_prog(mp);
 
 	while ((prog = xdp_multiprog__next_prog(prog, mp)))
 		if (!strcmp(function_override, xdp_program__name(prog)))
@@ -704,7 +704,7 @@ static bool list_interfaces(struct dumpopt *cfg)
 
 			printf("%-8d  %-16.16s  %s()\n",
 			       idx->if_index, idx->if_name,
-			       xdp_program__name(xdp_multiprog__dispatcher(mp)));
+			       xdp_program__name(xdp_multiprog__main_prog(mp)));
 
 			while ((prog = xdp_multiprog__next_prog(prog, mp)))
 				printf("%-25s %s()\n", "=>",
