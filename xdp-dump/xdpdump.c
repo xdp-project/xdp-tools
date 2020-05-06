@@ -422,15 +422,20 @@ error_exit:
 static struct xdp_program *find_target_program(struct xdp_multiprog *mp,
 					       char *function_override)
 {
-	struct xdp_program *prog = NULL;
+	struct xdp_program *prog = xdp_multiprog__main_prog(mp);
 
-	if (!function_override)
-		return xdp_multiprog__main_prog(mp);
+	if (!function_override ||
+	    !strcmp(function_override, xdp_program__name(prog)))
+		return prog;
 
-	while ((prog = xdp_multiprog__next_prog(prog, mp)))
+	for (prog = xdp_multiprog__next_prog(NULL, mp);
+	     prog;
+	     prog = xdp_multiprog__next_prog(prog, mp))
 		if (!strcmp(function_override, xdp_program__name(prog)))
 			return prog;
 
+	pr_warn("ERROR: Can't find function '%s' on interface!\n",
+		function_override);
 	return NULL;
 }
 

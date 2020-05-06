@@ -233,7 +233,7 @@ static int xdp_lock_release(int lock_fd)
 	return err;
 }
 
-static struct btf *xdp_program__btf(struct xdp_program *xdp_prog)
+struct btf *xdp_program__btf(struct xdp_program *xdp_prog)
 {
 	if (!xdp_prog)
 		return NULL;

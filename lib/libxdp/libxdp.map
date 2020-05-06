@@ -11,6 +11,7 @@ LIBXDP_0.0.3 {
 		xdp_program__attach;
 		xdp_program__attach_multi;
 		xdp_program__bpf_obj;
+		xdp_program__btf;
 		xdp_program__chain_call_enabled;
 		xdp_program__close;
 		xdp_program__detach;
