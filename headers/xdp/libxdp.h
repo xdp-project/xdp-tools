@@ -14,6 +14,7 @@
 #include "xdp_helpers.h"
 
 #define XDP_BPFFS_ENVVAR "LIBXDP_BPFFS"
+#define XDP_OBJECT_ENVVAR "LIBXDP_OBJECT_PATH"
 
 enum xdp_attach_mode {
                       XDP_MODE_UNSPEC = 0,

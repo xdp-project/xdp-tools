@@ -791,6 +791,21 @@ err:
 	return ERR_PTR(err);
 }
 
+static bool try_bpf_file(char *buf, size_t buf_size,
+			 char *path, const char *progname)
+{
+	struct stat sb = {};
+
+	if (try_snprintf(buf, buf_size, "%s/%s", path, progname))
+		return false;
+
+	pr_debug("Looking for '%s'\n", buf);
+	if (stat(buf, &sb))
+		return false;
+
+	return true;
+}
+
 static int find_bpf_file(char *buf, size_t buf_size, const char *progname)
 {
 	static char *bpf_obj_paths[] = {
@@ -800,21 +815,15 @@ static int find_bpf_file(char *buf, size_t buf_size, const char *progname)
 		BPF_OBJECT_PATH,
 		NULL
 	};
-	struct stat sb = {};
-	char **path;
-	int err;
+	char *path, **p;
 
-	for (path = bpf_obj_paths; *path; path++) {
-		err = try_snprintf(buf, buf_size, "%s/%s", *path, progname);
-		if (err)
-			return err;
-
-		pr_debug("Looking for '%s'\n", buf);
-		err = stat(buf, &sb);
-		if (err)
-			continue;
-
+	path = secure_getenv(XDP_OBJECT_ENVVAR);
+	if (path && try_bpf_file(buf, buf_size, path, progname)) {
 		return 0;
+	} else if (!path) {
+		for (p = bpf_obj_paths; *p; p++)
+			if (try_bpf_file(buf, buf_size, *p, progname))
+				return 0;
 	}
 
 	pr_warn("Couldn't find a BPF file with name %s\n", progname);
