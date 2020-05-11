@@ -92,7 +92,7 @@ int libxdp_strerror(int err, char *buf, size_t size)
 	return libbpf_strerror(err, buf, size);
 }
 
-static int check_snprintf(char *buf, size_t buf_len, const char *format, ...)
+static int try_snprintf(char *buf, size_t buf_len, const char *format, ...)
 {
 	va_list args;
 	int len;
@@ -173,7 +173,7 @@ static const char *get_bpffs_dir()
 		goto err;
 	}
 
-	err = check_snprintf(bpffs_dir, sizeof(bpffs_dir), "%s/xdp", parent);
+	err = try_snprintf(bpffs_dir, sizeof(bpffs_dir), "%s/xdp", parent);
 	if (err)
 		goto err;
 
@@ -611,8 +611,8 @@ static int xdp_program__parse_btf(struct xdp_program *xdp_prog)
 		}
 	}
 
-	err = check_snprintf(struct_name, sizeof(struct_name), "_%s",
-			     xdp_program__name(xdp_prog));
+	err = try_snprintf(struct_name, sizeof(struct_name), "_%s",
+			   xdp_program__name(xdp_prog));
 	if (err)
 		return err;
 
@@ -805,7 +805,7 @@ static int find_bpf_file(char *buf, size_t buf_size, const char *progname)
 	int err;
 
 	for (path = bpf_obj_paths; *path; path++) {
-		err = check_snprintf(buf, buf_size, "%s/%s", *path, progname);
+		err = try_snprintf(buf, buf_size, "%s/%s", *path, progname);
 		if (err)
 			return err;
 
@@ -1253,8 +1253,8 @@ static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 	if (IS_ERR(bpffs_dir))
 		return PTR_ERR(bpffs_dir);
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
-			     bpffs_dir, mp->main_prog->prog_id);
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
+			   bpffs_dir, mp->main_prog->prog_id);
 	if (err)
 		return err;
 
@@ -1273,8 +1273,8 @@ static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 
 	for (i = 0; i < mp->config.num_progs_enabled; i++) {
 
-		err = check_snprintf(buf, sizeof(buf), "%s/prog%d-prog",
-				     pin_path, i);
+		err = try_snprintf(buf, sizeof(buf), "%s/prog%d-prog",
+				   pin_path, i);
 		if (err)
 			goto err;
 
@@ -1293,7 +1293,7 @@ static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 				prog_fd, strerror(-err));
 			goto err;
 		}
-		err = check_snprintf(buf, sizeof(buf), "prog%d", i);
+		err = try_snprintf(buf, sizeof(buf), "prog%d", i);
 		if (err)
 			goto err;
 		prog->attach_name = strdup(buf);
@@ -1515,7 +1515,7 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 	pr_debug("Linking prog %s as multiprog entry %zu\n",
 		 xdp_program__name(prog), mp->num_links);
 
-	err = check_snprintf(buf, sizeof(buf), "prog%d", mp->num_links);
+	err = try_snprintf(buf, sizeof(buf), "prog%d", mp->num_links);
 	if (err)
 		goto err;
 
@@ -1676,8 +1676,8 @@ static int xdp_multiprog__pin(struct xdp_multiprog *mp)
 	if (IS_ERR(bpffs_dir))
 		return PTR_ERR(bpffs_dir);
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
-			     bpffs_dir, mp->main_prog->prog_id);
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
+			   bpffs_dir, mp->main_prog->prog_id);
 	if (err)
 		return err;
 
@@ -1701,8 +1701,8 @@ static int xdp_multiprog__pin(struct xdp_multiprog *mp)
 			goto err_unpin;
 		}
 
-		err = check_snprintf(buf, sizeof(buf), "%s/%s-link",
-				     pin_path, prog->attach_name);
+		err = try_snprintf(buf, sizeof(buf), "%s/%s-link",
+				   pin_path, prog->attach_name);
 		if (err)
 			goto err_unpin;
 
@@ -1714,8 +1714,8 @@ static int xdp_multiprog__pin(struct xdp_multiprog *mp)
 		pr_debug("Pinned link for prog %s at %s\n",
 			 xdp_program__name(prog), buf);
 
-		err = check_snprintf(buf, sizeof(buf), "%s/%s-prog",
-				     pin_path, prog->attach_name);
+		err = try_snprintf(buf, sizeof(buf), "%s/%s-prog",
+				   pin_path, prog->attach_name);
 		if (err)
 			goto err_unpin;
 
@@ -1733,11 +1733,11 @@ out:
 
 err_unpin:
 	for (prog = mp->first_prog; prog; prog = prog->next) {
-		if (!check_snprintf(buf, sizeof(buf), "%s/%s-link",
-				    pin_path, prog->attach_name))
+		if (!try_snprintf(buf, sizeof(buf), "%s/%s-link",
+				  pin_path, prog->attach_name))
 			unlink(buf);
-		if (!check_snprintf(buf, sizeof(buf), "%s/%s-prog",
-				    pin_path, prog->attach_name))
+		if (!try_snprintf(buf, sizeof(buf), "%s/%s-prog",
+				  pin_path, prog->attach_name))
 			unlink(buf);
 	}
 	rmdir(pin_path);
@@ -1758,8 +1758,8 @@ static int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 	if (IS_ERR(bpffs_dir))
 		return PTR_ERR(bpffs_dir);
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
-			     bpffs_dir, mp->main_prog->prog_id);
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
+			   bpffs_dir, mp->main_prog->prog_id);
 	if (err)
 		return err;
 
@@ -1771,8 +1771,8 @@ static int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 		 mp->main_prog->prog_fd, pin_path);
 
 	for (prog = mp->first_prog; prog; prog = prog->next) {
-		err = check_snprintf(buf, sizeof(buf), "%s/%s-link",
-				     pin_path, prog->attach_name);
+		err = try_snprintf(buf, sizeof(buf), "%s/%s-link",
+				   pin_path, prog->attach_name);
 		if (err)
 			goto out;
 
@@ -1786,8 +1786,8 @@ static int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 		pr_debug("Unpinned link for prog %s from %s\n",
 			 xdp_program__name(prog), buf);
 
-		err = check_snprintf(buf, sizeof(buf), "%s/%s-prog",
-				     pin_path, prog->attach_name);
+		err = try_snprintf(buf, sizeof(buf), "%s/%s-prog",
+				   pin_path, prog->attach_name);
 		if (err)
 			goto out;
 
