@@ -813,7 +813,7 @@ static bool list_interfaces(struct dumpopt *cfg)
 			       xdp_program__name(xdp_multiprog__main_prog(mp)));
 
 			while ((prog = xdp_multiprog__next_prog(prog, mp)))
-				printf("%-25s %s()\n", "=>",
+				printf("%-29s %s()\n", "=>",
 				       xdp_program__name(prog));
 
 			xdp_multiprog__close(mp);
