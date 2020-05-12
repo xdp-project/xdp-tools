@@ -338,7 +338,7 @@ static int remove_unused_maps(const char *pin_root_path, __u32 features)
 		close(dir_fd);
 		dir_fd = -1;
 
-		err = check_snprintf(buf, sizeof(buf), "%s/%s", pin_root_path, "programs");
+		err = try_snprintf(buf, sizeof(buf), "%s/%s", pin_root_path, "programs");
 		pr_debug("Removing program directory %s\n", buf);
 		err = rmdir(buf);
 		if (err) {

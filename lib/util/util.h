@@ -52,7 +52,7 @@
 )
 #endif
 
-int check_snprintf(char *buf, size_t buf_len, const char *format, ...);
+int try_snprintf(char *buf, size_t buf_len, const char *format, ...);
 int make_dir_subdir(const char *parent, const char *dir);
 
 int check_bpf_environ(const char *pin_root_path);

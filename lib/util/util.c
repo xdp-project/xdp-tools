@@ -20,7 +20,7 @@
 #include "util.h"
 #include "logging.h"
 
-int check_snprintf(char *buf, size_t buf_len, const char *format, ...)
+int try_snprintf(char *buf, size_t buf_len, const char *format, ...)
 {
 	va_list args;
 	int len;
@@ -82,7 +82,7 @@ int find_bpf_file(char *buf, size_t buf_size, const char *progname)
 	int err;
 
 	for (path = bpf_obj_paths; *path; path++) {
-		err = check_snprintf(buf, buf_size, "%s/%s", *path, progname);
+		err = try_snprintf(buf, buf_size, "%s/%s", *path, progname);
 		if (err)
 			return err;
 
@@ -143,7 +143,7 @@ int make_dir_subdir(const char *parent, const char *dir)
 	char path[PATH_MAX];
 	int err;
 
-	err = check_snprintf(path, sizeof(path), "%s/%s", parent, dir);
+	err = try_snprintf(path, sizeof(path), "%s/%s", parent, dir);
 	if (err)
 		return err;
 
@@ -180,8 +180,8 @@ int attach_xdp_program(struct xdp_program *prog, const struct iface *iface,
 		return err;
 	}
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s/%s",
-			     pin_root_path, iface->ifname,
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s/%s",
+			   pin_root_path, iface->ifname,
 			     xdp_program__name(prog));
 	if (err)
 		return err;
@@ -220,9 +220,9 @@ int detach_xdp_program(struct xdp_program *prog, const struct iface *iface,
 	if (err)
 		goto out;
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s/%s",
-			     pin_root_path, iface->ifname,
-			     xdp_program__name(prog));
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s/%s",
+			   pin_root_path, iface->ifname,
+			   xdp_program__name(prog));
 	if (err)
 		return err;
 
@@ -230,9 +230,9 @@ int detach_xdp_program(struct xdp_program *prog, const struct iface *iface,
 	if (err && errno != ENOENT)
 		goto out;
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
-			     pin_root_path, iface->ifname,
-			     xdp_program__name(prog));
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
+			   pin_root_path, iface->ifname,
+			   xdp_program__name(prog));
 	if (err)
 		goto out;
 
@@ -255,8 +255,8 @@ int get_pinned_program(const struct iface *iface, const char *pin_root_path,
 	struct dirent *de;
 	DIR *dr;
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
-			     pin_root_path, iface->ifname);
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
+			   pin_root_path, iface->ifname);
 	if (err)
 		return err;
 
@@ -279,9 +279,9 @@ int get_pinned_program(const struct iface *iface, const char *pin_root_path,
 		    !strcmp("..", de->d_name))
 			continue;
 
-		err = check_snprintf(pin_path, sizeof(pin_path),
-				     "%s/programs/%s/%s", pin_root_path,
-				     iface->ifname, de->d_name);
+		err = try_snprintf(pin_path, sizeof(pin_path),
+				   "%s/programs/%s/%s", pin_root_path,
+				   iface->ifname, de->d_name);
 		if (err)
 			goto out;
 
@@ -329,8 +329,8 @@ int iterate_pinned_programs(const char *pin_root_path,
 	int err = 0;
 	DIR *dr;
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs",
-			     pin_root_path);
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/programs",
+			   pin_root_path);
 	if (err)
 		return err;
 
@@ -350,8 +350,8 @@ int iterate_pinned_programs(const char *pin_root_path,
 		iface.ifname = de->d_name;
 		iface.ifindex = if_nametoindex(iface.ifname);
 
-		err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
-				     pin_root_path, iface.ifname);
+		err = try_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
+				   pin_root_path, iface.ifname);
 		if (err)
 			goto out;
 
@@ -538,9 +538,9 @@ int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir)
 	}
 
 	if (subdir)
-		return check_snprintf(buf, buf_len, "%s/%s", bpf_dir, subdir);
+		return try_snprintf(buf, buf_len, "%s/%s", bpf_dir, subdir);
 	else
-		return check_snprintf(buf, buf_len, "%s", bpf_dir);
+		return try_snprintf(buf, buf_len, "%s", bpf_dir);
 }
 
 int get_pinned_map_fd(const char *bpf_root, const char *map_name,
@@ -550,7 +550,7 @@ int get_pinned_map_fd(const char *bpf_root, const char *map_name,
 	char buf[PATH_MAX];
 	int err;
 
-	err = check_snprintf(buf, sizeof(buf), "%s/%s", bpf_root, map_name);
+	err = try_snprintf(buf, sizeof(buf), "%s/%s", bpf_root, map_name);
 	if (err)
 		return err;
 
@@ -683,8 +683,8 @@ int prog_lock_get(const char *progname)
 	}
 
 	if (!prog_lock_file) {
-		err = check_snprintf(buf, sizeof(buf), "%s/%s.lck", lock_dir,
-				     progname);
+		err = try_snprintf(buf, sizeof(buf), "%s/%s.lck", lock_dir,
+				   progname);
 		if (err)
 			return err;
 
