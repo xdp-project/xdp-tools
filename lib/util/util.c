@@ -710,7 +710,7 @@ int prog_lock_get(const char *progname)
 	if (prog_lock_fd < 0) {
 		err = -errno;
 		if (err == -EEXIST) {
-			unsigned long pid;
+			unsigned long pid = 0;
 			char buf[100];
 			ssize_t len;
 			int fd;
@@ -723,11 +723,12 @@ int prog_lock_get(const char *progname)
 				return err;
 			}
 
-			len = read(fd, buf, sizeof(buf));
+			len = read(fd, buf, sizeof(buf)-1);
 			close(fd);
-			buf[len] = '\0';
-
-			pid = strtoul(buf, NULL, 10);
+			if (len > 0) {
+				buf[len] = '\0';
+				pid = strtoul(buf, NULL, 10);
+			}
 			if (!pid) {
 				err = -errno;
 				pr_warn("Unable to read PID from lockfile: %s\n",
