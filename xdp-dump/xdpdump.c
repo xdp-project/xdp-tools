@@ -422,7 +422,7 @@ error_exit:
 static size_t find_func_matches(const struct btf *btf,
 				const char *func_name,
 				const char **found_name,
-				bool print)
+				bool print, bool exact)
 {
 	const struct btf_type *t, *match;
 	size_t len, matches = 0;
@@ -450,7 +450,13 @@ static size_t find_func_matches(const struct btf *btf,
 			if (print)
 				pr_warn("  %s\n", name);
 
-			if (strlen(name) == len) {
+			/* Do an exact match if the user specified a function
+			 * name, or if there is no possibility of truncation
+			 * because the length is different from the truncated
+			 * length.
+			 */
+			if (strlen(name) == len &&
+			    (exact || len != BPF_OBJ_NAME_LEN -1)) {
 				*found_name = name;
 				return 1; /* exact match */
 			}
@@ -475,6 +481,7 @@ static int find_target(struct xdp_multiprog *mp,
 		       struct xdp_program **tgt_prog,
 		       const char **tgt_func)
 {
+	bool match_exact = !!function_override;
 	struct xdp_program *prog, *p;
 	size_t matches = 0;
 	const char *func;
@@ -482,8 +489,7 @@ static int find_target(struct xdp_multiprog *mp,
 	prog = xdp_multiprog__main_prog(mp);
 	matches = find_func_matches(xdp_program__btf(prog),
 				    function_override ?: xdp_program__name(prog),
-				    &func,
-				    false);
+				    &func, false, match_exact);
 
 	if (!function_override)
 		goto check;
@@ -495,7 +501,8 @@ static int find_target(struct xdp_multiprog *mp,
 		size_t m;
 
 		m = find_func_matches(xdp_program__btf(p),
-				      function_override, &f, false);
+				      function_override, &f, false,
+				      match_exact);
 		if (m == 1) {
 			prog = p;
 			func = f;
@@ -520,15 +527,14 @@ check:
 	prog = xdp_multiprog__main_prog(mp);
 	find_func_matches(xdp_program__btf(prog),
 			  function_override ?: xdp_program__name(prog),
-			  &func,
-			  true);
+			  &func, true, match_exact);
 
 	for (p = xdp_multiprog__next_prog(NULL, mp);
 	     p && function_override;
 	     p = xdp_multiprog__next_prog(p, mp))
 
 		find_func_matches(xdp_program__btf(p),
-				      function_override, &func, true);
+				  function_override, &func, true, match_exact);
 
 	pr_warn("Please use the -p option to pick the correct one.\n");
 	return -EAGAIN;
