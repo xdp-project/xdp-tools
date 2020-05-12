@@ -86,7 +86,6 @@ int do_load(const void *cfg, const char *pin_root_path)
 		pr_warn("Couldn't allocate memory\n");
 		return EXIT_FAILURE;
 	}
-	memset(progs, 0, sizeof(*progs) * num_progs);
 
 	pr_debug("Loading %zu files on interface '%s'.\n",
 		 num_progs, opt->iface.ifname);
