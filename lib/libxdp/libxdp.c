@@ -941,7 +941,8 @@ struct xdp_program *xdp_program__from_pin(const char *pin_path)
 	fd = bpf_obj_get(pin_path);
 	if (fd < 0) {
 		err = -errno;
-		pr_warn("couldn't get program fd: %s", strerror(-err));
+		pr_warn("couldn't get program fd from %s: %s",
+			pin_path, strerror(-err));
 		return ERR_PTR(err);
 	}
 
