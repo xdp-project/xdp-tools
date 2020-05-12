@@ -15,6 +15,7 @@
 struct xdp_dispatcher_config {
 	__u8 num_progs_enabled;
 	__u32 chain_call_actions[MAX_DISPATCHER_ACTIONS];
+	__u32 run_prios[MAX_DISPATCHER_ACTIONS];
 };
 
 #endif

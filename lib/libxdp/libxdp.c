@@ -1256,8 +1256,8 @@ static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 {
 	struct xdp_program *prog, *p = mp->first_prog;
 	char buf[PATH_MAX], pin_path[PATH_MAX];
-	int err, prog_fd, lock_fd, i;
 	const char *bpffs_dir;
+	int err, lock_fd, i;
 	struct stat sb = {};
 
 	if (!mp)
@@ -1292,19 +1292,9 @@ static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 		if (err)
 			goto err;
 
-		prog_fd = bpf_obj_get(buf);
-		if (prog_fd < 0) {
-			err = -errno;
-			pr_warn("Couldn't get prog at %s: %s\n",
-				buf, strerror(-err));
-			goto err;
-		}
-
-		prog = xdp_program__from_fd(prog_fd);
+		prog = xdp_program__from_pin(buf);
 		if (IS_ERR(prog)) {
 			err = PTR_ERR(prog);
-			pr_warn("Couldn't get XDP prog from fd %d: %s\n",
-				prog_fd, strerror(-err));
 			goto err;
 		}
 		err = try_snprintf(buf, sizeof(buf), "prog%d", i);
@@ -1315,6 +1305,9 @@ static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 			err = -ENOMEM;
 			goto err;
 		}
+
+		prog->chain_call_actions = mp->config.chain_call_actions[i];
+		prog->run_prio = mp->config.run_prios[i];
 
 		if (!p) {
 			mp->first_prog = prog;
@@ -1651,8 +1644,10 @@ xdp_multiprog__generate(struct xdp_program **progs,
 	}
 
 	mp->config.num_progs_enabled = num_progs;
-	for (i = 0; i < num_progs; i++)
+	for (i = 0; i < num_progs; i++) {
 		mp->config.chain_call_actions[i] = progs[i]->chain_call_actions;
+		mp->config.run_prios[i] = progs[i]->run_prio;
+	}
 
 	err = bpf_map__set_initial_value(map, &mp->config, sizeof(mp->config));
 	if (err) {
