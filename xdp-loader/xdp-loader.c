@@ -105,10 +105,6 @@ retry:
 		p = xdp_program__open_file(opt->filenames.strings[i],
 					   opt->section_name, &opts);
 
-		xdp_program__print_chain_call_actions(p, errmsg, sizeof(errmsg));
-		pr_debug("XDP program %d: Run prio: %d. Chain call actions: %s\n",
-			 i, xdp_program__run_prio(p), errmsg);
-
 		if (IS_ERR(p)) {
 			err = PTR_ERR(p);
 			pr_warn("Couldn't open file '%s': %s",
@@ -116,11 +112,21 @@ retry:
 			goto out;
 		}
 
+		xdp_program__print_chain_call_actions(p, errmsg, sizeof(errmsg));
+		pr_debug("XDP program %d: Run prio: %d. Chain call actions: %s\n",
+			 i, xdp_program__run_prio(p), errmsg);
+
 		if (!opt->pin_path) {
 			struct bpf_map *map;
 
-			bpf_object__for_each_map(map, xdp_program__bpf_obj(p))
-				bpf_map__set_pin_path(map, NULL);
+			bpf_object__for_each_map(map, xdp_program__bpf_obj(p)) {
+				err = bpf_map__set_pin_path(map, NULL);
+				if (err) {
+					pr_warn("Error clearing map pin path: %s\n",
+						strerror(-err));
+					goto out;
+				}
+			}
 		}
 
 		progs[i] = p;
@@ -133,7 +139,8 @@ retry:
 			pr_debug("Permission denied when loading eBPF object; "
 				 "raising rlimit and retrying\n");
 
-			if (!double_rlimit())
+			err = double_rlimit();
+			if (!err)
 				goto retry;
 		}
 
