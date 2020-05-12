@@ -416,6 +416,9 @@ error_exit:
 	return rc;
 }
 
+/*****************************************************************************
+ * find_func_matches()
+ *****************************************************************************/
 static size_t find_func_matches(const struct btf *btf,
 				const char *func_name,
 				const char **found_name,
@@ -465,7 +468,7 @@ static size_t find_func_matches(const struct btf *btf,
 }
 
 /*****************************************************************************
- * find_target_program()
+ * find_target()
  *****************************************************************************/
 static int find_target(struct xdp_multiprog *mp,
 		       char *function_override,
