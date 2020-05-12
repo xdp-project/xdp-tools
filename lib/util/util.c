@@ -385,7 +385,7 @@ int iterate_iface_multiprogs(multiprog_callback cb, void *arg)
 	if (!indexes) {
 		err = -errno;
 		pr_warn("Couldn't get list of interfaces: %s\n", strerror(-err));
-		goto out;
+		return err;
 	}
 
 	for (idx = indexes; idx->if_index; idx++){
@@ -411,6 +411,7 @@ int iterate_iface_multiprogs(multiprog_callback cb, void *arg)
 	}
 
 out:
+	if_freenameindex(indexes);
 	return err;
 }
 
