@@ -1863,7 +1863,7 @@ static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 		xdp_flags |= XDP_FLAGS_DRV_MODE;
 		break;
 	case XDP_MODE_HW:
-		return -EOPNOTSUPP;
+		xdp_flags |= XDP_FLAGS_HW_MODE;
 		break;
 	case XDP_MODE_UNSPEC:
 		break;
@@ -1880,7 +1880,7 @@ static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 			pr_debug("XDP already loaded on device\n");
 			break;
 		case EOPNOTSUPP:
-			pr_debug("Native XDP not supported; try using SKB mode\n");
+			pr_debug("XDP mode not supported; try using SKB mode\n");
 			break;
 		default:
 			break;
