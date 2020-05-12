@@ -48,15 +48,17 @@ bool xdp_program__is_attached(const struct xdp_program *xdp_prog, int ifindex);
 const char *xdp_program__name(const struct xdp_program *xdp_prog);
 const unsigned char *xdp_program__tag(const struct xdp_program *xdp_prog);
 struct bpf_object *xdp_program__bpf_obj(struct xdp_program *xdp_prog);
-struct btf *xdp_program__btf(struct xdp_program *xdp_prog);
+const struct btf *xdp_program__btf(struct xdp_program *xdp_prog);
 uint32_t xdp_program__id(const struct xdp_program *xdp_prog);
 int xdp_program__fd(const struct xdp_program *xdp_prog);
 unsigned int xdp_program__run_prio(const struct xdp_program *xdp_prog);
-void xdp_program__set_run_prio(struct xdp_program *xdp_prog, unsigned int run_prio);
+int xdp_program__set_run_prio(struct xdp_program *xdp_prog,
+                              unsigned int run_prio);
 bool xdp_program__chain_call_enabled(const struct xdp_program *xdp_prog,
 				     enum xdp_action action);
-void xdp_program__set_chain_call_enabled(struct xdp_program *prog, unsigned int action,
-                                         bool enabled);
+int xdp_program__set_chain_call_enabled(struct xdp_program *prog,
+                                        unsigned int action,
+                                        bool enabled);
 int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 					  char *buf,
 					  size_t buf_len);

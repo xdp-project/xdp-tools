@@ -233,7 +233,7 @@ static int xdp_lock_release(int lock_fd)
 	return err;
 }
 
-struct btf *xdp_program__btf(struct xdp_program *xdp_prog)
+const struct btf *xdp_program__btf(struct xdp_program *xdp_prog)
 {
 	if (!xdp_prog)
 		return NULL;
@@ -273,17 +273,18 @@ out:
 	return ret;
 }
 
-void xdp_program__set_chain_call_enabled(struct xdp_program *prog,
-					 unsigned int action, bool enabled)
+int xdp_program__set_chain_call_enabled(struct xdp_program *prog,
+					unsigned int action, bool enabled)
 {
-	if (!prog)
-		return;
+	if (!prog || prog->prog_fd)
+		return -EINVAL;
 
-	/* FIXME: Should this also update the BTF info? */
 	if (enabled)
 		prog->chain_call_actions |= (1<<action);
 	else
 		prog->chain_call_actions &= ~(1<<action);
+
+	return 0;
 }
 
 bool xdp_program__chain_call_enabled(const struct xdp_program *prog,
@@ -303,13 +304,13 @@ unsigned int xdp_program__run_prio(const struct xdp_program *prog)
 	return prog->run_prio;
 }
 
-void xdp_program__set_run_prio(struct xdp_program *prog, unsigned int run_prio)
+int xdp_program__set_run_prio(struct xdp_program *prog, unsigned int run_prio)
 {
-	if (!prog)
-		return;
+	if (!prog || prog->prog_fd)
+		return -EINVAL;
 
-	/* FIXME: Should this also update the BTF info? */
 	prog->run_prio = run_prio;
+	return 0;
 }
 
 const char *xdp_program__name(const struct xdp_program *prog)
@@ -587,7 +588,7 @@ static const struct btf_type *btf_get_section_var(const struct btf *btf,
  */
 static int xdp_program__parse_btf(struct xdp_program *xdp_prog)
 {
-	struct btf *btf = xdp_program__btf(xdp_prog);
+	const struct btf *btf = xdp_program__btf(xdp_prog);
 	const struct btf_type *def, *sec;
 	const struct btf_member *m;
 	char struct_name[100];
