@@ -168,12 +168,17 @@ int attach_xdp_program(struct xdp_program *prog, const struct iface *iface,
 	char pin_path[PATH_MAX];
 	int err = 0;
 
-	if (!pin_root_path)
+	if (!pin_root_path) {
+		pr_debug("No pin path, skipping pinning\n");
 		goto load;
+	}
 
 	err = make_dir_subdir(pin_root_path, "programs");
-	if (err)
+	if (err) {
+		pr_warn("Unable to create pin directory: %s\n",
+			strerror(-err));
 		return err;
+	}
 
 	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s/%s",
 			     pin_root_path, iface->ifname,
@@ -291,8 +296,8 @@ int get_pinned_program(const struct iface *iface, const char *pin_root_path,
 		if (IS_ERR_OR_NULL(prog) ||
 		    !xdp_program__is_attached(prog, iface->ifindex)) {
 			ret = IS_ERR(prog) ? PTR_ERR(prog) : -ENOENT;
-			pr_debug("Program %s no longer loaded on %s\n",
-				 de->d_name, iface->ifname);
+			pr_debug("Program %s no longer loaded on %s: %s\n",
+				 de->d_name, iface->ifname, strerror(-ret));
 			err = unlink(pin_path);
 			if (err)
 				ret = err;
