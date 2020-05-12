@@ -339,9 +339,9 @@ int iterate_pinned_programs(const char *pin_root_path,
 		return -ENOENT;
 
 	while ((de = readdir(dr)) != NULL) {
-		struct xdp_program *prog;
+		enum xdp_attach_mode mode = XDP_MODE_UNSPEC;
+		struct xdp_program *prog = NULL;
 		struct iface iface = {};
-		enum xdp_attach_mode mode;
 
 		if (!strcmp(".", de->d_name) ||
 		    !strcmp("..", de->d_name))
