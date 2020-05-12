@@ -247,7 +247,7 @@ bool xdp_program__is_attached(const struct xdp_program *xdp_prog, int ifindex)
 	struct xdp_multiprog *mp;
 	bool ret = false;
 
-	if (!xdp_prog->prog_id)
+	if (!xdp_prog || !xdp_prog->prog_id)
 		return false;
 
 	mp = xdp_multiprog__get_from_ifindex(ifindex);
@@ -997,7 +997,7 @@ static int cmp_xdp_programs(const void *_a, const void *_b)
 
 int xdp_program__pin(struct xdp_program *prog, const char *pin_path)
 {
-	if (!prog->prog_fd)
+	if (!prog || !prog->prog_fd)
 		return -EINVAL;
 
 	return bpf_program__pin(prog->bpf_prog, pin_path);
@@ -1055,6 +1055,9 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 {
 	struct xdp_multiprog *old_mp, *mp;
 	int err = 0;
+
+	if (!progs || !num_progs)
+		return -EINVAL;
 
 	old_mp = xdp_multiprog__get_from_ifindex(ifindex);
 	if (!IS_ERR_OR_NULL(old_mp)) {
@@ -1678,7 +1681,7 @@ static int xdp_multiprog__pin(struct xdp_multiprog *mp)
 	const char *bpffs_dir;
 	int err = 0, lock_fd;
 
-	if (!mp)
+	if (!mp || mp->is_legacy)
 		return -EINVAL;
 
 	bpffs_dir = get_bpffs_dir();
@@ -1760,7 +1763,7 @@ static int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 	const char *bpffs_dir;
 	int err = 0, lock_fd;
 
-	if (!mp)
+	if (!mp || mp->is_legacy)
 		return -EINVAL;
 
 	bpffs_dir = get_bpffs_dir();
