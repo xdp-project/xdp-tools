@@ -1082,6 +1082,8 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 
 	err = xdp_multiprog__attach(NULL, mp, ifindex, mode);
 	if (err) {
+		pr_warn("Failed to attach dispatcher on ifindex %d: %s\n",
+			ifindex, strerror(-err));
 		xdp_multiprog__unpin(mp);
 		goto out_close;
 	}
@@ -1435,7 +1437,8 @@ legacy:
 	}
 
 	mp->is_loaded = true;
-	pr_debug("Found multiprog with id %d and %zu component progs\n",
+	pr_debug("Found %s with id %d and %zu component progs\n",
+		 mp->is_legacy ? "legacy program" : "multiprog",
 		 mp->main_prog->prog_id, mp->num_links);
 
 out:
