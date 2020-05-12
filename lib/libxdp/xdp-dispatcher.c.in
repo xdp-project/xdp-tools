@@ -32,7 +32,7 @@ static volatile const struct xdp_dispatcher_config conf = {};
 forloop(`i', `0', NUM_PROGS,
 `__attribute__ ((noinline))
 int format(`prog%d', i)(struct xdp_md *ctx) {
-        volatile int ret = XDP_PASS;
+        volatile int ret = XDP_DISPATCHER_RETVAL;
 
         if (!ctx)
           return XDP_ABORTED;
@@ -50,7 +50,7 @@ forloop(`i', `0', NUM_PROGS,
         if (num_progs_enabled < incr(i))
                 goto out;
         ret = format(`prog%d', i)(ctx);
-        if (!((1 << ret) & conf.chain_call_actions[i]))
+        if (!((1U << ret) & conf.chain_call_actions[i]))
                 return ret;
 ')
 out:

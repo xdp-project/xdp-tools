@@ -276,13 +276,13 @@ out:
 int xdp_program__set_chain_call_enabled(struct xdp_program *prog,
 					unsigned int action, bool enabled)
 {
-	if (!prog || prog->prog_fd)
+	if (!prog || prog->prog_fd || action >= XDP_DISPATCHER_RETVAL)
 		return -EINVAL;
 
 	if (enabled)
-		prog->chain_call_actions |= (1<<action);
+		prog->chain_call_actions |= (1U << action);
 	else
-		prog->chain_call_actions &= ~(1<<action);
+		prog->chain_call_actions &= ~(1U << action);
 
 	return 0;
 }
@@ -290,10 +290,10 @@ int xdp_program__set_chain_call_enabled(struct xdp_program *prog,
 bool xdp_program__chain_call_enabled(const struct xdp_program *prog,
 				     enum xdp_action action)
 {
-	if (!prog)
+	if (!prog || action >= XDP_DISPATCHER_RETVAL)
 		return false;
 
-	return !!(prog->chain_call_actions & (1<<action));
+	return !!(prog->chain_call_actions & (1U << action));
 }
 
 unsigned int xdp_program__run_prio(const struct xdp_program *prog)
@@ -1308,7 +1308,8 @@ static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 			goto err;
 		}
 
-		prog->chain_call_actions = mp->config.chain_call_actions[i];
+		prog->chain_call_actions = (mp->config.chain_call_actions[i]
+					    & ~(1U << XDP_DISPATCHER_RETVAL));
 		prog->run_prio = mp->config.run_prios[i];
 
 		if (!p) {
@@ -1647,7 +1648,8 @@ xdp_multiprog__generate(struct xdp_program **progs,
 
 	mp->config.num_progs_enabled = num_progs;
 	for (i = 0; i < num_progs; i++) {
-		mp->config.chain_call_actions[i] = progs[i]->chain_call_actions;
+		mp->config.chain_call_actions[i] = (progs[i]->chain_call_actions |
+						    (1U << XDP_DISPATCHER_RETVAL));
 		mp->config.run_prios[i] = progs[i]->run_prio;
 	}
 
