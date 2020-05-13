@@ -694,6 +694,8 @@ void xdp_program__close(struct xdp_program *xdp_prog)
 		else if (xdp_prog->btf)
 			btf__free(xdp_prog->btf);
 	}
+
+	free(xdp_prog);
 }
 
 static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
@@ -1182,6 +1184,8 @@ void xdp_multiprog__close(struct xdp_multiprog *mp)
 		next = p->next;
 		xdp_program__close(p);
 	}
+
+	free(mp);
 }
 
 static int xdp_multiprog__main_fd(struct xdp_multiprog *mp)
