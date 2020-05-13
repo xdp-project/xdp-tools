@@ -362,6 +362,9 @@ static int remove_unused_maps(const char *pin_root_path, __u32 features)
 		dir_fd = -1;
 
 		err = try_snprintf(buf, sizeof(buf), "%s/%s", pin_root_path, "programs");
+		if (err)
+			goto out;
+
 		pr_debug("Removing program directory %s\n", buf);
 		err = rmdir(buf);
 		if (err) {
@@ -917,6 +920,8 @@ int do_status(const void *cfg, const char *pin_root_path)
 
 	err = iterate_pinned_programs(pin_root_path, print_iface_status,
 				      NULL);
+	if (err)
+		goto out;
 	printf("\n");
 
 	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS), NULL);
