@@ -73,44 +73,67 @@ static __u32 find_features(const char *progname)
 int map_get_counter_flags(int fd, void *key, __u64 *counter, __u8 *flags)
 {
 	/* For percpu maps, userspace gets a value per possible CPU */
-	unsigned int nr_cpus = libbpf_num_possible_cpus();
-	__u64 values[nr_cpus];
+	int nr_cpus = libbpf_num_possible_cpus();
 	__u64 sum_ctr = 0;
-	int i;
+	int i, err = 0;
+	__u64 *values;
 
-	if ((bpf_map_lookup_elem(fd, key, values)) != 0)
-		return -ENOENT;
+	if (nr_cpus < 0)
+		return nr_cpus;
+
+	values = calloc(nr_cpus, sizeof(*values));
+	if (!values)
+		return -ENOMEM;
+
+	if ((bpf_map_lookup_elem(fd, key, values)) != 0) {
+		err =  -ENOENT;
+		goto out;
+	}
 
 	/* Sum values from each CPU */
 	for (i = 0; i < nr_cpus; i++) {
 		__u8 flg = values[i] & MAP_FLAGS;
 
-		if (!flg)
-			return -ENOENT; /* not set */
+		if (!flg) {
+			err = -ENOENT; /* not set */
+			goto out;
+		}
 		*flags = flg;
 		sum_ctr += values[i] >> COUNTER_SHIFT;
 	}
 	*counter = sum_ctr;
 
-	return 0;
+out:
+	free(values);
+	return err;
 }
 
 int map_set_flags(int fd, void *key, __u8 flags)
 {
 	/* For percpu maps, userspace gets a value per possible CPU */
-	unsigned int nr_cpus = libbpf_num_possible_cpus();
-	__u64 values[nr_cpus];
-	int i;
+	int nr_cpus = libbpf_num_possible_cpus();
+	__u64 *values;
+	int i, err;
+
+	if (nr_cpus < 0)
+		return nr_cpus;
+
+	values = calloc(nr_cpus, sizeof(*values));
+	if (!values)
+		return -ENOMEM;
 
 	if ((bpf_map_lookup_elem(fd, key, values)) != 0)
-		memset(values, 0, sizeof(values));
+		memset(values, 0, sizeof(*values) * nr_cpus);
 
 	for (i = 0; i < nr_cpus; i++)
 		values[i]  = flags ? (values[i] & ~MAP_FLAGS) | (flags & MAP_FLAGS) : 0;
 
 	pr_debug("Setting new map value %llu from flags %u\n", values[0], flags);
 
-	return bpf_map_update_elem(fd, key, &values, 0);
+	err = bpf_map_update_elem(fd, key, &values, 0);
+
+	free(values);
+	return err;
 }
 
 static int get_iface_features(const struct iface *iface,
