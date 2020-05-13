@@ -591,7 +591,7 @@ rlimit_loop:
 	err = libbpf_get_error(trace_obj);
 	if (err) {
 		pr_warn("ERROR: Can't open XDP trace program: %s(%d)\n",
-			strerror(err), err);
+			strerror(-err), err);
 		trace_obj = NULL;
 		goto error_exit;
 	}
@@ -744,7 +744,7 @@ rlimit_loop:
 		err = perf_buffer__poll(perf_buf, 1000);
 		if (err < 0 && err != -EINTR) {
 			pr_warn("ERROR: Perf buffer polling failed: %s(%d)",
-				strerror(err), err);
+				strerror(-err), err);
 			goto error_exit;
 		}
 	}
