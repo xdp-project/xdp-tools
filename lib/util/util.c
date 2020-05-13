@@ -481,13 +481,11 @@ static int bpf_mnt_check_target(const char *target)
 	struct stat sb = {};
 	int ret;
 
-	ret = stat(target, &sb);
-	if (ret) {
-		ret = mkdir(target, S_IRWXU);
-		if (ret) {
-			pr_warn("mkdir %s failed: %s\n", target, strerror(errno));
-			return ret;
-		}
+	ret = mkdir(target, S_IRWXU);
+	if (ret && errno != EEXIST) {
+		ret = -errno;
+		pr_warn("mkdir %s failed: %s\n", target, strerror(-ret));
+		return ret;
 	}
 
 	return 0;
