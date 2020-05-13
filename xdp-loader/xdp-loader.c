@@ -81,7 +81,7 @@ int do_load(const void *cfg, const char *pin_root_path)
 	}
 
 	num_progs = opt->filenames.num_strings;
-	progs = calloc(sizeof(*progs), num_progs);
+	progs = calloc(num_progs, sizeof(*progs));
 	if (!progs) {
 		pr_warn("Couldn't allocate memory\n");
 		return EXIT_FAILURE;
@@ -154,6 +154,7 @@ out:
 	for (i = 0; i < num_progs; i++)
 		if (progs[i])
 			xdp_program__close(progs[i]);
+	free(progs);
 	return err;
 }
 
