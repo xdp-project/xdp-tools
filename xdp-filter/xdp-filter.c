@@ -902,9 +902,9 @@ int do_status(const void *cfg, const char *pin_root_path)
 		if (err)
 			goto out;
 		printf("\n");
+		close(map_fd);
+		map_fd = -1;
 	}
-	close(map_fd);
-	map_fd = -1;
 
 	err = print_ips(pin_root_path);
 	if (err)
