@@ -727,7 +727,7 @@ int prog_lock_get(const char *progname)
 				buf[len] = '\0';
 				pid = strtoul(buf, NULL, 10);
 			}
-			if (!pid) {
+			if (!pid || errno) {
 				err = -errno;
 				pr_warn("Unable to read PID from lockfile: %s\n",
 					strerror(-err));
