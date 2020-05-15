@@ -146,16 +146,23 @@ static int map_get_value_array(int fd, __u32 key, struct datarec *value)
 static int map_get_value_percpu_array(int fd, __u32 key, struct datarec *value)
 {
 	/* For percpu maps, userspace gets a value per possible CPU */
-	unsigned int nr_cpus = libbpf_num_possible_cpus();
-	struct datarec values[nr_cpus];
+	int nr_cpus = libbpf_num_possible_cpus();
+	struct datarec *values;
 	__u64 sum_bytes = 0;
 	__u64 sum_pkts = 0;
 	int i, err;
 
+	if (nr_cpus < 0)
+		return nr_cpus;
+
+	values = calloc(nr_cpus, sizeof(*values));
+	if (!values)
+		return -ENOMEM;
+
 	err = bpf_map_lookup_elem(fd, &key, values);
 	if (err) {
 		pr_debug("bpf_map_lookup_elem failed key:0x%X\n", key);
-		return err;
+		goto out;
 	}
 
 	/* Sum values from each CPU */
@@ -165,7 +172,9 @@ static int map_get_value_percpu_array(int fd, __u32 key, struct datarec *value)
 	}
 	value->rx_packets = sum_pkts;
 	value->rx_bytes   = sum_bytes;
-	return 0;
+out:
+	free(values);
+	return err;
 }
 
 static int map_collect(int fd, __u32 map_type, __u32 key, struct record *rec)

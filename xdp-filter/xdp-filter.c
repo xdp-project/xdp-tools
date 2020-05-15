@@ -10,6 +10,7 @@
 
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
+#include <xdp/libxdp.h>
 #include <arpa/inet.h>
 
 #include <linux/if_ether.h>
@@ -72,53 +73,76 @@ static __u32 find_features(const char *progname)
 int map_get_counter_flags(int fd, void *key, __u64 *counter, __u8 *flags)
 {
 	/* For percpu maps, userspace gets a value per possible CPU */
-	unsigned int nr_cpus = libbpf_num_possible_cpus();
-	__u64 values[nr_cpus];
+	int nr_cpus = libbpf_num_possible_cpus();
 	__u64 sum_ctr = 0;
-	int i;
+	int i, err = 0;
+	__u64 *values;
 
-	if ((bpf_map_lookup_elem(fd, key, values)) != 0)
-		return -ENOENT;
+	if (nr_cpus < 0)
+		return nr_cpus;
+
+	values = calloc(nr_cpus, sizeof(*values));
+	if (!values)
+		return -ENOMEM;
+
+	if ((bpf_map_lookup_elem(fd, key, values)) != 0) {
+		err =  -ENOENT;
+		goto out;
+	}
 
 	/* Sum values from each CPU */
 	for (i = 0; i < nr_cpus; i++) {
 		__u8 flg = values[i] & MAP_FLAGS;
 
-		if (!flg)
-			return -ENOENT; /* not set */
+		if (!flg) {
+			err = -ENOENT; /* not set */
+			goto out;
+		}
 		*flags = flg;
 		sum_ctr += values[i] >> COUNTER_SHIFT;
 	}
 	*counter = sum_ctr;
 
-	return 0;
+out:
+	free(values);
+	return err;
 }
 
 int map_set_flags(int fd, void *key, __u8 flags)
 {
 	/* For percpu maps, userspace gets a value per possible CPU */
-	unsigned int nr_cpus = libbpf_num_possible_cpus();
-	__u64 values[nr_cpus];
-	int i;
+	int nr_cpus = libbpf_num_possible_cpus();
+	__u64 *values;
+	int i, err;
+
+	if (nr_cpus < 0)
+		return nr_cpus;
+
+	values = calloc(nr_cpus, sizeof(*values));
+	if (!values)
+		return -ENOMEM;
 
 	if ((bpf_map_lookup_elem(fd, key, values)) != 0)
-		memset(values, 0, sizeof(values));
+		memset(values, 0, sizeof(*values) * nr_cpus);
 
 	for (i = 0; i < nr_cpus; i++)
 		values[i]  = flags ? (values[i] & ~MAP_FLAGS) | (flags & MAP_FLAGS) : 0;
 
 	pr_debug("Setting new map value %llu from flags %u\n", values[0], flags);
 
-	return bpf_map_update_elem(fd, key, &values, 0);
+	err = bpf_map_update_elem(fd, key, &values, 0);
+
+	free(values);
+	return err;
 }
 
 static int get_iface_features(const struct iface *iface,
-			      const struct bpf_prog_info *info,
+			      struct xdp_program *prog,
 			      enum xdp_attach_mode mode, void *arg)
 {
 	__u32 *all_feats = arg;
 
-	*all_feats |= find_features(info->name);
+	*all_feats |= find_features(xdp_program__name(prog));
 	return 0;
 }
 
@@ -127,8 +151,8 @@ static int get_used_features(const char *pin_root_path, __u32 *feats)
 	__u32 all_feats = 0;
 	int err;
 
-	err = iterate_iface_programs_pinned(pin_root_path, get_iface_features,
-					    &all_feats);
+	err = iterate_pinned_programs(pin_root_path, get_iface_features,
+				      &all_feats);
 	if (err && err != -ENOENT)
 		return err;
 
@@ -140,7 +164,6 @@ static const struct loadopt {
 	bool help;
 	struct iface iface;
 	unsigned int features;
-	bool force;
 	enum xdp_attach_mode mode;
 	bool whitelist_mode;
 } defaults_load = {
@@ -177,9 +200,6 @@ struct enum_val xdp_modes[] = {
 };
 
 static struct prog_option load_options[] = {
-	DEFINE_OPTION("force", OPT_BOOL, struct loadopt, force,
-		      .short_opt = 'F',
-		      .help = "Force loading of XDP program"),
 	DEFINE_OPTION("mode", OPT_ENUM, struct loadopt, mode,
 		      .short_opt = 'm',
 		      .typearg = xdp_modes,
@@ -204,6 +224,7 @@ static struct prog_option load_options[] = {
 int do_load(const void *cfg, const char *pin_root_path)
 {
 	char errmsg[STRERR_BUFSIZE], featbuf[100];
+	struct xdp_program *p;
 	const struct loadopt *opt = cfg;
 	struct bpf_object *obj = NULL;
 	unsigned int features = opt->features;
@@ -255,50 +276,35 @@ int do_load(const void *cfg, const char *pin_root_path)
 	silence_libbpf_logging();
 
 retry:
-
-	obj = open_bpf_file(progname, &opts);
-	err = libbpf_get_error(obj);
+	p = xdp_program__find_file(progname, progname, &opts);
+	err = libxdp_get_error(obj);
 	if (err) {
-		if (err == -ENOENT) {
-			pr_warn("Couldn't load the eBPF program (libbpf said 'no such file').\n"
-				"Maybe xdp-filter was compiled with a too old "
-				"version of LLVM (need v9.0+)?\n");
-		} else {
-			pr_warn("Couldn't load BPF program: %s\n", strerror(-err));
-		}
+		pr_warn("Couldn't load BPF program: %s\n", strerror(-err));
 		obj = NULL;
 		goto out;
 	}
 
-
-	err = bpf_object__load(obj);
+	err = xdp_program__attach(p, opt->iface.ifindex, opt->mode);
 	if (err) {
 		if (err == -EPERM) {
 			pr_debug("Permission denied when loading eBPF object; "
 				 "raising rlimit and retrying\n");
 
 			if (!double_rlimit()) {
-				bpf_object__close(obj);
+				xdp_program__close(p);
 				goto retry;
 			}
 		}
 
-		libbpf_strerror(err, errmsg, sizeof(errmsg));
-		pr_warn("Couldn't load eBPF object: %s(%d)\n", errmsg, err);
+		libxdp_strerror(err, errmsg, sizeof(errmsg));
+		pr_warn("Couldn't attach XDP program on iface '%s': %s(%d)\n",
+			opt->iface.ifname, errmsg, err);
 		goto out;
 	}
 
 	chr = strchr(progname, '.');
 	if (chr)
 		*chr = '\0';
-
-	err = attach_xdp_program(obj, progname, &opt->iface, opt->force,
-				 opt->mode, pin_root_path);
-	if (err) {
-		pr_warn("Couldn't attach XDP program on iface '%s'\n",
-			opt->iface.ifname);
-		goto out;
-	}
 
 out:
 	if (obj)
@@ -355,7 +361,10 @@ static int remove_unused_maps(const char *pin_root_path, __u32 features)
 		close(dir_fd);
 		dir_fd = -1;
 
-		err = check_snprintf(buf, sizeof(buf), "%s/%s", pin_root_path, "programs");
+		err = try_snprintf(buf, sizeof(buf), "%s/%s", pin_root_path, "programs");
+		if (err)
+			goto out;
+
 		pr_debug("Removing program directory %s\n", buf);
 		err = rmdir(buf);
 		if (err) {
@@ -381,7 +390,7 @@ out:
 }
 
 static int remove_iface_program(const struct iface *iface,
-				const struct bpf_prog_info *info,
+				struct xdp_program *prog,
 				enum xdp_attach_mode mode, void *arg)
 {
 	char *pin_root_path = arg;
@@ -389,7 +398,7 @@ static int remove_iface_program(const struct iface *iface,
 	__u32 feats;
 	int err;
 
-	feats = find_features(info->name);
+	feats = find_features(xdp_program__name(prog));
 	if (!feats) {
 		pr_warn("Unrecognised XDP program on interface %s. Not removing.\n",
 			iface->ifname);
@@ -400,11 +409,12 @@ static int remove_iface_program(const struct iface *iface,
 	pr_debug("Removing XDP program with features %s from iface %s\n",
 		 buf, iface->ifname);
 
-	err = detach_xdp_program(iface, pin_root_path);
+	err = detach_xdp_program(prog, iface, mode, pin_root_path);
 	if (err) {
 		pr_warn("Removing XDP program on iface %s failed (%d): %s\n",
 			iface->ifname, -err, strerror(-err));
 	}
+
 	return err;
 }
 
@@ -432,7 +442,7 @@ static struct prog_option unload_options[] = {
 int do_unload(const void *cfg, const char *pin_root_path)
 {
 	const struct unloadopt *opt = cfg;
-	struct bpf_prog_info info;
+	struct xdp_program *prog;
 	int err = EXIT_SUCCESS;
 	char buf[100];
 	__u32 feats;
@@ -441,9 +451,9 @@ int do_unload(const void *cfg, const char *pin_root_path)
 
 	if (opt->all) {
 		pr_debug("Removing xdp-filter from all interfaces\n");
-		err = iterate_iface_programs_pinned(pin_root_path,
-						    remove_iface_program,
-						    (void *)pin_root_path);
+		err = iterate_pinned_programs(pin_root_path,
+					      remove_iface_program,
+					      (void *)pin_root_path);
 		if (err && err != -ENOENT)
 			goto out;
 		goto clean_maps;
@@ -455,15 +465,15 @@ int do_unload(const void *cfg, const char *pin_root_path)
 		goto out;
 	}
 
-	err = get_pinned_program(&opt->iface, pin_root_path, buf, sizeof(buf),
-				 NULL, &info);
+	err = get_pinned_program(&opt->iface, pin_root_path, NULL, &prog);
 	if (err) {
 		pr_warn("xdp-filter is not loaded on %s\n", opt->iface.ifname);
 		err = EXIT_FAILURE;
 		goto out;
 	}
 
-	err = remove_iface_program(&opt->iface, &info, false, (void *)pin_root_path);
+	err = remove_iface_program(&opt->iface, prog, XDP_MODE_UNSPEC,
+				   (void *)pin_root_path);
 	if (err)
 		goto out;
 
@@ -856,14 +866,14 @@ static struct prog_option status_options[] = {
 };
 
 int print_iface_status(const struct iface *iface,
-		       const struct bpf_prog_info *info,
+		       struct xdp_program *prog,
 		       enum xdp_attach_mode mode, void *arg)
 {
 	__u32 feat = 0;
 	int err;
-	printf("%s\n", info->name);
+	printf("%s\n", xdp_program__name(prog));
 
-	err = get_iface_features(iface, info, false, &feat);
+	err = get_iface_features(iface, prog, XDP_MODE_UNSPEC, &feat);
 	if (err)
 		return err;
 
@@ -908,8 +918,10 @@ int do_status(const void *cfg, const char *pin_root_path)
 	printf("Loaded on interfaces:\n");
 	printf("  %-40s Enabled features\n", "");
 
-	err = iterate_iface_programs_pinned(pin_root_path, print_iface_status,
-					    NULL);
+	err = iterate_pinned_programs(pin_root_path, print_iface_status,
+				      NULL);
+	if (err)
+		goto out;
 	printf("\n");
 
 	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS), NULL);
@@ -918,9 +930,9 @@ int do_status(const void *cfg, const char *pin_root_path)
 		if (err)
 			goto out;
 		printf("\n");
+		close(map_fd);
+		map_fd = -1;
 	}
-	close(map_fd);
-	map_fd = -1;
 
 	err = print_ips(pin_root_path);
 	if (err)

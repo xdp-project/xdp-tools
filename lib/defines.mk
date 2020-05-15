@@ -1,4 +1,4 @@
-CFLAGS ?= -O2 -g -Werror
+CFLAGS ?= -O2 -g
 BPF_CFLAGS ?= -Wno-visibility
 
 include $(LIB_DIR)/../config.mk
@@ -22,7 +22,7 @@ ifneq ($(PRODUCTION),1)
 DEFINES += -DDEBUG
 endif
 
-CFLAGS += $(DEFINES)
+CFLAGS += -Werror $(DEFINES)
 BPF_CFLAGS += $(DEFINES)
 
 CONFIGMK := $(LIB_DIR)/../config.mk
