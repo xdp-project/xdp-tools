@@ -478,7 +478,6 @@ static const char *bpf_find_mntpt(const char *fstype, unsigned long magic,
 
 static int bpf_mnt_check_target(const char *target)
 {
-	struct stat sb = {};
 	int ret;
 
 	ret = mkdir(target, S_IRWXU);
