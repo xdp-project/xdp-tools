@@ -231,8 +231,7 @@ int detach_xdp_program(struct xdp_program *prog, const struct iface *iface,
 		goto out;
 
 	err = try_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
-			   pin_root_path, iface->ifname,
-			   xdp_program__name(prog));
+			   pin_root_path, iface->ifname);
 	if (err)
 		goto out;
 
