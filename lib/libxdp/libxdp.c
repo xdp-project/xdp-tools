@@ -1540,7 +1540,7 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 	pr_debug("Linking prog %s as multiprog entry %zu\n",
 		 xdp_program__name(prog), mp->num_links);
 
-	err = try_snprintf(buf, sizeof(buf), "prog%d", mp->num_links);
+	err = try_snprintf(buf, sizeof(buf), "prog%zu", mp->num_links);
 	if (err)
 		goto err;
 
