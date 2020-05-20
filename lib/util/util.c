@@ -168,10 +168,8 @@ int attach_xdp_program(struct xdp_program *prog, const struct iface *iface,
 	char pin_path[PATH_MAX];
 	int err = 0;
 
-	if (!pin_root_path) {
-		pr_debug("No pin path, skipping pinning\n");
-		goto load;
-	}
+	if (!prog || !pin_root_path)
+		return -EINVAL;
 
 	err = make_dir_subdir(pin_root_path, "programs");
 	if (err) {
@@ -186,15 +184,6 @@ int attach_xdp_program(struct xdp_program *prog, const struct iface *iface,
 	if (err)
 		return err;
 
-	err = xdp_program__pin(prog, pin_path);
-	if (err) {
-		pr_warn("Unable to pin XDP program at %s: %s\n",
-			pin_path, strerror(-err));
-		return err;
-	}
-	pr_debug("XDP program pinned at %s\n", pin_path);
-
-load:
 	err = xdp_program__attach(prog, iface->ifindex, mode);
 	if (err) {
 		if (pin_root_path)
@@ -207,6 +196,17 @@ load:
 		 iface->ifname,
 		 mode == XDP_MODE_SKB ? " in skb mode" : "");
 
+	err = xdp_program__pin(prog, pin_path);
+	if (err) {
+		pr_warn("Unable to pin XDP program at %s: %s\n",
+			pin_path, strerror(-err));
+		goto unload;
+	}
+	pr_debug("XDP program pinned at %s\n", pin_path);
+	return err;
+
+unload:
+	xdp_program__detach(prog, iface->ifindex, mode);
 	return err;
 }
 
