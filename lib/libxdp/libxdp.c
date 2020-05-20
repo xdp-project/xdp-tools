@@ -710,12 +710,16 @@ static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 		return -EINVAL;
 
 	if (prog_name)
-		bpf_prog = bpf_object__find_program_by_title(obj, prog_name);
+		bpf_prog = bpf_object__find_program_by_name(obj, prog_name);
 	else
 		bpf_prog = bpf_program__next(NULL, obj);
 
-	if(!bpf_prog)
+	if(!bpf_prog) {
+		pr_warn("Couldn't find xdp program%s%s in bpf object\n",
+			prog_name ? " with name " : "",
+			prog_name ?: "");
 		return -ENOENT;
+	}
 
 	xdp_prog->prog_name = strdup(bpf_program__name(bpf_prog));
 	if (!xdp_prog->prog_name)

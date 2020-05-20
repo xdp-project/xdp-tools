@@ -40,8 +40,8 @@ int format(`prog%d', i)(struct xdp_md *ctx) {
 }
 ')
 
-SEC("xdp_dispatcher")
-int xdp_main(struct xdp_md *ctx)
+SEC("xdp")
+int xdp_dispatcher(struct xdp_md *ctx)
 {
         __u8 num_progs_enabled = conf.num_progs_enabled;
         int ret;
