@@ -293,7 +293,7 @@ retry:
 		goto out;
 	}
 
-	err = xdp_program__attach(p, opt->iface.ifindex, opt->mode);
+	err = attach_xdp_program(p, &opt->iface, opt->mode, pin_root_path);
 	if (err) {
 		if (err == -EPERM) {
 			pr_debug("Permission denied when loading eBPF object; "
