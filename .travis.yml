@@ -1,6 +1,6 @@
 sudo: required
 language: c
-script: make V=1 CLANG=clang-10 LLC=llc-10
+script: make V=1
 dist: bionic
 addons:
   apt:
@@ -16,8 +16,7 @@ addons:
       name: "xdp-project/xdp-tools"
       description: "Tools for using XDP"
     notification_email: toke@redhat.com
-    build_command_prepend: "CLANG=clang-10 LLC=llc-10 ./configure"
-    build_command: "make V=1 CLANG=clang-10 LLC=llc-10"
+    build_command: "make V=1"
     branch_pattern: coverity_scan
 
 before_script:
@@ -33,4 +32,5 @@ env:
    # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
    #   via the "travis encrypt" command using the project repo's public key
    - secure: "NHEO85Pjbpylq/4VatviQnU1QOGmEwdac5ncvW2Rem1wFZpm1pGsUFnP+gkYqyZrk1iu0ioEllkVkOksuElk3ozrFJbM9/dxf9wo8I8Z+CPc9NCFtYIpCpWpAXhASAF+jgOYmd51zj5F4W9O4DZ2jB6480ytXQFfTkl2gR7tK7/oCSjhdjJ7ECRb+HTCT2ZZr5WCvV3Ul47MKNIgTZ7zm89lIHDL6ERXe+63Gr0wIyvNLafJBTLW8ce5edXTPoh4lH7+Y0tGoLFol5CIxK+PKqpf6aYtCoKa+rNdvK47t9SgGmL/J7UwjdPGfk6aVVfqW1qZVFHXKQAAYmDy87XjKJIVhY+/NxHBn7fl1x2onfAXvnWOqPJrLTtrFuaQOxWKaLJucU8InYf5u9KK+B5MaosR0MTslyc29aIOrUPG1qe3eROqHVNTbUj841WIccXZB/ydFa3tZ0mLf//g93/tf6jouBbKUjwyUpSDyYJOfrXtNiC7fMONr9VBLsSdrLUQmWU9lXkGvz2iKkp2rl3QUbMqQ+uXHMWFy+NLZWvN3BQearalcfirY6eh0X4LRcZgmHZWwL7T3raF4jIn+/7xvYcYVLq8vWbyKYrlhNjcHpQeltKuq8kcCEa7IKCEInWI2rSWhLQhbb9DMlVC/MvJuQ67LipqJD4HmSRWBqONWdA="
-
+   - CLANG=clang-10
+   - LLC=llc-10
