@@ -1270,13 +1270,13 @@ static int check_dispatcher_version(struct btf *btf)
 
 static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 {
-	struct xdp_program *prog, *p = mp->first_prog;
 	char buf[PATH_MAX], pin_path[PATH_MAX];
+	struct xdp_program *prog, *p = NULL;
 	const char *bpffs_dir;
 	int err, lock_fd, i;
 	struct stat sb = {};
 
-	if (!mp)
+	if (!mp || mp->first_prog)
 		return -EINVAL;
 
 	bpffs_dir = get_bpffs_dir();
