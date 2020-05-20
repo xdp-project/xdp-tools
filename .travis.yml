@@ -11,22 +11,6 @@ addons:
       - libpcap-dev
       - libelf-dev
       - gcc-multilib
-before_script:
-    - wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-    - echo "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-10 main" | sudo tee -a /etc/apt/sources.list
-    - sudo apt-get -qq update
-    - sudo apt-get -qq -y install clang-10 lld-10 llvm-10
-
-env:
-  global:
-   # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
-   #   via the "travis encrypt" command using the project repo's public key
-   - secure: "NHEO85Pjbpylq/4VatviQnU1QOGmEwdac5ncvW2Rem1wFZpm1pGsUFnP+gkYqyZrk1iu0ioEllkVkOksuElk3ozrFJbM9/dxf9wo8I8Z+CPc9NCFtYIpCpWpAXhASAF+jgOYmd51zj5F4W9O4DZ2jB6480ytXQFfTkl2gR7tK7/oCSjhdjJ7ECRb+HTCT2ZZr5WCvV3Ul47MKNIgTZ7zm89lIHDL6ERXe+63Gr0wIyvNLafJBTLW8ce5edXTPoh4lH7+Y0tGoLFol5CIxK+PKqpf6aYtCoKa+rNdvK47t9SgGmL/J7UwjdPGfk6aVVfqW1qZVFHXKQAAYmDy87XjKJIVhY+/NxHBn7fl1x2onfAXvnWOqPJrLTtrFuaQOxWKaLJucU8InYf5u9KK+B5MaosR0MTslyc29aIOrUPG1qe3eROqHVNTbUj841WIccXZB/ydFa3tZ0mLf//g93/tf6jouBbKUjwyUpSDyYJOfrXtNiC7fMONr9VBLsSdrLUQmWU9lXkGvz2iKkp2rl3QUbMqQ+uXHMWFy+NLZWvN3BQearalcfirY6eh0X4LRcZgmHZWwL7T3raF4jIn+/7xvYcYVLq8vWbyKYrlhNjcHpQeltKuq8kcCEa7IKCEInWI2rSWhLQhbb9DMlVC/MvJuQ67LipqJD4HmSRWBqONWdA="
-
-before_install:
-  - echo -n | openssl s_client -connect https://scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
-
-addons:
   coverity_scan:
     project:
       name: "xdp-project/xdp-tools"
@@ -35,3 +19,18 @@ addons:
     build_command_prepend: "CLANG=clang-10 LLC=llc-10 ./configure"
     build_command: "make V=1 CLANG=clang-10 LLC=llc-10"
     branch_pattern: coverity_scan
+
+before_script:
+  - wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+  - echo "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-10 main" | sudo tee -a /etc/apt/sources.list
+  - sudo apt-get -qq update
+  - sudo apt-get -qq -y install clang-10 lld-10 llvm-10
+before_install:
+  - echo -n | openssl s_client -connect https://scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
+
+env:
+  global:
+   # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
+   #   via the "travis encrypt" command using the project repo's public key
+   - secure: "NHEO85Pjbpylq/4VatviQnU1QOGmEwdac5ncvW2Rem1wFZpm1pGsUFnP+gkYqyZrk1iu0ioEllkVkOksuElk3ozrFJbM9/dxf9wo8I8Z+CPc9NCFtYIpCpWpAXhASAF+jgOYmd51zj5F4W9O4DZ2jB6480ytXQFfTkl2gR7tK7/oCSjhdjJ7ECRb+HTCT2ZZr5WCvV3Ul47MKNIgTZ7zm89lIHDL6ERXe+63Gr0wIyvNLafJBTLW8ce5edXTPoh4lH7+Y0tGoLFol5CIxK+PKqpf6aYtCoKa+rNdvK47t9SgGmL/J7UwjdPGfk6aVVfqW1qZVFHXKQAAYmDy87XjKJIVhY+/NxHBn7fl1x2onfAXvnWOqPJrLTtrFuaQOxWKaLJucU8InYf5u9KK+B5MaosR0MTslyc29aIOrUPG1qe3eROqHVNTbUj841WIccXZB/ydFa3tZ0mLf//g93/tf6jouBbKUjwyUpSDyYJOfrXtNiC7fMONr9VBLsSdrLUQmWU9lXkGvz2iKkp2rl3QUbMqQ+uXHMWFy+NLZWvN3BQearalcfirY6eh0X4LRcZgmHZWwL7T3raF4jIn+/7xvYcYVLq8vWbyKYrlhNjcHpQeltKuq8kcCEa7IKCEInWI2rSWhLQhbb9DMlVC/MvJuQ67LipqJD4HmSRWBqONWdA="
+
