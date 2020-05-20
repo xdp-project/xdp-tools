@@ -1,6 +1,6 @@
 sudo: required
 language: c
-script: git submodule update --init && make V=1
+script: make V=1
 dist: bionic
 addons:
   apt:
