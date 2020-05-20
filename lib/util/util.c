@@ -260,8 +260,12 @@ int get_pinned_program(const struct iface *iface, const char *pin_root_path,
 		return err;
 
 	dr = opendir(pin_path);
-	if (!dr)
-		return -ENOENT;
+	if (!dr) {
+		err = -errno;
+		pr_debug("Couldn't open pin directory %s: %s",
+			 pin_path, strerror(-err));
+		return err;
+	}
 
 	if (!ifindex)
 		ifindex = if_nametoindex(iface->ifname);
