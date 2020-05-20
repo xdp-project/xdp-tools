@@ -226,7 +226,6 @@ int do_load(const void *cfg, const char *pin_root_path)
 	char errmsg[STRERR_BUFSIZE], featbuf[100];
 	struct xdp_program *p;
 	const struct loadopt *opt = cfg;
-	struct bpf_object *obj = NULL;
 	unsigned int features = opt->features;
 	int err = EXIT_SUCCESS;
 	char *progname, *chr;
@@ -277,10 +276,10 @@ int do_load(const void *cfg, const char *pin_root_path)
 
 retry:
 	p = xdp_program__find_file(progname, progname, &opts);
-	err = libxdp_get_error(obj);
+	err = libxdp_get_error(p);
 	if (err) {
 		pr_warn("Couldn't load BPF program: %s\n", strerror(-err));
-		obj = NULL;
+		p = NULL;
 		goto out;
 	}
 
@@ -307,8 +306,8 @@ retry:
 		*chr = '\0';
 
 out:
-	if (obj)
-		bpf_object__close(obj);
+	if (p)
+		xdp_program__close(p);
 	free(progname);
 	return err;
 }
