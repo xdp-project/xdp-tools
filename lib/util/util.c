@@ -251,6 +251,7 @@ int get_pinned_program(const struct iface *iface, const char *pin_root_path,
 	int ret = -ENOENT, err, ifindex = iface->ifindex;
 	char pin_path[PATH_MAX];
 	bool remove_all = false;
+	enum xdp_attach_mode m;
 	struct dirent *de;
 	DIR *dr;
 
@@ -297,7 +298,7 @@ int get_pinned_program(const struct iface *iface, const char *pin_root_path,
 
 		prog = xdp_program__from_pin(pin_path);
 		if (IS_ERR_OR_NULL(prog) ||
-		    !xdp_program__is_attached(prog, iface->ifindex)) {
+		    !(m = xdp_program__is_attached(prog, iface->ifindex))) {
 			ret = IS_ERR(prog) ? PTR_ERR(prog) : -ENOENT;
 			pr_debug("Program %s no longer loaded on %s: %s\n",
 				 de->d_name, iface->ifname, strerror(-ret));
@@ -315,6 +316,8 @@ int get_pinned_program(const struct iface *iface, const char *pin_root_path,
 			} else {
 				ret = 0;
 				*xdp_prog = prog;
+				if (mode)
+					*mode = m;
 			}
 			break;
 		}
