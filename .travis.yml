@@ -8,7 +8,7 @@ addons:
       - zstd
       - binutils-dev
       - elfutils
-      - libcap-dev
+      - libpcap-dev
       - libelf-dev
 before_script:
     - wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
