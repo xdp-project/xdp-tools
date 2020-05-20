@@ -241,29 +241,30 @@ const struct btf *xdp_program__btf(struct xdp_program *xdp_prog)
 	return xdp_prog->btf;
 }
 
-bool xdp_program__is_attached(const struct xdp_program *xdp_prog, int ifindex)
+enum xdp_attach_mode xdp_program__is_attached(const struct xdp_program *xdp_prog,
+					      int ifindex)
 {
 	struct xdp_program *prog = NULL;
 	struct xdp_multiprog *mp;
-	bool ret = false;
+	enum xdp_attach_mode ret = XDP_MODE_UNSPEC;
 
 	if (!xdp_prog || !xdp_prog->prog_id)
-		return false;
+		return ret;
 
 	mp = xdp_multiprog__get_from_ifindex(ifindex);
 	if (IS_ERR_OR_NULL(mp))
-		return false;
+		return ret;
 
 	if (xdp_multiprog__is_legacy(mp)) {
 		prog = xdp_multiprog__main_prog(mp);
 		if (xdp_program__id(prog) == xdp_program__id(xdp_prog))
-			ret = true;
+			ret = xdp_multiprog__attach_mode(mp);
 		goto out;
 	}
 
 	while ((prog = xdp_multiprog__next_prog(prog, mp))) {
 		if (xdp_program__id(prog) == xdp_program__id(xdp_prog)) {
-			ret = true;
+			ret = xdp_multiprog__attach_mode(mp);
 			break;
 		}
 	}

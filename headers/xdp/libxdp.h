@@ -44,7 +44,8 @@ struct xdp_program *xdp_program__from_pin(const char *pin_path);
 
 void xdp_program__close(struct xdp_program *xdp_prog);
 
-bool xdp_program__is_attached(const struct xdp_program *xdp_prog, int ifindex);
+enum xdp_attach_mode xdp_program__is_attached(const struct xdp_program *xdp_prog,
+                                              int ifindex);
 const char *xdp_program__name(const struct xdp_program *xdp_prog);
 const unsigned char *xdp_program__tag(const struct xdp_program *xdp_prog);
 struct bpf_object *xdp_program__bpf_obj(struct xdp_program *xdp_prog);
