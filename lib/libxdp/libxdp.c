@@ -1101,6 +1101,9 @@ out:
 int xdp_program__attach(struct xdp_program *prog, int ifindex,
 			enum xdp_attach_mode mode)
 {
+	if (!prog || IS_ERR(prog))
+		return -EINVAL;
+
 	return xdp_program__attach_multi(&prog, 1, ifindex, mode);
 }
 
@@ -1168,6 +1171,9 @@ out:
 int xdp_program__detach(struct xdp_program *prog, int ifindex,
 			enum xdp_attach_mode mode)
 {
+	if (!prog || IS_ERR(prog))
+		return -EINVAL;
+
 	return xdp_program__detach_multi(&prog, 1, ifindex, mode);
 }
 
