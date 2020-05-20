@@ -1,0 +1,17 @@
+sudo: required
+language: c
+script: git submodule update --init && make V=1
+dist: bionic
+addons:
+  apt:
+    packages:
+      - zstd
+      - binutils-dev
+      - elfutils
+      - libcap-dev
+      - libelf-dev
+before_script:
+    - wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+    - echo "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-10 main" | sudo tee -a /etc/apt/sources.list
+    - sudo apt-get -qq update
+    - sudo apt-get -qq -y install clang-10 lld-10 llvm-10
