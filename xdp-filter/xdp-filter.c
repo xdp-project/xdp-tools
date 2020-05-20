@@ -45,7 +45,7 @@ struct flag_val map_flags_tcpudp[] = {
 	{}
 };
 
-static char *find_progname(__u32 features)
+static char *find_prog_file(__u32 features)
 {
 	struct prog_feature *feat;
 
@@ -224,11 +224,11 @@ static struct prog_option load_options[] = {
 int do_load(const void *cfg, const char *pin_root_path)
 {
 	char errmsg[STRERR_BUFSIZE], featbuf[100];
-	struct xdp_program *p;
+	char *filename, *progname = NULL, *chr;
 	const struct loadopt *opt = cfg;
-	unsigned int features = opt->features;
+	struct xdp_program *p = NULL;
 	int err = EXIT_SUCCESS;
-	char *progname, *chr;
+	unsigned int features;
 	__u32 used_feats;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
@@ -240,6 +240,7 @@ int do_load(const void *cfg, const char *pin_root_path)
 		return err;
 	}
 
+	features = opt->features;
 	if (opt->whitelist_mode) {
 		if (used_feats & FEAT_BLACKLIST) {
 			pr_warn("xdp-filter is already loaded blacklist mode. "
@@ -259,14 +260,23 @@ int do_load(const void *cfg, const char *pin_root_path)
 	print_flags(featbuf, sizeof(featbuf), print_features, features);
 	pr_debug("Looking for eBPF program with features %s\n", featbuf);
 
-	progname = find_progname(features);
-	if (!progname) {
+	filename = find_prog_file(features);
+	if (!filename) {
 		pr_warn("Couldn't find an eBPF program with the requested feature set!\n");
 		return EXIT_FAILURE;
 	}
 
+	progname = strdup(filename);
+	if (!progname) {
+		pr_warn("Couldn't allocate memory\n");
+		goto out;
+	}
+	chr = strchr(progname, '.');
+	if (chr)
+		*chr = '\0';
+
 	pr_debug("Found prog '%s' matching feature set to be loaded on interface '%s'.\n",
-		 progname, opt->iface.ifname);
+		 filename, opt->iface.ifname);
 
 	/* libbpf spits out a lot of unhelpful error messages while loading.
 	 * Silence the logging so we can provide our own messages instead; this
@@ -275,7 +285,7 @@ int do_load(const void *cfg, const char *pin_root_path)
 	silence_libbpf_logging();
 
 retry:
-	p = xdp_program__find_file(progname, progname, &opts);
+	p = xdp_program__find_file(filename, progname, &opts);
 	err = libxdp_get_error(p);
 	if (err) {
 		pr_warn("Couldn't load BPF program: %s\n", strerror(-err));
@@ -301,13 +311,10 @@ retry:
 		goto out;
 	}
 
-	chr = strchr(progname, '.');
-	if (chr)
-		*chr = '\0';
-
 out:
 	if (p)
 		xdp_program__close(p);
+	free(filename);
 	free(progname);
 	return err;
 }
