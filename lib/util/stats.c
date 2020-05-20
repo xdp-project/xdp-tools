@@ -135,7 +135,7 @@ static int map_get_value_array(int fd, __u32 key, struct datarec *value)
 {
 	int err = 0;
 
-	bpf_map_lookup_elem(fd, &key, value);
+	err = bpf_map_lookup_elem(fd, &key, value);
 	if (err)
 		pr_debug("bpf_map_lookup_elem failed key:0x%X\n", key);
 
