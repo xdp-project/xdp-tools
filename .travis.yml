@@ -1,6 +1,6 @@
 sudo: required
 language: c
-script: make V=1
+script: make V=1 CLANG=clang-10 LLC=llc-10
 dist: bionic
 addons:
   apt:
