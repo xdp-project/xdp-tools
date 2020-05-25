@@ -40,6 +40,11 @@ else
 	OBJECT_LIBXDP:=$(LIBXDP_DIR)/libxdp.a
 endif
 
+# Detect submodule libbpf source file changes
+ifeq ($(SYSTEM_LIBBPF),n)
+	LIBBPF_SOURCES := $(wildcard $(LIBBPF_DIR)/src/*.[ch])
+endif
+
 LIBXDP_SOURCES := $(wildcard $(LIBXDP_DIR)/*.[ch] $(LIBXDP_DIR)/*.in)
 DISPATCHER_OBJ := xdp-dispatcher.o
 LIBXDP_DISPATCHER_OBJ := $(LIBXDP_DIR)/$(DISPATCHER_OBJ)
@@ -68,7 +73,7 @@ install:
 	$(if $(MAN_FILES),install -m 0755 -d $(DESTDIR)$(MANDIR)/man8)
 	$(if $(MAN_FILES),install -m 0644 $(MAN_FILES) $(DESTDIR)$(MANDIR)/man8)
 
-$(OBJECT_LIBBPF):
+$(OBJECT_LIBBPF): $(LIBBPF_SOURCES)
 	$(Q)$(MAKE) -C $(LIB_DIR) libbpf
 
 $(OBJECT_LIBXDP): $(LIBXDP_SOURCES)
