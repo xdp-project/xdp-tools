@@ -467,6 +467,9 @@ static size_t find_func_matches(const struct btf *btf,
 		}
 	}
 
+	if (exact)
+		return 0;
+
 	if (matches == 1)
 		*found_name = btf__name_by_offset(btf, match->name_off);
 
