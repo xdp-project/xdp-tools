@@ -3,7 +3,7 @@
 LIB_DIR = .
 include defines.mk
 
-SUBDIRS=util libxdp
+SUBDIRS=util libxdp testing
 
 all: $(OBJECT_LIBBPF)
 	@set -e; \

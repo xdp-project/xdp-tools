@@ -15,7 +15,7 @@ endif
 
 UTILS := xdp-filter xdp-loader xdp-dump
 SUBDIRS := lib $(UTILS)
-.PHONY: check_submodule help clobber distclean clean install $(SUBDIRS)
+.PHONY: check_submodule help clobber distclean clean install test $(SUBDIRS)
 
 all: $(SUBDIRS)
 
@@ -31,6 +31,7 @@ help:
 	@echo " clean               - remove products of build"
 	@echo " distclean           - remove configuration and build"
 	@echo " install             - install binaries on local machine"
+	@echo " test                - run test suite"
 	@echo ""
 	@echo "Make Arguments:"
 	@echo " V=[0|1]             - set build verbosity level"
@@ -60,3 +61,7 @@ clean: check_submodule
 install: all
 	@for i in $(SUBDIRS); \
 	do $(MAKE) -C $$i install; done
+
+test: all
+	@for i in $(UTILS); \
+	do echo; echo test $$i; $(MAKE) -C $$i test; done
