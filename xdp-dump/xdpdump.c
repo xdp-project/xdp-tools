@@ -865,8 +865,9 @@ int main(int argc, char **argv)
 	}
 
 	/* From here on we assume we need to capture data on an interface */
-	if (signal(SIGINT, signal_handler) || signal(SIGHUP, signal_handler) ||
-	    signal(SIGTERM, signal_handler)) {
+	if (signal(SIGINT, signal_handler) == SIG_ERR ||
+	    signal(SIGHUP, signal_handler) == SIG_ERR ||
+	    signal(SIGTERM, signal_handler) == SIG_ERR) {
 		pr_warn("ERROR: Failed assigning signal handler: %s\n",
 			strerror(errno));
 		return EXIT_FAILURE;

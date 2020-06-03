@@ -26,7 +26,7 @@ GENERATED_NAME_PREFIX="xdptest"
 ALL_TESTS=""
 TEST_PROG_DIR="${TEST_PROG_DIR:-$(dirname $0)}"
 
-NEEDED_TOOLS="ethtool ip tc ping"
+NEEDED_TOOLS="ethtool ip ping tc tcpdump"
 MAX_NAMELEN=15
 
 # Global state variables that will be set by options etc below
