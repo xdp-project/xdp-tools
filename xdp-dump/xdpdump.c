@@ -362,25 +362,9 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 				pcap_dump_flush(ctx->pcap_dumper);
 
 		} else if (ctx->pcapng_dumper) {
-			char     meta[80];
 			int64_t  action = e->metadata.action;
 			uint32_t queue = e->metadata.rx_queue;
 			uint64_t pktid = ctx->cpu_packet_id[cpu];
-
-			/* For now we keep the id/queue/action information in
-			 * the packet comment until tools like WireShark
-			 * support the specific EPB options
-			 */
-			if (fexit)
-				snprintf(meta, sizeof(meta),
-					 "id: %"PRIu64", queue: %u, "
-					 "action: %"PRId64"%s",
-					 pktid, queue, action,
-					 get_xdp_action_string(action));
-			else
-				snprintf(meta, sizeof(meta),
-					 "id: %"PRIu64", queue: %u",
-					 pktid, queue);
 
 			xpcapng_dump_enhanced_pkt(ctx->pcapng_dumper,
 						  fexit ? 1 : 0,
@@ -390,7 +374,7 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 						      ctx->cfg->snaplen),
 						  e->packet,
 						  ctx->last_missed_events,
-						  meta, &pktid, &queue,
+						  NULL, &pktid, &queue,
 						  fexit ? &action : NULL);
 
 			ctx->last_missed_events = 0;
@@ -909,7 +893,8 @@ rlimit_loop:
 			snprintf(if_name, sizeof(if_name), "%s@fentry",
 				 cfg->iface.ifname);
 			snprintf(if_descr, sizeof(if_descr), "%s:%s()@fentry",
-				 cfg->iface.ifname, info.name);
+				 cfg->iface.ifname, tgt_func);
+
 			if (xpcapng_dump_add_interface(pcapng_dumper,
 						       cfg->snaplen,
 						       if_name, if_descr, NULL,
@@ -923,7 +908,7 @@ rlimit_loop:
 			snprintf(if_name, sizeof(if_name), "%s@fexit",
 				 cfg->iface.ifname);
 			snprintf(if_descr, sizeof(if_descr), "%s:%s()@fexit",
-				 cfg->iface.ifname, info.name);
+				 cfg->iface.ifname, tgt_func);
 			if (xpcapng_dump_add_interface(pcapng_dumper,
 						       cfg->snaplen,
 						       if_name, if_descr, NULL,
