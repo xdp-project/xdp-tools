@@ -19,6 +19,7 @@
 #include <bpf/btf.h>
 #include <bpf/libbpf.h>
 
+#include <linux/err.h>
 #include <linux/ethtool.h>
 #include <linux/perf_event.h>
 #include <linux/sockios.h>
@@ -573,82 +574,130 @@ error_exit:
 }
 
 /*****************************************************************************
- * guess_full_main_function()
+ * find_func_matches()
  *****************************************************************************/
-static char *guess_full_main_function(struct bpf_prog_info *info,
-				      char *function_override)
+static size_t find_func_matches(const struct btf *btf,
+				const char *func_name,
+				const char **found_name,
+				bool print, bool exact)
 {
-	int         nr_types;
-	int         matches = 0;
-	char       *func_name_ptr = NULL;
-	struct btf *btf = NULL;
+	const struct btf_type *t, *match;
+	size_t len, matches = 0;
+	const char *name;
+	int nr_types, i;
 
-	/*
-	 * If the function name is longer than 15 characters the bpf_prog_info
-	 * structure will truncate it to 15 characters. Here we try to see if
-	 * we need to check BTF information to figure out the full function
-	 * name.
-	 */
-	if ((strlen(info->name) < (BPF_OBJ_NAME_LEN - 1)
-	     && !function_override) ||
-	    btf__get_from_id(info->btf_id, &btf))
-		return strdup(function_override ? function_override :
-			      info->name);
+	if (!btf) {
+		pr_debug("No BTF found for program\n");
+		return 0;
+	}
 
+	len = strlen(func_name);
 
 	nr_types = btf__get_nr_types(btf);
-	for (int i = 1; i <= nr_types; i++) {
-		const        char     *name;
-		const struct btf_type *t = btf__type_by_id(btf, i);
-
+	for (i = 1; i <= nr_types; i++) {
+		t = btf__type_by_id(btf, i);
 		if (!btf_is_func(t))
 			continue;
 
 		name = btf__name_by_offset(btf, t->name_off);
-		if (name) {
-			if (function_override) {
-				if (!strcmp(function_override, name)) {
-					func_name_ptr = (char *)name;
-					matches++;
-					break;
-				}
-			} else if (!strncmp(info->name, name,
-					    BPF_OBJ_NAME_LEN - 1)) {
-				func_name_ptr = (char *)name;
-				matches++;
-			}
-		}
-	}
+		if (!strncmp(name, func_name, len)) {
+			pr_debug("Found func %s matching %s\n",
+				 name, func_name);
 
-	if (matches == 0) {
-		pr_warn("ERROR: Can't find function, %s, in BTF information!\n",
-			function_override ? function_override : info->name);
-		func_name_ptr = NULL;
-	} else if (matches > 1) {
-		pr_warn("ERROR: Can't identify the full XDP main function!\n"
-			"The following is a list of candidates:\n");
-
-		for (int i = 1; i <= nr_types; i++) {
-			const        char     *name;
-			const struct btf_type *t = btf__type_by_id(btf, i);
-
-			if (!btf_is_func(t))
-				continue;
-
-			name = btf__name_by_offset(btf, t->name_off);
-			if (name &&
-			    !strncmp(info->name, name, BPF_OBJ_NAME_LEN - 1))
+			if (print)
 				pr_warn("  %s\n", name);
-		}
 
-		pr_warn("Please use the -p option to pick the correct one.\n");
-		func_name_ptr = NULL;
-	} else {
-		func_name_ptr = strdup(func_name_ptr);
+			/* Do an exact match if the user specified a function
+			 * name, or if there is no possibility of truncation
+			 * because the length is different from the truncated
+			 * length.
+			 */
+			if (strlen(name) == len &&
+			    (exact || len != BPF_OBJ_NAME_LEN -1)) {
+				*found_name = name;
+				return 1; /* exact match */
+			}
+
+			/* prefix, may not be unique */
+			matches++;
+			match = t;
+		}
 	}
 
-	btf__free(btf);
-	return func_name_ptr;
+	if (exact)
+		return 0;
+
+	if (matches == 1)
+		*found_name = btf__name_by_offset(btf, match->name_off);
+
+	return matches;
+}
+
+/*****************************************************************************
+ * find_target()
+ *****************************************************************************/
+static int find_target(struct xdp_multiprog *mp,
+		       char *function_override,
+		       struct xdp_program **tgt_prog,
+		       const char **tgt_func)
+{
+	bool match_exact = !!function_override;
+	struct xdp_program *prog, *p;
+	size_t matches = 0;
+	const char *func;
+
+	prog = xdp_multiprog__main_prog(mp);
+	matches = find_func_matches(xdp_program__btf(prog),
+				    function_override ?: xdp_program__name(prog),
+				    &func, false, match_exact);
+
+	if (!function_override)
+		goto check;
+
+	for (p = xdp_multiprog__next_prog(NULL, mp);
+	     p;
+	     p = xdp_multiprog__next_prog(p, mp)) {
+		const char *f;
+		size_t m;
+
+		m = find_func_matches(xdp_program__btf(p),
+				      function_override, &f, false,
+				      match_exact);
+		if (m == 1) {
+			prog = p;
+			func = f;
+		}
+		matches += m;
+	}
+
+check:
+	if (!matches) {
+		pr_warn("ERROR: Can't find function '%s' on interface!\n",
+			function_override);
+		return -ENOENT;
+	} else if (matches == 1) {
+		*tgt_prog = prog;
+		*tgt_func = func;
+		return 0;
+	}
+
+	pr_warn("ERROR: Can't identify the full XDP main function!\n"
+		"The following is a list of candidates:\n");
+
+	prog = xdp_multiprog__main_prog(mp);
+	find_func_matches(xdp_program__btf(prog),
+			  function_override ?: xdp_program__name(prog),
+			  &func, true, match_exact);
+
+	for (p = xdp_multiprog__next_prog(NULL, mp);
+	     p && function_override;
+	     p = xdp_multiprog__next_prog(p, mp))
+
+		find_func_matches(xdp_program__btf(p),
+				  function_override, &func, true, match_exact);
+
+	pr_warn("Please use the -p option to pick the correct one.\n");
+	return -EAGAIN;
 }
 
 /*****************************************************************************
@@ -656,13 +705,9 @@ static char *guess_full_main_function(struct bpf_prog_info *info,
  *****************************************************************************/
 static bool capture_on_interface(struct dumpopt *cfg)
 {
-	enum xdp_attach_mode         mode;
 	int                          err;
 	int                          perf_map_fd;
-	int                          prog_fd;
-	char                        *prog_name;
 	bool                         rc = false;
-	uint32_t                     filter_ifindex;
 	pcap_t                      *pcap = NULL;
 	pcap_dumper_t               *pcap_dumper = NULL;
 	struct xpcapng_dumper       *pcapng_dumper = NULL;
@@ -672,9 +717,9 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	struct bpf_map              *data_map;
 	const struct bpf_map_def    *data_map_def;
 	struct bpf_object           *trace_obj = NULL;
-	struct bpf_prog_info         info = {};
 	struct bpf_program          *trace_prog_fentry;
 	struct bpf_program          *trace_prog_fexit;
+	struct trace_configuration   trace_cfg;
 	struct perf_buffer          *perf_buf;
 	struct perf_buffer_raw_opts  perf_opts = {};
 	struct perf_event_attr       perf_attr = {
@@ -685,23 +730,19 @@ static bool capture_on_interface(struct dumpopt *cfg)
 		.wakeup_events = 1,
 	};
 	struct perf_handler_ctx      perf_ctx;
+	struct xdp_multiprog         *mp;
+	struct xdp_program           *tgt_prog;
+	const char                   *tgt_func;
 
-	if (get_loaded_program(&cfg->iface, &mode, &info) != 0) {
+	mp = xdp_multiprog__get_from_ifindex(cfg->iface.ifindex);
+	if (IS_ERR_OR_NULL(mp)) {
 		pr_warn("WARNING: Specified interface does not have an XDP "
 			"program loaded, capturing\n         in legacy mode!\n");
 		return capture_on_legacy_interface(cfg);
 	}
 
-	prog_name = guess_full_main_function(&info, cfg->program_names);
-	if (!prog_name)
+	if (find_target(mp, cfg->program_names, &tgt_prog, &tgt_func))
 		return false;
-
-	prog_fd = bpf_prog_get_fd_by_id(info.id);
-	if (prog_fd < 0) {
-		pr_warn("ERROR: Can't get XDP program id %u's file descriptor: %s\n",
-			info.id, strerror(errno));
-		return false;
-	}
 
 	silence_libbpf_logging();
 
@@ -711,7 +752,8 @@ rlimit_loop:
 	err = libbpf_get_error(trace_obj);
 	if (err) {
 		pr_warn("ERROR: Can't open XDP trace program: %s(%d)\n",
-			strerror(err), err);
+			strerror(-err), err);
+		trace_obj = NULL;
 		goto error_exit;
 	}
 
@@ -725,15 +767,20 @@ rlimit_loop:
 
 	data_map_def = bpf_map__def(data_map);
 	if (!data_map_def ||
-	    data_map_def->value_size != sizeof(filter_ifindex)) {
+	    data_map_def->value_size != sizeof(trace_cfg)) {
 		pr_warn("ERROR: Can't find the correct sized .data MAP in the "
 			"trace program!\n");
 		goto error_exit;
 	}
 
-	filter_ifindex = cfg->iface.ifindex;
-	bpf_map__set_initial_value(data_map, &filter_ifindex,
-				   sizeof(filter_ifindex));
+	trace_cfg.capture_if_ifindex = cfg->iface.ifindex;
+	trace_cfg.capture_snaplen = cfg->snaplen;
+	if (bpf_map__set_initial_value(data_map, &trace_cfg,
+				       sizeof(trace_cfg))) {
+		pr_warn("ERROR: Can't set initial .data MAP in the trace "
+			"program!\n");
+		goto error_exit;
+	}
 
 	/* Locate the fentry and fexit functions */
 	trace_prog_fentry = bpf_object__find_program_by_title(trace_obj,
@@ -756,8 +803,12 @@ rlimit_loop:
 					      BPF_TRACE_FENTRY);
 	bpf_program__set_expected_attach_type(trace_prog_fexit,
 					      BPF_TRACE_FEXIT);
-	bpf_program__set_attach_target(trace_prog_fentry, prog_fd, prog_name);
-	bpf_program__set_attach_target(trace_prog_fexit, prog_fd, prog_name);
+	bpf_program__set_attach_target(trace_prog_fentry,
+				       xdp_program__fd(tgt_prog),
+				       tgt_func);
+	bpf_program__set_attach_target(trace_prog_fexit,
+				       xdp_program__fd(tgt_prog),
+				       tgt_func);
 
 	/* Load the bpf object into memory */
 	err = bpf_object__load(trace_obj);
@@ -886,9 +937,9 @@ rlimit_loop:
 	}
 
 	/* No more error conditions, display some capture information */
-	fprintf(stderr, "listening on %s, ingress XDP program %s, "
+	fprintf(stderr, "listening on %s, ingress XDP program ID %u func %s, "
 		"capture mode %s, capture size %d bytes\n",
-		cfg->iface.ifname, prog_name,
+		cfg->iface.ifname, xdp_program__id(tgt_prog), tgt_func,
 		get_capture_mode_string(cfg->rx_capture), cfg->snaplen);
 
 	/* Setup perf context */
@@ -911,7 +962,7 @@ rlimit_loop:
 		err = perf_buffer__poll(perf_buf, 1000);
 		if (err < 0 && err != -EINTR) {
 			pr_warn("ERROR: Perf buffer polling failed: %s(%d)",
-				strerror(err), err);
+				strerror(-err), err);
 			goto error_exit;
 		}
 	}
@@ -943,8 +994,8 @@ error_exit:
 	if (trace_obj)
 		bpf_object__close(trace_obj);
 
-	if (prog_name)
-		free(prog_name);
+	if (mp)
+		xdp_multiprog__close(mp);
 
 	return rc;
 }
@@ -968,21 +1019,25 @@ static bool list_interfaces(struct dumpopt *cfg)
 	printf("--------  ----------------  "
 	       "--------------------------------------------------\n");
 	for (idx = indexes; idx->if_index; idx++) {
-		enum xdp_attach_mode mode;
-		struct bpf_prog_info info = {};
-		struct iface iface = {
-			.ifindex = idx->if_index,
-			.ifname = idx->if_name,
-		};
+		struct xdp_multiprog *mp;
 
-		if (get_loaded_program(&iface, &mode, &info) != 0) {
+		mp = xdp_multiprog__get_from_ifindex(idx->if_index);
+		if (IS_ERR_OR_NULL(mp)) {
 			printf("%-8d  %-16.16s  %s\n",
-			       iface.ifindex, iface.ifname,
+			       idx->if_index, idx->if_name,
 			       "<No XDP program loaded!>");
 		} else {
+			struct xdp_program *prog = NULL;
+
 			printf("%-8d  %-16.16s  %s()\n",
-			       iface.ifindex, iface.ifname,
-			       info.name);
+			       idx->if_index, idx->if_name,
+			       xdp_program__name(xdp_multiprog__main_prog(mp)));
+
+			while ((prog = xdp_multiprog__next_prog(prog, mp)))
+				printf("%-29s %s()\n", "",
+				       xdp_program__name(prog));
+
+			xdp_multiprog__close(mp);
 		}
 	}
 	if_freenameindex(indexes);

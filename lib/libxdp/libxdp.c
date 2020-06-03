@@ -28,9 +28,10 @@
 #include <xdp/libxdp.h>
 #include <xdp/prog_dispatcher.h>
 #include "logging.h"
-#include "util.h"
 
 #define XDP_RUN_CONFIG_SEC ".xdp_run_config"
+
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
 
 struct xdp_program {
 	/* one of prog or prog_fd should be set */
@@ -54,10 +55,12 @@ struct xdp_program {
 
 struct xdp_multiprog {
 	struct xdp_dispatcher_config config;
-	struct xdp_program *dispatcher;
+	struct xdp_program *main_prog;  // dispatcher or legacy prog pointer
 	struct xdp_program *first_prog; // uses xdp_program->next to build a list
 	size_t num_links;
 	bool is_loaded;
+	bool is_legacy;
+	enum xdp_attach_mode attach_mode;
 };
 
 
@@ -69,6 +72,42 @@ static const char *xdp_action_names[] = {
 	[XDP_REDIRECT] = "XDP_REDIRECT",
 };
 
+static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
+				 struct xdp_multiprog *mp,
+				 int ifindex, enum xdp_attach_mode mode);
+static struct xdp_multiprog *
+xdp_multiprog__generate(struct xdp_program **progs,
+			size_t num_progs);
+static int xdp_multiprog__pin(struct xdp_multiprog *mp);
+static int xdp_multiprog__unpin(struct xdp_multiprog *mp);
+
+
+long libxdp_get_error(const void *ptr)
+{
+	return libbpf_get_error(ptr);
+}
+
+int libxdp_strerror(int err, char *buf, size_t size)
+{
+	return libbpf_strerror(err, buf, size);
+}
+
+static int try_snprintf(char *buf, size_t buf_len, const char *format, ...)
+{
+	va_list args;
+	int len;
+
+	va_start(args, format);
+	len = vsnprintf(buf, buf_len, format, args);
+	va_end(args);
+
+	if (len < 0)
+		return -EINVAL;
+	else if ((size_t)len >= buf_len)
+		return -ENAMETOOLONG;
+
+	return 0;
+}
 
 static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
 {
@@ -134,7 +173,7 @@ static const char *get_bpffs_dir()
 		goto err;
 	}
 
-	err = check_snprintf(bpffs_dir, sizeof(bpffs_dir), "%s/xdp", parent);
+	err = try_snprintf(bpffs_dir, sizeof(bpffs_dir), "%s/xdp", parent);
 	if (err)
 		goto err;
 
@@ -194,7 +233,7 @@ static int xdp_lock_release(int lock_fd)
 	return err;
 }
 
-static struct btf *xdp_program__btf(struct xdp_program *xdp_prog)
+const struct btf *xdp_program__btf(struct xdp_program *xdp_prog)
 {
 	if (!xdp_prog)
 		return NULL;
@@ -202,29 +241,63 @@ static struct btf *xdp_program__btf(struct xdp_program *xdp_prog)
 	return xdp_prog->btf;
 }
 
-void xdp_program__set_chain_call_enabled(struct xdp_program *prog,
-					 unsigned int action, bool enabled)
+enum xdp_attach_mode xdp_program__is_attached(const struct xdp_program *xdp_prog,
+					      int ifindex)
 {
-	if (!prog)
-		return;
+	struct xdp_program *prog = NULL;
+	struct xdp_multiprog *mp;
+	enum xdp_attach_mode ret = XDP_MODE_UNSPEC;
 
-	/* FIXME: Should this also update the BTF info? */
-	if (enabled)
-		prog->chain_call_actions |= (1<<action);
-	else
-		prog->chain_call_actions &= ~(1<<action);
+	if (!xdp_prog || !xdp_prog->prog_id)
+		return ret;
+
+	mp = xdp_multiprog__get_from_ifindex(ifindex);
+	if (IS_ERR_OR_NULL(mp))
+		return ret;
+
+	if (xdp_multiprog__is_legacy(mp)) {
+		prog = xdp_multiprog__main_prog(mp);
+		if (xdp_program__id(prog) == xdp_program__id(xdp_prog))
+			ret = xdp_multiprog__attach_mode(mp);
+		goto out;
+	}
+
+	while ((prog = xdp_multiprog__next_prog(prog, mp))) {
+		if (xdp_program__id(prog) == xdp_program__id(xdp_prog)) {
+			ret = xdp_multiprog__attach_mode(mp);
+			break;
+		}
+	}
+
+out:
+	xdp_multiprog__close(mp);
+	return ret;
 }
 
-bool xdp_program__chain_call_enabled(struct xdp_program *prog,
+int xdp_program__set_chain_call_enabled(struct xdp_program *prog,
+					unsigned int action, bool enabled)
+{
+	if (!prog || prog->prog_fd || action >= XDP_DISPATCHER_RETVAL)
+		return -EINVAL;
+
+	if (enabled)
+		prog->chain_call_actions |= (1U << action);
+	else
+		prog->chain_call_actions &= ~(1U << action);
+
+	return 0;
+}
+
+bool xdp_program__chain_call_enabled(const struct xdp_program *prog,
 				     enum xdp_action action)
 {
-	if (!prog)
+	if (!prog || action >= XDP_DISPATCHER_RETVAL)
 		return false;
 
-	return !!(prog->chain_call_actions & (1<<action));
+	return !!(prog->chain_call_actions & (1U << action));
 }
 
-unsigned int xdp_program__run_prio(struct xdp_program *prog)
+unsigned int xdp_program__run_prio(const struct xdp_program *prog)
 {
 	if (!prog)
 		return XDP_DEFAULT_RUN_PRIO;
@@ -232,16 +305,16 @@ unsigned int xdp_program__run_prio(struct xdp_program *prog)
 	return prog->run_prio;
 }
 
-void xdp_program__set_run_prio(struct xdp_program *prog, unsigned int run_prio)
+int xdp_program__set_run_prio(struct xdp_program *prog, unsigned int run_prio)
 {
-	if (!prog)
-		return;
+	if (!prog || prog->prog_fd)
+		return -EINVAL;
 
-	/* FIXME: Should this also update the BTF info? */
 	prog->run_prio = run_prio;
+	return 0;
 }
 
-const char *xdp_program__name(struct xdp_program *prog)
+const char *xdp_program__name(const struct xdp_program *prog)
 {
 	if (!prog)
 		return NULL;
@@ -249,7 +322,16 @@ const char *xdp_program__name(struct xdp_program *prog)
 	return prog->prog_name;
 }
 
-const unsigned char *xdp_program__tag(struct xdp_program *prog)
+struct bpf_object *xdp_program__bpf_obj(struct xdp_program *prog)
+{
+	if (!prog)
+		return NULL;
+
+	return prog->bpf_obj;
+}
+
+
+const unsigned char *xdp_program__tag(const struct xdp_program *prog)
 {
 	if (!prog)
 		return NULL;
@@ -257,7 +339,7 @@ const unsigned char *xdp_program__tag(struct xdp_program *prog)
 	return prog->prog_tag;
 }
 
-uint32_t xdp_program__id(struct xdp_program *xdp_prog)
+uint32_t xdp_program__id(const struct xdp_program *xdp_prog)
 {
 	if (!xdp_prog)
 		return 0;
@@ -265,7 +347,15 @@ uint32_t xdp_program__id(struct xdp_program *xdp_prog)
 	return xdp_prog->prog_id;
 }
 
-int xdp_program__print_chain_call_actions(struct xdp_program *prog,
+int xdp_program__fd(const struct xdp_program *xdp_prog)
+{
+	if (!xdp_prog)
+		return -1;
+
+	return xdp_prog->prog_fd;
+}
+
+int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 					  char *buf,
 					  size_t buf_len)
 {
@@ -353,6 +443,54 @@ static bool get_xdp_action(const char *act_name, unsigned int *act)
 		}
 	}
 	return false;
+}
+
+/*
+ * Find BTF func definition for func_name, which may be a truncated prefix of
+ * the real function name.
+ * Return NULL on no, or ambiguous, match.
+ */
+static const struct btf_type *btf_get_function(const struct btf *btf,
+					       const char *func_name)
+{
+	const struct btf_type *t, *match;
+	size_t len, matches = 0;
+	const char *name;
+	int nr_types, i;
+
+	if (!btf) {
+		pr_debug("No BTF found for program\n");
+		return NULL;
+	}
+
+	len = strlen(func_name);
+
+	nr_types = btf__get_nr_types(btf);
+	for (i = 1; i <= nr_types; i++) {
+		t = btf__type_by_id(btf, i);
+		if (!btf_is_func(t))
+			continue;
+
+		name = btf__name_by_offset(btf, t->name_off);
+		if (!strncmp(name, func_name, len)) {
+			pr_debug("Found func %s matching %s\n",
+				 name, func_name);
+
+			if (strlen(name) == len)
+				return t; /* exact match */
+
+			/* prefix, may not be unique */
+			matches++;
+			match = t;
+		}
+	}
+
+	if (matches == 1) /* unique match */
+		return match;
+
+	pr_debug("Function '%s' not found or ambiguous (%zu matches).\n",
+		 func_name, matches);
+	return NULL;
 }
 
 static const struct btf_type *btf_get_datasec(const struct btf *btf,
@@ -449,16 +587,34 @@ static const struct btf_type *btf_get_section_var(const struct btf *btf,
  * survive loading into the kernel, and so it can be retrieved for
  * already-loaded programs as well.
  */
-static int xdp_parse_run_config(struct xdp_program *xdp_prog)
+static int xdp_program__parse_btf(struct xdp_program *xdp_prog)
 {
-	struct btf *btf = xdp_program__btf(xdp_prog);
+	const struct btf *btf = xdp_program__btf(xdp_prog);
 	const struct btf_type *def, *sec;
 	const struct btf_member *m;
 	char struct_name[100];
 	int err, i, mlen;
 
-	err = check_snprintf(struct_name, sizeof(struct_name), "_%s",
-			     xdp_program__name(xdp_prog));
+	/* If the program name is the maximum allowed object name in the kernel,
+	 * it may have been truncated, in which case we try to expand it by
+	 * looking for a match in the BTF data.
+	 */
+	if (strlen(xdp_prog->prog_name) >= BPF_OBJ_NAME_LEN - 1) {
+		const struct btf_type *func;
+		char *name;
+
+		func = btf_get_function(btf, xdp_prog->prog_name);
+		if (func) {
+			name = strdup(btf__name_by_offset(btf, func->name_off));
+			if (!name)
+				return -ENOMEM;
+			free(xdp_prog->prog_name);
+			xdp_prog->prog_name = name;
+		}
+	}
+
+	err = try_snprintf(struct_name, sizeof(struct_name), "_%s",
+			   xdp_program__name(xdp_prog));
 	if (err)
 		return err;
 
@@ -520,7 +676,7 @@ static struct xdp_program *xdp_program__new()
 	return xdp_prog;
 }
 
-void xdp_program__free(struct xdp_program *xdp_prog)
+void xdp_program__close(struct xdp_program *xdp_prog)
 {
 	if (!xdp_prog)
 		return;
@@ -539,6 +695,8 @@ void xdp_program__free(struct xdp_program *xdp_prog)
 		else if (xdp_prog->btf)
 			btf__free(xdp_prog->btf);
 	}
+
+	free(xdp_prog);
 }
 
 static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
@@ -553,12 +711,16 @@ static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 		return -EINVAL;
 
 	if (prog_name)
-		bpf_prog = bpf_object__find_program_by_title(obj, prog_name);
+		bpf_prog = bpf_object__find_program_by_name(obj, prog_name);
 	else
 		bpf_prog = bpf_program__next(NULL, obj);
 
-	if(!bpf_prog)
+	if(!bpf_prog) {
+		pr_warn("Couldn't find xdp program%s%s in bpf object\n",
+			prog_name ? " with name " : "",
+			prog_name ?: "");
 		return -ENOENT;
+	}
 
 	xdp_prog->prog_name = strdup(bpf_program__name(bpf_prog));
 	if (!xdp_prog->prog_name)
@@ -569,7 +731,7 @@ static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 	xdp_prog->btf = bpf_object__btf(obj);
 	xdp_prog->from_external_obj = external;
 
-	err = xdp_parse_run_config(xdp_prog);
+	err = xdp_program__parse_btf(xdp_prog);
 	if (err && err != -ENOENT)
 		return err;
 
@@ -595,7 +757,7 @@ struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
 
 	return xdp_prog;
 err:
-	xdp_program__free(xdp_prog);
+	xdp_program__close(xdp_prog);
 	return ERR_PTR(err);
 }
 
@@ -612,8 +774,13 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 
 	obj = bpf_object__open_file(filename, opts);
 	err = libbpf_get_error(obj);
-	if (err)
+	if (err) {
+		if (err == -ENOENT)
+			pr_debug("Couldn't load the eBPF program (libbpf said 'no such file').\n"
+				 "Maybe the program was compiled with a too old "
+				 "version of LLVM (need v9.0+)?\n");
 		return ERR_PTR(err);
+	}
 
 	xdp_prog = xdp_program__new();
 	if (IS_ERR(xdp_prog)) {
@@ -627,9 +794,63 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 
 	return xdp_prog;
 err:
-	xdp_program__free(xdp_prog);
+	xdp_program__close(xdp_prog);
 	bpf_object__close(obj);
 	return ERR_PTR(err);
+}
+
+static bool try_bpf_file(char *buf, size_t buf_size,
+			 char *path, const char *progname)
+{
+	struct stat sb = {};
+
+	if (try_snprintf(buf, buf_size, "%s/%s", path, progname))
+		return false;
+
+	pr_debug("Looking for '%s'\n", buf);
+	if (stat(buf, &sb))
+		return false;
+
+	return true;
+}
+
+static int find_bpf_file(char *buf, size_t buf_size, const char *progname)
+{
+	static char *bpf_obj_paths[] = {
+#ifdef DEBUG
+		".",
+#endif
+		BPF_OBJECT_PATH,
+		NULL
+	};
+	char *path, **p;
+
+	path = secure_getenv(XDP_OBJECT_ENVVAR);
+	if (path && try_bpf_file(buf, buf_size, path, progname)) {
+		return 0;
+	} else if (!path) {
+		for (p = bpf_obj_paths; *p; p++)
+			if (try_bpf_file(buf, buf_size, *p, progname))
+				return 0;
+	}
+
+	pr_warn("Couldn't find a BPF file with name %s\n", progname);
+	return -ENOENT;
+}
+
+struct xdp_program *xdp_program__find_file(const char *filename,
+					   const char *prog_name,
+					   struct bpf_object_open_opts *opts)
+{
+	char buf[PATH_MAX];
+	int err;
+
+	err = find_bpf_file(buf, sizeof(buf), filename);
+	if (err)
+		return ERR_PTR(err);
+
+	pr_debug("Loading XDP program '%s' from '%s'\n", prog_name, buf);
+	return xdp_program__open_file(buf, prog_name, opts);
 }
 
 static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
@@ -691,7 +912,7 @@ struct xdp_program *xdp_program__from_fd(int fd)
 	if (err)
 		goto err;
 
-	err = xdp_parse_run_config(xdp_prog);
+	err = xdp_program__parse_btf(xdp_prog);
 	if (err && err != -ENOENT)
 		goto err;
 
@@ -710,6 +931,25 @@ struct xdp_program *xdp_program__from_id(__u32 id)
 	if (fd < 0) {
 		err = -errno;
 		pr_warn("couldn't get program fd: %s", strerror(-err));
+		return ERR_PTR(err);
+	}
+
+	prog = xdp_program__from_fd(fd);
+	if (IS_ERR(prog))
+		close(fd);
+	return prog;
+}
+
+struct xdp_program *xdp_program__from_pin(const char *pin_path)
+{
+	struct xdp_program *prog;
+	int fd, err;
+
+	fd = bpf_obj_get(pin_path);
+	if (fd < 0) {
+		err = -errno;
+		pr_warn("couldn't get program fd from %s: %s",
+			pin_path, strerror(-err));
 		return ERR_PTR(err);
 	}
 
@@ -764,7 +1004,15 @@ static int cmp_xdp_programs(const void *_a, const void *_b)
 	return 0;
 }
 
-int xdp_program__load(struct xdp_program *prog)
+int xdp_program__pin(struct xdp_program *prog, const char *pin_path)
+{
+	if (!prog || !prog->prog_fd)
+		return -EINVAL;
+
+	return bpf_program__pin(prog->bpf_prog, pin_path);
+}
+
+static int xdp_program__load(struct xdp_program *prog)
 {
 	int err;
 
@@ -811,30 +1059,155 @@ static struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 	return new_prog;
 }
 
+int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
+			      int ifindex, enum xdp_attach_mode mode)
+{
+	struct xdp_multiprog *old_mp, *mp;
+	int err = 0;
 
-void xdp_multiprog__free(struct xdp_multiprog *mp)
+	if (!progs || !num_progs)
+		return -EINVAL;
+
+	old_mp = xdp_multiprog__get_from_ifindex(ifindex);
+	if (!IS_ERR_OR_NULL(old_mp)) {
+		pr_warn("XDP program already loaded on ifindex %d; "
+			"replacing not yet supported", ifindex);
+		xdp_multiprog__close(old_mp);
+		return -EEXIST;
+	}
+
+	mp = xdp_multiprog__generate(progs, num_progs);
+	if (IS_ERR(mp)) {
+		err = PTR_ERR(mp);
+		mp = NULL;
+		goto out;
+	}
+
+	err = xdp_multiprog__pin(mp);
+	if (err) {
+		pr_warn("Failed to pin program: %s\n", strerror(-err));
+		goto out_close;
+	}
+
+	err = xdp_multiprog__attach(NULL, mp, ifindex, mode);
+	if (err) {
+		pr_warn("Failed to attach dispatcher on ifindex %d: %s\n",
+			ifindex, strerror(-err));
+		xdp_multiprog__unpin(mp);
+		goto out_close;
+	}
+
+out_close:
+	xdp_multiprog__close(mp);
+out:
+	return err;
+}
+
+int xdp_program__attach(struct xdp_program *prog, int ifindex,
+			enum xdp_attach_mode mode)
+{
+	if (!prog || IS_ERR(prog))
+		return -EINVAL;
+
+	return xdp_program__attach_multi(&prog, 1, ifindex, mode);
+}
+
+
+int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
+			      int ifindex, enum xdp_attach_mode mode)
+{
+	struct xdp_multiprog *mp;
+	int err = 0, i;
+
+	mp = xdp_multiprog__get_from_ifindex(ifindex);
+	if (IS_ERR_OR_NULL(mp) || mp->is_legacy) {
+		pr_warn("No XDP dispatcher found on ifindex %d\n", ifindex);
+		return -ENOENT;
+	}
+
+	if (mode != XDP_MODE_UNSPEC && mp->attach_mode != mode) {
+		pr_warn("XDP dispatcher attached in mode %d, requested %d\n",
+			mp->attach_mode, mode);
+		err = -ENOENT;
+		goto out;
+	}
+
+	/* fist pass - check progs and count number still loaded */
+	for (i = 0; i < num_progs; i++) {
+		struct xdp_program *p = NULL;
+		bool found = false;
+
+		if (!progs[i]->prog_id) {
+			pr_warn("Program %d not loaded\n", i);
+			err = -EINVAL;
+			goto out;
+		}
+
+		while ((p = xdp_multiprog__next_prog(p, mp))) {
+			if (progs[i]->prog_id == p->prog_id)
+				found = true;
+		}
+
+		if (!found) {
+			pr_warn("Couldn't find program with id %d on ifindex %d\n",
+				progs[i]->prog_id, ifindex);
+			err = -ENOENT;
+			goto out;
+		}
+	}
+
+	if (num_progs == mp->num_links) {
+		err = xdp_multiprog__detach(mp, ifindex);
+		if (err)
+			goto out;
+	} else {
+		pr_warn("Asked to detach %zu progs, but %zu loaded on ifindex %d; "
+			"partial detach not yet supported.\n",
+			num_progs, mp->num_links, ifindex);
+		err = -EINVAL;
+		goto out;
+	}
+
+out:
+	xdp_multiprog__close(mp);
+	return err;
+}
+
+int xdp_program__detach(struct xdp_program *prog, int ifindex,
+			enum xdp_attach_mode mode)
+{
+	if (!prog || IS_ERR(prog))
+		return -EINVAL;
+
+	return xdp_program__detach_multi(&prog, 1, ifindex, mode);
+}
+
+
+void xdp_multiprog__close(struct xdp_multiprog *mp)
 {
 	struct xdp_program *p, *next = NULL;
 
 	if (!mp)
 		return;
 
-	xdp_program__free(mp->dispatcher);
+	xdp_program__close(mp->main_prog);
 	for (p = mp->first_prog; p; p = next) {
 		next = p->next;
-		xdp_program__free(p);
+		xdp_program__close(p);
 	}
+
+	free(mp);
 }
 
-int xdp_multiprog__main_fd(struct xdp_multiprog *mp)
+static int xdp_multiprog__main_fd(struct xdp_multiprog *mp)
 {
 	if (!mp)
 		return -EINVAL;
 
-	if (!mp->dispatcher)
+	if (!mp->main_prog)
 		return -ENOENT;
 
-	return mp->dispatcher->prog_fd;
+	return mp->main_prog->prog_fd;
 }
 
 static struct xdp_multiprog *xdp_multiprog__new()
@@ -853,13 +1226,13 @@ static int xdp_multiprog__load(struct xdp_multiprog *mp)
 {
 	int err = 0;
 
-	if (!mp || !mp->dispatcher || mp->is_loaded)
+	if (!mp || !mp->main_prog || mp->is_loaded || mp->is_legacy)
 		return -EINVAL;
 
 	pr_debug("Loading multiprog dispatcher for %d programs\n",
 		mp->config.num_progs_enabled);
 
-	err = xdp_program__load(mp->dispatcher);
+	err = xdp_program__load(mp->main_prog);
 	if (err) {
 		pr_warn("Failed to load dispatcher: %s\n", strerror(-err));
 		goto out;
@@ -898,21 +1271,21 @@ static int check_dispatcher_version(struct btf *btf)
 
 static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 {
-	struct xdp_program *prog, *p = mp->first_prog;
 	char buf[PATH_MAX], pin_path[PATH_MAX];
-	int err, prog_fd, lock_fd, i;
+	struct xdp_program *prog, *p = NULL;
 	const char *bpffs_dir;
+	int err, lock_fd, i;
 	struct stat sb = {};
 
-	if (!mp)
+	if (!mp || mp->first_prog)
 		return -EINVAL;
 
 	bpffs_dir = get_bpffs_dir();
 	if (IS_ERR(bpffs_dir))
 		return PTR_ERR(bpffs_dir);
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
-			     bpffs_dir, mp->dispatcher->prog_id);
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
+			   bpffs_dir, mp->main_prog->prog_id);
 	if (err)
 		return err;
 
@@ -931,27 +1304,17 @@ static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 
 	for (i = 0; i < mp->config.num_progs_enabled; i++) {
 
-		err = check_snprintf(buf, sizeof(buf), "%s/prog%d-prog",
-				     pin_path, i);
+		err = try_snprintf(buf, sizeof(buf), "%s/prog%d-prog",
+				   pin_path, i);
 		if (err)
 			goto err;
 
-		prog_fd = bpf_obj_get(buf);
-		if (prog_fd < 0) {
-			err = -errno;
-			pr_warn("Couldn't get prog at %s: %s\n",
-				buf, strerror(-err));
-			goto err;
-		}
-
-		prog = xdp_program__from_fd(prog_fd);
+		prog = xdp_program__from_pin(buf);
 		if (IS_ERR(prog)) {
 			err = PTR_ERR(prog);
-			pr_warn("Couldn't get XDP prog from fd %d: %s\n",
-				prog_fd, strerror(-err));
 			goto err;
 		}
-		err = check_snprintf(buf, sizeof(buf), "prog%d", i);
+		err = try_snprintf(buf, sizeof(buf), "prog%d", i);
 		if (err)
 			goto err;
 		prog->attach_name = strdup(buf);
@@ -959,6 +1322,10 @@ static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 			err = -ENOMEM;
 			goto err;
 		}
+
+		prog->chain_call_actions = (mp->config.chain_call_actions[i]
+					    & ~(1U << XDP_DISPATCHER_RETVAL));
+		prog->run_prio = mp->config.run_prios[i];
 
 		if (!p) {
 			mp->first_prog = prog;
@@ -977,7 +1344,7 @@ err:
 	prog = mp->first_prog;
 	while (prog) {
 		p = prog->next;
-		xdp_program__free(prog);
+		xdp_program__close(prog);
 		prog = p;
 	}
 	mp->first_prog = NULL;
@@ -1021,10 +1388,16 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp, int prog_fd)
 
 	err = check_dispatcher_version(btf);
 	if (err) {
-		if (err != -ENOENT)
+		if (err != -ENOENT) {
 			pr_warn("Dispatcher version check failed for ID %d\n",
 				info->id);
-		goto out;
+			goto out;
+		} else {
+			/* no dispatcher, mark as legacy prog */
+			mp->is_legacy = true;
+			err = 0;
+			goto legacy;
+		}
 	}
 
 	if (info->nr_map_ids != 1) {
@@ -1060,26 +1433,31 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp, int prog_fd)
 		goto out;
 	}
 
+legacy:
 	prog = xdp_program__from_fd(prog_fd);
 	if (IS_ERR(prog)) {
 		err = PTR_ERR(prog);
 		goto out;
 	}
-	mp->dispatcher = prog;
+	mp->main_prog = prog;
 
-	err = xdp_multiprog__link_pinned_progs(mp);
-	if (err)
-		goto err;
+	if (!mp->is_legacy) {
+		err = xdp_multiprog__link_pinned_progs(mp);
+		if (err)
+			goto err;
+	}
 
-	pr_debug("Found multiprog with id %d and %zu component progs\n",
-		 mp->dispatcher->prog_id, mp->num_links);
+	mp->is_loaded = true;
+	pr_debug("Found %s with id %d and %zu component progs\n",
+		 mp->is_legacy ? "legacy program" : "multiprog",
+		 mp->main_prog->prog_id, mp->num_links);
 
 out:
 	free(info_linear);
 	return err;
 
 err:
-	xdp_program__free(prog);
+	xdp_program__close(prog);
 	goto out;
 }
 
@@ -1123,22 +1501,30 @@ static struct xdp_multiprog *xdp_multiprog__from_id(__u32 id)
 struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex)
 {
 	struct xdp_link_info xinfo = {};
-	__u32 prog_id;
+	enum xdp_attach_mode mode;
+	struct xdp_multiprog *mp;
+	__u32 prog_id = 0;
 	int err;
 
 	err = bpf_get_link_xdp_info(ifindex, &xinfo, sizeof(xinfo), 0);
 	if (err)
 		return ERR_PTR(err);
 
-	if (xinfo.attach_mode == XDP_ATTACHED_SKB)
+	if (xinfo.attach_mode == XDP_ATTACHED_SKB) {
 		prog_id = xinfo.skb_prog_id;
-	else
+		mode = XDP_MODE_SKB;
+	} else {
 		prog_id = xinfo.drv_prog_id;
+		mode = XDP_MODE_NATIVE;
+	}
 
 	if (!prog_id)
 		return ERR_PTR(-ENOENT);
 
-	return xdp_multiprog__from_id(prog_id);
+	mp = xdp_multiprog__from_id(prog_id);
+	if (!IS_ERR_OR_NULL(mp))
+		mp->attach_mode = mode;
+	return mp;
 }
 
 static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
@@ -1155,7 +1541,7 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 	pr_debug("Linking prog %s as multiprog entry %zu\n",
 		 xdp_program__name(prog), mp->num_links);
 
-	err = check_snprintf(buf, sizeof(buf), "prog%d", mp->num_links);
+	err = try_snprintf(buf, sizeof(buf), "prog%zu", mp->num_links);
 	if (err)
 		goto err;
 
@@ -1167,7 +1553,7 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 		return -EOPNOTSUPP;
 	} else {
 		err = bpf_program__set_attach_target(prog->bpf_prog,
-						     mp->dispatcher->prog_fd,
+						     mp->main_prog->prog_fd,
 						     buf);
 		if (err) {
 			pr_debug("Failed to set attach target: %s\n", strerror(-err));
@@ -1225,13 +1611,14 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 	return 0;
 
 err_free:
-	xdp_program__free(new_prog);
+	xdp_program__close(new_prog);
 err:
 	return err;
 }
 
-struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
-					      size_t num_progs)
+static struct xdp_multiprog *
+xdp_multiprog__generate(struct xdp_program **progs,
+			size_t num_progs)
 {
 	struct xdp_program *dispatcher;
 	struct xdp_multiprog *mp;
@@ -1251,11 +1638,8 @@ struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	if (IS_ERR(mp))
 		return mp;
 
-	err = find_bpf_file(buf, sizeof(buf), "xdp-dispatcher.o");
-	if (err)
-		goto err;
-
-	dispatcher = xdp_program__open_file(buf, "xdp_dispatcher", NULL);
+	dispatcher = xdp_program__find_file("xdp-dispatcher.o",
+					    "xdp_dispatcher", NULL);
 	if (IS_ERR(dispatcher)) {
 		err = PTR_ERR(dispatcher);
 		pr_warn("Couldn't open BPF file %s\n", buf);
@@ -1268,9 +1652,9 @@ struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 		goto err;
 	}
 
-	mp->dispatcher = dispatcher;
+	mp->main_prog = dispatcher;
 
-	map = bpf_map__next(NULL, mp->dispatcher->bpf_obj);
+	map = bpf_map__next(NULL, mp->main_prog->bpf_obj);
 	if (!map) {
 		pr_warn("Couldn't find rodata map in object file %s\n", buf);
 		err = -ENOENT;
@@ -1278,8 +1662,11 @@ struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	}
 
 	mp->config.num_progs_enabled = num_progs;
-	for (i = 0; i < num_progs; i++)
-		mp->config.chain_call_actions[i] = progs[i]->chain_call_actions;
+	for (i = 0; i < num_progs; i++) {
+		mp->config.chain_call_actions[i] = (progs[i]->chain_call_actions |
+						    (1U << XDP_DISPATCHER_RETVAL));
+		mp->config.run_prios[i] = progs[i]->run_prio;
+	}
 
 	err = bpf_map__set_initial_value(map, &mp->config, sizeof(mp->config));
 	if (err) {
@@ -1300,26 +1687,26 @@ struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	return mp;
 
 err:
-	xdp_multiprog__free(mp);
+	xdp_multiprog__close(mp);
 	return ERR_PTR(err);
 }
 
-int xdp_multiprog__pin(struct xdp_multiprog *mp)
+static int xdp_multiprog__pin(struct xdp_multiprog *mp)
 {
 	char pin_path[PATH_MAX], buf[PATH_MAX];
 	struct xdp_program *prog;
 	const char *bpffs_dir;
 	int err = 0, lock_fd;
 
-	if (!mp)
+	if (!mp || mp->is_legacy)
 		return -EINVAL;
 
 	bpffs_dir = get_bpffs_dir();
 	if (IS_ERR(bpffs_dir))
 		return PTR_ERR(bpffs_dir);
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
-			     bpffs_dir, mp->dispatcher->prog_id);
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
+			   bpffs_dir, mp->main_prog->prog_id);
 	if (err)
 		return err;
 
@@ -1328,7 +1715,7 @@ int xdp_multiprog__pin(struct xdp_multiprog *mp)
 		return lock_fd;
 
 	pr_debug("Pinning multiprog fd %d beneath %s\n",
-		 mp->dispatcher->prog_fd, pin_path);
+		 mp->main_prog->prog_fd, pin_path);
 
 	err = mkdir(pin_path, S_IRWXU);
 	if (err && errno != EEXIST) {
@@ -1343,8 +1730,8 @@ int xdp_multiprog__pin(struct xdp_multiprog *mp)
 			goto err_unpin;
 		}
 
-		err = check_snprintf(buf, sizeof(buf), "%s/%s-link",
-				     pin_path, prog->attach_name);
+		err = try_snprintf(buf, sizeof(buf), "%s/%s-link",
+				   pin_path, prog->attach_name);
 		if (err)
 			goto err_unpin;
 
@@ -1356,8 +1743,8 @@ int xdp_multiprog__pin(struct xdp_multiprog *mp)
 		pr_debug("Pinned link for prog %s at %s\n",
 			 xdp_program__name(prog), buf);
 
-		err = check_snprintf(buf, sizeof(buf), "%s/%s-prog",
-				     pin_path, prog->attach_name);
+		err = try_snprintf(buf, sizeof(buf), "%s/%s-prog",
+				   pin_path, prog->attach_name);
 		if (err)
 			goto err_unpin;
 
@@ -1375,33 +1762,33 @@ out:
 
 err_unpin:
 	for (prog = mp->first_prog; prog; prog = prog->next) {
-		if (!check_snprintf(buf, sizeof(buf), "%s/%s-link",
-				    pin_path, prog->attach_name))
+		if (!try_snprintf(buf, sizeof(buf), "%s/%s-link",
+				  pin_path, prog->attach_name))
 			unlink(buf);
-		if (!check_snprintf(buf, sizeof(buf), "%s/%s-prog",
-				    pin_path, prog->attach_name))
+		if (!try_snprintf(buf, sizeof(buf), "%s/%s-prog",
+				  pin_path, prog->attach_name))
 			unlink(buf);
 	}
 	rmdir(pin_path);
 	goto out;
 }
 
-int xdp_multiprog__unpin(struct xdp_multiprog *mp)
+static int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 {
 	char pin_path[PATH_MAX], buf[PATH_MAX];
 	struct xdp_program *prog;
 	const char *bpffs_dir;
 	int err = 0, lock_fd;
 
-	if (!mp)
+	if (!mp || mp->is_legacy)
 		return -EINVAL;
 
 	bpffs_dir = get_bpffs_dir();
 	if (IS_ERR(bpffs_dir))
 		return PTR_ERR(bpffs_dir);
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
-			     bpffs_dir, mp->dispatcher->prog_id);
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
+			   bpffs_dir, mp->main_prog->prog_id);
 	if (err)
 		return err;
 
@@ -1410,11 +1797,11 @@ int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 		return lock_fd;
 
 	pr_debug("Unpinning multiprog fd %d beneath %s\n",
-		 mp->dispatcher->prog_fd, pin_path);
+		 mp->main_prog->prog_fd, pin_path);
 
 	for (prog = mp->first_prog; prog; prog = prog->next) {
-		err = check_snprintf(buf, sizeof(buf), "%s/%s-link",
-				     pin_path, prog->attach_name);
+		err = try_snprintf(buf, sizeof(buf), "%s/%s-link",
+				   pin_path, prog->attach_name);
 		if (err)
 			goto out;
 
@@ -1428,8 +1815,8 @@ int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 		pr_debug("Unpinned link for prog %s from %s\n",
 			 xdp_program__name(prog), buf);
 
-		err = check_snprintf(buf, sizeof(buf), "%s/%s-prog",
-				     pin_path, prog->attach_name);
+		err = try_snprintf(buf, sizeof(buf), "%s/%s-prog",
+				   pin_path, prog->attach_name);
 		if (err)
 			goto out;
 
@@ -1454,20 +1841,33 @@ out:
 	return err;
 }
 
-int xdp_multiprog__attach(struct xdp_multiprog *mp,
-			  int ifindex, bool force,
-			  enum xdp_attach_mode mode)
+static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
+				 struct xdp_multiprog *mp,
+				 int ifindex, enum xdp_attach_mode mode)
 {
-	int err = 0, xdp_flags = 0, prog_fd;
+	int err = 0, xdp_flags = 0, prog_fd = -1;
+	DECLARE_LIBBPF_OPTS(bpf_xdp_set_link_opts, opts,
+		.old_fd = -1);
 
-	if (!mp)
+	if (!mp && !old_mp)
 		return -EINVAL;
 
-	prog_fd = xdp_multiprog__main_fd(mp);
-	if (prog_fd < 0)
-		return -EINVAL;
+	if (mp) {
+		prog_fd = xdp_multiprog__main_fd(mp);
+		if (prog_fd < 0)
+			return -EINVAL;
+	}
 
-	pr_debug("Loading XDP fd %d onto ifindex %d\n", prog_fd, ifindex);
+	if (old_mp) {
+		opts.old_fd = xdp_multiprog__main_fd(old_mp);
+		if (opts.old_fd < 0)
+			return -EINVAL;
+	} else {
+		xdp_flags |= XDP_FLAGS_UPDATE_IF_NOEXIST;
+	}
+
+	pr_debug("Replacing XDP fd %d with %d on ifindex %d\n",
+		 opts.old_fd, prog_fd, ifindex);
 
 	switch (mode) {
 	case XDP_MODE_SKB:
@@ -1483,25 +1883,7 @@ int xdp_multiprog__attach(struct xdp_multiprog *mp,
 		break;
 	}
 
-	if (!force)
-		xdp_flags |= XDP_FLAGS_UPDATE_IF_NOEXIST;
-
-	err = bpf_set_link_xdp_fd(ifindex, prog_fd, xdp_flags);
-	if (err == -EEXIST && !(xdp_flags & XDP_FLAGS_UPDATE_IF_NOEXIST)) {
-		/* Program replace didn't work, probably because a program of
-		 * the opposite type is loaded. Let's unload that and try
-		 * loading again.
-		 */
-
-		__u32 old_flags = xdp_flags;
-
-		xdp_flags &= ~XDP_FLAGS_MODES;
-		xdp_flags |= (mode == XDP_MODE_SKB) ? XDP_FLAGS_DRV_MODE :
-			XDP_FLAGS_SKB_MODE;
-		err = bpf_set_link_xdp_fd(ifindex, -1, xdp_flags);
-		if (!err)
-			err = bpf_set_link_xdp_fd(ifindex, prog_fd, old_flags);
-	}
+	err = bpf_set_link_xdp_fd_opts(ifindex, prog_fd, xdp_flags, &opts);
 	if (err < 0) {
 		pr_warn("Error attaching XDP program to ifindex %d: %s\n",
 			ifindex, strerror(-err));
@@ -1509,12 +1891,10 @@ int xdp_multiprog__attach(struct xdp_multiprog *mp,
 		switch (-err) {
 		case EBUSY:
 		case EEXIST:
-			pr_warn("XDP already loaded on device;"
-				" use --force to replace\n");
+			pr_debug("XDP already loaded on device\n");
 			break;
 		case EOPNOTSUPP:
-			pr_warn("Native XDP not supported;"
-				" try using --skb-mode\n");
+			pr_debug("XDP mode not supported; try using SKB mode\n");
 			break;
 		default:
 			break;
@@ -1522,19 +1902,38 @@ int xdp_multiprog__attach(struct xdp_multiprog *mp,
 		goto err;
 	}
 
-	pr_debug("Loaded %zu programs on ifindex '%d'%s\n",
-		 mp->num_links, ifindex,
-		 mode == XDP_MODE_SKB ? " in skb mode" : "");
+	if (mp)
+		pr_debug("Loaded %zu programs on ifindex '%d'%s\n",
+			 mp->num_links, ifindex,
+			 mode == XDP_MODE_SKB ? " in skb mode" : "");
+	else
+		pr_debug("Detached multiprog on ifindex '%d'%s\n",
+			 ifindex, mode == XDP_MODE_SKB ? " in skb mode" : "");
 
 	return 0;
 err:
 	return err;
 }
 
-struct xdp_program *xdp_multiprog__next_prog(struct xdp_program *prog,
-					     struct xdp_multiprog *mp)
+int xdp_multiprog__detach(struct xdp_multiprog *mp, int ifindex)
 {
-	if (!mp)
+	int err;
+
+	if (!mp || !mp->is_loaded)
+		return -EINVAL;
+
+	err = xdp_multiprog__attach(mp, NULL, ifindex, mp->attach_mode);
+	if (err)
+		return err;
+
+	return xdp_multiprog__unpin(mp);
+}
+
+
+struct xdp_program *xdp_multiprog__next_prog(const struct xdp_program *prog,
+					     const struct xdp_multiprog *mp)
+{
+	if (!mp || mp->is_legacy)
 		return NULL;
 
 	if (prog)
@@ -1543,38 +1942,23 @@ struct xdp_program *xdp_multiprog__next_prog(struct xdp_program *prog,
 	return mp->first_prog;
 }
 
-/*int xdp_program__attach(const struct xdp_program *prog,
-			int ifindex, bool replace, enum xdp_attach_mode mode)
+enum xdp_attach_mode xdp_multiprog__attach_mode(const struct xdp_multiprog *mp)
 {
-	struct xdp_program *old_progs[10], *all_progs[10];
-	size_t num_old_progs = 10, num_progs;
-	struct xdp_multiprog *mp;
-	int err, i;
+	if (!mp)
+		return XDP_MODE_UNSPEC;
 
-	/ * FIXME: The idea here is that the API should allow the caller to just
-	 * attach a program; and the library will take care of finding the
-	 * already-attached programs, inserting the new one into the sequence
-	 * based on its priority, build a new dispatcher, and atomically replace
-	 * the old one. This needs a kernel API to allow re-attaching already
-	 * loaded freplace programs, as well as the ability to attach each
-	 * program to multiple places. So for now, this function doesn't really
-	 * work.
-	 *\/
-	mp = xdp_multiprog__get_from_ifindex(ifindex);
-	if (err && err != -ENOENT)
-		return err;
+	return mp->attach_mode;
+}
 
-	if (replace) {
-		num_progs = 1;
-		all_progs[0] = (struct xdp_program *)prog;
-	} else {
-		for (i = 0; i < num_old_progs; i++)
-			all_progs[i] = old_progs[i];
-		num_progs = num_old_progs +1;
-	}
+struct xdp_program *xdp_multiprog__main_prog(const struct xdp_multiprog *mp)
+{
+	if (!mp)
+		return NULL;
 
-	err = xdp_attach_programs(all_progs, num_progs, ifindex, true, mode);
-	if (err)
-		return err;
-	return 0;
-	}*/
+	return mp->main_prog;
+}
+
+bool xdp_multiprog__is_legacy(const struct xdp_multiprog *mp)
+{
+	return !!(mp && mp->is_legacy);
+}

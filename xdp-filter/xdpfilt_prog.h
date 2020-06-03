@@ -109,8 +109,11 @@ struct {
 
 static int __always_inline lookup_verdict_ipv4(struct iphdr *iphdr)
 {
-	CHECK_MAP(&filter_ipv4, &iphdr->daddr, MAP_FLAG_DST);
-	CHECK_MAP(&filter_ipv4, &iphdr->saddr, MAP_FLAG_SRC);
+	__u32 addr;
+	addr = iphdr->daddr;
+	CHECK_MAP(&filter_ipv4, &addr, MAP_FLAG_DST);
+	addr = iphdr->saddr;
+	CHECK_MAP(&filter_ipv4, &addr, MAP_FLAG_SRC);
 	return VERDICT_MISS;
 }
 
@@ -132,8 +135,12 @@ struct {
 
 static int __always_inline lookup_verdict_ipv6(struct ipv6hdr *ipv6hdr)
 {
-	CHECK_MAP(&filter_ipv6, &ipv6hdr->daddr, MAP_FLAG_DST);
-	CHECK_MAP(&filter_ipv6, &ipv6hdr->saddr, MAP_FLAG_SRC);
+	struct in6_addr addr;
+
+	addr = ipv6hdr->daddr;
+	CHECK_MAP(&filter_ipv6, &addr, MAP_FLAG_DST);
+	addr = ipv6hdr->saddr;
+	CHECK_MAP(&filter_ipv6, &addr, MAP_FLAG_SRC);
 	return VERDICT_MISS;
 }
 
@@ -159,8 +166,12 @@ struct {
 
 static int __always_inline lookup_verdict_ethernet(struct ethhdr *eth)
 {
-	CHECK_MAP(&filter_ethernet, eth->h_dest, MAP_FLAG_DST);
-	CHECK_MAP(&filter_ethernet, eth->h_source, MAP_FLAG_SRC);
+	struct ethaddr addr = {};
+
+	__builtin_memcpy(&addr, eth->h_dest, sizeof(addr));
+	CHECK_MAP(&filter_ethernet, &addr, MAP_FLAG_DST);
+	__builtin_memcpy(&addr, eth->h_source, sizeof(addr));
+	CHECK_MAP(&filter_ethernet, &addr, MAP_FLAG_SRC);
 	return VERDICT_MISS;
 }
 

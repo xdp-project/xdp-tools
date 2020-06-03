@@ -33,12 +33,21 @@ EXTRA_USER_DEPS +=
 
 LDFLAGS+=-L$(LIBXDP_DIR)
 ifeq ($(DYNAMIC_LIBXDP),1)
-	LDLIBS+=-lxdp
+	LDLIBS:=-lxdp $(LDLIBS)
 	OBJECT_LIBXDP:=$(LIBXDP_DIR)/libxdp.so.$(LIBXDP_VERSION)
 else
-	LDLIBS+=-l:libxdp.a
+	LDLIBS:=-l:libxdp.a $(LDLIBS)
 	OBJECT_LIBXDP:=$(LIBXDP_DIR)/libxdp.a
 endif
+
+# Detect submodule libbpf source file changes
+ifeq ($(SYSTEM_LIBBPF),n)
+	LIBBPF_SOURCES := $(wildcard $(LIBBPF_DIR)/src/*.[ch])
+endif
+
+LIBXDP_SOURCES := $(wildcard $(LIBXDP_DIR)/*.[ch] $(LIBXDP_DIR)/*.in)
+DISPATCHER_OBJ := xdp-dispatcher.o
+LIBXDP_DISPATCHER_OBJ := $(LIBXDP_DIR)/$(DISPATCHER_OBJ)
 
 # BPF-prog kern and userspace shares struct via header file:
 KERN_USER_H ?= $(wildcard common_kern_user.h)
@@ -49,7 +58,7 @@ BPF_CFLAGS += -I$(HEADER_DIR)
 BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(wildcard $(HEADER_DIR)/xdp/*.h)
 MAN_FILES := $(wildcard ${USER_TARGETS:=.8})
 
-all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS)
+all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) $(DISPATCHER_OBJ)
 
 .PHONY: clean
 
@@ -64,11 +73,14 @@ install:
 	$(if $(MAN_FILES),install -m 0755 -d $(DESTDIR)$(MANDIR)/man8)
 	$(if $(MAN_FILES),install -m 0644 $(MAN_FILES) $(DESTDIR)$(MANDIR)/man8)
 
-$(OBJECT_LIBBPF):
+$(OBJECT_LIBBPF): $(LIBBPF_SOURCES)
 	$(Q)$(MAKE) -C $(LIB_DIR) libbpf
 
-$(OBJECT_LIBXDP): $(wildcard $(LIBXDP_DIR)/*.[ch])
+$(OBJECT_LIBXDP): $(LIBXDP_SOURCES)
 	$(Q)$(MAKE) -C $(LIBXDP_DIR)
+
+$(DISPATCHER_OBJ): $(LIBXDP_DISPATCHER_OBJ) $(OBJECT_LIBXDP) $(LIBXDP_SOURCES)
+	$(QUIET_LINK)cp $(LIBXDP_DISPATCHER_OBJ) $(DISPATCHER_OBJ)
 
 $(CONFIGMK):
 	$(Q)$(MAKE) -C $(LIB_DIR)/.. config.mk
@@ -96,3 +108,12 @@ $(XDP_OBJ): %.o: %.c $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEADERS) $(LIBMK)
 	    -Werror \
 	    -O2 -emit-llvm -c -g -o ${@:.o=.ll} $<
 	$(QUIET_LLC)$(LLC) -march=bpf -filetype=obj -o $@ ${@:.o=.ll}
+
+.PHONY: test
+ifeq ($(TEST_FILE),)
+test:
+	@echo "    No tests defined"
+else
+test: all
+	$(Q)$(TEST_DIR)/test_runner.sh $(TEST_FILE)
+endif

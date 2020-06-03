@@ -26,7 +26,6 @@ static const struct loadopt {
 	struct multistring filenames;
 	char *pin_path;
 	char *section_name;
-	bool force;
 	enum xdp_attach_mode mode;
 } defaults_load = {
 	.mode = XDP_MODE_UNSPEC
@@ -41,9 +40,6 @@ struct enum_val xdp_modes[] = {
 
 
 static struct prog_option load_options[] = {
-	DEFINE_OPTION("force", OPT_BOOL, struct loadopt, force,
-		      .short_opt = 'F',
-		      .help = "Force loading of XDP program"),
 	DEFINE_OPTION("mode", OPT_ENUM, struct loadopt, mode,
 		      .short_opt = 'm',
 		      .typearg = xdp_modes,
@@ -69,175 +65,102 @@ static struct prog_option load_options[] = {
 	END_OPTIONS
 };
 
-int load_multiprog(const struct loadopt *opt)
-{
-	size_t num_progs = opt->filenames.num_strings;
-	struct xdp_program **progs, *p;
-	struct xdp_multiprog *mp;
-	int err = 0, i;
-	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
-			    .pin_root_path = opt->pin_path);
-
-	progs = calloc(sizeof(*progs), num_progs);
-	if (!progs) {
-		pr_warn("Couldn't allocate memory\n");
-		return EXIT_FAILURE;
-	}
-	memset(progs, 0, sizeof(*progs) * num_progs);
-
-	for (i = 0; i < num_progs; i++) {
-		p = xdp_program__open_file(opt->filenames.strings[i],
-						  opt->section_name, &opts);
-		if (IS_ERR(p)) {
-			err = PTR_ERR(p);
-			pr_warn("Couldn't open file '%s': %s",
-				opt->filenames.strings[i], strerror(-err));
-			goto out;
-		}
-		progs[i] = p;
-	}
-
-	mp = xdp_multiprog__generate(progs, num_progs);
-
-	if (IS_ERR(mp)) {
-		err = PTR_ERR(mp);
-		pr_warn("Failed to load program: %s\n", strerror(-err));
-		goto out;
-	}
-
-	err = xdp_multiprog__pin(mp);
-	if (err) {
-		pr_warn("Failed to pin program: %s\n", strerror(-err));
-		goto out_free_mp;
-	}
-
-	err = xdp_multiprog__attach(mp, opt->iface.ifindex,
-				    opt->force, opt->mode);
-	if (err) {
-		pr_warn("Failed to attach program: %s\n", strerror(-err));
-		goto out_free_mp;
-	}
-
-out_free_mp:
-	xdp_multiprog__free(mp);
-out:
-	for (i = 0; i < num_progs; i++)
-		if (progs[i])
-			xdp_program__free(progs[i]);
-	return err ? EXIT_FAILURE : EXIT_SUCCESS;
-}
-
 int do_load(const void *cfg, const char *pin_root_path)
 {
 	const struct loadopt *opt = cfg;
-	struct bpf_object *obj = NULL;
-	struct bpf_program *prog;
-	struct xdp_program *xdp_prog;
+	struct xdp_program **progs, *p;
 	char errmsg[STRERR_BUFSIZE];
-	int err = EXIT_SUCCESS;
-	const char *filename;
+	int err = EXIT_SUCCESS, i;
+	size_t num_progs;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = opt->pin_path);
 
 	if (!opt->filenames.num_strings) {
 		pr_warn("Need at least one filename to load\n");
 		return EXIT_FAILURE;
-	} else if (opt->filenames.num_strings > 1) {
-		return load_multiprog(opt);
 	}
-	filename = opt->filenames.strings[0];
 
-	pr_debug("Loading file '%s' on interface '%s'.\n",
-		 filename, opt->iface.ifname);
+	num_progs = opt->filenames.num_strings;
+	progs = calloc(num_progs, sizeof(*progs));
+	if (!progs) {
+		pr_warn("Couldn't allocate memory\n");
+		return EXIT_FAILURE;
+	}
 
+	pr_debug("Loading %zu files on interface '%s'.\n",
+		 num_progs, opt->iface.ifname);
+
+retry:
 	/* libbpf spits out a lot of unhelpful error messages while loading.
 	 * Silence the logging so we can provide our own messages instead; this
 	 * is a noop if verbose logging is enabled.
 	 */
 	silence_libbpf_logging();
 
-retry:
+	for (i = 0; i < num_progs; i++) {
+		p = progs[i];
+		if (p)
+			xdp_program__close(p);
 
-	obj = bpf_object__open_file(filename, &opts);
-	err = libbpf_get_error(obj);
-	if (err) {
-		libbpf_strerror(err, errmsg, sizeof(errmsg));
-		pr_warn("Couldn't load BPF program: %s\n", errmsg);
-		obj = NULL;
-		goto out;
+		p = xdp_program__open_file(opt->filenames.strings[i],
+					   opt->section_name, &opts);
+
+		if (IS_ERR(p)) {
+			err = PTR_ERR(p);
+			pr_warn("Couldn't open file '%s': %s",
+				opt->filenames.strings[i], strerror(-err));
+			goto out;
+		}
+
+		xdp_program__print_chain_call_actions(p, errmsg, sizeof(errmsg));
+		pr_debug("XDP program %d: Run prio: %d. Chain call actions: %s\n",
+			 i, xdp_program__run_prio(p), errmsg);
+
+		if (!opt->pin_path) {
+			struct bpf_map *map;
+
+			bpf_object__for_each_map(map, xdp_program__bpf_obj(p)) {
+				err = bpf_map__set_pin_path(map, NULL);
+				if (err) {
+					pr_warn("Error clearing map pin path: %s\n",
+						strerror(-err));
+					goto out;
+				}
+			}
+		}
+
+		progs[i] = p;
 	}
 
-	xdp_prog = xdp_program__from_bpf_obj(obj, opt->section_name);
-	if (IS_ERR(xdp_prog)) {
-		libbpf_strerror(PTR_ERR(xdp_prog), errmsg, sizeof(errmsg));
-		pr_warn("Couldn't get XDP program: %s\n", errmsg);
-		goto out;
-	}
-	xdp_program__print_chain_call_actions(xdp_prog, errmsg, sizeof(errmsg));
-	pr_debug("XDP program run prio: %d. Chain call actions: %s\n",
-		 xdp_program__run_prio(xdp_prog), errmsg);
-
-	if (!opt->pin_path) {
-		struct bpf_map *map;
-
-		bpf_object__for_each_map(map, obj)
-			bpf_map__set_pin_path(map, NULL);
-	}
-
-	bpf_object__for_each_program(prog, obj) {
-		bpf_program__set_type(prog, BPF_PROG_TYPE_XDP);
-		bpf_program__set_expected_attach_type(prog, BPF_PROG_TYPE_XDP);
-	}
-
-	err = bpf_object__load(obj);
+	err = xdp_program__attach_multi(progs, num_progs,
+					opt->iface.ifindex, opt->mode);
 	if (err) {
 		if (err == -EPERM) {
 			pr_debug("Permission denied when loading eBPF object; "
 				 "raising rlimit and retrying\n");
 
-			if (!double_rlimit()) {
-				bpf_object__close(obj);
+			err = double_rlimit();
+			if (!err)
 				goto retry;
-			}
 		}
 
 		libbpf_strerror(err, errmsg, sizeof(errmsg));
-		pr_warn("Couldn't load eBPF object: %s(%d)\n", errmsg, err);
-		goto out;
-	}
-
-	err = attach_xdp_program(obj, opt->section_name, &opt->iface, opt->force,
-				 opt->mode, opt->pin_path);
-	if (err) {
-		pr_warn("Couldn't attach XDP program on iface '%s'\n",
-			opt->iface.ifname);
+		pr_warn("Couldn't attach XDP program on iface '%s': %s(%d)\n",
+			opt->iface.ifname, errmsg, err);
 		goto out;
 	}
 
 out:
-	if (obj)
-		bpf_object__close(obj);
+	for (i = 0; i < num_progs; i++)
+		if (progs[i])
+			xdp_program__close(progs[i]);
+	free(progs);
 	return err;
 }
-
-static int remove_iface_program(const struct iface *iface,
-				const struct bpf_prog_info *info,
-				enum xdp_attach_mode mode, void *arg)
-{
-	char *pin_root_path = arg;
-	int err;
-
-	err = detach_xdp_program(iface, pin_root_path);
-	if (err) {
-		pr_warn("Removing XDP program on iface %s failed (%d): %s\n",
-			iface->ifname, -err, strerror(-err));
-	}
-	return err;
-}
-
 
 static const struct unloadopt {
 	bool all;
+	__u32 prog_id;
 	struct iface iface;
 } defaults_unload = {};
 
@@ -246,114 +169,135 @@ static struct prog_option unload_options[] = {
 		      .positional = true,
 		      .metavar = "<ifname>",
 		      .help = "Unload from device <ifname>"),
+	DEFINE_OPTION("id", OPT_U32, struct unloadopt, prog_id,
+		      .metavar = "<id>",
+		      .short_opt = 'i',
+		      .help = "Unload program with id <id>"),
 	DEFINE_OPTION("all", OPT_BOOL, struct unloadopt, all,
 		      .short_opt = 'a',
-		      .help = "Unload from all interfaces"),
+		      .help = "Unload all programs from interface"),
 	END_OPTIONS
 };
 
 int do_unload(const void *cfg, const char *pin_root_path)
 {
 	const struct unloadopt *opt = cfg;
-	struct bpf_prog_info info;
-	struct xdp_multiprog *mp;
-	int err = EXIT_SUCCESS;
+	struct xdp_multiprog *mp = NULL;
+	int err = EXIT_FAILURE;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 
-	if (opt->all) {
-		pr_debug("Removing XDP programs from all interfaces\n");
-		err = iterate_iface_programs_all(pin_root_path, remove_iface_program,
-						 (void *)pin_root_path);
+	if (!opt->all && !opt->prog_id) {
+		pr_warn("Need prog ID or --all\n");
 		goto out;
 	}
 
 	if (!opt->iface.ifindex) {
-		pr_warn("Must specify ifname or --all\n");
-		err = EXIT_FAILURE;
+		pr_warn("Must specify ifname\n");
 		goto out;
 	}
 
 	mp = xdp_multiprog__get_from_ifindex(opt->iface.ifindex);
-	if (!IS_ERR_OR_NULL(mp)) {
-		err = xdp_multiprog__unpin(mp);
-		xdp_multiprog__free(mp);
-		goto out;
-	}
-
-	err = get_loaded_program(&opt->iface, NULL, &info);
-	if (err) {
+	if (IS_ERR_OR_NULL(mp)) {
 		pr_warn("No XDP program loaded on %s\n", opt->iface.ifname);
-		err = EXIT_FAILURE;
+		mp = NULL;
 		goto out;
 	}
 
-	err = remove_iface_program(&opt->iface, &info, false, (void *)pin_root_path);
-	if (err)
-		goto out;
+	if (opt->all || (xdp_multiprog__is_legacy(mp) &&
+			 (xdp_program__id(xdp_multiprog__main_prog(mp)) ==
+			  opt->prog_id))) {
+		err = xdp_multiprog__detach(mp, opt->iface.ifindex);
+		if (err) {
+			pr_warn("Unable to detach XDP program: %s\n",
+				strerror(-err));
+			goto out;
+		}
+	} else {
+		struct xdp_program *prog = NULL;
+
+		while ((prog = xdp_multiprog__next_prog(prog, mp))) {
+			if (xdp_program__id(prog) == opt->prog_id)
+				break;
+		}
+		if (!prog) {
+			pr_warn("Program with ID %u not loaded on %s\n",
+				opt->prog_id, opt->iface.ifname);
+			err = -ENOENT;
+			goto out;
+		}
+		pr_debug("Detaching XDP program with ID %u from %s\n",
+			 xdp_program__id(prog), opt->iface.ifname);
+		err = xdp_program__detach(prog, opt->iface.ifindex,
+					  XDP_MODE_UNSPEC);
+		if (err) {
+			pr_warn("Unable to detach XDP program: %s\n",
+				strerror(-err));
+			goto out;
+		}
+	}
 
 out:
-	return err;
+	xdp_multiprog__close(mp);
+	return err ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
 static struct prog_option status_options[] = {
 	END_OPTIONS
 };
 
-int print_iface_status(const struct iface *iface, const struct bpf_prog_info *info,
-		       enum xdp_attach_mode mode, void *arg)
+static char *print_bpf_tag(char buf[BPF_TAG_SIZE*2+1],
+			   const unsigned char tag[BPF_TAG_SIZE])
 {
-	struct xdp_program *xdp_prog;
-	struct xdp_multiprog *mp;
+	int i;
+
+	for (i = 0; i < BPF_TAG_SIZE; i++)
+		sprintf(&buf[i*2], "%02x", tag[i]);
+	buf[BPF_TAG_SIZE*2] = '\0';
+	return buf;
+}
+
+int print_iface_status(const struct iface *iface,
+		       const struct xdp_multiprog *mp,
+		       void *arg)
+{
+	struct xdp_program *prog, *dispatcher;
 	char tag[BPF_TAG_SIZE*2+1];
 	char buf[STRERR_BUFSIZE];
-	int i, err;
+	int err;
 
-	for (i = 0; i < BPF_TAG_SIZE; i++) {
-		sprintf(&tag[i*2], "%02x", info->tag[i]);
+	if (!mp) {
+		printf("%-16s <no XDP program>\n",
+		       iface->ifname);
+		return 0;
 	}
-	tag[BPF_TAG_SIZE*2] = '\0';
 
-	xdp_prog = xdp_program__from_id(info->id);
-	if (IS_ERR(xdp_prog)) {
-		err = PTR_ERR(xdp_prog);
-		libbpf_strerror(err, buf, sizeof(buf));
-		printf("err: %s\n", buf);
-		return err;
-	}
+	dispatcher = xdp_multiprog__main_prog(mp);
+
 	printf("%-16s %-5s %-16s %-8s %-4d %-17s\n",
 	       iface->ifname,
 	       "",
-	       info->name,
-	       get_enum_name(xdp_modes, mode),
-	       info->id, tag);
+	       xdp_program__name(dispatcher),
+	       get_enum_name(xdp_modes, xdp_multiprog__attach_mode(mp)),
+	       xdp_program__id(dispatcher),
+	       print_bpf_tag(tag, xdp_program__tag(dispatcher)));
 
-	mp = xdp_multiprog__get_from_ifindex(iface->ifindex);
-	if (!IS_ERR_OR_NULL(mp)) {
-		struct xdp_program *sub_prog;
 
-		for (sub_prog = xdp_multiprog__next_prog(NULL, mp);
-		     sub_prog;
-		     sub_prog = xdp_multiprog__next_prog(sub_prog, mp)) {
+	for (prog = xdp_multiprog__next_prog(NULL, mp);
+	     prog;
+	     prog = xdp_multiprog__next_prog(prog, mp)) {
 
-			const uint8_t *raw_tag = xdp_program__tag(sub_prog);
+		err = xdp_program__print_chain_call_actions(prog, buf,
+							    sizeof(buf));
+		if(err)
+			return err;
 
-			xdp_program__print_chain_call_actions(xdp_prog, buf,
-							      sizeof(buf));
-
-			for (i = 0; i < BPF_TAG_SIZE; i++)
-				sprintf(&tag[i*2], "%02x", raw_tag[i]);
-
-			tag[BPF_TAG_SIZE*2] = '\0';
-
-			printf("%-16s %-5d %-16s %-8s %-4u %-17s %s\n",
-			       " =>", xdp_program__run_prio(sub_prog),
-			       xdp_program__name(sub_prog),
-			       "", xdp_program__id(sub_prog),
-			       tag, buf);
-		}
-
-		xdp_multiprog__free(mp);
+		printf("%-16s %-5d %-16s %-8s %-4u %-17s %s\n",
+		       " =>", xdp_program__run_prio(prog),
+		       xdp_program__name(prog),
+		       "", xdp_program__id(prog),
+		       print_bpf_tag(tag, xdp_program__tag(prog)),
+		       buf);
 	}
 
 	return 0;
@@ -368,7 +312,7 @@ int do_status(const void *cfg, const char *pin_root_path)
 	       "Interface", "Prio", "Program name", "Tag", "Chain actions");
 	printf("-------------------------------------------------------------------------------------\n");
 
-	err = iterate_iface_programs_all(pin_root_path, print_iface_status, NULL);
+	err = iterate_iface_multiprogs(print_iface_status, NULL);
 	printf("\n");
 
 	return err;

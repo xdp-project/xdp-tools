@@ -3,7 +3,7 @@
 LIB_DIR = .
 include defines.mk
 
-SUBDIRS=util libxdp
+SUBDIRS=util libxdp testing
 
 all: $(OBJECT_LIBBPF)
 	@set -e; \
@@ -21,13 +21,17 @@ install:
 
 libbpf: $(OBJECT_LIBBPF)
 
+# Handle libbpf as git submodule
 ifeq ($(SYSTEM_LIBBPF),n)
-
 ifeq ($(VERBOSE),0)
 P:= >/dev/null
 endif
+
+# Detect submodule libbpf source file changes
+LIBBPF_SOURCES := $(wildcard libbpf/src/*.[ch])
+
 .PHONY: libbpf_clean
-libbpf/src/libbpf.a:
+libbpf/src/libbpf.a: $(LIBBPF_SOURCES)
 	@echo ; echo "  libbpf"
 	$(QUIET_CC)$(MAKE) -C libbpf/src $P
 	$(QUIET_INSTALL)$(MAKE) -C libbpf/src install_headers DESTDIR=root $P

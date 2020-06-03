@@ -10,6 +10,11 @@
 #include "xdpdump.h"
 
 /*****************************************************************************
+ * Macros
+ *****************************************************************************/
+#define min(x,y) ((x)<(y) ? x : y)
+
+/*****************************************************************************
  * (re)definition of kernel data structures for use with BTF
  *****************************************************************************/
 struct net_device {
@@ -47,9 +52,9 @@ struct bpf_map_def SEC("maps") xdpdump_perf_map = {
 };
 
 /*****************************************************************************
- * .data section value storing the ifindex to capture
+ * .data section value storing the capture configuration
  *****************************************************************************/
-__u32 capture_if_ifindex = 0xffffffff;
+struct trace_configuration trace_cfg SEC(".data");
 
 /*****************************************************************************
  * trace_to_perf_buffer()
@@ -61,13 +66,14 @@ static inline void trace_to_perf_buffer(struct xdp_buff *xdp, bool fexit,
 	void *data = (void *)(long)xdp->data;
 	struct pkt_trace_metadata metadata;
 
-	if (data >= data_end || capture_if_ifindex != xdp->rxq->dev->ifindex)
+	if (data >= data_end ||
+	    trace_cfg.capture_if_ifindex != xdp->rxq->dev->ifindex)
 		return;
 
 	metadata.ifindex = xdp->rxq->dev->ifindex;
 	metadata.rx_queue = xdp->rxq->queue_index;
 	metadata.pkt_len = (__u16)(data_end - data);
-	metadata.cap_len = metadata.pkt_len;
+	metadata.cap_len = min(metadata.pkt_len, trace_cfg.capture_snaplen);
 	metadata.action = action;
 	metadata.flags = 0;
 

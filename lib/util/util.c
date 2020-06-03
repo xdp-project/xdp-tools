@@ -20,7 +20,7 @@
 #include "util.h"
 #include "logging.h"
 
-int check_snprintf(char *buf, size_t buf_len, const char *format, ...)
+int try_snprintf(char *buf, size_t buf_len, const char *format, ...)
 {
 	va_list args;
 	int len;
@@ -68,59 +68,6 @@ int double_rlimit()
 	return 0;
 }
 
-static int __get_xdp_prog_info(int ifindex, struct bpf_prog_info *info,
-			       enum xdp_attach_mode *mode)
-{
-	__u32 prog_id, info_len = sizeof(*info);
-	struct xdp_link_info xinfo = {};
-	int prog_fd = -1, err = 0;
-
-	err = bpf_get_link_xdp_info(ifindex, &xinfo, sizeof(xinfo), 0);
-	if (err)
-		goto out;
-
-	if (xinfo.attach_mode == XDP_ATTACHED_SKB)
-		prog_id = xinfo.skb_prog_id;
-	else
-		prog_id = xinfo.drv_prog_id;
-
-	if (!prog_id)
-		return -ENOENT;
-
-	prog_fd = bpf_prog_get_fd_by_id(prog_id);
-	if (prog_fd < 0) {
-		err = -errno;
-		goto out;
-	}
-
-	err = bpf_obj_get_info_by_fd(prog_fd, info, &info_len);
-	if (err)
-		goto out;
-
-	if (mode) {
-		switch(xinfo.attach_mode){
-		case XDP_ATTACHED_SKB:
-			*mode = XDP_MODE_SKB;
-			break;
-		case XDP_ATTACHED_HW:
-			*mode = XDP_MODE_HW;
-			break;
-		case XDP_ATTACHED_DRV:
-			*mode = XDP_MODE_NATIVE;
-			break;
-		default:
-			*mode = XDP_MODE_UNSPEC;
-			break;
-		}
-	}
-
-out:
-	if (prog_fd >= 0)
-		close(prog_fd);
-
-	return err;
-}
-
 int find_bpf_file(char *buf, size_t buf_size, const char *progname)
 {
 	static char *bpf_obj_paths[] = {
@@ -135,7 +82,7 @@ int find_bpf_file(char *buf, size_t buf_size, const char *progname)
 	int err;
 
 	for (path = bpf_obj_paths; *path; path++) {
-		err = check_snprintf(buf, buf_size, "%s/%s", *path, progname);
+		err = try_snprintf(buf, buf_size, "%s/%s", *path, progname);
 		if (err)
 			return err;
 
@@ -191,70 +138,12 @@ static int get_pinned_object_fd(const char *path, void *info, __u32 *info_len)
 	return pin_fd;
 }
 
-static bool program_is_loaded(int ifindex, const char *pin_path,
-			      enum xdp_attach_mode *mode,
-			      struct bpf_prog_info *info)
-{
-	struct bpf_prog_info if_info = {}, pinned_info = {};
-	__u32 info_len = sizeof(if_info);
-	int err, pinned_fd;
-	bool ret;
-
-	err = __get_xdp_prog_info(ifindex, &if_info, mode);
-	if (err)
-		return false;
-
-	if (!pin_path) {
-		ret = true;
-		goto out;
-	}
-
-	pinned_fd = get_pinned_object_fd(pin_path, &pinned_info, &info_len);
-	if (pinned_fd < 0)
-		return false;
-
-	ret = if_info.id == pinned_info.id;
-
-	close(pinned_fd);
-
-out:
-	if (ret && info)
-		*info = if_info;
-
-	return ret;
-}
-
-int get_loaded_program(const struct iface *iface, enum xdp_attach_mode *mode,
-		       struct bpf_prog_info *info)
-{
-	if (!program_is_loaded(iface->ifindex, NULL, mode, info))
-		return -ENOENT;
-	return 0;
-}
-
-int get_xdp_prog_info(const struct iface *iface, struct bpf_prog_info *info,
-		      enum xdp_attach_mode *mode, const char *pin_root_path)
-{
-	char pin_path[PATH_MAX];
-	int err;
-
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
-			     pin_root_path, iface->ifname);
-	if (err)
-		return err;
-
-	if (!program_is_loaded(iface->ifindex, pin_path, mode, info))
-		return -ENOENT;
-
-	return 0;
-}
-
 int make_dir_subdir(const char *parent, const char *dir)
 {
 	char path[PATH_MAX];
 	int err;
 
-	err = check_snprintf(path, sizeof(path), "%s/%s", parent, dir);
+	err = try_snprintf(path, sizeof(path), "%s/%s", parent, dir);
 	if (err)
 		return err;
 
@@ -273,180 +162,67 @@ int make_dir_subdir(const char *parent, const char *dir)
 	return 0;
 }
 
-int attach_xdp_program(const struct bpf_object *obj, const char *prog_name,
-		       const struct iface *iface, bool force, enum xdp_attach_mode mode,
-		       const char *pin_root_path)
+int attach_xdp_program(struct xdp_program *prog, const struct iface *iface,
+		       enum xdp_attach_mode mode, const char *pin_root_path)
 {
-	char pin_path[PATH_MAX], old_prog_name[100];
-	struct bpf_program *prog = NULL;
-	int ifindex = iface->ifindex;
-	int err = 0, xdp_flags = 0;
-	struct bpf_prog_info info;
-	struct stat sb = {};
-	bool has_old;
-	int prog_fd;
+	char pin_path[PATH_MAX];
+	int err = 0;
 
-	has_old = program_is_loaded(iface->ifindex, NULL, NULL, &info);
+	if (!prog || !pin_root_path)
+		return -EINVAL;
 
-	if (!force) {
-		if (has_old) {
-			pr_warn("Program already loaded on %s; use --force to replace\n",
-				iface->ifname);
-			return -EEXIST;
-		}
-
-		xdp_flags |= XDP_FLAGS_UPDATE_IF_NOEXIST;
-	} else if (has_old) {
-		pr_debug("Replacing old program '%s' on iface '%s'\n",
-			 info.name, iface->ifname);
+	err = make_dir_subdir(pin_root_path, "programs");
+	if (err) {
+		pr_warn("Unable to create pin directory: %s\n",
+			strerror(-err));
+		return err;
 	}
 
-	switch (mode) {
-	case XDP_MODE_SKB:
-		xdp_flags |= XDP_FLAGS_SKB_MODE;
-		break;
-	case XDP_MODE_NATIVE:
-		xdp_flags |= XDP_FLAGS_DRV_MODE;
-		break;
-	case XDP_MODE_HW:
-		xdp_flags |= XDP_FLAGS_HW_MODE;
-		break;
-	case XDP_MODE_UNSPEC:
-		break;
-	}
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s/%s",
+			   pin_root_path, iface->ifname,
+			     xdp_program__name(prog));
+	if (err)
+		return err;
 
-	if (prog_name)
-		prog = bpf_object__find_program_by_title(obj, prog_name);
-	if (!prog)
-		prog = bpf_program__next(NULL, obj);
-
-	if (!prog) {
-		pr_warn("Couldn't find an eBPF program '%s' to attach. "
-			"This is a bug!\n", prog_name);
-		return -EFAULT;
-	}
-
-	prog_fd = bpf_program__fd(prog);
-	if (prog_fd <= 0) {
-		pr_warn("Invalid prog fd %d\n", prog_fd);
-		return -EFAULT;
-	}
-
-	err = bpf_set_link_xdp_fd(ifindex, prog_fd, xdp_flags);
-	if (err == -EEXIST && !(xdp_flags & XDP_FLAGS_UPDATE_IF_NOEXIST)) {
-		/* Force mode didn't work, probably because a program of the
-		 * opposite type is loaded. Let's unload that and try loading
-		 * again.
-		 */
-
-		__u32 old_flags = xdp_flags;
-
-		xdp_flags &= ~XDP_FLAGS_MODES;
-		xdp_flags |= (mode == XDP_MODE_SKB) ? XDP_FLAGS_DRV_MODE :
-			XDP_FLAGS_SKB_MODE;
-		err = bpf_set_link_xdp_fd(ifindex, -1, xdp_flags);
-		if (!err)
-			err = bpf_set_link_xdp_fd(ifindex, prog_fd, old_flags);
-	}
-	if (err < 0) {
-		pr_warn("Error attaching XDP program to %s: %s\n",
-			iface->ifname, strerror(-err));
-
-		switch (-err) {
-		case EBUSY:
-		case EEXIST:
-			pr_warn("XDP already loaded on device;"
-				" use --force to replace\n");
-			break;
-		case EOPNOTSUPP:
-			pr_warn("Native XDP not supported;"
-				" try using --skb-mode\n");
-			break;
-		default:
-			break;
-		}
+	err = xdp_program__attach(prog, iface->ifindex, mode);
+	if (err) {
+		if (pin_root_path)
+			unlink(pin_path);
 		return err;
 	}
 
 	pr_debug("Program '%s' loaded on interface '%s'%s\n",
-		 prog_name ?: bpf_program__title(prog, false),
-		 iface->ifname, mode == XDP_MODE_SKB ? " in skb mode" : "");
+		 xdp_program__name(prog),
+		 iface->ifname,
+		 mode == XDP_MODE_SKB ? " in skb mode" : "");
 
-	if (!pin_root_path)
-		return 0;
-
-	err = make_dir_subdir(pin_root_path, "programs");
-	if (err)
-		return err;
-
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s/%s",
-			     pin_root_path, iface->ifname,
-			     prog_name ?: bpf_program__title(prog, false));
-	if (err)
-		return err;
-
-	err = get_pinned_program(iface, pin_root_path, old_prog_name,
-				 sizeof(old_prog_name), NULL, NULL);
-
-	if (has_old) {
-		char buf[PATH_MAX];
-		err = check_snprintf(buf, sizeof(buf), "%s/programs/%s/%s",
-				     pin_root_path, iface->ifname, old_prog_name);
-		if (!err) {
-			pr_debug("Unpinning old program from %s\n", buf);
-			unlink(buf);
-		}
-	}
-
-	err = stat(pin_path, &sb);
-	if (!err)
-		unlink(pin_path);
-
-	err = bpf_program__pin(prog, pin_path);
+	err = xdp_program__pin(prog, pin_path);
 	if (err) {
 		pr_warn("Unable to pin XDP program at %s: %s\n",
 			pin_path, strerror(-err));
-		bpf_set_link_xdp_fd(ifindex, -1, xdp_flags);
+		goto unload;
 	}
 	pr_debug("XDP program pinned at %s\n", pin_path);
+	return err;
 
+unload:
+	xdp_program__detach(prog, iface->ifindex, mode);
 	return err;
 }
 
-int detach_xdp_program(const struct iface *iface, const char *pin_root_path)
+int detach_xdp_program(struct xdp_program *prog, const struct iface *iface,
+		       enum xdp_attach_mode mode, const char *pin_root_path)
 {
-	unsigned int xdp_flags = 0;
-	struct bpf_prog_info info;
-	enum xdp_attach_mode mode;
 	char pin_path[PATH_MAX];
 	int err;
 
-	err = get_loaded_program(iface, &mode, &info);
-	if (err) {
-		pr_warn("No XDP program loaded on %s\n", iface->ifname);
-		return -ENOENT;
-	}
-
-	switch (mode) {
-	case XDP_MODE_SKB:
-		xdp_flags |= XDP_FLAGS_SKB_MODE;
-		break;
-	case XDP_MODE_NATIVE:
-		xdp_flags |= XDP_FLAGS_DRV_MODE;
-		break;
-	case XDP_MODE_HW:
-		xdp_flags |= XDP_FLAGS_HW_MODE;
-		break;
-	case XDP_MODE_UNSPEC:
-		break;
-	}
-
-	err = bpf_set_link_xdp_fd(iface->ifindex, -1, xdp_flags);
+	err = xdp_program__detach(prog, iface->ifindex, mode);
 	if (err)
 		goto out;
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s/%s",
-			     pin_root_path, iface->ifname, info.name);
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s/%s",
+			   pin_root_path, iface->ifname,
+			   xdp_program__name(prog));
 	if (err)
 		return err;
 
@@ -454,8 +230,8 @@ int detach_xdp_program(const struct iface *iface, const char *pin_root_path)
 	if (err && errno != ENOENT)
 		goto out;
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
-			     pin_root_path, iface->ifname, info.name);
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
+			   pin_root_path, iface->ifname);
 	if (err)
 		goto out;
 
@@ -469,24 +245,28 @@ out:
 }
 
 int get_pinned_program(const struct iface *iface, const char *pin_root_path,
-		       char *prog_name, size_t prog_name_len,
 		       enum xdp_attach_mode *mode,
-		       struct bpf_prog_info *info)
+		       struct xdp_program **xdp_prog)
 {
 	int ret = -ENOENT, err, ifindex = iface->ifindex;
 	char pin_path[PATH_MAX];
 	bool remove_all = false;
+	enum xdp_attach_mode m;
 	struct dirent *de;
 	DIR *dr;
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
-			     pin_root_path, iface->ifname);
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
+			   pin_root_path, iface->ifname);
 	if (err)
 		return err;
 
 	dr = opendir(pin_path);
-	if (!dr)
-		return -ENOENT;
+	if (!dr) {
+		err = -errno;
+		pr_debug("Couldn't open pin directory %s: %s",
+			 pin_path, strerror(-err));
+		return err;
+	}
 
 	if (!ifindex)
 		ifindex = if_nametoindex(iface->ifname);
@@ -497,13 +277,15 @@ int get_pinned_program(const struct iface *iface, const char *pin_root_path,
 	}
 
 	while ((de = readdir(dr)) != NULL) {
+		struct xdp_program *prog;
+
 		if (!strcmp(".", de->d_name) ||
 		    !strcmp("..", de->d_name))
 			continue;
 
-		err = check_snprintf(pin_path, sizeof(pin_path),
-				     "%s/programs/%s/%s", pin_root_path,
-				     iface->ifname, de->d_name);
+		err = try_snprintf(pin_path, sizeof(pin_path),
+				   "%s/programs/%s/%s", pin_root_path,
+				   iface->ifname, de->d_name);
 		if (err)
 			goto out;
 
@@ -514,23 +296,28 @@ int get_pinned_program(const struct iface *iface, const char *pin_root_path,
 			continue;
 		}
 
-		if (!program_is_loaded(iface->ifindex, pin_path, mode, info)) {
-			ret = -ENOENT;
-			pr_debug("Program %s no longer loaded on %s\n",
-				 de->d_name, iface->ifname);
+		prog = xdp_program__from_pin(pin_path);
+		if (IS_ERR_OR_NULL(prog) ||
+		    !(m = xdp_program__is_attached(prog, iface->ifindex))) {
+			ret = IS_ERR(prog) ? PTR_ERR(prog) : -ENOENT;
+			pr_debug("Program %s no longer loaded on %s: %s\n",
+				 de->d_name, iface->ifname, strerror(-ret));
 			err = unlink(pin_path);
 			if (err)
 				ret = err;
+			if (!IS_ERR_OR_NULL(prog))
+				xdp_program__close(prog);
 		} else {
-			ret = 0;
-			err = check_snprintf(prog_name, prog_name_len, "%s",
-					     de->d_name);
-			if (err)
-				ret = err;
-			if (strcmp(prog_name, info->name)) {
+			if (strcmp(xdp_program__name(prog), de->d_name)) {
 				pr_warn("Pinned and kernel prog names differ: %s/%s\n",
-					prog_name, info->name);
-				ret = -E2BIG;
+					xdp_program__name(prog), de->d_name);
+				ret = -EFAULT;
+				xdp_program__close(prog);
+			} else {
+				ret = 0;
+				*xdp_prog = prog;
+				if (mode)
+					*mode = m;
 			}
 			break;
 		}
@@ -540,16 +327,16 @@ out:
 	return ret;
 }
 
-int iterate_iface_programs_pinned(const char *pin_root_path,
-				  program_callback cb, void *arg)
+int iterate_pinned_programs(const char *pin_root_path,
+			    program_callback cb, void *arg)
 {
 	char pin_path[PATH_MAX];
 	struct dirent *de;
 	int err = 0;
 	DIR *dr;
 
-	err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs",
-			     pin_root_path);
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/programs",
+			   pin_root_path);
 	if (err)
 		return err;
 
@@ -558,10 +345,9 @@ int iterate_iface_programs_pinned(const char *pin_root_path,
 		return -ENOENT;
 
 	while ((de = readdir(dr)) != NULL) {
-		struct bpf_prog_info info = {};
-		char prog_name[PATH_MAX];
+		enum xdp_attach_mode mode = XDP_MODE_UNSPEC;
+		struct xdp_program *prog = NULL;
 		struct iface iface = {};
-		enum xdp_attach_mode mode;
 
 		if (!strcmp(".", de->d_name) ||
 		    !strcmp("..", de->d_name))
@@ -570,14 +356,12 @@ int iterate_iface_programs_pinned(const char *pin_root_path,
 		iface.ifname = de->d_name;
 		iface.ifindex = if_nametoindex(iface.ifname);
 
-		err = check_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
-				     pin_root_path, iface.ifname);
+		err = try_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s",
+				   pin_root_path, iface.ifname);
 		if (err)
 			goto out;
 
-		err = get_pinned_program(&iface, pin_root_path,
-					 prog_name, sizeof(prog_name), &mode, &info);
-
+		err = get_pinned_program(&iface, pin_root_path, &mode, &prog);
 		if (err == -ENOENT || err == -ENODEV) {
 			err = rmdir(pin_path);
 			if (err)
@@ -587,7 +371,8 @@ int iterate_iface_programs_pinned(const char *pin_root_path,
 			goto out;
 		}
 
-		err = cb(&iface, &info, mode, arg);
+		err = cb(&iface, prog, mode, arg);
+		xdp_program__close(prog);
 		if (err)
 			goto out;
 	}
@@ -597,8 +382,7 @@ out:
 	return err;
 }
 
-int iterate_iface_programs_all(const char *pin_root_path,
-			       program_callback cb, void *arg)
+int iterate_iface_multiprogs(multiprog_callback cb, void *arg)
 {
 	struct if_nameindex *idx, *indexes = NULL;
 	int err = 0;
@@ -607,27 +391,33 @@ int iterate_iface_programs_all(const char *pin_root_path,
 	if (!indexes) {
 		err = -errno;
 		pr_warn("Couldn't get list of interfaces: %s\n", strerror(-err));
-		goto out;
+		return err;
 	}
 
 	for (idx = indexes; idx->if_index; idx++){
-		struct bpf_prog_info info = {};
+		struct xdp_multiprog *mp;
 		struct iface iface = {
 			.ifindex = idx->if_index,
 			.ifname = idx->if_name,
 		};
-		enum xdp_attach_mode mode;
 
+		mp = xdp_multiprog__get_from_ifindex(iface.ifindex);
+		if (IS_ERR_OR_NULL(mp)) {
+			if (PTR_ERR(mp) != -ENOENT) {
+				err = PTR_ERR(mp);
+				goto out;
+			}
+			mp = NULL;
+		}
 
-		if (!program_is_loaded(iface.ifindex, NULL, &mode, &info))
-			continue;
-
-		err = cb(&iface, &info, mode, arg);
+		err = cb(&iface, mp, arg);
+		xdp_multiprog__close(mp);
 		if (err)
 			goto out;
 	}
 
 out:
+	if_freenameindex(indexes);
 	return err;
 }
 
@@ -694,16 +484,13 @@ static const char *bpf_find_mntpt(const char *fstype, unsigned long magic,
 
 static int bpf_mnt_check_target(const char *target)
 {
-	struct stat sb = {};
 	int ret;
 
-	ret = stat(target, &sb);
-	if (ret) {
-		ret = mkdir(target, S_IRWXU);
-		if (ret) {
-			pr_warn("mkdir %s failed: %s\n", target, strerror(errno));
-			return ret;
-		}
+	ret = mkdir(target, S_IRWXU);
+	if (ret && errno != EEXIST) {
+		ret = -errno;
+		pr_warn("mkdir %s failed: %s\n", target, strerror(-ret));
+		return ret;
 	}
 
 	return 0;
@@ -755,9 +542,9 @@ int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir)
 	}
 
 	if (subdir)
-		return check_snprintf(buf, buf_len, "%s/%s", bpf_dir, subdir);
+		return try_snprintf(buf, buf_len, "%s/%s", bpf_dir, subdir);
 	else
-		return check_snprintf(buf, buf_len, "%s", bpf_dir);
+		return try_snprintf(buf, buf_len, "%s", bpf_dir);
 }
 
 int get_pinned_map_fd(const char *bpf_root, const char *map_name,
@@ -767,7 +554,7 @@ int get_pinned_map_fd(const char *bpf_root, const char *map_name,
 	char buf[PATH_MAX];
 	int err;
 
-	err = check_snprintf(buf, sizeof(buf), "%s/%s", bpf_root, map_name);
+	err = try_snprintf(buf, sizeof(buf), "%s/%s", bpf_root, map_name);
 	if (err)
 		return err;
 
@@ -900,8 +687,8 @@ int prog_lock_get(const char *progname)
 	}
 
 	if (!prog_lock_file) {
-		err = check_snprintf(buf, sizeof(buf), "%s/%s.lck", lock_dir,
-				     progname);
+		err = try_snprintf(buf, sizeof(buf), "%s/%s.lck", lock_dir,
+				   progname);
 		if (err)
 			return err;
 
@@ -926,7 +713,7 @@ int prog_lock_get(const char *progname)
 	if (prog_lock_fd < 0) {
 		err = -errno;
 		if (err == -EEXIST) {
-			unsigned long pid;
+			unsigned long pid = 0;
 			char buf[100];
 			ssize_t len;
 			int fd;
@@ -939,12 +726,13 @@ int prog_lock_get(const char *progname)
 				return err;
 			}
 
-			len = read(fd, buf, sizeof(buf));
+			len = read(fd, buf, sizeof(buf)-1);
 			close(fd);
-			buf[len] = '\0';
-
-			pid = strtoul(buf, NULL, 10);
-			if (!pid) {
+			if (len > 0) {
+				buf[len] = '\0';
+				pid = strtoul(buf, NULL, 10);
+			}
+			if (!pid || errno) {
 				err = -errno;
 				pr_warn("Unable to read PID from lockfile: %s\n",
 					strerror(-err));

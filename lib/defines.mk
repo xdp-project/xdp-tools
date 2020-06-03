@@ -1,4 +1,4 @@
-CFLAGS ?= -O2 -g -Werror
+CFLAGS ?= -O2 -g
 BPF_CFLAGS ?= -Wno-visibility
 
 include $(LIB_DIR)/../config.mk
@@ -14,7 +14,9 @@ BPF_OBJECT_DIR ?=$(LIBDIR)/bpf
 MAX_DISPATCHER_ACTIONS ?=10
 
 HEADER_DIR = $(LIB_DIR)/../headers
+TEST_DIR = $(LIB_DIR)/testing
 LIBXDP_DIR := $(LIB_DIR)/libxdp
+LIBBPF_DIR := $(LIB_DIR)/libbpf
 DEFINES := -DBPF_DIR_MNT=\"$(BPF_DIR_MNT)\" -DBPF_OBJECT_PATH=\"$(BPF_OBJECT_DIR)\" \
 	-DMAX_DISPATCHER_ACTIONS=$(MAX_DISPATCHER_ACTIONS)
 
@@ -22,7 +24,7 @@ ifneq ($(PRODUCTION),1)
 DEFINES += -DDEBUG
 endif
 
-CFLAGS += $(DEFINES)
+CFLAGS += -Werror $(DEFINES)
 BPF_CFLAGS += $(DEFINES)
 
 CONFIGMK := $(LIB_DIR)/../config.mk

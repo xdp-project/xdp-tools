@@ -70,18 +70,14 @@ static __always_inline int parse_ethhdr(struct hdr_cursor *nh, void *data_end,
 					struct ethhdr **ethhdr)
 {
 	struct ethhdr *eth = nh->pos;
-	int hdrsize = sizeof(*eth);
 	struct vlan_hdr *vlh;
 	__u16 h_proto;
 	int i;
 
-	/* Byte-count bounds check; check if current pointer + size of header
-	 * is after data_end.
-	 */
-	if (nh->pos + hdrsize > data_end)
+	if (eth + 1 > data_end)
 		return -1;
 
-	nh->pos += hdrsize;
+	nh->pos = eth + 1;
 	*ethhdr = eth;
 	vlh = nh->pos;
 	h_proto = eth->h_proto;
