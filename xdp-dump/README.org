@@ -41,6 +41,8 @@ Options:
      --perf-wakeup <events>  Wake up xdpdump every <events> packets
  -p, --program-names <prog>  Specific program to attach to
  -s, --snapshot-length <snaplen>  Minimum bytes of packet to capture
+     --use-pcap             Use legacy pcap format for XDP traces
+     --version              Print version information and exit
  -w, --write <file>         Write raw packets to pcap file
  -x, --hex                  Print the full packet in hex
  -v, --verbose              Enable verbose logging (-vv: more verbose)
@@ -77,6 +79,11 @@ will dump the available functions, and you can choose the correct one, and
 supply it with this option.
 ** -s, --snapshot-length <snaplen>
 Capture *snaplen* bytes of a packet rather than the default 262144 bytes.
+** --use-pcap
+Use legacy pcap format for XDP traces. By default, it will use the PcapNG format
+so that it can store various metadata.
+** --version
+Print =xpdump= version information and exit.
 ** -w, --write <file>
 Write the raw packets to a pcap file rather than printing them out hexadecimal. Standard output is used if *file* is =-=.
 ** -x, --hex
