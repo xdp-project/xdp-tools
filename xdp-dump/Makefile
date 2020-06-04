@@ -2,6 +2,7 @@
 
 XDP_TARGETS  := xdpdump_bpf
 USER_TARGETS := xdpdump
+TEST_FILE := test-xdpdump.sh
 
 LIB_DIR   = ../lib
 USER_LIBS = -lpcap
