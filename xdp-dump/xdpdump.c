@@ -902,6 +902,14 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
+	/* Check if the system does not have more cores than we assume. */
+	if (sysconf(_SC_NPROCESSORS_CONF) > MAX_CPUS) {
+		pr_warn("ERROR: System has more cores (%ld) than maximum "
+			"supported (%d)!\n", sysconf(_SC_NPROCESSORS_CONF),
+			MAX_CPUS);
+		return EXIT_FAILURE;
+	}
+
 	/* From here on we assume we need to capture data on an interface */
 	if (signal(SIGINT, signal_handler) == SIG_ERR ||
 	    signal(SIGHUP, signal_handler) == SIG_ERR ||
