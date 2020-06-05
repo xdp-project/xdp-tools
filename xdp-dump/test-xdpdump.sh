@@ -3,7 +3,7 @@
 #
 # shellcheck disable=2039
 #
-ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_term test_exitentry test_snap test_none_xdp"
+ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_term test_exitentry test_snap test_perf_wakeup test_none_xdp"
 
 XDPDUMP=./xdpdump
 XDP_LOADER=../xdp-loader/xdp-loader
@@ -62,6 +62,11 @@ Options:
 
 END
 	  )
+
+    $XDPDUMP --help | grep -q "\-\-perf-wakeup"
+    if [ $? -eq 1 ]; then
+        XDPDUMP_HELP_TEXT=$(echo "$XDPDUMP_HELP_TEXT" | sed '/     --perf-wakeup <events>  Wake up xdpdump every <events> packets/d')
+    fi
 
     RESULT=$($XDPDUMP --help)
     if [ "$RESULT" != "$XDPDUMP_HELP_TEXT" ]; then
@@ -235,10 +240,51 @@ test_snap()
     $XDP_LOADER unload "$NS" --all || return 1
 }
 
+test_perf_wakeup()
+{
+    $XDPDUMP --help | grep -q "\-\-perf-wakeup"
+    if [ $? -eq 1 ]; then
+        # No support for perf_wakeup, so return SKIP
+        return "$SKIPPED_TEST"
+    fi
+
+    local PASS_REGEX="(@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+)"
+    local PASS_10K_REGEX="(@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id 10000)"
+    local WAKEUPS=(0 1 32 128)
+
+    $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
+
+    for WAKEUP in "${WAKEUPS[@]}" ; do
+
+        # We send a single packet to make sure flushing of the buffer works!
+        PID=$(start_background "$XDPDUMP -i $NS --perf-wakeup=$WAKEUP")
+        ping6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+        RESULT=$(stop_background "$PID")
+
+        if ! [[ $RESULT =~ $PASS_REGEX ]]; then
+	    print_result "IPv6 packet not received for wakeup $WAKEUP"
+	    return 1
+        fi
+
+        # We sent 10k packets and see if the all arrive
+        PID=$(start_background "$XDPDUMP -i $NS --perf-wakeup=$WAKEUP")
+        timeout 2 ping6 -W 2 -c 10000 -f  "$INSIDE_IP6" || return 1
+        RESULT=$(stop_background "$PID")
+        if ! [[ $RESULT =~ $PASS_10K_REGEX ]]; then
+            print_result "IPv6 10k packet not received for wakeup $WAKEUP"
+            return 1
+        fi
+    done
+
+    $XDP_LOADER unload "$NS" --all || return 1
+}
+
 test_none_xdp()
 {
     local PASS_PKT="packet size 118 bytes on if_name \"$NS\""
     local WARN_MSG="WARNING: Specified interface does not have an XDP program loaded, capturing"
+
+    $XDP_LOADER unload "$NS" --all
 
     PID=$(start_background "$XDPDUMP -i $NS")
     ping6 -W 2 -c 4 "$INSIDE_IP6" || return 1
