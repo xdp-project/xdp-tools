@@ -3,7 +3,7 @@
 #
 # shellcheck disable=2039
 #
-ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_term test_exitentry test_snap test_perf_wakeup test_none_xdp"
+ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_term test_exitentry test_snap test_multi_pkt test_perf_wakeup test_none_xdp"
 
 XDPDUMP=./xdpdump
 XDP_LOADER=../xdp-loader/xdp-loader
@@ -323,6 +323,34 @@ test_snap()
     $XDP_LOADER unload "$NS" --all || return 1
 }
 
+test_multi_pkt()
+{
+    local PASS_ENTRY_REGEX="(@entry: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
+    local PASS_EXIT_REGEX="(@exit\[PASS\]: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
+    local PKT_SIZES=(56 512 1500)
+
+    $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
+
+    for PKT_SIZE in "${PKT_SIZES[@]}" ; do
+
+	PID=$(start_background_no_stderr "$XDPDUMP -i $NS --rx-capture=entry,exit")
+	timeout 4 ping6 -W 2 -s "$PKT_SIZE" -c 20000 -f "$INSIDE_IP6" || return 1
+	RESULT=$(stop_background "$PID")
+	if ! [[ $RESULT =~ $PASS_ENTRY_REGEX ]]; then
+            print_result "IPv6 entry packet not received, $PKT_SIZE"
+            return 1
+	fi
+
+	if ! [[ $RESULT =~ $PASS_EXIT_REGEX ]]; then
+            print_result "IPv6 exit packet not received, $PKT_SIZE"
+            return 1
+	fi
+    done
+
+    $XDP_LOADER unload "$NS" --all || return 1
+}
+
+
 test_perf_wakeup()
 {
     $XDPDUMP --help | grep -q "\-\-perf-wakeup"
@@ -340,7 +368,7 @@ test_perf_wakeup()
     for WAKEUP in "${WAKEUPS[@]}" ; do
 
         # We send a single packet to make sure flushing of the buffer works!
-        PID=$(start_background "$XDPDUMP -i $NS --perf-wakeup=$WAKEUP")
+        PID=$(start_background_no_stderr "$XDPDUMP -i $NS --perf-wakeup=$WAKEUP")
         ping6 -W 2 -c 1 "$INSIDE_IP6" || return 1
         RESULT=$(stop_background "$PID")
 
