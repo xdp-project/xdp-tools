@@ -102,6 +102,25 @@ check_zlib()
     fi
 }
 
+check_perf_consume()
+{
+    cat >$TMPDIR/libbpftest.c <<EOF
+#include <bpf/libbpf.h>
+int main(int argc, char **argv) {
+    perf_buffer__consume(NULL);
+    return 0;
+}
+EOF
+    libbpf_err=$($CC -o $TMPDIR/libbpftest $TMPDIR/libbpftest.c $LIBBPF_CFLAGS $LIBBPF_LDLIBS 2>&1)
+    if [ "$?" -eq "0" ]; then
+        echo "HAVE_LIBBPF_PERF_BUFFER__CONSUME:=y" >>"$CONFIG"
+        echo "yes"
+    else
+        echo "HAVE_LIBBPF_PERF_BUFFER__CONSUME:=n" >>"$CONFIG"
+        echo "no"
+    fi
+}
+
 check_libbpf()
 {
     local libbpf_err
@@ -136,7 +155,10 @@ EOF
 	    echo 'CFLAGS += ' $LIBBPF_CFLAGS >> $CONFIG
 	    echo 'LDLIBS += ' $LIBBPF_LDLIBS >>$CONFIG
             echo 'OBJECT_LIBBPF = ' >>$CONFIG
-	    echo system
+            echo system
+
+            echo -n "perf_buffer__consume support: "
+            check_perf_consume
             return 0
         fi
     else
@@ -169,6 +191,11 @@ EOF
 
     echo -n "zlib support: "
     check_zlib || exit 1
+
+    # For the build submodule library we know it does support this API, so we
+    # hard code it. Also due to the fact it's hard to build a test app as
+    # libbpf.a has not been build at configure time.
+    echo "HAVE_LIBBPF_PERF_BUFFER__CONSUME:=y" >>"$CONFIG"
 }
 
 quiet_config()

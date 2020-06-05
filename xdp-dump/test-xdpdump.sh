@@ -52,6 +52,7 @@ Options:
      --rx-capture <mode>    Capture point for the rx direction (valid values: entry,exit)
  -D, --list-interfaces      Print the list of available interfaces
  -i, --interface <ifname>   Name of interface to capture on
+     --perf-wakeup <events>  Wake up xdpdump every <events> packets
  -p, --program-names <prog>  Specific program to attach to
  -s, --snapshot-length <snaplen>  Minimum bytes of packet to capture
  -w, --write <file>         Write raw packets to pcap file

@@ -56,6 +56,7 @@ static const struct dumpopt {
 	bool                  hex_dump;
 	struct iface          iface;
 	uint32_t              snaplen;
+	uint32_t              perf_wakeup;
 	char                 *pcap_file;
 	char                 *program_names;
 	unsigned int          rx_capture;
@@ -68,6 +69,7 @@ struct dumpopt cfg_dumpopt;
 
 static struct prog_option xdpdump_options[] = {
 	DEFINE_OPTION("rx-capture", OPT_FLAGS, struct dumpopt, rx_capture,
+		      .short_opt = 1,
 		      .metavar = "<mode>",
 		      .typearg = rx_capture_flags,
 		      .help = "Capture point for the rx direction"),
@@ -79,6 +81,11 @@ static struct prog_option xdpdump_options[] = {
 		      .short_opt = 'i',
 		      .metavar = "<ifname>",
 		      .help = "Name of interface to capture on"),
+#ifdef HAVE_LIBBPF_PERF_BUFFER__CONSUME
+	DEFINE_OPTION("perf-wakeup", OPT_U32, struct dumpopt, perf_wakeup,
+		      .metavar = "<events>",
+		      .help = "Wake up xdpdump every <events> packets"),
+#endif
 	DEFINE_OPTION("program-names", OPT_STRING, struct dumpopt,
 		      program_names,
 		      .short_opt = 'p',
@@ -735,6 +742,34 @@ rlimit_loop:
 	perf_ctx.pcap_dumper = pcap_dumper;
 	perf_ctx.epoch_delta = get_epoch_to_uptime_delta();
 
+	/* Determine the perf wakeup_events value to use */
+#ifdef HAVE_LIBBPF_PERF_BUFFER__CONSUME
+	if (cfg->perf_wakeup) {
+		perf_attr.wakeup_events = cfg->perf_wakeup;
+	} else {
+		if (cfg->pcap_file &&
+		    cfg->pcap_file[0] == '-' && cfg->pcap_file[1] == 0) {
+			/* If we pipe trough stdio we do not want to buffer
+			 * any packets in the perf ring.
+			 */
+			perf_attr.wakeup_events = 1;
+		} else {
+			/*
+			 * If no specific wakeup value is specified assume
+			 * an average packet size of 2K we would like to
+			 * fill without loosing any packets.
+			 */
+			uint32_t events = PERF_MMAP_PAGE_COUNT * getpagesize() /
+				libbpf_num_possible_cpus() / 2048;
+
+			if (events > 0)
+				perf_attr.wakeup_events = min(PERF_MAX_WAKEUP_EVENTS,
+							      events);
+		}
+	}
+#endif
+	pr_debug("perf-wakeup value uses is %u\n", perf_attr.wakeup_events);
+
 	/* Setup perf ring buffers */
 	perf_opts.attr = &perf_attr;
 	perf_opts.event_cb = handle_perf_event;
@@ -751,6 +786,9 @@ rlimit_loop:
 			goto error_exit;
 		}
 	}
+#ifdef HAVE_LIBBPF_PERF_BUFFER__CONSUME
+	perf_buffer__consume(perf_buf);
+#endif
 
 	fprintf(stderr, "\n%"PRIu64" packets captured\n",
 		perf_ctx.captured_packets);
