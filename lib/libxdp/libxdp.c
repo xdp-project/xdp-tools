@@ -361,27 +361,33 @@ int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 {
 	bool first = true;
 	char *pos = buf;
-	size_t len = 0;
-	int i;
+	int i, len = 0;
 
-	if (!prog || !buf)
+	if (!prog || !buf || !buf_len)
 		return -EINVAL;
 
 	for (i = 0; i <= XDP_REDIRECT; i++) {
 		if (xdp_program__chain_call_enabled(prog, i)) {
 			if (!first) {
+				if (!buf_len)
+					goto err_len;
 				*pos++ = ',';
 				buf_len--;
 			} else {
 				first = false;
 			}
-			len = snprintf(pos, buf_len-len, "%s",
+			len = snprintf(pos, buf_len, "%s",
 				       xdp_action_names[i]);
+			if (len < 0 || len >= buf_len)
+				goto err_len;
 			pos += len;
 			buf_len -= len;
 		}
 	}
 	return 0;
+err_len:
+	*pos = '\0';
+	return -ENOSPC;
 }
 
 static const struct btf_type *
