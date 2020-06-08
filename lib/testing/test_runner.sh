@@ -29,6 +29,9 @@ TEST_PROG_DIR="${TEST_PROG_DIR:-$(dirname $0)}"
 NEEDED_TOOLS="ethtool ip ping tc tcpdump"
 MAX_NAMELEN=15
 
+# Odd return value for skipping, as only 0-255 is valid.
+SKIPPED_TEST=249
+
 # Global state variables that will be set by options etc below
 GENERATE_NEW=0
 CLEANUP_FUNC=
@@ -338,6 +341,9 @@ exec_test()
     ret=$?
     if [ "$ret" -eq "0" ]; then
         printf "\t\tPASS\n"
+    elif [ "$ret" -eq "$SKIPPED_TEST" ]; then
+        printf "\t\tSKIPPED\n"
+        ret=0
     else
         printf "\t\tFAIL\n"
         echo "$output" | sed 's/^/\t/'

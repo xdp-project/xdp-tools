@@ -36,6 +36,7 @@ Options:
      --rx-capture <mode>    Capture point for the rx direction (valid values: entry,exit)
  -D, --list-interfaces      Print the list of available interfaces
  -i, --interface <ifname>   Name of interface to capture on
+     --perf-wakeup <events>  Wake up xdpdump every <events> packets
  -p, --program-names <prog>  Specific program to attach to
  -s, --snapshot-length <snaplen>  Minimum bytes of packet to capture
  -w, --write <file>         Write raw packets to pcap file
@@ -60,6 +61,11 @@ Display a list of available interfaces and any XDP program loaded
 ** -i, --interface <ifname>
 Listen on interface =ifname=. Note that if no XDP program is loaded on the
 interface it will use libpcap's live capture mode to capture the packets.
+** --perf-wakeup <events>
+Let the Kernel wake up =xdpdump= once for every =<events>= being posted in the
+perf ring buffer. The higher the number the less the impact is on the actual
+XDP program. The default value is 0, which automatically calculates the
+value based on the available CPUs/buffers. Use -v to see the actual used value.
 ** -p, --program-names <prog>
 The Linux API does not provide the full name of the attached eBPF entry function
 if it's longer than 15 characters. xdpdump will try to guess the correct

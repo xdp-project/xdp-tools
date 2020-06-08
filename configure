@@ -29,10 +29,10 @@ check_toolchain()
     : ${LLC=llc}
 
     for TOOL in $PKG_CONFIG $CC $CLANG $LLC; do
-	if [ ! $(command -v ${TOOL} 2>/dev/null) ]; then
-	    echo "*** ERROR: Cannot find tool ${TOOL}" ;
-	    exit 1;
-	fi;
+        if [ ! $(command -v ${TOOL} 2>/dev/null) ]; then
+            echo "*** ERROR: Cannot find tool ${TOOL}" ;
+            exit 1;
+        fi;
     done
 
     echo "PKG_CONFIG:=${PKG_CONFIG}" >>$CONFIG
@@ -44,13 +44,13 @@ check_toolchain()
 check_elf()
 {
     if ${PKG_CONFIG} libelf --exists; then
-	echo "HAVE_ELF:=y" >>$CONFIG
-	echo "yes"
+        echo "HAVE_ELF:=y" >>$CONFIG
+        echo "yes"
 
-	echo 'CFLAGS += -DHAVE_ELF' `${PKG_CONFIG} libelf --cflags` >> $CONFIG
-	echo 'LDLIBS += ' `${PKG_CONFIG} libelf --libs` >>$CONFIG
+        echo 'CFLAGS += -DHAVE_ELF' `${PKG_CONFIG} libelf --cflags` >> $CONFIG
+        echo 'LDLIBS += ' `${PKG_CONFIG} libelf --libs` >>$CONFIG
     else
-	echo "missing - this is required"
+        echo "missing - this is required"
         return 1
     fi
 }
@@ -79,7 +79,7 @@ EOF
     libpcap_err=$($CC -o $TMPDIR/libpcaptest $TMPDIR/libpcaptest.c  $LIBPCAP_CFLAGS $LIBPCAP_LDLIBS 2>&1)
     if [ "$?" -eq "0" ]; then
         echo "HAVE_PCAP:=y" >>$CONFIG
-	[ -n "$LIBPCAP_CFLAGS" ] && echo 'CFLAGS += ' $LIBPCAP_CFLAGS >> $CONFIG
+        [ -n "$LIBPCAP_CFLAGS" ] && echo 'CFLAGS += ' $LIBPCAP_CFLAGS >> $CONFIG
         echo "yes"
     else
         echo "missing - this is required"
@@ -91,14 +91,33 @@ EOF
 check_zlib()
 {
     if ${PKG_CONFIG} zlib --exists; then
-	echo "HAVE_ZLIB:=y" >>$CONFIG
-	echo "yes"
+        echo "HAVE_ZLIB:=y" >>$CONFIG
+        echo "yes"
 
-	echo 'CFLAGS += -DHAVE_ZLIB' `${PKG_CONFIG} zlib --cflags` >> $CONFIG
-	echo 'LDLIBS += ' `${PKG_CONFIG} zlib --libs` >>$CONFIG
+        echo 'CFLAGS += -DHAVE_ZLIB' `${PKG_CONFIG} zlib --cflags` >> $CONFIG
+        echo 'LDLIBS += ' `${PKG_CONFIG} zlib --libs` >>$CONFIG
     else
-	echo "missing - this is required"
+        echo "missing - this is required"
         return 1
+    fi
+}
+
+check_perf_consume()
+{
+    cat >$TMPDIR/libbpftest.c <<EOF
+#include <bpf/libbpf.h>
+int main(int argc, char **argv) {
+    perf_buffer__consume(NULL);
+    return 0;
+}
+EOF
+    libbpf_err=$($CC -o $TMPDIR/libbpftest $TMPDIR/libbpftest.c $LIBBPF_CFLAGS $LIBBPF_LDLIBS 2>&1)
+    if [ "$?" -eq "0" ]; then
+        echo "HAVE_LIBBPF_PERF_BUFFER__CONSUME:=y" >>"$CONFIG"
+        echo "yes"
+    else
+        echo "HAVE_LIBBPF_PERF_BUFFER__CONSUME:=n" >>"$CONFIG"
+        echo "no"
     fi
 }
 
@@ -119,24 +138,27 @@ check_libbpf()
         cat >$TMPDIR/libbpftest.c <<EOF
 #include <bpf/libbpf.h>
 int main(int argc, char **argv) {
-	void *ptr;
-	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts, .pin_root_path = "/path");
-	DECLARE_LIBBPF_OPTS(bpf_xdp_set_link_opts, lopts, .old_fd = -1);
-	(void) bpf_object__open_file("file", &opts);
-	(void) bpf_program__name(ptr);
-	(void) bpf_map__set_initial_value(ptr, ptr, 0);
-	(void) bpf_set_link_xdp_fd_opts(0, 0, 0, &lopts);
-	return 0;
+    void *ptr;
+    DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts, .pin_root_path = "/path");
+    DECLARE_LIBBPF_OPTS(bpf_xdp_set_link_opts, lopts, .old_fd = -1);
+    (void) bpf_object__open_file("file", &opts);
+    (void) bpf_program__name(ptr);
+    (void) bpf_map__set_initial_value(ptr, ptr, 0);
+    (void) bpf_set_link_xdp_fd_opts(0, 0, 0, &lopts);
+    return 0;
 }
 EOF
 
         libbpf_err=$($CC -o $TMPDIR/libbpftest $TMPDIR/libbpftest.c  $LIBBPF_CFLAGS -lbpf 2>&1)
         if [ "$?" -eq "0" ]; then
-	    echo "SYSTEM_LIBBPF:=y" >>$CONFIG
-	    echo 'CFLAGS += ' $LIBBPF_CFLAGS >> $CONFIG
-	    echo 'LDLIBS += ' $LIBBPF_LDLIBS >>$CONFIG
+            echo "SYSTEM_LIBBPF:=y" >>$CONFIG
+            echo 'CFLAGS += ' $LIBBPF_CFLAGS >> $CONFIG
+            echo 'LDLIBS += ' $LIBBPF_LDLIBS >>$CONFIG
             echo 'OBJECT_LIBBPF = ' >>$CONFIG
-	    echo system
+            echo system
+
+            echo -n "perf_buffer__consume support: "
+            check_perf_consume
             return 0
         fi
     else
@@ -169,11 +191,16 @@ EOF
 
     echo -n "zlib support: "
     check_zlib || exit 1
+
+    # For the build submodule library we know it does support this API, so we
+    # hard code it. Also due to the fact it's hard to build a test app as
+    # libbpf.a has not been build at configure time.
+    echo "HAVE_LIBBPF_PERF_BUFFER__CONSUME:=y" >>"$CONFIG"
 }
 
 quiet_config()
 {
-	cat <<EOF
+    cat <<EOF
 # user can control verbosity similar to kernel builds (e.g., V=1)
 ifeq ("\$(origin V)", "command line")
   VERBOSE = \$(V)
