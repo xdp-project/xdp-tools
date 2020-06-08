@@ -6,5 +6,6 @@ TEST_FILE := test-xdpdump.sh
 
 LIB_DIR   = ../lib
 USER_LIBS = -lpcap
+MAN_PAGE := xdpdump.8
 
 include $(LIB_DIR)/common.mk
