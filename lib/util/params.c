@@ -121,11 +121,13 @@ static int handle_macaddr(char *optarg, void *tgt, void *typearg)
 
 void print_macaddr(char *buf, size_t buf_len, const struct mac_addr *addr)
 {
-	size_t len;
-	int i;
+	int i, len;
 
 	for (i = 0; buf_len > 0 && i < ETH_ALEN; i++) {
 		len = snprintf(buf, buf_len, "%02x", addr->addr[i]);
+		if (len < 0 || len >= buf_len)
+			break;
+
 		buf += len;
 		buf_len -= len;
 
@@ -134,6 +136,8 @@ void print_macaddr(char *buf, size_t buf_len, const struct mac_addr *addr)
 			buf_len -= 1;
 		}
 	}
+
+	*buf = '\0';
 }
 
 static const struct flag_val *find_flag(const struct flag_val *flag_vals,
@@ -621,8 +625,8 @@ int dispatch_commands(const char *argv0, int argc, char **argv,
 		      const char *prog_name)
 {
 	const struct prog_command *c, *cmd = NULL;
+	int ret = EXIT_FAILURE, err, len;
 	char pin_root_path[PATH_MAX];
-	int ret = EXIT_FAILURE, err;
 	char namebuf[100];
 	void *cfg;
 
@@ -648,7 +652,11 @@ int dispatch_commands(const char *argv0, int argc, char **argv,
 		return EXIT_FAILURE;
 	}
 
-	snprintf(namebuf, sizeof(namebuf), "%s %s", prog_name, cmd->name);
+	len = snprintf(namebuf, sizeof(namebuf), "%s %s", prog_name, cmd->name);
+	if (len < 0 || len >= sizeof(namebuf)) {
+		err = -ENOSPC;
+		goto out;
+	}
 	err = parse_cmdline_args(argc, argv, cmd->options, cfg, namebuf,
 				 cmd->doc, cmd->default_cfg);
 	if (err)
