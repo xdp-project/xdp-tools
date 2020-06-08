@@ -20,6 +20,7 @@
 #include "util.h"
 
 #define BUFSIZE 30
+#define FIRST_PRINTABLE 65 /* ord('A') = 65 */
 
 static bool opt_needs_arg(const struct prog_option *opt)
 {
@@ -378,7 +379,7 @@ static void _print_options(const struct prog_option *poptions,
 			char buf[BUFSIZE];
 			int pos;
 
-			if (opt->short_opt > 64) /* ord('A') = 65 */
+			if (opt->short_opt >= FIRST_PRINTABLE)
 				printf(" -%c,", opt->short_opt);
 			else
 				printf("    ");
@@ -439,13 +440,13 @@ void usage(const char *prog_name, const char *doc,
 	printf("\n");
 }
 
-static int prog_options_to_options(const struct prog_option *poptions,
+static int prog_options_to_options(struct prog_option *poptions,
 				   struct option **options,
 				   char **optstring)
 {
+	int num = 0, num_cmn = 0, n_sopt = 0;
 	struct option *new_options, *nopt;
-	const struct prog_option *opt;
-	int num = 0, num_cmn = 0;
+	struct prog_option *opt;
 	char buf[100], *c = buf;
 
 	struct option common_opts[] = {
@@ -472,15 +473,26 @@ static int prog_options_to_options(const struct prog_option *poptions,
 	FOR_EACH_OPTION(poptions, opt) {
 		if (opt->positional)
 			continue;
-		nopt->has_arg = opt_needs_arg(opt) ? required_argument : no_argument;
-		nopt->name = opt->name;
-		nopt->val = opt->short_opt;
-		nopt++;
 		if (opt->short_opt) {
 			*(c++) = opt->short_opt;
 			if (opt_needs_arg(opt))
 				*(c++) = ':';
+		} else {
+			/* getopt expects options to have unique values in the
+			 * 'val' field, however we want to be able to define
+			 * options that don't have a short opt. So get around
+			 * that, just number such options sequentially.
+			 */
+			if (n_sopt >= FIRST_PRINTABLE) {
+				pr_warn("Too many options with no short opt\n");
+				return -1;
+			}
+			opt->short_opt = n_sopt++;
 		}
+		nopt->has_arg = opt_needs_arg(opt) ? required_argument : no_argument;
+		nopt->name = opt->name;
+		nopt->val = opt->short_opt;
+		nopt++;
 	}
 	*(c++) = '\0';
 
@@ -495,7 +507,7 @@ static int prog_options_to_options(const struct prog_option *poptions,
 }
 
 static struct prog_option *find_opt(struct prog_option *all_opts,
-				       int optchar)
+				    int optchar)
 {
 	struct prog_option *opt;
 
