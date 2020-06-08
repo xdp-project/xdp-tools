@@ -6,6 +6,10 @@
  * different eBPF program sections that include only the needed features.
  */
 
+#ifdef __XDPFILT_PROG_H
+#error "Multiple includes of xdpfilt_prog.h"
+#else
+#define __XDPFILT_PROG_H
 
 #include <linux/bpf.h>
 #include <linux/in.h>
@@ -246,3 +250,5 @@ out:
 
 char _license[] SEC("license") = "GPL";
 __u32 _features SEC("features") = (FEATURE_ETHERNET | FEATURE_IPV4 | FEATURE_IPV6 | FEATURE_UDP | FEATURE_TCP | FEATURE_OPMODE);
+
+#endif // include guard
