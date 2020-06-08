@@ -1,4 +1,6 @@
 #+EXPORT_FILE_NAME: xdp-filter
+#+TITLE: xdp-filter
+#+MAN_CLASS_OPTIONS: :section-id "8\" \"DATE\" \"VERSION\" \"A simple XDP-powered packet filter"
 # This file serves both as a README on github, and as the source for the man
 # page; the latter through the org-mode man page export support.
 # .

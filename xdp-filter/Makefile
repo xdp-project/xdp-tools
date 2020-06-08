@@ -7,6 +7,7 @@ XDP_TARGETS  := xdpfilt_blk_udp xdpfilt_blk_tcp xdpfilt_blk_ip \
 
 USER_TARGETS := xdp-filter
 EXTRA_DEPS := xdpfilt_prog.h
+MAN_PAGE := xdp-filter.8
 
 EXTRA_USER_DEPS := prog_features.h
 
