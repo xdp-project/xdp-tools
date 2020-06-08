@@ -3,6 +3,10 @@ include util.mk
 LIB_DIR ?= ..
 
 include $(LIB_DIR)/defines.mk
+include $(LIBXDP_DIR)/libxdp.mk
+
+TOOLS_VERSION := $(LIBXDP_VERSION)
+DEFINES += -DTOOLS_VERSION=\"$(TOOLS_VERSION)\"
 
 all: $(UTIL_OBJS)
 

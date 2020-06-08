@@ -71,6 +71,7 @@ Options:
  -w, --write <file>         Write raw packets to pcap file
  -x, --hex                  Print the full packet in hex
  -v, --verbose              Enable verbose logging (-vv: more verbose)
+     --version              Display version information
  -h, --help                 Show this help
 
 END
@@ -120,7 +121,6 @@ test_interfaces()
 
     $XDP_LOADER unload "$NS" --all
 }
-
 
 test_capt_pcap()
 {
@@ -349,7 +349,6 @@ test_multi_pkt()
 
     $XDP_LOADER unload "$NS" --all || return 1
 }
-
 
 test_perf_wakeup()
 {
