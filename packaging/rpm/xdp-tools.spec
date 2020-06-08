@@ -17,6 +17,7 @@ BuildRequires:    make
 BuildRequires:    gcc
 BuildRequires:    pkgconfig
 BuildRequires:    m4
+BuildRequires:    emacs-nox
 
 # find-debuginfo produces empty debugsourcefiles.list
 # disable the debug package to avoid rpmbuild error'ing out because of this

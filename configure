@@ -225,6 +225,7 @@ ifeq (\$(VERBOSE), 0)
     QUIET_LINK     = @echo '    LINK     '\$@;
     QUIET_INSTALL  = @echo '    INSTALL  '\$@;
     QUIET_M4       = @echo '    M4       '\$@;
+    QUIET_GEN      = @echo '    GEN      '\$@;
 endif
 EOF
 }

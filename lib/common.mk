@@ -14,6 +14,7 @@ XDP_C = ${XDP_TARGETS:=.c}
 XDP_OBJ = ${XDP_C:.c=.o}
 USER_C := ${USER_TARGETS:=.c}
 USER_OBJ := ${USER_C:.c=.o}
+MAN_OBJ := ${MAN_PAGE:.8=.man}
 
 # Expect this is defined by including Makefile, but define if not
 LIB_DIR ?= ../lib
@@ -56,16 +57,16 @@ CFLAGS += -I$(HEADER_DIR) -I$(LIB_DIR)/util
 BPF_CFLAGS += -I$(HEADER_DIR)
 
 BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(wildcard $(HEADER_DIR)/xdp/*.h)
-MAN_FILES := $(wildcard ${USER_TARGETS:=.8})
+MAN_FILES := $(MAN_PAGE)
 
-all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) $(DISPATCHER_OBJ)
+all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) $(DISPATCHER_OBJ) $(MAN_PAGE)
 
 .PHONY: clean
 
 clean::
-	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) *.ll
+	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(MAN_OBJ) *.ll
 
-install:
+install: all
 	install -m 0755 -d $(DESTDIR)$(SBINDIR)
 	install -m 0755 -d $(DESTDIR)$(BPF_OBJECT_DIR)
 	install -m 0755 $(USER_TARGETS) $(DESTDIR)$(SBINDIR)
@@ -108,6 +109,12 @@ $(XDP_OBJ): %.o: %.c $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEADERS) $(LIBMK)
 	    -Werror \
 	    -O2 -emit-llvm -c -g -o ${@:.o=.ll} $<
 	$(QUIET_LLC)$(LLC) -march=bpf -filetype=obj -o $@ ${@:.o=.ll}
+
+$(MAN_OBJ): README.org $(LIBMK)
+	$(Q)emacs -Q --batch --find-file $< --eval "(progn (require 'ox-man)(org-man-export-to-man))"
+
+$(MAN_PAGE): $(MAN_OBJ)
+	$(QUIET_GEN)sed -e "1 s/DATE/$(shell date '+%B %_d, %Y')/" -e "1 s/VERSION/v$(LIBXDP_VERSION)/" $< > $@
 
 .PHONY: test
 ifeq ($(TEST_FILE),)
