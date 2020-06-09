@@ -11,7 +11,6 @@ addons:
       - libpcap-dev
       - libelf-dev
       - gcc-multilib
-      - emacs-nox
   coverity_scan:
     project:
       name: "xdp-project/xdp-tools"

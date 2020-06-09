@@ -57,14 +57,13 @@ CFLAGS += -I$(HEADER_DIR) -I$(LIB_DIR)/util
 BPF_CFLAGS += -I$(HEADER_DIR)
 
 BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(wildcard $(HEADER_DIR)/xdp/*.h)
-MAN_FILES := $(MAN_PAGE)
 
-all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) $(DISPATCHER_OBJ) $(MAN_PAGE)
+all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) $(DISPATCHER_OBJ) man
 
 .PHONY: clean
 
 clean::
-	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(MAN_OBJ) *.ll
+	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(MAN_OBJ) $(MAN_PAGE) *.ll
 
 install: all
 	install -m 0755 -d $(DESTDIR)$(SBINDIR)
@@ -110,11 +109,20 @@ $(XDP_OBJ): %.o: %.c $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEADERS) $(LIBMK)
 	    -O2 -emit-llvm -c -g -o ${@:.o=.ll} $<
 	$(QUIET_LLC)$(LLC) -march=bpf -filetype=obj -o $@ ${@:.o=.ll}
 
+.PHONY: man
+ifeq ($(EMACS),)
+man:
+MAN_FILES :=
+else
+man: $(MAN_PAGE)
+MAN_FILES := $(MAN_PAGE)
 $(MAN_OBJ): README.org $(LIBMK)
-	$(Q)emacs -Q --batch --find-file $< --eval "(progn (require 'ox-man)(org-man-export-to-man))"
+	$(Q)$(EMACS) -Q --batch --find-file $< --eval "(progn (require 'ox-man)(org-man-export-to-man))"
 
 $(MAN_PAGE): $(MAN_OBJ)
 	$(QUIET_GEN)sed -e "1 s/DATE/$(shell date '+%B %_d, %Y')/" -e "1 s/VERSION/v$(LIBXDP_VERSION)/" $< > $@
+
+endif
 
 .PHONY: test
 ifeq ($(TEST_FILE),)

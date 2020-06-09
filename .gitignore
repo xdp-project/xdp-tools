@@ -53,3 +53,6 @@ dkms.conf
 
 config.mk
 xdp-dispatcher.c
+
+*.8
+*.man
