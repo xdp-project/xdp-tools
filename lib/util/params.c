@@ -255,9 +255,12 @@ static void print_enum_vals(char *buf, size_t buf_len, const struct enum_val *va
 		first = false;
 
 		len = snprintf(buf, buf_len, "%s", val->name);
+		if (len < 0 || len >= buf_len)
+			break;
 		buf += len;
 		buf_len -= len;
 	}
+	*buf = '\0';
 }
 
 const char *get_enum_name(const struct enum_val *vals, unsigned int value)
@@ -304,9 +307,12 @@ void print_flags(char *buf, size_t buf_len, const struct flag_val *flags,
 		}
 		first = false;
 		len = snprintf(buf, buf_len, "%s", flag->flagstring);
+		if (len < 0 || len >= buf_len)
+			break;
 		buf += len;
 		buf_len -= len;
 	}
+	*buf = '\0';
 }
 
 static void print_help_flags(const struct prog_option *opt)
@@ -384,6 +390,10 @@ static void _print_options(const struct prog_option *poptions,
 			else
 				printf("    ");
 			pos = snprintf(buf, BUFSIZE, " --%s", opt->name);
+			if (pos < 0 || pos >= BUFSIZE) {
+				pr_warn("opt name too long: %s\n", opt->name);
+				continue;
+			}
 			if (opt->metavar)
 				snprintf(&buf[pos], BUFSIZE-pos, " %s",
 					 opt->metavar);
