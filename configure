@@ -23,6 +23,8 @@ check_opts()
 
 check_toolchain()
 {
+    local emacs_version
+
     : ${PKG_CONFIG:=pkg-config}
     : ${CC=gcc}
     : ${CLANG=clang}
@@ -38,6 +40,14 @@ check_toolchain()
 
     if ! command -v $EMACS >/dev/null 2>&1; then
         EMACS=""
+    else
+        emacs_version=$($EMACS --version 2>/dev/null | head -n 1)
+        if echo $emacs_version | grep -Eq 'GNU Emacs 26'; then
+            echo "using emacs: $emacs_version"
+        else
+            echo "not using emacs: $emacs_version"
+            EMACS=""
+        fi
     fi
 
     echo "PKG_CONFIG:=${PKG_CONFIG}" >>$CONFIG
