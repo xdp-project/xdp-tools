@@ -151,7 +151,7 @@ test_capt_pcapng()
 {
     local PCAP_FILE="/tmp/${NS}_PID_$$_$RANDOM.pcap"
     local PASS_PKT="IP6 $INSIDE_IP6 > $OUTSIDE_IP6: ICMP6, echo reply, seq 1, length 64"
-    local HW=$(uname -p | sed -e 's/[]\/$*+.^|[]/\\&/g')
+    local HW=$(uname -m | sed -e 's/[]\/$*+.^|[]/\\&/g')
     local OS=$(uname -snrv | sed -e 's/[]\/$+*.^|[]/\\&/g')
     local INFOS_REGEX=""
 
