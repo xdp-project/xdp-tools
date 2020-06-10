@@ -178,7 +178,7 @@ static uint64_t get_if_speed(struct iface *iface)
 		ereq.req.speed = 0;
 
 	close(fd);
-	return ereq.req.speed * 1000000;
+	return ereq.req.speed * 1000000ULL;
 
 error_exit:
 	close(fd);
