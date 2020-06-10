@@ -499,7 +499,7 @@ static int prog_options_to_options(struct prog_option *poptions,
 			 */
 			if (n_sopt >= FIRST_PRINTABLE) {
 				pr_warn("Too many options with no short opt\n");
-				return -1;
+				goto err;
 			}
 			opt->short_opt = n_sopt++;
 		}
@@ -511,13 +511,15 @@ static int prog_options_to_options(struct prog_option *poptions,
 	*(c++) = '\0';
 
 	*optstring = strdup(buf);
-	if (!*optstring) {
-		free(new_options);
-		return -1;
-	}
+	if (!*optstring)
+		goto err;
 
 	*options = new_options;
 	return 0;
+
+err:
+	free(new_options);
+	return -1;
 }
 
 static struct prog_option *find_opt(struct prog_option *all_opts,
