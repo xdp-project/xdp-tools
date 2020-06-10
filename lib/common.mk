@@ -23,6 +23,9 @@ LDLIBS ?= $(USER_LIBS)
 include $(LIB_DIR)/defines.mk
 include $(LIBXDP_DIR)/libxdp.mk
 
+TOOLS_VERSION := $(LIBXDP_VERSION)
+DEFINES += -DTOOLS_VERSION=\"$(TOOLS_VERSION)\"
+
 # get list of objects in util
 include $(LIB_DIR)/util/util.mk
 

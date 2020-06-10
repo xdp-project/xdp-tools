@@ -19,8 +19,10 @@
 #include <bpf/btf.h>
 #include <bpf/libbpf.h>
 
-#include <linux/perf_event.h>
 #include <linux/err.h>
+#include <linux/ethtool.h>
+#include <linux/perf_event.h>
+#include <linux/sockios.h>
 
 #include <net/if.h>
 
@@ -28,13 +30,16 @@
 #include <pcap/dlt.h>
 #include <pcap/pcap.h>
 
+#include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <sys/sysinfo.h>
+#include <sys/utsname.h>
 
-#include "params.h"
 #include "logging.h"
+#include "params.h"
 #include "util.h"
 #include "xdpdump.h"
+#include "xpcapng.h"
 
 /*****************************************************************************
  * Local definitions and global variables
@@ -54,6 +59,7 @@ struct flag_val rx_capture_flags[] = {
 static const struct dumpopt {
 	bool                  list_interfaces;
 	bool                  hex_dump;
+	bool                  use_pcap;
 	struct iface          iface;
 	uint32_t              snaplen;
 	uint32_t              perf_wakeup;
@@ -62,6 +68,8 @@ static const struct dumpopt {
 	unsigned int          rx_capture;
 } defaults_dumpopt = {
 	.list_interfaces = false,
+	.hex_dump = false,
+	.use_pcap = false,
 	.snaplen = DEFAULT_SNAP_LEN,
 	.rx_capture = RX_FLAG_FENTRY,
 };
@@ -69,7 +77,6 @@ struct dumpopt cfg_dumpopt;
 
 static struct prog_option xdpdump_options[] = {
 	DEFINE_OPTION("rx-capture", OPT_FLAGS, struct dumpopt, rx_capture,
-		      .short_opt = 1,
 		      .metavar = "<mode>",
 		      .typearg = rx_capture_flags,
 		      .help = "Capture point for the rx direction"),
@@ -95,6 +102,8 @@ static struct prog_option xdpdump_options[] = {
 		      .short_opt = 's',
 		      .metavar = "<snaplen>",
 		      .help = "Minimum bytes of packet to capture"),
+	DEFINE_OPTION("use-pcap", OPT_BOOL, struct dumpopt, use_pcap,
+		      .help = "Use legacy pcap format for XDP traces"),
 	DEFINE_OPTION("write", OPT_STRING, struct dumpopt, pcap_file,
 		      .short_opt = 'w',
 		      .metavar = "<file>",
@@ -106,16 +115,116 @@ static struct prog_option xdpdump_options[] = {
 };
 
 struct perf_handler_ctx {
-	uint64_t                   missed_events;
-	uint64_t                   captured_packets;
-	uint64_t                   epoch_delta;
-	struct dumpopt            *cfg;
-	pcap_t                    *pcap;
-	pcap_dumper_t             *pcap_dumper;
+	uint64_t               missed_events;
+	uint64_t               last_missed_events;
+	uint64_t               captured_packets;
+	uint64_t               epoch_delta;
+	uint64_t               packet_id;
+	uint64_t               cpu_packet_id[MAX_CPUS];
+	struct dumpopt        *cfg;
+	pcap_t                *pcap;
+	pcap_dumper_t         *pcap_dumper;
+	struct xpcapng_dumper *pcapng_dumper;
 };
 
 bool    exit_xdpdump;
 pcap_t *exit_pcap;
+
+/*****************************************************************************
+ * get_if_speed()
+ *****************************************************************************/
+static uint64_t get_if_speed(struct iface *iface)
+{
+#define MAX_MODE_MASKS 10
+
+	int                                  fd;
+	struct ifreq                         ifr;
+	struct {
+		struct ethtool_link_settings req;
+		uint32_t                     modes[3 * MAX_MODE_MASKS];
+	} ereq;
+
+	if (iface == NULL)
+		return 0;
+
+	/* Open socket, and initialize structures. */
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd < 0)
+		return 0;
+
+	memset(&ereq, 0, sizeof(ereq));
+	ereq.req.cmd = ETHTOOL_GLINKSETTINGS;
+
+	memset(&ifr, 0, sizeof(ifr));
+	strncpy(ifr.ifr_name, iface->ifname, sizeof(ifr.ifr_name) - 1);
+	ifr.ifr_data = (void *)&ereq;
+
+	/* First query the kernel to see how many masks we need to ask for. */
+	if (ioctl(fd, SIOCETHTOOL, &ifr) != 0)
+		goto error_exit;
+
+	if (ereq.req.link_mode_masks_nwords >= 0 ||
+	    ereq.req.link_mode_masks_nwords < -MAX_MODE_MASKS ||
+	    ereq.req.cmd != ETHTOOL_GLINKSETTINGS)
+		goto error_exit;
+
+	/* Now ask for the data set, and extract the speed in bps. */
+	ereq.req.link_mode_masks_nwords = -ereq.req.link_mode_masks_nwords;
+	if (ioctl(fd, SIOCETHTOOL, &ifr) != 0)
+		goto error_exit;
+
+	/* If speed is unknown return 0. */
+	if (ereq.req.speed == -1)
+		ereq.req.speed = 0;
+
+	close(fd);
+	return ereq.req.speed * 1000000;
+
+error_exit:
+	close(fd);
+	return 0;
+}
+
+/*****************************************************************************
+ * get_if_drv_info()
+ *****************************************************************************/
+static char *get_if_drv_info(struct iface *iface, char *buffer, size_t len)
+{
+	int                     fd;
+	char                   *r_buffer = NULL;
+	struct ifreq            ifr;
+	struct ethtool_drvinfo  info;
+
+	if (iface == NULL || buffer == NULL || len == 0)
+		return NULL;
+
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd < 0)
+		return NULL;
+
+	memset(&info, 0, sizeof(info));
+	info.cmd = ETHTOOL_GDRVINFO;
+
+	memset(&ifr, 0, sizeof(ifr));
+	strncpy(ifr.ifr_name, iface->ifname, sizeof(ifr.ifr_name) - 1);
+	ifr.ifr_data = (void *)&info;
+
+	if (ioctl(fd, SIOCETHTOOL, &ifr) != 0)
+		goto exit;
+
+	if (try_snprintf(buffer, len,
+			 "driver: \"%s\", version: \"%s\", "
+			 "fw-version: \"%s\", rom-version: \"%s\", "
+			 "bus-info: \"%s\"",
+			 info.driver, info.version, info.fw_version,
+			 info.erom_version, info.bus_info))
+		goto exit;
+
+	r_buffer = buffer;
+exit:
+	close(fd);
+	return r_buffer;
+}
 
 /*****************************************************************************
  * get_xdp_return_string()
@@ -220,21 +329,27 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 						 int cpu,
 						 struct perf_event_header *event)
 {
-	uint64_t ts;
-	struct perf_handler_ctx *ctx = private_data;
+	bool                      fexit;
+	uint64_t                  ts;
+	struct perf_handler_ctx  *ctx = private_data;
 	struct perf_sample_event *e = container_of(event,
 						   struct perf_sample_event,
 						   header);
-	struct perf_lost_event *lost = container_of(event,
-						    struct perf_lost_event,
-						    header);
+	struct perf_lost_event   *lost = container_of(event,
+						      struct perf_lost_event,
+						      header);
 
 	switch(e->header.type) {
 	case PERF_RECORD_SAMPLE:
 
-		if (e->header.size < sizeof(struct perf_sample_event) ||
+		if (cpu >= MAX_CPUS ||
+		    e->header.size < sizeof(struct perf_sample_event) ||
 		    e->size < (sizeof(struct pkt_trace_metadata) + e->metadata.cap_len))
 			return LIBBPF_PERF_EVENT_CONT;
+
+		fexit = e->metadata.flags & MDF_DIRECTION_FEXIT;
+		if (!fexit || ctx->cfg->rx_capture == RX_FLAG_FEXIT)
+			ctx->cpu_packet_id[cpu] = ++ctx->packet_id;
 
 		ts = e->time + ctx->epoch_delta;
 		if (ctx->pcap_dumper) {
@@ -250,24 +365,49 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 			if (ctx->cfg->pcap_file[0] == '-' &&
 			    ctx->cfg->pcap_file[1] == 0)
 				pcap_dump_flush(ctx->pcap_dumper);
-		} else {
-			int i;
-			char hline[SNPRINTH_MIN_BUFFER_SIZE];
-			bool fexit = e->metadata.flags & MDF_DIRECTION_FEXIT;
 
+		} else if (ctx->pcapng_dumper) {
+			struct xpcapng_epb_options_s options = {};
+			int64_t  action = e->metadata.action;
+			uint32_t queue = e->metadata.rx_queue;
+
+			options.flags = PCAPNG_EPB_FLAG_INBOUND;
+			options.dropcount = ctx->last_missed_events;
+			options.packetid = &ctx->cpu_packet_id[cpu];
+			options.queue = &queue;
+			options.xdp_verdict = fexit ? &action : NULL;
+
+			xpcapng_dump_enhanced_pkt(ctx->pcapng_dumper,
+						  fexit ? 1 : 0, /* ifid */
+						  e->packet,
+						  e->metadata.pkt_len,
+						  min(e->metadata.cap_len,
+						      ctx->cfg->snaplen),
+						  ts,
+						  &options);
+
+			ctx->last_missed_events = 0;
+			if (ctx->cfg->pcap_file[0] == '-' &&
+			    ctx->cfg->pcap_file[1] == 0)
+				xpcapng_dump_flush(ctx->pcapng_dumper);
+		} else {
+			int  i;
+			char hline[SNPRINTH_MIN_BUFFER_SIZE];
 
 			if (ctx->cfg->hex_dump) {
 				printf("%llu.%09lld: @%s%s: packet size %u "
-				       "bytes, captured %u bytes on "
-				       "if_index %u, rx queue %u\n",
+				       "bytes, captured %u bytes on if_index "
+				       "%u, rx queue %u, id %"PRIu64"\n",
 				       ts / 1000000000ULL,
 				       ts % 1000000000ULL,
 				       fexit ? "exit" : "entry",
 				       fexit ? get_xdp_action_string(
 					       e->metadata.action) : "",
 				       e->metadata.pkt_len,
-				       e->metadata.cap_len, e->metadata.ifindex,
-				       e->metadata.rx_queue);
+				       e->metadata.cap_len,
+				       e->metadata.ifindex,
+				       e->metadata.rx_queue,
+				       ctx->cpu_packet_id[cpu]);
 
 				for (i = 0; i < e->metadata.cap_len; i += 16) {
 					snprinth(hline, sizeof(hline),
@@ -277,14 +417,16 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 				}
 			} else {
 				printf("%llu.%09lld: @%s%s: packet size %u "
-				       "bytes on if_index %u, rx queue %u\n",
+				       "bytes on if_index %u, rx queue %u, "
+				       "id %"PRIu64"\n",
 				       ts / 1000000000ULL,
 				       ts % 1000000000ULL,
 				       fexit ? "exit" : "entry",
 				       fexit ? get_xdp_action_string(
 					       e->metadata.action) : "",
 				       e->metadata.pkt_len,e->metadata.ifindex,
-				       e->metadata.rx_queue);
+				       e->metadata.rx_queue,
+				       ctx->cpu_packet_id[cpu]);
 			}
 		}
 		ctx->captured_packets++;
@@ -292,6 +434,7 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 
 	case PERF_RECORD_LOST:
 		ctx->missed_events += lost->lost;
+		ctx->last_missed_events += lost->lost;
 		break;
 	}
 
@@ -560,6 +703,7 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	bool                         rc = false;
 	pcap_t                      *pcap = NULL;
 	pcap_dumper_t               *pcap_dumper = NULL;
+	struct xpcapng_dumper       *pcapng_dumper = NULL;
 	struct bpf_link             *trace_link_fentry = NULL;
 	struct bpf_link             *trace_link_fexit = NULL;
 	struct bpf_map              *perf_map;
@@ -716,16 +860,92 @@ rlimit_loop:
 
         /* Open the pcap handle */
 	if (cfg->pcap_file) {
-		pcap = pcap_open_dead(DLT_EN10MB, cfg->snaplen);
-		if (!pcap) {
-			pr_warn("ERROR: Can't open pcap dead handler!\n");
-			goto error_exit;
-		}
 
-		pcap_dumper = pcap_dump_open(pcap, cfg->pcap_file);
-		if (!pcap_dumper) {
-			pr_warn("ERROR: Can't open pcap file for writing!\n");
-			goto error_exit;
+		if (cfg->use_pcap) {
+			pcap = pcap_open_dead(DLT_EN10MB, cfg->snaplen);
+			if (!pcap) {
+				pr_warn("ERROR: Can't open pcap dead handler!\n");
+				goto error_exit;
+			}
+
+			pcap_dumper = pcap_dump_open(pcap, cfg->pcap_file);
+			if (!pcap_dumper) {
+				pr_warn("ERROR: Can't open pcap file for writing!\n");
+				goto error_exit;
+			}
+		} else {
+			char           if_name[IFNAMSIZ + 7];
+			char           if_descr[BPF_OBJ_NAME_LEN + IFNAMSIZ + 10];
+			char           if_drv[260];
+			uint64_t       if_speed;
+			struct utsname utinfo;
+
+			memset(&utinfo, 0, sizeof(utinfo));
+			uname(&utinfo);
+
+			if_drv[0] = 0;
+			if (try_snprintf(if_drv, sizeof(if_drv), "%s %s %s %s",
+					 utinfo.sysname, utinfo.nodename,
+					 utinfo.release, utinfo.version)) {
+				pr_warn("ERROR: Could not format OS information!\n");
+				goto error_exit;
+			}
+			pcapng_dumper = xpcapng_dump_open(cfg->pcap_file,
+							  NULL, utinfo.machine,
+							  if_drv,
+							  "xdpdump v" TOOLS_VERSION);
+			if (!pcapng_dumper) {
+				pr_warn("ERROR: Can't open PcapNG file for writing!\n");
+				goto error_exit;
+			}
+
+			if_speed = get_if_speed(&cfg->iface);
+			if_drv[0] = 0;
+			get_if_drv_info(&cfg->iface, if_drv, sizeof(if_drv));
+
+			if (try_snprintf(if_name, sizeof(if_name), "%s@fentry",
+					 cfg->iface.ifname)) {
+				pr_warn("ERROR: Could not format interface name!\n");
+				goto error_exit;
+			}
+
+			if (try_snprintf(if_descr, sizeof(if_descr), "%s:%s()@fentry",
+					 cfg->iface.ifname, tgt_func)) {
+				pr_warn("ERROR: Could not format interface description!\n");
+				goto error_exit;
+			}
+
+			if (xpcapng_dump_add_interface(pcapng_dumper,
+						       cfg->snaplen,
+						       if_name, if_descr, NULL,
+						       if_speed,
+						       9 /* nsec resolution */,
+						       if_drv) != 0) {
+				pr_warn("ERROR: Can't add entry interfaced to PcapNG file!\n");
+				goto error_exit;
+			}
+
+			if (try_snprintf(if_name, sizeof(if_name), "%s@fexit",
+					 cfg->iface.ifname)){
+				pr_warn("ERROR: Could not format interface name!\n");
+				goto error_exit;
+			}
+
+			if (try_snprintf(if_descr, sizeof(if_descr), "%s:%s()@fexit",
+					 cfg->iface.ifname, tgt_func)) {
+				pr_warn("ERROR: Could not format interface description!\n");
+				goto error_exit;
+			}
+
+			if (xpcapng_dump_add_interface(pcapng_dumper,
+						       cfg->snaplen,
+						       if_name, if_descr, NULL,
+						       if_speed,
+						       9 /* nsec resolution */,
+						       if_drv) != 1) {
+				pr_warn("ERROR: Can't add exit interfaced to PcapNG file!\n");
+				goto error_exit;
+			}
 		}
 	}
 
@@ -740,6 +960,7 @@ rlimit_loop:
 	perf_ctx.cfg = cfg;
 	perf_ctx.pcap = pcap;
 	perf_ctx.pcap_dumper = pcap_dumper;
+	perf_ctx.pcapng_dumper = pcapng_dumper;
 	perf_ctx.epoch_delta = get_epoch_to_uptime_delta();
 
 	/* Determine the perf wakeup_events value to use */
@@ -799,6 +1020,9 @@ rlimit_loop:
 
 error_exit:
 	/* Cleanup all our resources */
+	if (pcapng_dumper)
+		xpcapng_dump_close(pcapng_dumper);
+
 	if (pcap_dumper)
 		pcap_dump_close(pcap_dumper);
 
@@ -899,6 +1123,14 @@ int main(int argc, char **argv)
 	if (cfg_dumpopt.list_interfaces) {
 		if (list_interfaces(&cfg_dumpopt))
 			return EXIT_SUCCESS;
+		return EXIT_FAILURE;
+	}
+
+	/* Check if the system does not have more cores than we assume. */
+	if (sysconf(_SC_NPROCESSORS_CONF) > MAX_CPUS) {
+		pr_warn("ERROR: System has more cores (%ld) than maximum "
+			"supported (%d)!\n", sysconf(_SC_NPROCESSORS_CONF),
+			MAX_CPUS);
 		return EXIT_FAILURE;
 	}
 

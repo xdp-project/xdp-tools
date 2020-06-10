@@ -26,7 +26,7 @@ GENERATED_NAME_PREFIX="xdptest"
 ALL_TESTS=""
 TEST_PROG_DIR="${TEST_PROG_DIR:-$(dirname $0)}"
 
-NEEDED_TOOLS="ethtool ip ping tc tcpdump"
+NEEDED_TOOLS="capinfos ethtool ip ping sed tc tcpdump timeout"
 MAX_NAMELEN=15
 
 # Odd return value for skipping, as only 0-255 is valid.

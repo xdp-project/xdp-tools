@@ -21,6 +21,7 @@
 
 #define BUFSIZE 30
 #define FIRST_PRINTABLE 65 /* ord('A') = 65 */
+#define VERSION_SHORT_OPT 0
 
 static bool opt_needs_arg(const struct prog_option *opt)
 {
@@ -446,6 +447,7 @@ void usage(const char *prog_name, const char *doc,
 	printf("Options:\n");
 	_print_options(poptions, false);
 	printf(" -v, --verbose              Enable verbose logging (-vv: more verbose)\n");
+	printf("     --version              Display version information\n");
 	printf(" -h, --help                 Show this help\n");
 	printf("\n");
 }
@@ -454,7 +456,7 @@ static int prog_options_to_options(struct prog_option *poptions,
 				   struct option **options,
 				   char **optstring)
 {
-	int num = 0, num_cmn = 0, n_sopt = 0;
+	int num = 0, num_cmn = 0, n_sopt = VERSION_SHORT_OPT + 1;
 	struct option *new_options, *nopt;
 	struct prog_option *opt;
 	char buf[100], *c = buf;
@@ -462,12 +464,14 @@ static int prog_options_to_options(struct prog_option *poptions,
 	struct option common_opts[] = {
 	       {"help", no_argument, NULL, 'h'},
 	       {"verbose", no_argument, NULL, 'v'},
+	       {"version", no_argument, NULL, VERSION_SHORT_OPT},
 	       {}
 	};
 
 	for (nopt = common_opts; nopt->name; nopt++) {
 		num++; num_cmn++;
-		*c++ = nopt->val;
+		if (nopt->val != VERSION_SHORT_OPT)
+			*c++ = nopt->val;
 	}
 
 	FOR_EACH_OPTION(poptions, opt)
@@ -597,6 +601,10 @@ int parse_cmdline_args(int argc, char **argv,
 		case 'v':
 			increase_log_level();
 			break;
+		case VERSION_SHORT_OPT:
+			printf("%s version %s\n", prog, TOOLS_VERSION);
+			err = EXIT_FAILURE;
+			goto out;
 		default:
 			if (set_opt(cfg, poptions, opt, optarg)) {
 				usage(prog, doc, poptions, full_help);
