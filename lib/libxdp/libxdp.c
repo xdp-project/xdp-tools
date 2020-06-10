@@ -1144,7 +1144,7 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 	old_mp = xdp_multiprog__get_from_ifindex(ifindex);
 	if (!IS_ERR_OR_NULL(old_mp)) {
 		pr_warn("XDP program already loaded on ifindex %d; "
-			"replacing not yet supported", ifindex);
+			"replacing not yet supported\n", ifindex);
 		xdp_multiprog__close(old_mp);
 		return -EEXIST;
 	}
