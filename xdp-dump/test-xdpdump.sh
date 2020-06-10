@@ -8,6 +8,12 @@ ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_t
 XDPDUMP=./xdpdump
 XDP_LOADER=../xdp-loader/xdp-loader
 
+if which ping6 >/dev/null 2>&1; then
+    PING6=ping6
+else
+    PING6=ping
+fi
+
 RESULT=""
 
 print_result()
@@ -126,11 +132,11 @@ test_capt_pcap()
 {
     local PASS_PKT="IP6 $INSIDE_IP6 > $OUTSIDE_IP6: ICMP6, echo reply, seq 1, length 64"
 
-    ping6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
 
     PID=$(start_background "$XDPDUMP -i $NS --use-pcap -w - 2> /dev/null | tcpdump -r - -n")
-    ping6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
 
     $XDP_LOADER unload "$NS" --all || return 1
@@ -164,11 +170,11 @@ test_capt_pcapng()
     INFOS_REGEX+="Hardware = driver: \"veth\", version: \"1\.0\", fw-version: \"\", rom-version: \"\", bus-info: \"\".*"
     INFOS_REGEX+="Time precision = nanoseconds \(9\))"
 
-    ping6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
 
     PID=$(start_background "$XDPDUMP -i $NS -w - 2> /dev/null | tcpdump -r - -n")
-    ping6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
 
     if [[ "$RESULT" != *"$PASS_PKT"* ]]; then
@@ -177,7 +183,7 @@ test_capt_pcapng()
     fi
 
     PID=$(start_background "$XDPDUMP -i $NS -w $PCAP_FILE --rx-capture=entry,exit")
-    ping6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID") || (print_result "xdpdump failed"; return 1)
 
     RESULT=$(capinfos "$PCAP_FILE") || (print_result "capinfos failed"; return 1)
@@ -206,12 +212,12 @@ test_capt_term()
     local PASS_X_REGEX="(@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PASS_X_OPT="0x0020:  00 00 00 00 00 02 fc 00 de ad ca fe 00 01 00 00  ................"
 
-    ping6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
 
     PID=$(start_background "$XDPDUMP -i $NS")
-    ping6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
 
     if ! [[ $RESULT =~ $PASS_REGEX ]]; then
@@ -220,7 +226,7 @@ test_capt_term()
     fi
 
     PID=$(start_background "$XDPDUMP -i $NS -x")
-    ping6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
 
     if ! [[ $RESULT =~ $PASS_X_REGEX ]]; then
@@ -249,7 +255,7 @@ test_exitentry()
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
 
     PID=$(start_background "$XDPDUMP -i $NS --rx-capture=entry")
-    ping6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
     if ! [[ $RESULT =~ $PASS_ENTRY_REGEX ]]; then
         print_result "IPv6 entry packet not received"
@@ -257,7 +263,7 @@ test_exitentry()
     fi
 
     PID=$(start_background "$XDPDUMP -i $NS --rx-capture=exit")
-    ping6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
     if ! [[ $RESULT =~ $PASS_EXIT_REGEX ]]; then
         print_result "IPv6 exit packet not received"
@@ -268,7 +274,7 @@ test_exitentry()
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/xdp_drop.o" || return 1
 
     PID=$(start_background "$XDPDUMP -i $NS --rx-capture=exit")
-    ping6 -W 0.1 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
+    $PING6 -W 0.1 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
     RESULT=$(stop_background "$PID")
     if ! [[ $RESULT =~ $PASS_EXIT_D_REGEX ]]; then
         print_result "IPv6 drop exit packet not received"
@@ -276,7 +282,7 @@ test_exitentry()
     fi
 
     PID=$(start_background "$XDPDUMP -i $NS --rx-capture=exit,entry")
-    ping6 -W 0.1 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
+    $PING6 -W 0.1 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
     RESULT=$(stop_background "$PID")
     if ! [[ $RESULT =~ $PASS_EXIT_D_REGEX && $RESULT =~ $PASS_ENTRY_REGEX ]]; then
         print_result "IPv6 drop entry/exit packet not received"
@@ -303,7 +309,7 @@ test_snap()
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
 
     PID=$(start_background "$XDPDUMP -i $NS -x --snapshot-length=16")
-    ping6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
 
     if ! [[ $RESULT =~ $PASS_REGEX ]]; then
@@ -312,7 +318,7 @@ test_snap()
     fi
 
     PID=$(start_background "$XDPDUMP -i $NS -x -s 21")
-    ping6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
 
     if ! [[ $RESULT =~ $PASS_II_REGEX ]]; then
@@ -334,7 +340,7 @@ test_multi_pkt()
     for PKT_SIZE in "${PKT_SIZES[@]}" ; do
 
 	PID=$(start_background_no_stderr "$XDPDUMP -i $NS --rx-capture=entry,exit")
-	timeout 4 ping6 -W 2 -s "$PKT_SIZE" -c 20000 -f "$INSIDE_IP6" || return 1
+	timeout 4 $PING6 -W 2 -s "$PKT_SIZE" -c 20000 -f "$INSIDE_IP6" || return 1
 	RESULT=$(stop_background "$PID")
 	if ! [[ $RESULT =~ $PASS_ENTRY_REGEX ]]; then
             print_result "IPv6 entry packet not received, $PKT_SIZE"
@@ -368,7 +374,7 @@ test_perf_wakeup()
 
         # We send a single packet to make sure flushing of the buffer works!
         PID=$(start_background_no_stderr "$XDPDUMP -i $NS --perf-wakeup=$WAKEUP")
-        ping6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+        $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
         RESULT=$(stop_background "$PID")
 
         if ! [[ $RESULT =~ $PASS_REGEX ]]; then
@@ -378,7 +384,7 @@ test_perf_wakeup()
 
         # We sent 10k packets and see if the all arrive
         PID=$(start_background_no_stderr "$XDPDUMP -i $NS --perf-wakeup=$WAKEUP")
-        timeout 2 ping6 -W 2 -c 10000 -f  "$INSIDE_IP6" || return 1
+        timeout 2 $PING6 -W 2 -c 10000 -f  "$INSIDE_IP6" || return 1
         RESULT=$(stop_background "$PID")
         if ! [[ $RESULT =~ $PASS_10K_REGEX ]]; then
             print_result "IPv6 10k packet not received for wakeup $WAKEUP"
@@ -397,7 +403,7 @@ test_none_xdp()
     $XDP_LOADER unload "$NS" --all
 
     PID=$(start_background "$XDPDUMP -i $NS")
-    ping6 -W 2 -c 4 "$INSIDE_IP6" || return 1
+    $PING6 -W 2 -c 4 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
     echo "$RESULT"
     if [[ "$RESULT" != *"$PASS_PKT"* ]]; then
