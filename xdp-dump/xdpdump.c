@@ -978,10 +978,10 @@ rlimit_loop:
 			/*
 			 * If no specific wakeup value is specified assume
 			 * an average packet size of 2K we would like to
-			 * fill without loosing any packets.
+			 * fill without losing any packets.
 			 */
 			uint32_t events = PERF_MMAP_PAGE_COUNT * getpagesize() /
-				libbpf_num_possible_cpus() / 2048;
+				(libbpf_num_possible_cpus() ?: 1) / 2048;
 
 			if (events > 0)
 				perf_attr.wakeup_events = min(PERF_MAX_WAKEUP_EVENTS,
