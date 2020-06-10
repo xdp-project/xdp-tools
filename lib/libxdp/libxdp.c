@@ -767,16 +767,11 @@ err:
 	return ERR_PTR(err);
 }
 
-struct xdp_program *xdp_program__open_file(const char *filename,
-					   const char *prog_name,
-					   struct bpf_object_open_opts *opts)
+static struct bpf_object *open_bpf_obj(const char *filename,
+				       struct bpf_object_open_opts *opts)
 {
-	struct xdp_program *xdp_prog;
 	struct bpf_object *obj;
 	int err;
-
-	if (!filename)
-		return ERR_PTR(-EINVAL);
 
 	obj = bpf_object__open_file(filename, opts);
 	err = libbpf_get_error(obj);
@@ -788,20 +783,92 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 		return ERR_PTR(err);
 	}
 
+	return obj;
+}
+
+static int reuse_bpf_maps(struct bpf_object *dst_obj,
+			  const char *filename,
+			  struct bpf_object_open_opts *opts)
+{
+	struct bpf_object *src_obj;
+	struct bpf_map *map;
+	int err = 0, fd;
+
+	/* We can't load the XDP program before attaching it because it needs to
+	 * know about the dispatcher. As a workaround, open the file a second
+	 * time, load *that* object, and reuse all the file descriptors.
+	 *
+	 * This is just a stopgap solution until we get support for freplace
+	 * reattachment in the kernel, but it makes it possible to access the
+	 * map fds after calling xdp_program__open_file().
+	 */
+	src_obj = open_bpf_obj(filename, opts);
+	if (IS_ERR(src_obj))
+		return PTR_ERR(src_obj);
+
+	err = bpf_object__load(src_obj);
+	if (err)
+		goto out;
+
+	bpf_object__for_each_map(map, dst_obj) {
+		if (bpf_map__is_internal(map))
+			continue;
+
+		fd = bpf_object__find_map_fd_by_name(src_obj,
+						     bpf_map__name(map));
+		if (fd < 0) {
+			err = fd;
+			goto out;
+		}
+
+		err = bpf_map__reuse_fd(map, fd);
+		if (err)
+			goto out;
+	}
+
+out:
+	bpf_object__close(src_obj);
+	return err;
+}
+
+struct xdp_program *xdp_program__open_file(const char *filename,
+					   const char *prog_name,
+					   struct bpf_object_open_opts *opts)
+{
+	struct xdp_program *xdp_prog;
+	struct bpf_object *obj;
+	int err;
+
+	if (!filename)
+		return ERR_PTR(-EINVAL);
+
+	obj = open_bpf_obj(filename, opts);
+	if (IS_ERR(obj)) {
+		err = PTR_ERR(obj);
+		goto err;
+	}
+
+	err = reuse_bpf_maps(obj, filename, opts);
+	if (err)
+		goto err_close_obj;
+
 	xdp_prog = xdp_program__new();
 	if (IS_ERR(xdp_prog)) {
-		bpf_object__close(obj);
-		return xdp_prog;
+		err = PTR_ERR(obj);
+		goto err_close_obj;
 	}
 
 	err = xdp_program__fill_from_obj(xdp_prog, obj, prog_name, false);
 	if (err)
-		goto err;
+		goto err_close_prog;
 
 	return xdp_prog;
-err:
+
+err_close_prog:
 	xdp_program__close(xdp_prog);
+err_close_obj:
 	bpf_object__close(obj);
+err:
 	return ERR_PTR(err);
 }
 
