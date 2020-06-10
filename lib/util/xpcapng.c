@@ -570,7 +570,7 @@ struct xpcapng_dumper *xpcapng_dump_open(const char *file,
 
 error_exit:
 	if (pd) {
-		if (pd->pd_fd < 0 && pd->pd_fd != STDOUT_FILENO)
+		if (pd->pd_fd >= 0 && pd->pd_fd != STDOUT_FILENO)
 			close(pd->pd_fd);
 
 		free(pd);
