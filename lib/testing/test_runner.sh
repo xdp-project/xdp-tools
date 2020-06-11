@@ -102,6 +102,7 @@ stop_background()
     local OUTPUT_FILE="/tmp/${NS}_PID_${PID}"
     kill -SIGINT "$PID"
     sleep 1 # Wait to make sure the buffer is flushed after the shutdown
+    kill -SIGTERM "$PID" && sleep 1 # just in case SIGINT was not enough
     cat "$OUTPUT_FILE"
     rm "$OUTPUT_FILE" >& /dev/null
 }
