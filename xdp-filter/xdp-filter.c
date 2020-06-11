@@ -130,7 +130,7 @@ int map_set_flags(int fd, void *key, __u8 flags)
 
 	pr_debug("Setting new map value %llu from flags %u\n", values[0], flags);
 
-	err = bpf_map_update_elem(fd, key, &values, 0);
+	err = bpf_map_update_elem(fd, key, values, 0);
 
 	free(values);
 	return err;
@@ -572,6 +572,7 @@ int do_port(const void *cfg, const char *pin_root_path)
 	int map_fd = -1, err = EXIT_SUCCESS;
 	char modestr[100], protostr[100];
 	const struct portopt *opt = cfg;
+	struct bpf_map_info info = {};
 	__u8 flags = 0;
 	__u64 counter;
 	__u32 map_key;
@@ -581,13 +582,14 @@ int do_port(const void *cfg, const char *pin_root_path)
 	pr_debug("%s %s port %u mode %s\n", opt->remove ? "Removing" : "Adding",
 		 protostr, opt->port, modestr);
 
-	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS), NULL);
+	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS), &info);
 	if (map_fd < 0) {
 		pr_warn("Couldn't find port filter map; is xdp-filter loaded "
 			"with the right features (udp and/or tcp)?\n");
 		err = EXIT_FAILURE;
 		goto out;
 	}
+	pr_debug("Found map with fd %d for map id %d\n", map_fd, info.id);
 
 	map_key = htons(opt->port);
 
