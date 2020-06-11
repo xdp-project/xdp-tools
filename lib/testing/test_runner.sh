@@ -368,6 +368,15 @@ is_func()
     type "$1" 2>/dev/null | grep -q 'is a function'
 }
 
+check_run()
+{
+    "$@"
+    ret=$?
+    if [ "$ret" -ne "0" ]; then
+        exit $ret
+    fi
+}
+
 exec_test()
 {
     local testn="$1"
