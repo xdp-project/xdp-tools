@@ -376,3 +376,8 @@ test_none_xdp()
         return 1
     fi
 }
+
+cleanup_tests()
+{
+    $XDP_LOADER unload $NS --all
+}
