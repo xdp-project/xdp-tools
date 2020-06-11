@@ -263,7 +263,7 @@ int get_pinned_program(const struct iface *iface, const char *pin_root_path,
 	dr = opendir(pin_path);
 	if (!dr) {
 		err = -errno;
-		pr_debug("Couldn't open pin directory %s: %s",
+		pr_debug("Couldn't open pin directory %s: %s\n",
 			 pin_path, strerror(-err));
 		return err;
 	}
