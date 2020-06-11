@@ -558,6 +558,7 @@ int get_pinned_map_fd(const char *bpf_root, const char *map_name,
 	if (err)
 		return err;
 
+	pr_debug("Getting pinned object from %s\n", buf);
 	return get_pinned_object_fd(buf, info, &info_len);
 }
 
