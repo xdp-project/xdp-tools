@@ -15,7 +15,7 @@ umask 077
 
 SETUP_SCRIPT="$(dirname "$0")/setup-netns-env.sh"
 STATEDIR="${TMPDIR:-/tmp}/xdp-tools-tests"
-IP6_SUBNET=fc00:dead:cafe # must have exactly three :-separated elements
+IP6_SUBNET=fc42:dead:cafe # must have exactly three :-separated elements
 IP6_PREFIX_SIZE=64 # Size of assigned prefixes
 IP6_FULL_PREFIX_SIZE=48 # Size of IP6_SUBNET
 IP4_SUBNET=10.11
