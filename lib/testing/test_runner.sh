@@ -25,6 +25,7 @@ VLAN_IDS=(1 2)
 GENERATED_NAME_PREFIX="xdptest"
 ALL_TESTS=""
 TEST_PROG_DIR="${TEST_PROG_DIR:-$(dirname $0)}"
+VERBOSE_TESTS=${V:-0}
 
 NEEDED_TOOLS="capinfos ethtool ip ping sed tc tcpdump timeout"
 MAX_NAMELEN=15
@@ -346,6 +347,8 @@ exec_test()
         ret=0
     else
         printf "\t\tFAIL\n"
+    fi
+    if [ "$ret" -ne "0" -o "$VERBOSE_TESTS" -eq "1" ]; then
         echo "$output" | sed 's/^/\t/'
     fi
     return $ret
@@ -375,7 +378,7 @@ usage()
 
 if [ "$EUID" -ne "0" ]; then
     if which sudo >/dev/null 2>&1; then
-        exec sudo "$0" "$@"
+        exec sudo env V=${VERBOSE_TESTS} "$0" "$@"
     else
         die "Tests should be run as root"
     fi
