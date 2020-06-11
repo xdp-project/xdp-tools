@@ -74,7 +74,7 @@ die()
 start_background()
 {
     local TMP_FILE="/tmp/${NS}_PID_$$_$RANDOM"
-    eval "${1} >& ${TMP_FILE} &"
+    eval "$@ >& ${TMP_FILE} &"
     local PID=$!
     sleep 1 # Wait to make sure the command is executed in the background
 
@@ -86,7 +86,7 @@ start_background()
 start_background_no_stderr()
 {
     local TMP_FILE="/tmp/${NS}_PID_$$_$RANDOM"
-    eval "${1} 1> ${TMP_FILE} 2>/dev/null &"
+    eval "$@ 1> ${TMP_FILE} 2>/dev/null &"
     local PID=$!
     sleep 1 # Wait to make sure the command is executed in the background
 
