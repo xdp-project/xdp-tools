@@ -8,12 +8,6 @@ ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_t
 XDPDUMP=./xdpdump
 XDP_LOADER=../xdp-loader/xdp-loader
 
-if which ping6 >/dev/null 2>&1; then
-    PING6=ping6
-else
-    PING6=ping
-fi
-
 RESULT=""
 
 print_result()
@@ -22,39 +16,6 @@ print_result()
     if [ -n "$1" ]; then
         echo "ERROR: $1"
     fi
-}
-
-start_background()
-{
-    local TMP_FILE="/tmp/${NS}_PID_$$_$RANDOM"
-    eval "${1} >& ${TMP_FILE} &"
-    local PID=$!
-    sleep 1 # Wait to make sure the command is executed in the background
-
-    mv "$TMP_FILE" "/tmp/${NS}_PID_${PID}" >& /dev/null
-
-    echo "$PID"
-}
-
-start_background_no_stderr()
-{
-    local TMP_FILE="/tmp/${NS}_PID_$$_$RANDOM"
-    eval "${1} 1> ${TMP_FILE} 2>/dev/null &"
-    local PID=$!
-    sleep 1 # Wait to make sure the command is executed in the background
-
-    mv "$TMP_FILE" "/tmp/${NS}_PID_${PID}" >& /dev/null
-
-    echo "$PID"
-}
-
-stop_background()
-{
-    local OUTPUT_FILE="/tmp/${NS}_PID_${1}"
-    kill -SIGINT "$1"
-    sleep 1 # Wait to make sure the buffer is flushed after the shutdown
-    cat "$OUTPUT_FILE"
-    rm "$OUTPUT_FILE" >& /dev/null
 }
 
 test_help()

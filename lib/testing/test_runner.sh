@@ -27,8 +27,14 @@ ALL_TESTS=""
 TEST_PROG_DIR="${TEST_PROG_DIR:-$(dirname $0)}"
 VERBOSE_TESTS=${V:-0}
 
-NEEDED_TOOLS="capinfos ethtool ip ping sed tc tcpdump timeout"
+NEEDED_TOOLS="capinfos ethtool ip ping sed tc tcpdump timeout nc"
 MAX_NAMELEN=15
+
+if which ping6 >/dev/null 2>&1; then
+    PING6=ping6
+else
+    PING6=ping
+fi
 
 # Odd return value for skipping, as only 0-255 is valid.
 SKIPPED_TEST=249
@@ -63,6 +69,41 @@ die()
 {
     echo "$1" >&2
     exit 1
+}
+
+start_background()
+{
+    local TMP_FILE="/tmp/${NS}_PID_$$_$RANDOM"
+    eval "${1} >& ${TMP_FILE} &"
+    local PID=$!
+    sleep 1 # Wait to make sure the command is executed in the background
+
+    mv "$TMP_FILE" "/tmp/${NS}_PID_${PID}" >& /dev/null
+
+    echo "$PID"
+}
+
+start_background_no_stderr()
+{
+    local TMP_FILE="/tmp/${NS}_PID_$$_$RANDOM"
+    eval "${1} 1> ${TMP_FILE} 2>/dev/null &"
+    local PID=$!
+    sleep 1 # Wait to make sure the command is executed in the background
+
+    mv "$TMP_FILE" "/tmp/${NS}_PID_${PID}" >& /dev/null
+
+    echo "$PID"
+}
+
+stop_background()
+{
+    local PID=$1
+
+    local OUTPUT_FILE="/tmp/${NS}_PID_${PID}"
+    kill -SIGINT "$PID"
+    sleep 1 # Wait to make sure the buffer is flushed after the shutdown
+    cat "$OUTPUT_FILE"
+    rm "$OUTPUT_FILE" >& /dev/null
 }
 
 check_prereq()
