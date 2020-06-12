@@ -1636,8 +1636,10 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 		bpf_program__set_type(prog->bpf_prog, BPF_PROG_TYPE_EXT);
 		err = xdp_program__load(prog);
 		if (err) {
+			char buf[100] = {};
+			libxdp_strerror(err, buf, sizeof(buf));
 			pr_warn("Failed to load program %s: %s\n",
-				xdp_program__name(prog), strerror(-err));
+				xdp_program__name(prog), buf);
 			goto err;
 		}
 
