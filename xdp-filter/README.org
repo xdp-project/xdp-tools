@@ -5,11 +5,7 @@
 # page; the latter through the org-mode man page export support.
 # .
 # To export the man page, simply use the org-mode exporter; (require 'ox-man) if
-# it's not available.
-# .
-# The org-mode export doesn't support extended title lines, so manually copy
-# over the first line of the resulting .man file before exporting and
-# committing.
+# it's not available. There's also a Makefile rule to export it.
 
 * XDP-filter - a simple XDP-powered packet filter
 
@@ -39,7 +35,7 @@ Each command, and its options are explained below. Or use =xdp-filter COMMAND
 --help= to see the options for each command.
 
 * The LOAD command
-To use =xdp-filter=, it must first be loaded unto an interface. This is
+To use =xdp-filter=, it must first be loaded onto an interface. This is
 accomplished with the =load= command, which takes the name of the interface as a
 parameter, and optionally allows specifying the features that should be
 included. By default all features are loaded, but de-selecting some features can
@@ -49,18 +45,14 @@ The syntax for the =load= command is:
 
 =xdp-filter load [options] <ifname>=
 
-Where =<ifname>= is the name of the interface to load =xdp-filter= unto, and
+Where =<ifname>= is the name of the interface to load =xdp-filter= onto, and
 must be specified. The supported options are:
 
-** -F, --force
-Specifying this option causes =xdp-filter= to unload any XDP program already
-loaded on the interface.
-
-** -s, --skb-mode
-Specifying this option causes the XDP program to be loaded in the so-called /skb
-mode/ (also known as /generic XDP/). This is a compatibility mode that results
-in lower performance, but can be used on all network interfaces (whereas the
-default /native XDP mode/ requires specific driver support).
+** -m, --mode <mode>
+Specifies which mode to load the XDP program to be loaded in. Valid values are
+'native', which is the default in-driver XDP mode, 'skb', which causes the
+so-called /skb mode/ (also known as /generic XDP/) to be used, or 'hw' which
+causes the program to be offloaded to the hardware.
 
 ** -w, --whitelist
 This option causes =xdp-filter= to run in /whitelist/ mode instead of the default
@@ -103,7 +95,7 @@ must be specified unless the *--all* option is used. The supported options are:
 
 ** -a, --all
 Specify this option to remove =xdp-filter= from all interfaces it was loaded
-unto. If this option is specified, no =<ifname>= is needed.
+onto. If this option is specified, no =<ifname>= is needed.
 
 This option can also be used to clean up all =xdp-filter= state if the XDP
 program(s) were unloaded by other means.
