@@ -9,6 +9,7 @@ SBINDIR?=$(PREFIX)/sbin
 HDRDIR?=$(PREFIX)/include/xdp
 DATADIR?=$(PREFIX)/share
 MANDIR?=$(DATADIR)/man
+SCRIPTSDIR?=$(DATADIR)/xdp-tools
 BPF_DIR_MNT ?=/sys/fs/bpf
 BPF_OBJECT_DIR ?=$(LIBDIR)/bpf
 MAX_DISPATCHER_ACTIONS ?=10

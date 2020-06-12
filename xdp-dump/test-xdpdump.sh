@@ -5,8 +5,8 @@
 #
 ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_term test_exitentry test_snap test_multi_pkt test_perf_wakeup test_none_xdp"
 
-XDPDUMP=./xdpdump
-XDP_LOADER=../xdp-loader/xdp-loader
+XDPDUMP=${XDPDUMP:-./xdpdump}
+XDP_LOADER=${XDP_LOADER:-../xdp-loader/xdp-loader}
 
 RESULT=""
 

@@ -1,4 +1,4 @@
-XDP_LOADER=./xdp-loader
+XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 ALL_TESTS="test_load test_unload"
 
 test_load()

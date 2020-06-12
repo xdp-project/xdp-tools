@@ -12,8 +12,9 @@ set -o errexit
 set -o nounset
 umask 077
 
-
-SETUP_SCRIPT="$(dirname "$0")/setup-netns-env.sh"
+TEST_PROG_DIR="${TEST_PROG_DIR:-$(dirname "${BASH_SOURCE[0]}")}"
+SETUP_SCRIPT="$TEST_PROG_DIR/setup-netns-env.sh"
+TEST_CONFIG="$TEST_PROG_DIR/test_config.sh"
 STATEDIR="${TMPDIR:-/tmp}/xdp-tools-tests"
 IP6_SUBNET=fc42:dead:cafe # must have exactly three :-separated elements
 IP6_PREFIX_SIZE=64 # Size of assigned prefixes
@@ -24,13 +25,16 @@ IP4_FULL_PREFIX_SIZE=16 # Size of IP4_SUBNET
 VLAN_IDS=(1 2)
 GENERATED_NAME_PREFIX="xdptest"
 ALL_TESTS=""
-TEST_PROG_DIR="${TEST_PROG_DIR:-$(dirname $0)}"
 VERBOSE_TESTS=${V:-0}
 
 NEEDED_TOOLS="capinfos ethtool ip ping sed tc tcpdump timeout nc"
 MAX_NAMELEN=15
 
-if which ping6 >/dev/null 2>&1; then
+if [ -f "$TEST_CONFIG" ]; then
+    source "$TEST_CONFIG"
+fi
+
+if command -v ping6 >/dev/null 2>&1; then
     PING6=ping6
 else
     PING6=ping
@@ -112,7 +116,7 @@ check_prereq()
     local max_locked_mem=$(ulimit -l)
 
     for t in $NEEDED_TOOLS; do
-        which "$t" > /dev/null || die "Missing required tools: $t"
+        command -v "$t" > /dev/null || die "Missing required tool: $t"
     done
 
     if [ "$EUID" -ne "0" ]; then
@@ -432,7 +436,7 @@ usage()
 }
 
 if [ "$EUID" -ne "0" ]; then
-    if which sudo >/dev/null 2>&1; then
+    if command -v sudo >/dev/null 2>&1; then
         exec sudo env V=${VERBOSE_TESTS} "$0" "$@"
     else
         die "Tests should be run as root"

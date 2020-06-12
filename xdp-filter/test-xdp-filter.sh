@@ -1,4 +1,4 @@
-XDP_FILTER=./xdp-filter
+XDP_FILTER=${XDP_FILTER:-./xdp-filter}
 ALL_TESTS="test_load test_ports test_ipv6"
 
 try_feat()

@@ -15,6 +15,7 @@ XDP_OBJ = ${XDP_C:.c=.o}
 USER_C := ${USER_TARGETS:=.c}
 USER_OBJ := ${USER_C:.c=.o}
 MAN_OBJ := ${MAN_PAGE:.8=.man}
+XDP_OBJ_INSTALL ?= $(XDP_OBJ)
 
 # Expect this is defined by including Makefile, but define if not
 LIB_DIR ?= ../lib
@@ -64,17 +65,24 @@ BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(wildcard $(HEADER_DIR)/xdp/*.
 all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) $(DISPATCHER_OBJ) man
 
 .PHONY: clean
-
 clean::
 	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(MAN_OBJ) $(MAN_PAGE) *.ll
 
-install: all
+.PHONY: install
+install: all install_local
 	install -m 0755 -d $(DESTDIR)$(SBINDIR)
 	install -m 0755 -d $(DESTDIR)$(BPF_OBJECT_DIR)
-	install -m 0755 $(USER_TARGETS) $(DESTDIR)$(SBINDIR)
-	$(if $(XDP_OBJ),install -m 0755 $(XDP_OBJ) $(DESTDIR)$(BPF_OBJECT_DIR))
+	$(if $(USER_TARGETS),install -m 0755 $(USER_TARGETS) $(DESTDIR)$(SBINDIR))
+	$(if $(XDP_OBJ_INSTALL),install -m 0755 $(XDP_OBJ_INSTALL) $(DESTDIR)$(BPF_OBJECT_DIR))
 	$(if $(MAN_FILES),install -m 0755 -d $(DESTDIR)$(MANDIR)/man8)
 	$(if $(MAN_FILES),install -m 0644 $(MAN_FILES) $(DESTDIR)$(MANDIR)/man8)
+	$(if $(SCRIPTS_FILES),install -m 0755 -d $(DESTDIR)$(SCRIPTSDIR))
+	$(if $(SCRIPTS_FILES),install -m 0755 $(SCRIPTS_FILES) $(DESTDIR)$(SCRIPTSDIR))
+	$(if $(TEST_FILE),install -m 0755 -d $(DESTDIR)$(SCRIPTSDIR)/tests)
+	$(if $(TEST_FILE),install -m 0644 $(TEST_FILE) $(DESTDIR)$(SCRIPTSDIR)/tests)
+
+.PHONY: install_local
+install_local::
 
 $(OBJECT_LIBBPF): $(LIBBPF_SOURCES)
 	$(Q)$(MAKE) -C $(LIB_DIR) libbpf
