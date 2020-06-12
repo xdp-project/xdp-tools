@@ -171,7 +171,7 @@ test_capt_term()
 {
     local PASS_REGEX="(@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PASS_X_REGEX="(@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local PASS_X_OPT="0x0020:  00 00 00 00 00 02 fc 00 de ad ca fe 00 01 00 00  ................"
+    local PASS_X_OPT="0x0020:  00 00 00 00 00 02 fc 42 de ad ca fe 00 01 00 00"
 
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
 
