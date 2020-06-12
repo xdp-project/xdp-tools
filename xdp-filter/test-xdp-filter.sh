@@ -1,5 +1,5 @@
 XDP_FILTER=./xdp-filter
-ALL_TESTS="test_load test_ports"
+ALL_TESTS="test_load test_ports test_ipv6"
 
 try_feat()
 {
@@ -52,16 +52,16 @@ test_load()
     fi
 }
 
-check_port()
+check_packet()
 {
-    local type=$1
-    local port=$2
-    local expect=$3
-    echo "Checking $type port $port $expect"
-    PID=$(start_background tcpdump -epni $NS "$type dst port $port")
+    local filter="$1"
+    local command="$2"
+    local expect="$3"
+    echo "Checking command '$command' filter '$filter'"
+    PID=$(start_background tcpdump -epni $NS "$filter")
     echo "Started listener as $PID"
-    [[ "$type" == "tcp" ]] && ns_exec nc -w 1 -z "$OUTSIDE_IP6" $port
-    [[ "$type" == "udp" ]] && ns_exec bash -c "echo test | nc -w 1 -u $OUTSIDE_IP6 $port"
+    sleep 1
+    ns_exec bash -c "$command"
     sleep 1
     output=$(stop_background $PID)
     echo "$output"
@@ -73,10 +73,24 @@ check_port()
     fi
 
     if [[ "$output" =~ $regex ]]; then
+        echo "Packet check $expect SUCCESS"
         return 0
     else
+        echo "Packet check $expect FAILURE"
         exit 1
     fi
+}
+
+check_port()
+{
+    local type=$1
+    local port=$2
+    local expect=$3
+    echo "$type port $port $expect"
+    [[ "$type" == "tcp" ]] && command="nc -w 1 -z $OUTSIDE_IP6 $port"
+    [[ "$type" == "udp" ]] && command="echo test | nc -w 1 -u $OUTSIDE_IP6 $port"
+
+    check_packet "$type dst port $port" "$command" $expect
 }
 
 test_ports()
@@ -110,6 +124,26 @@ test_ports()
     check_run $XDP_FILTER port -r $TEST_PORT -v
     check_port tcp $TEST_PORT FAIL
     check_port udp $TEST_PORT FAIL
+    check_run $XDP_FILTER unload $NS -v
+}
+
+check_ping6()
+{
+    check_packet "dst $OUTSIDE_IP6" "ping -c 1 $OUTSIDE_IP6" $1
+}
+
+test_ipv6()
+{
+    check_ping6 OK
+    check_run $XDP_FILTER load $NS -v
+    check_run $XDP_FILTER ip $OUTSIDE_IP6
+    check_ping6 FAIL
+    check_run $XDP_FILTER ip -r $OUTSIDE_IP6
+    check_ping6 OK
+    check_run $XDP_FILTER ip -m src $INSIDE_IP6
+    check_ping6 FAIL
+    check_run $XDP_FILTER ip -m src -r $INSIDE_IP6
+    check_ping6 OK
     check_run $XDP_FILTER unload $NS -v
 }
 
