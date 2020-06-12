@@ -1,12 +1,13 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
-ALL_TESTS="test_load test_unload"
+ALL_TESTS="test_load"
 
 test_load()
 {
-    $XDP_LOADER load $NS $TEST_PROG_DIR/xdp_drop.o -vv
+    check_run $XDP_LOADER load $NS $TEST_PROG_DIR/xdp_drop.o -vv
+    check_run $XDP_LOADER unload $NS --all -vv
 }
 
-test_unload()
+cleanup_tests()
 {
-    $XDP_LOADER unload $NS --all -vv
+    $XDP_LOADER unload $NS --all >/dev/null 2>&1
 }

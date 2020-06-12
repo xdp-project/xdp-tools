@@ -1,3 +1,4 @@
+XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 XDP_FILTER=${XDP_FILTER:-./xdp-filter}
 ALL_TESTS="test_load test_ports test_ipv6"
 
@@ -150,5 +151,6 @@ test_ipv6()
 
 cleanup_tests()
 {
-    $XDP_FILTER unload --all
+    $XDP_FILTER unload --all >/dev/null 2>&1
+    $XDP_LOADER unload $NS --all >/dev/null 2>&1
 }

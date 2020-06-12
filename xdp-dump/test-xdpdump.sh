@@ -379,5 +379,5 @@ test_none_xdp()
 
 cleanup_tests()
 {
-    $XDP_LOADER unload $NS --all
+    $XDP_LOADER unload $NS --all >/dev/null 2>&1
 }

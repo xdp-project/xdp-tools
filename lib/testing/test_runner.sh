@@ -420,11 +420,11 @@ run_tests()
 
     for testn in $TESTS; do
         exec_test $testn || ret=1
+        if is_func cleanup_tests; then
+            cleanup_tests || true
+        fi
     done
 
-    if is_func cleanup_tests; then
-        cleanup_tests || ret=1
-    fi
     return $ret
 }
 
