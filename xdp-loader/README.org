@@ -1,0 +1,165 @@
+#+EXPORT_FILE_NAME: xdp-loader
+#+TITLE: xdp-loader
+#+OPTIONS: ^:nil
+#+MAN_CLASS_OPTIONS: :section-id "8\" \"DATE\" \"VERSION\" \"XDP program loader"
+# This file serves both as a README on github, and as the source for the man
+# page; the latter through the org-mode man page export support.
+# .
+# To export the man page, simply use the org-mode exporter; (require 'ox-man) if
+# it's not available. There's also a Makefile rule to export it.
+
+* XDP-loader - an XDP program loader
+
+XDP-loader is a simple loader for XDP programs with support for attaching
+multiple programs to the same interface. To achieve this it exposes the same
+load and unload semantics exposed by the libxdp library.
+
+
+** Running xdp-loader
+The syntax for running xdp-loader is:
+
+#+begin_src sh
+xdp-loader COMMAND [options]
+
+Where COMMAND can be one of:
+       load        - load an XDP program on an interface
+       unload      - unload an XDP program from an interface
+       status      - show current XDP program status
+       help        - show the list of available commands
+#+end_src
+
+Each command, and its options are explained below. Or use =xdp-loader COMMAND
+--help= to see the options for each command.
+
+* The LOAD command
+The =load= command loads one or more XDP programs onto an interface.
+
+The syntax for the =load= command is:
+
+=xdp-loader load [options] <ifname> <programs>=
+
+Where =<ifname>= is the name of the interface to load the programs onto, and the
+=<programs>= is one or more file names containing XDP programs. The programs
+will be loaded onto the interface in the order of their preference, as
+specified by the program metadata (see section below).
+
+The supported options are:
+
+** -m, --mode <mode>
+Specifies which mode to load the XDP program to be loaded in. Valid values are
+'native', which is the default in-driver XDP mode, 'skb', which causes the
+so-called /skb mode/ (also known as /generic XDP/) to be used, or 'hw' which
+causes the program to be offloaded to the hardware.
+
+** -p, --pin-path <path>
+This specifies a root path under which to pin any maps that define the 'pinning'
+attribute in their definitions. This path must be located on a =bpffs= file
+system. If not set, maps will not be pinned, even if they specify pinning in
+their definitions. When pinning maps, if the pinned location for a map already
+exist, the map pinned there will be reused if it is compatible with the type of
+the map being loaded.
+
+** -s, --section <section>
+Specify which ELF section to load the XDP program(s) from in each file. The
+default is to use the first program in each file. If this option is set, it
+applies to all programs being loaded.
+
+** -v, --verbose
+Enable debug logging. Specify twice for even more verbosity.
+
+** -h, --help
+Display a summary of the available options
+
+* The UNLOAD command
+The =unload= command is used for unloading programs from an interface.
+
+The syntax for the =load= command is:
+
+=xdp-loader unload <ifname> <options>=
+
+Where =<ifname>= is the name of the interface to load the programs onto. Either
+the =--all= or =--id= options must be used to specify which program(s) to unload.
+
+The supported options are:
+
+** -i, --id <id>
+Unload a single program from the interface by ID. Use =xdp-loader status= to
+obtain the ID of the program being unloaded. If this program is the last program
+loaded on the interface, the dispatcher program will also be removed, which
+makes the operation equivalent to specifying =--all=.
+
+** -a, --all
+Unload all XDP programs on the interface, as well as the multi-program
+dispatcher.
+
+** -v, --verbose
+Enable debug logging. Specify twice for even more verbosity.
+
+** -h, --help
+Display a summary of the available options
+
+* The STATUS command
+The =status= command displays a list of interfaces in the system, and the XDP
+program(s) loaded on each interface. For each interface, a list of programs are
+shown, with the run priority and "chain actions" for each program. See the
+section on program metadata for the meaning of this metadata.
+
+** -v, --verbose
+Enable debug logging. Specify twice for even more verbosity.
+
+** -h, --help
+Display a summary of the available options
+
+* Program metadata
+
+To support multiple XDP programs on the same interface, libxdp (and thus
+xdp-loader) uses two pieces of metadata for each XDP program: Run priority and
+chain call actions.
+
+** Run priority
+This is the priority of the program and is a simple integer used
+to sort programs when loading multiple programs onto the same interface.
+Programs that wish to run early (such as a packet filter) should set low values
+for this, while programs that want to run later (such as a packet forwarder or
+counter) should set higher values. Note that later programs are only run if the
+previous programs end with a return code that is part of its chain call actions
+(see below). If not specified, the default priority value is 50.
+
+** Chain call actions
+These are the program return codes that the program indicate for packets that
+should continue processing. If the program returns one of these actions, later
+programs in the call chain will be run, whereas if it returns any other action,
+processing will be interrupted, and the XDP dispatcher will return the verdict
+immediately. If not set, this defaults to just XDP_PASS, which is likely the
+value most programs should use.
+
+** Specifying metadata
+The metadata outlined above is specified as BTF information embedded in the ELF
+file containing the XDP program. The =xdp_helpers.h= file shipped with libxdp
+contains helper macros to include this information, which can be used as
+follows:
+
+#+begin_src C
+#include <xdp/xdp_helpers.h>
+
+struct {
+	__uint(priority, 10);
+	__uint(XDP_PASS, 1);
+	__uint(XDP_DROP, 1);
+} XDP_RUN_CONFIG(my_xdp_func);
+#+end_src
+
+This example specifies that the XDP program in =my_xdp_func= should have
+priority 10 and that its chain call actions are =XDP_PASS= and =XDP_DROP=.
+In a source file with multiple XDP programs in the same file, a definition like
+the above can be included for each program (main XDP function). Any program that
+does not specify any config information will use the default values outlined
+above.
+
+* BUGS
+
+Please report any bugs on Github: https://github.com/xdp-project/xdp-tools/issues
+
+* AUTHOR
+
+xdp-loader and this man page were written by Toke Høiland-Jørgensen.
