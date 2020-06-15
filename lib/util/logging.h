@@ -28,7 +28,7 @@ do {				\
 #define pr_info(fmt, ...)	__pr(LOG_INFO, fmt, ##__VA_ARGS__)
 #define pr_debug(fmt, ...)	__pr(LOG_DEBUG, fmt, ##__VA_ARGS__)
 
-void init_libbpf_logging(void);
+void init_lib_logging(void);
 void silence_libbpf_logging(void);
 enum logging_print_level set_log_level(enum logging_print_level level);
 enum logging_print_level increase_log_level();

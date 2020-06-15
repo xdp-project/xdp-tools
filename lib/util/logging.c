@@ -4,6 +4,7 @@
 #include <stdarg.h>
 
 #include <bpf/libbpf.h>
+#include <xdp/libxdp.h>
 
 #include "logging.h"
 
@@ -24,12 +25,17 @@ static int libbpf_print_func(enum libbpf_print_level level, const char *format,
 	return print_func(level+1, format, args);
 }
 
-static int silent_print_func(enum libbpf_print_level level, const char *format,
+static int libbpf_silent_func(enum libbpf_print_level level, const char *format,
 			     va_list args)
 {
 	return 0;
 }
 
+static int libxdp_print_func(enum libxdp_print_level level, const char *format,
+			     va_list args)
+{
+	return print_func(level+1, format, args);
+}
 
 #define __printf(a, b)	__attribute__((format(printf, a, b)))
 
@@ -43,15 +49,16 @@ void logging_print(enum logging_print_level level, const char *format, ...)
 	va_end(args);
 }
 
-void init_libbpf_logging()
+void init_lib_logging()
 {
 	libbpf_set_print(libbpf_print_func);
+	libxdp_set_print(libxdp_print_func);
 }
 
 void silence_libbpf_logging()
 {
 	if (log_level < LOG_VERBOSE)
-		libbpf_set_print(silent_print_func);
+		libbpf_set_print(libbpf_silent_func);
 }
 
 enum logging_print_level set_log_level(enum logging_print_level level)

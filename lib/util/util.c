@@ -613,7 +613,7 @@ const char *action2str(__u32 action)
 
 int check_bpf_environ(const char *pin_root_path)
 {
-	init_libbpf_logging();
+	init_lib_logging();
 
 	if (geteuid() != 0) {
 		pr_warn("This program must be run as root.\n");
