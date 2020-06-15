@@ -1,6 +1,7 @@
 LIBXDP_0.0.3 {
 	global:
 		libxdp_get_error;
+		libxdp_set_print;
 		libxdp_strerror;
 		xdp_multiprog__attach_mode;
 		xdp_multiprog__close;

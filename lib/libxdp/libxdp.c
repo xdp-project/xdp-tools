@@ -27,7 +27,6 @@
 #include <bpf/btf.h>
 #include <xdp/libxdp.h>
 #include <xdp/prog_dispatcher.h>
-#include "logging.h"
 
 #define XDP_RUN_CONFIG_SEC ".xdp_run_config"
 
@@ -71,6 +70,52 @@ static const char *xdp_action_names[] = {
 	[XDP_TX] = "XDP_TX",
 	[XDP_REDIRECT] = "XDP_REDIRECT",
 };
+
+static int __base_pr(enum libxdp_print_level level, const char *format,
+		     va_list args)
+{
+	if (level == LIBXDP_DEBUG)
+		return 0;
+
+	return vfprintf(stderr, format, args);
+}
+
+static libxdp_print_fn_t __libxdp_pr = __base_pr;
+
+libxdp_print_fn_t libxdp_set_print(libxdp_print_fn_t fn)
+{
+	libxdp_print_fn_t old_print_fn = __libxdp_pr;
+
+	__libxdp_pr = fn;
+	return old_print_fn;
+}
+
+
+#define __printf(a, b)	__attribute__((format(printf, a, b)))
+
+__printf(2, 3)
+void libxdp_print(enum libxdp_print_level level, const char *format, ...)
+{
+	va_list args;
+
+	if (!__libxdp_pr)
+		return;
+
+	va_start(args, format);
+	__libxdp_pr(level, format, args);
+	va_end(args);
+}
+
+#define __pr(level, fmt, ...)	\
+do {				\
+	libxdp_print(level, "libxdp: " fmt, ##__VA_ARGS__);	\
+} while (0)
+
+#define pr_warn(fmt, ...)	__pr(LIBXDP_WARN, fmt, ##__VA_ARGS__)
+#define pr_info(fmt, ...)	__pr(LIBXDP_INFO, fmt, ##__VA_ARGS__)
+#define pr_debug(fmt, ...)	__pr(LIBXDP_DEBUG, fmt, ##__VA_ARGS__)
+
+
 
 static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 				 struct xdp_multiprog *mp,

@@ -23,6 +23,18 @@ enum xdp_attach_mode {
                       XDP_MODE_HW
 };
 
+/* This is compatible with libbpf logging levels */
+enum libxdp_print_level {
+        LIBXDP_WARN,
+        LIBXDP_INFO,
+        LIBXDP_DEBUG,
+};
+typedef int (*libxdp_print_fn_t)(enum libxdp_print_level level,
+				 const char *, va_list ap);
+
+libxdp_print_fn_t libxdp_set_print(libxdp_print_fn_t fn);
+
+
 struct xdp_program;
 struct xdp_multiprog;
 
