@@ -255,6 +255,33 @@ Enable debug logging. Specify twice for even more verbosity.
 ** -h, --help
 Display a summary of the available options
 
+* Examples
+
+To filter all packets arriving on port 80 on eth0, issue the
+following commands:
+
+#+begin_src sh
+# xdp-filter load eth0 -f tcp,udp
+# xdp-filter port 80
+#+end_src
+
+To filter all packets *except* those from IP address fc00:dead:cafe::1 issue the
+following commands (careful, this can lock you out of remote access!):
+
+#+begin_src sh
+# xdp-filter load eth0 -f ipv6 -w
+# xdp-filter ip fc00:dead:cafe::1 -m src
+#+end_src
+
+To allow packets from *either* IP fc00:dead:cafe::1 *or* arriving on port 22,
+issue the following (careful, this can lock you out of remote access!):
+
+#+begin_src sh
+# xdp-filter load eth0 -f ipv6,tcp -w
+# xdp-filter port 22
+# xdp-filter ip fc00:dead:cafe::1 -m src
+#+end_src
+
 * BUGS
 
 Please report any bugs on Github: https://github.com/xdp-project/xdp-tools/issues
