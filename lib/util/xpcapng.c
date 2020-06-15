@@ -382,7 +382,7 @@ static bool pcapng_write_epb(struct xpcapng_dumper *pd, uint32_t ifid,
 	int                                  i = 0;
 	int                                  rc;
 	size_t                               pad_length;
-	size_t                               com_length;
+	size_t                               com_length = 0;
 	size_t                               epb_length;
 	struct pcapng_enhanced_packet_block  epb;
 	struct pcapng_option                *opt;
