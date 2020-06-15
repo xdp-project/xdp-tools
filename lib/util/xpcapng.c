@@ -182,7 +182,8 @@ static struct pcapng_option *pcapng_add_option(struct pcapng_option *opt,
 
 	opt->po_type = type;
 	opt->po_length = length;
-	memcpy(opt->po_data, data, length);
+	if (data)
+		memcpy(opt->po_data, data, length);
 
 	return (struct pcapng_option *)
 		((uint8_t *)opt + pcapng_get_option_length(length));
