@@ -32,7 +32,7 @@ ifndef BUILD_STATIC_ONLY
 	VERSION_SCRIPT := libxdp.map
 endif
 
-all: $(STATIC_LIBS) $(SHARED_LIBS) $(XDP_OBJS) $(PC_FILE)
+all: $(STATIC_LIBS) $(SHARED_LIBS) $(XDP_OBJS) $(PC_FILE) check
 
 clean:
 	$(Q)rm -f $(STATIC_LIBS) $(STATIC_OBJS) $(SHARED_LIBS) $(SHARED_OBJS) $(XDP_OBJS) $(PC_FILE)
@@ -81,6 +81,40 @@ $(STATIC_OBJDIR)/%.o: %.c $(EXTRA_LIB_DEPS) | $(STATIC_OBJDIR)
 
 $(SHARED_OBJDIR)/%.o: %.c $(EXTRA_LIB_DEPS) | $(SHARED_OBJDIR)
 	$(QUIET_CC)$(CC) $(CFLAGS) $(SHARED_CFLAGS) -Wall -I../../headers -c $< -o $@
+
+XDP_IN_SHARED	:= $(SHARED_OBJDIR)/libxdp.o
+
+GLOBAL_SYM_COUNT = $(shell readelf -s --wide $(XDP_IN_SHARED) | \
+			   cut -d "@" -f1 | sed 's/_v[0-9]_[0-9]_[0-9].*//' | \
+			   sed 's/\[.*\]//' | \
+			   awk '/GLOBAL/ && /DEFAULT/ && !/UND/ {print $$NF}' | \
+			   sort -u | wc -l)
+VERSIONED_SYM_COUNT = $(shell readelf --dyn-syms --wide $(OBJDIR)/libxdp.so | \
+			      grep -Eo '[^ ]+@LIBXDP_' | cut -d@ -f1 | sort -u | wc -l)
+
+check: check_abi
+
+check_abi: $(OBJDIR)/libxdp.so
+	@if [ "$(GLOBAL_SYM_COUNT)" != "$(VERSIONED_SYM_COUNT)" ]; then	 \
+		echo "Warning: Num of global symbols in $(XDP_IN_SHARED)"	 \
+		     "($(GLOBAL_SYM_COUNT)) does NOT match with num of"	 \
+		     "versioned symbols in $^ ($(VERSIONED_SYM_COUNT))." \
+		     "Please make sure all symbols are"	 \
+		     "versioned in $(VERSION_SCRIPT)." >&2;		 \
+		readelf -s --wide $(XDP_IN_SHARED) |			 \
+		    cut -d "@" -f1 | sed 's/_v[0-9]_[0-9]_[0-9].*//' |	 \
+		    sed 's/\[.*\]//' |					 \
+		    awk '/GLOBAL/ && /DEFAULT/ && !/UND/ {print $$NF}'|  \
+		    sort -u > $(OUTPUT)libxdp_global_syms.tmp;		 \
+		readelf --dyn-syms --wide $(OUTPUT)libxdp.so |		 \
+		    grep -Eo '[^ ]+@LIBXDP_' | cut -d@ -f1 |		 \
+		    sort -u > $(OUTPUT)libxdp_versioned_syms.tmp; 	 \
+		diff -u $(OUTPUT)libxdp_global_syms.tmp			 \
+		     $(OUTPUT)libxdp_versioned_syms.tmp;		 \
+		rm $(OUTPUT)libxdp_global_syms.tmp			 \
+		   $(OUTPUT)libxdp_versioned_syms.tmp;			 \
+		exit 1;							 \
+	fi
 
 
 xdp-dispatcher.c: xdp-dispatcher.c.in Makefile
