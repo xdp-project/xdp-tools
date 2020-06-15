@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <inttypes.h>
 
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
@@ -128,7 +129,8 @@ int map_set_flags(int fd, void *key, __u8 flags)
 	for (i = 0; i < nr_cpus; i++)
 		values[i]  = flags ? (values[i] & ~MAP_FLAGS) | (flags & MAP_FLAGS) : 0;
 
-	pr_debug("Setting new map value %llu from flags %u\n", values[0], flags);
+	pr_debug("Setting new map value %" PRIu64 " from flags %u\n",
+		 (uint64_t) values[0], flags);
 
 	err = bpf_map_update_elem(fd, key, values, 0);
 
@@ -516,7 +518,7 @@ int print_ports(int map_fd)
 	{
 		char buf[100];
 		__u64 counter;
-		__u8 flags;
+		__u8 flags = 0;
 
 		err = map_get_counter_flags(map_fd, &map_key, &counter, &flags);
 		if (err == -ENOENT)
@@ -525,7 +527,8 @@ int print_ports(int map_fd)
 			return err;
 
 		print_flags(buf, sizeof(buf), map_flags_all, flags);
-		printf("  %-40u %-15s  %llu\n", ntohs(map_key), buf, counter);
+		printf("  %-40u %-15s  %" PRIu64 "\n", ntohs(map_key), buf,
+		       (uint64_t)counter);
 	}
 	return 0;
 }
@@ -630,8 +633,8 @@ int __print_ips(int map_fd, int af)
 	FOR_EACH_MAP_KEY(err, map_fd, map_key.addr, next_key.addr)
 	{
 		char flagbuf[100], addrbuf[100];
+		__u8 flags = 0;
 		__u64 counter;
-		__u8 flags;
 
 		err = map_get_counter_flags(map_fd, &map_key.addr, &counter, &flags);
 		if (err == -ENOENT)
@@ -641,7 +644,8 @@ int __print_ips(int map_fd, int af)
 
 		print_flags(flagbuf, sizeof(flagbuf), map_flags_srcdst, flags);
 		print_addr(addrbuf, sizeof(addrbuf), &map_key);
-		printf("  %-40s %-15s  %llu\n", addrbuf, flagbuf, counter);
+		printf("  %-40s %-15s  %" PRIu64 "\n", addrbuf, flagbuf,
+		       (uint64_t)counter);
 	}
 
 	return 0;
@@ -793,8 +797,8 @@ int print_ethers(int map_fd)
 	FOR_EACH_MAP_KEY(err, map_fd, map_key, next_key)
 	{
 		char modebuf[100], addrbuf[100];
+		__u8 flags = 0;
 		__u64 counter;
-		__u8 flags;
 
 		err = map_get_counter_flags(map_fd, &map_key, &counter, &flags);
 		if (err == -ENOENT)
@@ -804,7 +808,8 @@ int print_ethers(int map_fd)
 
 		print_flags(modebuf, sizeof(modebuf), map_flags_srcdst, flags);
 		print_macaddr(addrbuf, sizeof(addrbuf), &map_key);
-		printf("  %-40s %-15s  %llu\n", addrbuf, modebuf, counter);
+		printf("  %-40s %-15s  %" PRIu64 "\n", addrbuf, modebuf,
+		       (uint64_t)counter);
 	}
 	return 0;
 }
