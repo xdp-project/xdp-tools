@@ -156,6 +156,52 @@ the above can be included for each program (main XDP function). Any program that
 does not specify any config information will use the default values outlined
 above.
 
+* Examples
+
+To load an XDP program on the eth0 interface simply do:
+
+#+begin_src sh
+# xdp-loader load eth0 xdp_drop.o
+# xdp-loader status
+
+CURRENT XDP PROGRAM STATUS:
+
+Interface        Prio  Program name     Mode     ID   Tag               Chain actions
+-------------------------------------------------------------------------------------
+lo               <no XDP program>
+eth0                   xdp_dispatcher   native   50   d51e469e988d81da
+ =>              50    xdp_drop                  55   57cd311f2e27366b  XDP_PASS
+
+#+end_src
+
+Which shows that a dispatcher program was loaded on the interface, and the
+xdp_drop program was installed as the first (and only) component program after
+it. In this instance, the program does not specify any of the metadata above, so
+the defaults (priority 50 and XDP_PASS as its chain call action) was used.
+
+To use the automatic map pinning, include the =pinning= attribute into the map
+definition in the program, something like:
+
+#+begin_src c
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(max_entries, 10);
+	__type(key, __u32);
+	__type(value, __u64);
+	__uint(pinning, LIBBPF_PIN_BY_NAME);
+} my_map SEC(".maps");
+#+end_src
+
+And load it with the =--pin-path= attribute:
+
+#+begin_src sh
+# xdp-loader load eth0 my_prog.o --pin-path /sys/fs/bpf/my-prog
+#+end_src
+
+This will pin the map at =/sys/fs/bpf/my-prog/my_map=. If this already exists,
+the pinned map will be reused instead of creating a new one, which allows
+different BPF programs to share the map.
+
 * BUGS
 
 Please report any bugs on Github: https://github.com/xdp-project/xdp-tools/issues
