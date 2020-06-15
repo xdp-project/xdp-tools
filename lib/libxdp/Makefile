@@ -19,9 +19,11 @@ SHARED_CFLAGS += -fPIC -DSHARED
 LIB_HEADERS := $(wildcard $(HEADER_DIR)/xdp/*.h)
 BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(wildcard $(HEADER_DIR)/xdp/*.h)
 EXTRA_LIB_DEPS := $(OBJECT_LIBBPF) $(LIBMK) $(LIB_OBJS) $(LIB_HEADERS)
+PC_FILE := $(OBJDIR)/libxdp.pc
 
 CFLAGS += -I$(HEADER_DIR) -I$(LIB_DIR)/util
 BPF_CFLAGS += -I$(HEADER_DIR)
+
 
 ifndef BUILD_STATIC_ONLY
 	SHARED_LIBS := $(OBJDIR)/libxdp.so \
@@ -30,18 +32,20 @@ ifndef BUILD_STATIC_ONLY
 	VERSION_SCRIPT := libxdp.map
 endif
 
-all: $(STATIC_LIBS) $(SHARED_LIBS) $(XDP_OBJS)
+all: $(STATIC_LIBS) $(SHARED_LIBS) $(XDP_OBJS) $(PC_FILE)
 
 clean:
-	$(Q)rm -f $(STATIC_LIBS) $(STATIC_OBJS) $(SHARED_LIBS) $(SHARED_OBJS) $(XDP_OBJS)
+	$(Q)rm -f $(STATIC_LIBS) $(STATIC_OBJS) $(SHARED_LIBS) $(SHARED_OBJS) $(XDP_OBJS) $(PC_FILE)
 	$(Q)for d in $(SHARED_OBJDIR) $(STATIC_OBJDIR); do \
 		[ -d "$$d" ] && rmdir "$$d"; done || true
 
-install:
+install: all
 	$(Q)install -d -m 0755 $(DESTDIR)$(HDRDIR)
 	$(Q)install -d -m 0755 $(DESTDIR)$(LIBDIR)
+	$(Q)install -d -m 0755 $(DESTDIR)$(LIBDIR)/pkgconfig
 	$(Q)install -d -m 0755 $(DESTDIR)$(BPF_OBJECT_DIR)
 	$(Q)install -m 0644 $(LIB_HEADERS) $(DESTDIR)$(HDRDIR)/
+	$(Q)install -m 0644 $(PC_FILE) $(DESTDIR)$(libdir)/pkgconfig/
 	$(Q)install -m 0755 $(SHARED_LIBS) $(STATIC_LIBS) $(DESTDIR)$(LIBDIR)
 	$(Q)install -m 0755 $(XDP_OBJS) $(DESTDIR)$(BPF_OBJECT_DIR)
 
@@ -60,6 +64,11 @@ $(OBJDIR)/libxdp.so.$(LIBXDP_VERSION): $(SHARED_OBJS)
 		      -Wl,--version-script=$(VERSION_SCRIPT) \
 		      $^ $(ALL_LDFLAGS) -o $@
 
+$(OBJDIR)/libxdp.pc:
+	$(Q)sed -e "s|@PREFIX@|$(PREFIX)|" \
+			-e "s|@LIBDIR@|$(LIBDIR)|" \
+			-e "s|@VERSION@|$(LIBXDP_VERSION)|" \
+			< libxdp.pc.template > $@
 
 $(STATIC_OBJDIR):
 	$(Q)mkdir -p $(STATIC_OBJDIR)
