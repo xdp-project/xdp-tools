@@ -685,10 +685,9 @@ int dispatch_commands(const char *argv0, int argc, char **argv,
 	}
 
 	len = snprintf(namebuf, sizeof(namebuf), "%s %s", prog_name, cmd->name);
-	if (len < 0 || len >= sizeof(namebuf)) {
-		err = -ENOSPC;
+	if (len < 0 || len >= sizeof(namebuf))
 		goto out;
-	}
+
 	err = parse_cmdline_args(argc, argv, cmd->options, cfg, namebuf,
 				 cmd->doc, cmd->default_cfg);
 	if (err)
