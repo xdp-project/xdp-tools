@@ -94,7 +94,7 @@ libxdp_print_fn_t libxdp_set_print(libxdp_print_fn_t fn)
 #define __printf(a, b)	__attribute__((format(printf, a, b)))
 
 __printf(2, 3)
-void libxdp_print(enum libxdp_print_level level, const char *format, ...)
+static void libxdp_print(enum libxdp_print_level level, const char *format, ...)
 {
 	va_list args;
 
