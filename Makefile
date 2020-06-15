@@ -13,6 +13,8 @@ ifeq ($(VERBOSE),0)
 MAKEFLAGS += --no-print-directory
 endif
 
+include version.mk
+
 UTILS := xdp-filter xdp-loader xdp-dump
 SUBDIRS := lib $(UTILS)
 .PHONY: check_submodule help clobber distclean clean install test $(SUBDIRS)
@@ -32,6 +34,7 @@ help:
 	@echo " distclean           - remove configuration and build"
 	@echo " install             - install binaries on local machine"
 	@echo " test                - run test suite"
+	@echo " archive             - create tarball of all sources"
 	@echo ""
 	@echo "Make Arguments:"
 	@echo " V=[0|1]             - set build verbosity level"
@@ -65,3 +68,9 @@ install: all
 test: all
 	@for i in $(UTILS); \
 	do echo; echo test $$i; $(MAKE) -C $$i test; done
+
+archive: xdp-tools-$(TOOLS_VERSION).tar.gz
+
+.PHONY: xdp-tools-$(TOOLS_VERSION).tar.gz
+xdp-tools-$(TOOLS_VERSION).tar.gz:
+	@./mkarchive.sh "$(TOOLS_VERSION)"

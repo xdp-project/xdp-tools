@@ -56,3 +56,5 @@ xdp-dispatcher.c
 
 *.8
 *.man
+
+/xdp-tools-*.tar.gz
