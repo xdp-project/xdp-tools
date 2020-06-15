@@ -8,7 +8,9 @@ LIBXDP_0.0.3 {
 		xdp_multiprog__detach;
 		xdp_multiprog__dispatcher;
 		xdp_multiprog__get_from_ifindex;
+		xdp_multiprog__is_legacy;
 		xdp_multiprog__next_prog;
+		xdp_multiprog__main_prog;
 		xdp_program__attach;
 		xdp_program__attach_multi;
 		xdp_program__bpf_obj;
