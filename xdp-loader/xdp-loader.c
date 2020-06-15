@@ -107,7 +107,7 @@ retry:
 
 		if (IS_ERR(p)) {
 			err = PTR_ERR(p);
-			pr_warn("Couldn't open file '%s': %s",
+			pr_warn("Couldn't open file '%s': %s\n",
 				opt->filenames.strings[i], strerror(-err));
 			goto out;
 		}
