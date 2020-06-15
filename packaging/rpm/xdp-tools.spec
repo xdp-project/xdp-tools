@@ -1,7 +1,8 @@
 Name:             xdp-tools
-Version:          0.0.3
-Release:          1%{?dist}
+Version:          1.0.0~beta1
+Release:          0.1%{?dist}
 Summary:          Utilities and example programs for use with XDP
+%global _soversion 1.0.0
 
 License:          GPLv2
 URL:              https://github.com/xdp-project/%{name}
@@ -18,7 +19,7 @@ BuildRequires:    gcc
 BuildRequires:    pkgconfig
 BuildRequires:    m4
 BuildRequires:    emacs-nox
-BuildRequires:    wireshark
+BuildRequires:    wireshark-cli
 
 # find-debuginfo produces empty debugsourcefiles.list
 # disable the debug package to avoid rpmbuild error'ing out because of this
@@ -73,6 +74,7 @@ export DESTDIR='%{buildroot}'
 export SBINDIR='%{_sbindir}'
 export LIBDIR='%{_libdir}'
 export MANDIR='%{_mandir}'
+export DATADIR='%{_datadir}'
 export HDRDIR='%{_includedir}/xdp'
 make install
 
@@ -87,11 +89,12 @@ rm -f %{buildroot}%{_libdir}/libxdp.so
 %{_mandir}/man8/*
 %{_libdir}/bpf/xdpfilt_*.o
 %{_libdir}/bpf/xdpdump_*.o
+%{_datadir}/xdp-tools/
 %license LICENSE
 
 %files -n libxdp
-%{_libdir}/libxdp.so.0
-%{_libdir}/libxdp.so.%{version}
+%{_libdir}/libxdp.so.1
+%{_libdir}/libxdp.so.%{_soversion}
 %{_libdir}/bpf/xdp-dispatcher.o
 %{_libdir}/pkgconfig/libxdp.pc
 
@@ -102,6 +105,9 @@ rm -f %{buildroot}%{_libdir}/libxdp.so
 %{_includedir}/xdp/*.h
 
 %changelog
+* Mon Jun 15 2020 Toke Høiland-Jørgensen <toke@redhat.com> 1.0.0~beta1-0.1
+- Upstream version bump
+
 * Mon Apr 6 2020 Toke Høiland-Jørgensen <toke@redhat.com> 0.0.3-1
 - Upstream update, add libxdp sub-packages
 

@@ -22,10 +22,6 @@ LIB_DIR ?= ../lib
 LDLIBS ?= $(USER_LIBS)
 
 include $(LIB_DIR)/defines.mk
-include $(LIBXDP_DIR)/libxdp.mk
-
-TOOLS_VERSION := $(LIBXDP_VERSION)
-DEFINES += -DTOOLS_VERSION=\"$(TOOLS_VERSION)\"
 
 # get list of objects in util
 include $(LIB_DIR)/util/util.mk
@@ -131,7 +127,7 @@ $(MAN_OBJ): README.org $(LIBMK)
 	$(Q)$(EMACS) -Q --batch --find-file $< --eval "(progn (require 'ox-man)(org-man-export-to-man))"
 
 $(MAN_PAGE): $(MAN_OBJ)
-	$(QUIET_GEN)sed -e "1 s/DATE/$(shell date '+%B %_d, %Y')/" -e "1 s/VERSION/v$(LIBXDP_VERSION)/" $< > $@
+	$(QUIET_GEN)sed -e "1 s/DATE/$(shell date '+%B %_d, %Y')/" -e "1 s/VERSION/v$(TOOLS_VERSION)/" $< > $@
 
 endif
 

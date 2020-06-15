@@ -2,6 +2,7 @@ CFLAGS ?= -O2 -g
 BPF_CFLAGS ?= -Wno-visibility
 
 include $(LIB_DIR)/../config.mk
+include $(LIB_DIR)/../version.mk
 
 PREFIX?=/usr/local
 LIBDIR?=$(PREFIX)/lib
@@ -18,8 +19,9 @@ HEADER_DIR = $(LIB_DIR)/../headers
 TEST_DIR = $(LIB_DIR)/testing
 LIBXDP_DIR := $(LIB_DIR)/libxdp
 LIBBPF_DIR := $(LIB_DIR)/libbpf
+
 DEFINES := -DBPF_DIR_MNT=\"$(BPF_DIR_MNT)\" -DBPF_OBJECT_PATH=\"$(BPF_OBJECT_DIR)\" \
-	-DMAX_DISPATCHER_ACTIONS=$(MAX_DISPATCHER_ACTIONS)
+	-DMAX_DISPATCHER_ACTIONS=$(MAX_DISPATCHER_ACTIONS) -DTOOLS_VERSION=\"$(TOOLS_VERSION)\"
 
 ifneq ($(PRODUCTION),1)
 DEFINES += -DDEBUG
@@ -33,5 +35,5 @@ CFLAGS += -Werror $(DEFINES)
 BPF_CFLAGS += $(DEFINES)
 
 CONFIGMK := $(LIB_DIR)/../config.mk
-LIBMK := Makefile $(CONFIGMK) $(LIB_DIR)/defines.mk $(LIB_DIR)/common.mk
+LIBMK := Makefile $(CONFIGMK) $(LIB_DIR)/defines.mk $(LIB_DIR)/common.mk $(LIB_DIR)/../version.mk
 

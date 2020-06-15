@@ -1,4 +1,4 @@
-LIBXDP_0.0.3 {
+LIBXDP_1.0.0 {
 	global:
 		libxdp_get_error;
 		libxdp_set_print;
