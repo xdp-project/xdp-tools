@@ -67,7 +67,7 @@ export DYNAMIC_LIBXDP=1
 export CLANG=%{_bindir}/clang
 export LLC=%{_bindir}/llc
 ./configure
-make %{?_smp_mflags}
+make %{?_smp_mflags} V=1
 
 %install
 export DESTDIR='%{buildroot}'
