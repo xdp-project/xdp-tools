@@ -983,8 +983,8 @@ static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
 
 	err = bpf_obj_get_info_by_fd(fd, &info, &len);
 	if (err) {
-		pr_warn("couldn't get program info: %s", strerror(errno));
 		err = -errno;
+		pr_warn("couldn't get program info: %s", strerror(-err));
 		goto err;
 	}
 
