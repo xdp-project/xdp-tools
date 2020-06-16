@@ -78,7 +78,7 @@ die()
 start_background()
 {
     local TMP_FILE="/tmp/${NS}_PID_$$_$RANDOM"
-    eval "$@ >& ${TMP_FILE} &"
+    eval "$* >& ${TMP_FILE} &"
     local PID=$!
     sleep 1 # Wait to make sure the command is executed in the background
 
@@ -90,7 +90,7 @@ start_background()
 start_background_no_stderr()
 {
     local TMP_FILE="/tmp/${NS}_PID_$$_$RANDOM"
-    eval "$@ 1> ${TMP_FILE} 2>/dev/null &"
+    eval "$* 1> ${TMP_FILE} 2>/dev/null &"
     local PID=$!
     sleep 1 # Wait to make sure the command is executed in the background
 
@@ -137,7 +137,7 @@ get_nsname()
     if [ -z "$NS" ]; then
         [ -f "$STATEDIR/current" ] && NS=$(< "$STATEDIR/current")
 
-        if [ "$GENERATE" -eq "1" ] && [ -z "$NS" -o "$GENERATE_NEW" -eq "1" ]; then
+        if [ "$GENERATE" -eq "1" ] && [ -z "$NS" ] || [ "$GENERATE_NEW" -eq "1" ]; then
             NS="$GENERATED_NAME_PREFIX"
             while [ -e "$STATEDIR/${NS}.state" ]; do
                 NS=$(printf "%s-%04x" "$GENERATED_NAME_PREFIX" $RANDOM)
@@ -403,7 +403,7 @@ exec_test()
     else
         printf "\t\tFAIL\n"
     fi
-    if [ "$ret" -ne "0" -o "$VERBOSE_TESTS" -eq "1" ]; then
+    if [ "$ret" -ne "0" ] || [ "$VERBOSE_TESTS" -eq "1" ]; then
         echo "$output" | sed 's/^/\t/'
     fi
     return $ret
@@ -411,7 +411,7 @@ exec_test()
 
 run_tests()
 {
-    local TESTS="$@"
+    local TESTS="$*"
     local ret=0
     [ -z "$TESTS" ] && TESTS="$ALL_TESTS"
     setup || return 1
@@ -430,9 +430,8 @@ run_tests()
 
 usage()
 {
-    local FULL=${1:-}
-
     echo "Usage: $0 <test_definition_file> [test names]" >&2
+    exit 1
 }
 
 if [ "$EUID" -ne "0" ]; then
