@@ -167,7 +167,7 @@ static const struct loadopt {
 	struct iface iface;
 	unsigned int features;
 	enum xdp_attach_mode mode;
-	bool whitelist_mode;
+	bool deny_default;
 } defaults_load = {
 	.features = FEAT_ALL,
 	.mode = XDP_MODE_NATIVE,
@@ -189,8 +189,8 @@ struct flag_val print_features[] = {
 	{"ipv6", FEAT_IPV6},
 	{"ipv4", FEAT_IPV4},
 	{"ethernet", FEAT_ETHERNET},
-	{"whitelist", FEAT_WHITELIST},
-	{"blacklist", FEAT_BLACKLIST},
+	{"def_allow", FEAT_DEF_ALLOW},
+	{"def_deny", FEAT_DEF_DENY},
 	{}
 };
 
@@ -207,9 +207,9 @@ static struct prog_option load_options[] = {
 		      .typearg = xdp_modes,
 		      .metavar = "<mode>",
 		      .help = "Load XDP program in <mode>; default native"),
-	DEFINE_OPTION("whitelist", OPT_BOOL, struct loadopt, whitelist_mode,
-		      .short_opt = 'w',
-		      .help = "Use filters in whitelist mode (default blacklist)"),
+	DEFINE_OPTION("deny-default", OPT_BOOL, struct loadopt, deny_default,
+		      .short_opt = 'd',
+		      .help = "Enable 'deny by default' operation mode"),
 	DEFINE_OPTION("dev", OPT_IFNAME, struct loadopt, iface,
 		      .positional = true,
 		      .metavar = "<ifname>",
@@ -243,20 +243,20 @@ int do_load(const void *cfg, const char *pin_root_path)
 	}
 
 	features = opt->features;
-	if (opt->whitelist_mode) {
-		if (used_feats & FEAT_BLACKLIST) {
-			pr_warn("xdp-filter is already loaded blacklist mode. "
-				"Unload before loading in whitelist mode.\n");
+	if (opt->deny_default) {
+		if (used_feats & FEAT_DEF_ALLOW) {
+			pr_warn("xdp-filter is already loaded in 'allow by default' mode. "
+				"Unload before loading in 'deny by default' mode.\n");
 			return EXIT_FAILURE;
 		}
-		features |= FEAT_WHITELIST;
+		features |= FEAT_DEF_DENY;
 	} else {
-		if (used_feats & FEAT_WHITELIST) {
-			pr_warn("xdp-filter is already loaded whitelist mode. "
-				"Unload before loading in blacklist mode.\n");
+		if (used_feats & FEAT_DEF_DENY) {
+			pr_warn("xdp-filter is already loaded in 'deny by default' mode. "
+				"Unload before loading in 'allow by default' mode.\n");
 			return EXIT_FAILURE;
 		}
-		features |= FEAT_BLACKLIST;
+		features |= FEAT_DEF_ALLOW;
 	}
 
 	print_flags(featbuf, sizeof(featbuf), print_features, features);
@@ -1020,9 +1020,9 @@ int do_help(const void *cfg, const char *pin_root_path)
 		"COMMAND can be one of:\n"
 		"       load        - load xdp-filter on an interface\n"
 		"       unload      - unload xdp-filter from an interface\n"
-		"       port        - add a port to the blacklist\n"
-		"       ip          - add an IP address to the blacklist\n"
-		"       ether       - add an Ethernet MAC address to the blacklist\n"
+		"       port        - add a port to the filter list\n"
+		"       ip          - add an IP address to the filter list\n"
+		"       ether       - add an Ethernet MAC address to the filter list\n"
 		"       status      - show current xdp-filter status\n"
 		"       poll        - poll statistics output\n"
 		"       help        - show this help message\n"

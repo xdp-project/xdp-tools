@@ -29,21 +29,21 @@ test_load()
 {
 
     declare -a FEATS=(tcp udp ipv4 ipv6 ethernet all)
-    declare -a PROGS_B=(xdpfilt_blk_tcp.o xdpfilt_blk_udp.o xdpfilt_blk_ip.o xdpfilt_blk_ip.o xdpfilt_blk_eth.o xdpfilt_blk_all.o)
-    declare -a PROGS_W=(xdpfilt_wht_tcp.o xdpfilt_wht_udp.o xdpfilt_wht_ip.o xdpfilt_wht_ip.o xdpfilt_wht_eth.o xdpfilt_wht_all.o)
+    declare -a PROGS_D=(xdpfilt_dny_tcp.o xdpfilt_dny_udp.o xdpfilt_dny_ip.o xdpfilt_dny_ip.o xdpfilt_dny_eth.o xdpfilt_dny_all.o)
+    declare -a PROGS_A=(xdpfilt_alw_tcp.o xdpfilt_alw_udp.o xdpfilt_alw_ip.o xdpfilt_alw_ip.o xdpfilt_alw_eth.o xdpfilt_alw_all.o)
     local len=${#FEATS[@]}
 
     for (( i=0; i<$len; i++ )); do
-        if ! try_feat ${FEATS[$i]} ${PROGS_B[$i]}; then
+        if ! try_feat ${FEATS[$i]} ${PROGS_A[$i]}; then
             return 1
         fi
-        if ! try_feat ${FEATS[$i]} ${PROGS_B[$i]} --mode skb; then
+        if ! try_feat ${FEATS[$i]} ${PROGS_A[$i]} --mode skb; then
             return 1
         fi
-        if ! try_feat ${FEATS[$i]} ${PROGS_W[$i]} "-w"; then
+        if ! try_feat ${FEATS[$i]} ${PROGS_D[$i]} "-d"; then
             return 1
         fi
-        if ! try_feat ${FEATS[$i]} ${PROGS_W[$i]} "-w" --mode skb; then
+        if ! try_feat ${FEATS[$i]} ${PROGS_D[$i]} "-d" --mode skb; then
             return 1
         fi
     done
@@ -68,7 +68,7 @@ check_packet()
     echo "$output"
 
     if [[ "$expect" == "OK" ]]; then
-        regex="1 packet captured"
+        regex="[1-9] packets? captured"
     else
         regex="0 packets captured"
     fi
@@ -99,7 +99,7 @@ test_ports()
     trap on_error ERR
     local TEST_PORT=10000
 
-    # blacklist mode
+    # default allow mode
     check_run $XDP_FILTER load $NS -v
     check_port tcp $TEST_PORT OK
     check_port udp $TEST_PORT OK
@@ -113,8 +113,8 @@ test_ports()
     check_port udp $TEST_PORT OK
     check_run $XDP_FILTER unload $NS -v
 
-    # whitelist mode
-    check_run $XDP_FILTER load -w $NS -v
+    # default deny mode
+    check_run $XDP_FILTER load -d $NS -v
     check_port tcp $TEST_PORT FAIL
     check_port udp $TEST_PORT FAIL
     check_run $XDP_FILTER port $TEST_PORT -v

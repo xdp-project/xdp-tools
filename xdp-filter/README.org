@@ -23,9 +23,9 @@ xdp-filter COMMAND [options]
 Where COMMAND can be one of:
        load        - load xdp-filter on an interface
        unload      - unload xdp-filter from an interface
-       port        - add a port to the blacklist
-       ip          - add an IP address to the blacklist
-       ether       - add an Ethernet MAC address to the blacklist
+       port        - add a port to the filter list
+       ip          - add an IP address to the filter list
+       ether       - add an Ethernet MAC address to the filter list
        status      - show current xdp-filter status
        poll        - poll statistics output
        help        - show the list of available commands
@@ -54,14 +54,15 @@ Specifies which mode to load the XDP program to be loaded in. Valid values are
 so-called /skb mode/ (also known as /generic XDP/) to be used, or 'hw' which
 causes the program to be offloaded to the hardware.
 
-** -w, --whitelist
-This option causes =xdp-filter= to run in /whitelist/ mode instead of the default
-/blacklist/ mode. In /whitelist/ mode, *all* packets are dropped *except* those
-matched by the filter options, whereas in /blacklist/ mode, only the packets
-matched by the specified rules are dropped.
+** -d, --deny-default
+This option causes =xdp-filter= to run in /deny by default/ mode instead of the
+default /allow by default/ mode. In /deny by default/ mode, *all* packets are
+dropped *except* those matched by the filter options, whereas in /allow by
+default/ mode, only the packets matched by the specified rules are dropped.
 
-=xdp-filter= cannot be loaded simultaneously in /whitelist/ and /blacklist/ mode
-on the system.
+=xdp-filter= cannot be loaded simultaneously in /deny by default/ and /allow by
+default/ mode on the system. Note that loading =xdp-filter= in this mode will
+drop all traffic on the interface until suitable allow rules are installed.
 
 ** -f, --features <feats>
 Use this option to select which features to include when loaded =xdp-filter=.

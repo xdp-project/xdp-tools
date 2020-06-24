@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 
-XDP_TARGETS  := xdpfilt_blk_udp xdpfilt_blk_tcp xdpfilt_blk_ip \
-	xdpfilt_blk_eth xdpfilt_blk_all \
-	xdpfilt_wht_udp xdpfilt_wht_tcp xdpfilt_wht_ip \
-	xdpfilt_wht_eth xdpfilt_wht_all
+XDP_TARGETS  := xdpfilt_dny_udp xdpfilt_dny_tcp xdpfilt_dny_ip \
+	xdpfilt_dny_eth xdpfilt_dny_all \
+	xdpfilt_alw_udp xdpfilt_alw_tcp xdpfilt_alw_ip \
+	xdpfilt_alw_eth xdpfilt_alw_all
 
 USER_TARGETS := xdp-filter
 EXTRA_DEPS := xdpfilt_prog.h
