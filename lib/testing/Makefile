@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 
 USER_TARGETS :=
-XDP_TARGETS := test_long_func_name xdp_drop
+XDP_TARGETS := test_long_func_name xdp_drop xdp_pass
 SCRIPTS_FILES := test_runner.sh setup-netns-env.sh run_tests.sh
 XDP_OBJ_INSTALL :=
 

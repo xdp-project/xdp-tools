@@ -2,9 +2,9 @@
 #include <bpf/bpf_helpers.h>
 
 SEC("prog")
-int xdp_drop(struct xdp_md *ctx)
+int xdp_pass(struct xdp_md *ctx)
 {
-    return XDP_DROP;
+    return XDP_PASS;
 }
 
 char _license[] SEC("license") = "GPL";
