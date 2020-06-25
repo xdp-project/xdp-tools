@@ -483,7 +483,7 @@ static bool capture_on_legacy_interface(struct dumpopt *cfg)
 	}
 
 	pcap = pcap_open_live(cfg->iface.ifname, cfg->snaplen,
-			      true, 1000, errbuf);
+			      false, 1000, errbuf);
 	if (pcap == NULL) {
 		pr_warn("ERROR: Can't open pcap live interface: %s\n", errbuf);
 		goto error_exit;
