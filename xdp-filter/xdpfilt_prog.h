@@ -22,14 +22,14 @@
 #include "xdp/parsing_helpers.h"
 
 
-#ifdef FILT_MODE_DEF_DENY
+#ifdef FILT_MODE_DENY
 #define VERDICT_HIT XDP_PASS
 #define VERDICT_MISS XDP_DROP
-#define FEATURE_OPMODE FEAT_DEF_DENY
+#define FEATURE_OPMODE FEAT_DENY
 #else
 #define VERDICT_HIT XDP_DROP
 #define VERDICT_MISS XDP_PASS
-#define FEATURE_OPMODE FEAT_DEF_ALLOW
+#define FEATURE_OPMODE FEAT_ALLOW
 #endif
 
 #define CHECK_RET(ret) do {						\

@@ -167,10 +167,11 @@ static const struct loadopt {
 	struct iface iface;
 	unsigned int features;
 	enum xdp_attach_mode mode;
-	bool deny_default;
+	unsigned int policy_mode;
 } defaults_load = {
 	.features = FEAT_ALL,
 	.mode = XDP_MODE_NATIVE,
+	.policy_mode = FEAT_ALLOW,
 };
 
 struct flag_val load_features[] = {
@@ -189,8 +190,8 @@ struct flag_val print_features[] = {
 	{"ipv6", FEAT_IPV6},
 	{"ipv4", FEAT_IPV4},
 	{"ethernet", FEAT_ETHERNET},
-	{"def_allow", FEAT_DEF_ALLOW},
-	{"def_deny", FEAT_DEF_DENY},
+	{"allow", FEAT_ALLOW},
+	{"deny", FEAT_DENY},
 	{}
 };
 
@@ -201,15 +202,23 @@ struct enum_val xdp_modes[] = {
        {NULL, 0}
 };
 
+struct enum_val policy_modes[] = {
+       {"allow", FEAT_ALLOW},
+       {"deny", FEAT_DENY},
+       {NULL, 0}
+};
+
 static struct prog_option load_options[] = {
 	DEFINE_OPTION("mode", OPT_ENUM, struct loadopt, mode,
 		      .short_opt = 'm',
 		      .typearg = xdp_modes,
 		      .metavar = "<mode>",
 		      .help = "Load XDP program in <mode>; default native"),
-	DEFINE_OPTION("deny-default", OPT_BOOL, struct loadopt, deny_default,
-		      .short_opt = 'd',
-		      .help = "Enable 'deny by default' operation mode"),
+	DEFINE_OPTION("policy", OPT_ENUM, struct loadopt, policy_mode,
+		      .short_opt = 'p',
+		      .typearg = policy_modes,
+		      .metavar = "<policy>",
+		      .help = "Policy for unmatched packets; default allow"),
 	DEFINE_OPTION("dev", OPT_IFNAME, struct loadopt, iface,
 		      .positional = true,
 		      .metavar = "<ifname>",
@@ -243,21 +252,16 @@ int do_load(const void *cfg, const char *pin_root_path)
 	}
 
 	features = opt->features;
-	if (opt->deny_default) {
-		if (used_feats & FEAT_DEF_ALLOW) {
-			pr_warn("xdp-filter is already loaded in 'allow by default' mode. "
-				"Unload before loading in 'deny by default' mode.\n");
-			return EXIT_FAILURE;
-		}
-		features |= FEAT_DEF_DENY;
-	} else {
-		if (used_feats & FEAT_DEF_DENY) {
-			pr_warn("xdp-filter is already loaded in 'deny by default' mode. "
-				"Unload before loading in 'allow by default' mode.\n");
-			return EXIT_FAILURE;
-		}
-		features |= FEAT_DEF_ALLOW;
+	if (opt->policy_mode == FEAT_DENY && used_feats & FEAT_ALLOW) {
+		pr_warn("xdp-filter is already loaded in allow policy mode. "
+			"Unload before loading in deny mode.\n");
+		return EXIT_FAILURE;
+	} else if (opt->policy_mode == FEAT_ALLOW && used_feats & FEAT_DENY) {
+		pr_warn("xdp-filter is already loaded in deny policy mode. "
+			"Unload before loading in allow mode.\n");
+		return EXIT_FAILURE;
 	}
+	features |= opt->policy_mode;
 
 	print_flags(featbuf, sizeof(featbuf), print_features, features);
 	pr_debug("Looking for eBPF program with features %s\n", featbuf);

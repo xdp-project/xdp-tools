@@ -40,10 +40,10 @@ test_load()
         if ! try_feat ${FEATS[$i]} ${PROGS_A[$i]} --mode skb; then
             return 1
         fi
-        if ! try_feat ${FEATS[$i]} ${PROGS_D[$i]} "-d"; then
+        if ! try_feat ${FEATS[$i]} ${PROGS_D[$i]} --policy deny; then
             return 1
         fi
-        if ! try_feat ${FEATS[$i]} ${PROGS_D[$i]} "-d" --mode skb; then
+        if ! try_feat ${FEATS[$i]} ${PROGS_D[$i]} --policy deny --mode skb; then
             return 1
         fi
     done
@@ -114,7 +114,7 @@ test_ports()
     check_run $XDP_FILTER unload $NS -v
 
     # default deny mode
-    check_run $XDP_FILTER load -d $NS -v
+    check_run $XDP_FILTER load -p deny $NS -v
     check_port tcp $TEST_PORT FAIL
     check_port udp $TEST_PORT FAIL
     check_run $XDP_FILTER port $TEST_PORT -v

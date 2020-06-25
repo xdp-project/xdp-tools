@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 
-#define FILT_MODE_DEF_DENY
+#define FILT_MODE_DENY
 #undef FILT_MODE_ETHERNET
 #define FILT_MODE_IPV4
 #define FILT_MODE_IPV6

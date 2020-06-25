@@ -54,15 +54,16 @@ Specifies which mode to load the XDP program to be loaded in. Valid values are
 so-called /skb mode/ (also known as /generic XDP/) to be used, or 'hw' which
 causes the program to be offloaded to the hardware.
 
-** -d, --deny-default
-This option causes =xdp-filter= to run in /deny by default/ mode instead of the
-default /allow by default/ mode. In /deny by default/ mode, *all* packets are
-dropped *except* those matched by the filter options, whereas in /allow by
-default/ mode, only the packets matched by the specified rules are dropped.
+** -p, --policy <policy>
+This sets the policy =xdp-filter= applies to packets *not* matched by any of the
+filter rules. The default is /allow/, in which packets not matching any rules
+are allowed to pass. The other option is /deny/, in which *all* packets are
+dropped *except* those matched by the filter options.
 
-=xdp-filter= cannot be loaded simultaneously in /deny by default/ and /allow by
-default/ mode on the system. Note that loading =xdp-filter= in this mode will
-drop all traffic on the interface until suitable allow rules are installed.
+=xdp-filter= cannot be loaded simultaneously in /deny/ and /allow/ policy modes
+on the system. Note that loading =xdp-filter= in /deny/ mode will drop all
+traffic on the interface until suitable allow rules are installed, so some care
+is needed to avoid being locked out of a remote system.
 
 ** -f, --features <feats>
 Use this option to select which features to include when loaded =xdp-filter=.
