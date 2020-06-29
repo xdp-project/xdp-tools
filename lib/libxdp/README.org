@@ -1,0 +1,210 @@
+#+EXPORT_FILE_NAME: libxdp
+#+TITLE: libxdp
+#+OPTIONS: ^:nil
+#+MAN_CLASS_OPTIONS: :section-id "3\" \"DATE\" \"VERSION\" \"libxdp - library for loading XDP programs"
+# This file serves both as a README on github, and as the source for the man
+# page; the latter through the org-mode man page export support.
+# .
+# To export the man page, simply use the org-mode exporter; (require 'ox-man) if
+# it's not available. There's also a Makefile rule to export it.
+
+* libxdp - library for attaching XDP programs
+
+This directory contains the files for the =libxdp= library for attaching XDP
+programs to network interfaces. The library is fairly lightweight and relies on
+=libbpf= to do the heavy lifting for processing eBPF object files etc.
+
+The primary feature that =libxdp= provides on top of =libbpf= is the ability to
+load multiple XDP programs in sequence on a single network device (which is not
+natively supported by the kernel). This support relies on the =freplace=
+functionality in the kernel, which makes it possible to attach an eBPF program
+as a replacement for a global function in another (already loaded) eBPF program.
+
+** Using libxdp from an application
+
+Basic usage of libxdp from an application is quite straight forward. The
+following example loads, then unloads, an XDP program from the 'lo' interface:
+
+#+begin_src C
+#define IFINDEX 1
+
+struct xdp_program *prog;
+int err;
+
+prog = xdp_program__open_file("my-program.o", "prog_name", NULL);
+err = xdp_program__attach(prog, IFINDEX, XDP_MODE_NATIVE);
+
+if (!err)
+    xdp_program__detach(prog, IFINDEX, XDP_MODE_NATIVE);
+
+xdp_program__close(prog);
+#+end_src
+
+The =xdp_program= structure is an opaque structure that represents a single XDP
+program. =libxdp= contains functions to create such a struct either from a BPF
+object file on disk, from a =libbpf= BPF object, or from an identifier of a
+program that is already loaded into the kernel:
+
+#+begin_src C
+struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
+					      const char *prog_name);
+struct xdp_program *xdp_program__find_file(const char *filename,
+					   const char *prog_name,
+					   struct bpf_object_open_opts *opts);
+struct xdp_program *xdp_program__open_file(const char *filename,
+					   const char *prog_name,
+					   struct bpf_object_open_opts *opts);
+struct xdp_program *xdp_program__from_fd(int fd);
+struct xdp_program *xdp_program__from_id(__u32 prog_id);
+struct xdp_program *xdp_program__from_pin(const char *pin_path);
+#+end_src
+
+The functions that open a BPF object or file need the function name of the XDP
+program as well as the file name or object, since an ELF file can contain
+multiple XDP programs. The =xdp_program__find_file()= function takes a filename
+without a path, and will look for the object in =LIBXDP_OBJECT_PATH= which
+defaults to =/usr/lib/bpf= (or =/usr/lib64/bpf= on systems using a split library
+path). This is convenient for applications shipping pre-compiled eBPF object
+files.
+
+The =xdp_program__attach()= function will attach the program to an interface,
+building a dispatcher program to execute it. Multiple programs can be attached
+at once with =xdp_program__attach_multi()=; they will be sorted in order of
+their run priority, and execution from one program to the next will proceed
+based on the chain call actions defined for each program (see the *Program
+metadata* section below). Because the loading process involves modifying the
+attach type of the program, the attach functions only work with =struct
+xdp_program= objects that have not yet been loaded into the kernel.
+
+Due to limitations in the kernel support, it is currently not possible to attach
+another program to an already-attached list of programs. As such, the only way
+to actually run multiple programs on a single interface is to attach them all at
+the same time with =xdp_program__attach_multi()=. It is expected that this
+restriction will be lifted in an upcoming kernel version, after which
+=xdp_program__attach()= will simply add the program being loaded into the
+existing chain of programs running on the interface.
+
+* Program metadata
+
+To support multiple XDP programs on the same interface, libxdp uses two pieces
+of metadata for each XDP program: Run priority and chain call actions.
+
+*** Run priority
+This is the priority of the program and is a simple integer used
+to sort programs when loading multiple programs onto the same interface.
+Programs that wish to run early (such as a packet filter) should set low values
+for this, while programs that want to run later (such as a packet forwarder or
+counter) should set higher values. Note that later programs are only run if the
+previous programs end with a return code that is part of its chain call actions
+(see below). If not specified, the default priority value is 50.
+
+*** Chain call actions
+These are the program return codes that the program indicate for packets that
+should continue processing. If the program returns one of these actions, later
+programs in the call chain will be run, whereas if it returns any other action,
+processing will be interrupted, and the XDP dispatcher will return the verdict
+immediately. If not set, this defaults to just XDP_PASS, which is likely the
+value most programs should use.
+
+*** Specifying metadata
+The metadata outlined above is specified as BTF information embedded in the ELF
+file containing the XDP program. The =xdp_helpers.h= file shipped with libxdp
+contains helper macros to include this information, which can be used as
+follows:
+
+#+begin_src C
+#include <xdp/xdp_helpers.h>
+
+struct {
+	__uint(priority, 10);
+	__uint(XDP_PASS, 1);
+	__uint(XDP_DROP, 1);
+} XDP_RUN_CONFIG(my_xdp_func);
+#+end_src
+
+This example specifies that the XDP program in =my_xdp_func= should have
+priority 10 and that its chain call actions are =XDP_PASS= and =XDP_DROP=.
+In a source file with multiple XDP programs in the same file, a definition like
+the above can be included for each program (main XDP function). Any program that
+does not specify any config information will use the default values outlined
+above.
+
+*** Inspecting and modifying metadata
+
+=libxdp= exposes the following functions that an application can use to inspect
+and modify the metadata on an XDP program. Modification is only possible before
+a program is attached on an interface. These functions won't modify the BTF
+information itself, but the new values will be stored as part of the program
+attachment.
+
+#+begin_src C
+unsigned int xdp_program__run_prio(const struct xdp_program *xdp_prog);
+int xdp_program__set_run_prio(struct xdp_program *xdp_prog,
+                              unsigned int run_prio);
+bool xdp_program__chain_call_enabled(const struct xdp_program *xdp_prog,
+				     enum xdp_action action);
+int xdp_program__set_chain_call_enabled(struct xdp_program *prog,
+                                        unsigned int action,
+                                        bool enabled);
+int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
+					  char *buf,
+					  size_t buf_len);
+#+end_src
+
+* The dispatcher program
+To support multiple programs on the same network interface, =libxdp= uses a
+*dispatcher program* which is a small wrapper program that will call each
+component program in turn, expect the return code, and then chain call to the
+next program based on the chain call actions of the previous program (see the
+*Program metadata* section above).
+
+While applications using =libxdp= do not need to know the details of the
+dispatcher program to just load an XDP program unto an interface, =libxdp= does
+expose the dispatcher and its attached component programs, which can be used to
+list the programs currently attached to an interface.
+
+The structure used for this is =struct xdp_multiprog=, which can only be
+constructed from the programs loaded on an interface based on ifindex. The API
+for getting a multiprog reference and iterating through the attached programs
+looks like this:
+
+#+begin_src C
+struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex);
+struct xdp_program *xdp_multiprog__next_prog(const struct xdp_program *prog,
+					     const struct xdp_multiprog *mp);
+void xdp_multiprog__close(struct xdp_multiprog *mp);
+int xdp_multiprog__detach(struct xdp_multiprog *mp, int ifindex);
+enum xdp_attach_mode xdp_multiprog__attach_mode(const struct xdp_multiprog *mp);
+struct xdp_program *xdp_multiprog__main_prog(const struct xdp_multiprog *mp);
+bool xdp_multiprog__is_legacy(const struct xdp_multiprog *mp);
+#+end_src
+
+If a program is attached to the interface which =libxdp= doesn't recognise as a
+dispatcher program, an =xdp_multiprog= structure will still be returned, and
+=xdp_multiprog__is_legacy()= will return true for that program. A reference to
+that (regular) XDP program can be obtained by =xdp_multiprog__main_prog()=. If
+the program attached to the interface *is* a dispatcher program,
+=xdp_multiprog__main_prog()= will return a reference to the dispatcher program
+itself, which is mainly useful for obtaining other data about that program (such
+as the program ID).
+
+** Pinning in bpffs
+The kernel will automatically detach component programs from the dispatcher once
+the last reference to them disappears. To prevent this from happening, =libxdp=
+will pin the component program references in =bpffs= before attaching the
+dispatcher to the network interface. The pathnames generated for pinning is as
+follows:
+
+- /sys/fs/bpf/xdp/dispatch-DID - dispatcher program with BPF program ID DID
+- /sys/fs/bpf/xdp/dispatch-DID/prog0-prog - component program 0, program reference
+- /sys/fs/bpf/xdp/dispatch-DID/prog0-link - component program 0, bpf_link reference
+- /sys/fs/bpf/xdp/dispatch-DID/prog1-prog - component program 1, program reference
+- /sys/fs/bpf/xdp/dispatch-DID/prog1-link - component program 1, bpf_link reference
+- etc, up to ten component programs
+
+* BUGS
+Please report any bugs on Github: https://github.com/xdp-project/xdp-tools/issues
+
+* AUTHOR
+libxdp and this man page were written by Toke Høiland-Jørgensen
+

@@ -100,6 +100,7 @@ rm -f %{buildroot}%{_libdir}/libxdp.so
 %{_libdir}/libxdp.so.%{_soversion}
 %{_libdir}/bpf/xdp-dispatcher.o
 %{_libdir}/pkgconfig/libxdp.pc
+%{_mandir}/man3/*
 
 %files -n libxdp-static
 %{_libdir}/libxdp.a

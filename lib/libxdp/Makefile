@@ -14,6 +14,8 @@ XDP_OBJS := xdp-dispatcher.o
 SHARED_OBJS := $(addprefix $(SHARED_OBJDIR)/,$(OBJS))
 STATIC_OBJS := $(addprefix $(STATIC_OBJDIR)/,$(OBJS))
 STATIC_LIBS := $(OBJDIR)/libxdp.a
+MAN_PAGE := libxdp.3
+MAN_OBJ := ${MAN_PAGE:.3=.man}
 
 SHARED_CFLAGS += -fPIC -DSHARED
 LIB_HEADERS := $(wildcard $(HEADER_DIR)/xdp/*.h)
@@ -32,10 +34,10 @@ ifndef BUILD_STATIC_ONLY
 	VERSION_SCRIPT := libxdp.map
 endif
 
-all: $(STATIC_LIBS) $(SHARED_LIBS) $(XDP_OBJS) $(PC_FILE) check
+all: $(STATIC_LIBS) $(SHARED_LIBS) $(XDP_OBJS) $(PC_FILE) check man
 
 clean:
-	$(Q)rm -f $(STATIC_LIBS) $(STATIC_OBJS) $(SHARED_LIBS) $(SHARED_OBJS) $(XDP_OBJS) $(PC_FILE)
+	$(Q)rm -f $(STATIC_LIBS) $(STATIC_OBJS) $(SHARED_LIBS) $(SHARED_OBJS) $(XDP_OBJS) $(PC_FILE) $(MAN_OBJ) $(MAN_PAGE)
 	$(Q)for d in $(SHARED_OBJDIR) $(STATIC_OBJDIR); do \
 		[ -d "$$d" ] && rmdir "$$d"; done || true
 
@@ -48,6 +50,8 @@ install: all
 	$(Q)install -m 0644 $(PC_FILE) $(DESTDIR)$(LIBDIR)/pkgconfig/
 	$(Q)install -m 0755 $(SHARED_LIBS) $(STATIC_LIBS) $(DESTDIR)$(LIBDIR)
 	$(Q)install -m 0755 $(XDP_OBJS) $(DESTDIR)$(BPF_OBJECT_DIR)
+	$(Q)install -m 0755 -d $(DESTDIR)$(MANDIR)/man3
+	$(Q)install -m 0644 $(MAN_FILES) $(DESTDIR)$(MANDIR)/man3
 
 
 $(OBJDIR)/libxdp.a: $(STATIC_OBJS)
@@ -132,3 +136,18 @@ $(XDP_OBJS): %.o: %.c $(BPF_HEADERS) $(LIBMK)
 	    -Werror \
 	    -O2 -emit-llvm -c -g -o ${@:.o=.ll} $<
 	$(QUIET_LLC)$(LLC) -march=bpf -filetype=obj -o $@ ${@:.o=.ll}
+
+.PHONY: man
+ifeq ($(EMACS),)
+man:
+MAN_FILES :=
+else
+man: $(MAN_PAGE)
+MAN_FILES := $(MAN_PAGE)
+$(MAN_OBJ): README.org $(LIBMK)
+	$(Q)$(EMACS) -Q --batch --find-file $< --eval "(progn (require 'ox-man)(org-man-export-to-man))"
+
+$(MAN_PAGE): $(MAN_OBJ)
+	$(QUIET_GEN)sed -e "1 s/DATE/$(shell date '+%B %_d, %Y')/" -e "1 s/VERSION/v$(TOOLS_VERSION)/" $< > $@
+
+endif

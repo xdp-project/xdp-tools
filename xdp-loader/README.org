@@ -41,7 +41,7 @@ The syntax for the =load= command is:
 Where =<ifname>= is the name of the interface to load the programs onto, and the
 =<programs>= is one or more file names containing XDP programs. The programs
 will be loaded onto the interface in the order of their preference, as
-specified by the program metadata (see section below).
+specified by the program metadata (see *libxdp(3)*).
 
 The supported options are:
 
@@ -110,51 +110,6 @@ Enable debug logging. Specify twice for even more verbosity.
 ** -h, --help
 Display a summary of the available options
 
-* Program metadata
-
-To support multiple XDP programs on the same interface, libxdp (and thus
-xdp-loader) uses two pieces of metadata for each XDP program: Run priority and
-chain call actions.
-
-** Run priority
-This is the priority of the program and is a simple integer used
-to sort programs when loading multiple programs onto the same interface.
-Programs that wish to run early (such as a packet filter) should set low values
-for this, while programs that want to run later (such as a packet forwarder or
-counter) should set higher values. Note that later programs are only run if the
-previous programs end with a return code that is part of its chain call actions
-(see below). If not specified, the default priority value is 50.
-
-** Chain call actions
-These are the program return codes that the program indicate for packets that
-should continue processing. If the program returns one of these actions, later
-programs in the call chain will be run, whereas if it returns any other action,
-processing will be interrupted, and the XDP dispatcher will return the verdict
-immediately. If not set, this defaults to just XDP_PASS, which is likely the
-value most programs should use.
-
-** Specifying metadata
-The metadata outlined above is specified as BTF information embedded in the ELF
-file containing the XDP program. The =xdp_helpers.h= file shipped with libxdp
-contains helper macros to include this information, which can be used as
-follows:
-
-#+begin_src C
-#include <xdp/xdp_helpers.h>
-
-struct {
-	__uint(priority, 10);
-	__uint(XDP_PASS, 1);
-	__uint(XDP_DROP, 1);
-} XDP_RUN_CONFIG(my_xdp_func);
-#+end_src
-
-This example specifies that the XDP program in =my_xdp_func= should have
-priority 10 and that its chain call actions are =XDP_PASS= and =XDP_DROP=.
-In a source file with multiple XDP programs in the same file, a definition like
-the above can be included for each program (main XDP function). Any program that
-does not specify any config information will use the default values outlined
-above.
 
 * Examples
 
