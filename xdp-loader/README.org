@@ -73,9 +73,9 @@ Display a summary of the available options
 * The UNLOAD command
 The =unload= command is used for unloading programs from an interface.
 
-The syntax for the =load= command is:
+The syntax for the =unload= command is:
 
-=xdp-loader unload <ifname> <options>=
+=xdp-loader unload [options] <ifname>=
 
 Where =<ifname>= is the name of the interface to load the programs onto. Either
 the =--all= or =--id= options must be used to specify which program(s) to unload.
