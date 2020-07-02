@@ -1493,9 +1493,9 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp, int prog_fd)
 
 	info = &info_linear->info;
 	if (!info->btf_id) {
-		pr_warn("No BTF for prog ID %u\n", info->id);
-		err = -ENOENT;
-		goto out;
+		pr_debug("No BTF for prog ID %u\n", info->id);
+		mp->is_legacy = true;
+		goto legacy;
 	}
 
 	err = btf__get_from_id(info->btf_id, &btf);
