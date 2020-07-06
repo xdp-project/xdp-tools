@@ -60,6 +60,7 @@ struct xdp_multiprog {
 	bool is_loaded;
 	bool is_legacy;
 	enum xdp_attach_mode attach_mode;
+	int ifindex;
 };
 
 
@@ -119,10 +120,10 @@ do {				\
 
 static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 				 struct xdp_multiprog *mp,
-				 int ifindex, enum xdp_attach_mode mode);
+				 enum xdp_attach_mode mode);
 static struct xdp_multiprog *
 xdp_multiprog__generate(struct xdp_program **progs,
-			size_t num_progs);
+			size_t num_progs, int ifindex);
 static int xdp_multiprog__pin(struct xdp_multiprog *mp);
 static int xdp_multiprog__unpin(struct xdp_multiprog *mp);
 
@@ -1198,7 +1199,7 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 		return -EEXIST;
 	}
 
-	mp = xdp_multiprog__generate(progs, num_progs);
+	mp = xdp_multiprog__generate(progs, num_progs, ifindex);
 	if (IS_ERR(mp)) {
 		err = PTR_ERR(mp);
 		mp = NULL;
@@ -1211,7 +1212,7 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 		goto out_close;
 	}
 
-	err = xdp_multiprog__attach(NULL, mp, ifindex, mode);
+	err = xdp_multiprog__attach(NULL, mp, mode);
 	if (err) {
 		pr_warn("Failed to attach dispatcher on ifindex %d: %s\n",
 			ifindex, strerror(-err));
@@ -1279,7 +1280,7 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 	}
 
 	if (num_progs == mp->num_links) {
-		err = xdp_multiprog__detach(mp, ifindex);
+		err = xdp_multiprog__detach(mp);
 		if (err)
 			goto out;
 	} else {
@@ -1332,7 +1333,7 @@ static int xdp_multiprog__main_fd(struct xdp_multiprog *mp)
 	return mp->main_prog->prog_fd;
 }
 
-static struct xdp_multiprog *xdp_multiprog__new()
+static struct xdp_multiprog *xdp_multiprog__new(int ifindex)
 {
 	struct xdp_multiprog *mp;
 
@@ -1340,6 +1341,7 @@ static struct xdp_multiprog *xdp_multiprog__new()
 	if (!mp)
 		return ERR_PTR(-ENOMEM);
 	memset(mp, 0, sizeof(*mp));
+	mp->ifindex = ifindex;
 
 	return mp;
 }
@@ -1406,8 +1408,8 @@ static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 	if (IS_ERR(bpffs_dir))
 		return PTR_ERR(bpffs_dir);
 
-	err = try_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
-			   bpffs_dir, mp->main_prog->prog_id);
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d-%d",
+			   bpffs_dir, mp->ifindex, mp->main_prog->prog_id);
 	if (err)
 		return err;
 
@@ -1583,12 +1585,12 @@ err:
 	goto out;
 }
 
-static struct xdp_multiprog *xdp_multiprog__from_fd(int fd)
+static struct xdp_multiprog *xdp_multiprog__from_fd(int fd, int ifindex)
 {
 	struct xdp_multiprog *mp = NULL;
 	int err;
 
-	mp = xdp_multiprog__new();
+	mp = xdp_multiprog__new(ifindex);
 	if (IS_ERR(mp))
 		return mp;
 
@@ -1603,7 +1605,7 @@ err:
 }
 
 
-static struct xdp_multiprog *xdp_multiprog__from_id(__u32 id)
+static struct xdp_multiprog *xdp_multiprog__from_id(__u32 id, int ifindex)
 {
 	struct xdp_multiprog *mp;
 	int fd, err;
@@ -1614,7 +1616,7 @@ static struct xdp_multiprog *xdp_multiprog__from_id(__u32 id)
 		pr_warn("couldn't get program fd: %s", strerror(-err));
 		return ERR_PTR(err);
 	}
-	mp = xdp_multiprog__from_fd(fd);
+	mp = xdp_multiprog__from_fd(fd, ifindex);
 	if (IS_ERR_OR_NULL(mp))
 		close(fd);
 	return mp;
@@ -1643,9 +1645,10 @@ struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex)
 	if (!prog_id)
 		return ERR_PTR(-ENOENT);
 
-	mp = xdp_multiprog__from_id(prog_id);
+	mp = xdp_multiprog__from_id(prog_id, ifindex);
 	if (!IS_ERR_OR_NULL(mp))
 		mp->attach_mode = mode;
+
 	return mp;
 }
 
@@ -1742,7 +1745,8 @@ err:
 
 static struct xdp_multiprog *
 xdp_multiprog__generate(struct xdp_program **progs,
-			size_t num_progs)
+			size_t num_progs,
+			int ifindex)
 {
 	struct xdp_program *dispatcher;
 	struct xdp_multiprog *mp;
@@ -1777,6 +1781,7 @@ xdp_multiprog__generate(struct xdp_program **progs,
 	}
 
 	mp->main_prog = dispatcher;
+	mp->ifindex = ifindex;
 
 	map = bpf_map__next(NULL, mp->main_prog->bpf_obj);
 	if (!map) {
@@ -1829,8 +1834,8 @@ static int xdp_multiprog__pin(struct xdp_multiprog *mp)
 	if (IS_ERR(bpffs_dir))
 		return PTR_ERR(bpffs_dir);
 
-	err = try_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
-			   bpffs_dir, mp->main_prog->prog_id);
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d-%d",
+			   bpffs_dir, mp->ifindex, mp->main_prog->prog_id);
 	if (err)
 		return err;
 
@@ -1911,8 +1916,8 @@ static int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 	if (IS_ERR(bpffs_dir))
 		return PTR_ERR(bpffs_dir);
 
-	err = try_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d",
-			   bpffs_dir, mp->main_prog->prog_id);
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/dispatch-%d-%d",
+			   bpffs_dir, mp->ifindex, mp->main_prog->prog_id);
 	if (err)
 		return err;
 
@@ -1967,9 +1972,9 @@ out:
 
 static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 				 struct xdp_multiprog *mp,
-				 int ifindex, enum xdp_attach_mode mode)
+				 enum xdp_attach_mode mode)
 {
-	int err = 0, xdp_flags = 0, prog_fd = -1;
+	int err = 0, xdp_flags = 0, prog_fd = -1, ifindex = -1;
 	DECLARE_LIBBPF_OPTS(bpf_xdp_set_link_opts, opts,
 		.old_fd = -1);
 
@@ -1980,12 +1985,16 @@ static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 		prog_fd = xdp_multiprog__main_fd(mp);
 		if (prog_fd < 0)
 			return -EINVAL;
+		ifindex = mp->ifindex;
 	}
 
 	if (old_mp) {
 		opts.old_fd = xdp_multiprog__main_fd(old_mp);
 		if (opts.old_fd < 0)
 			return -EINVAL;
+		if (ifindex > -1 && ifindex != old_mp->ifindex)
+			return -EINVAL;
+		ifindex = old_mp->ifindex;
 	} else {
 		xdp_flags |= XDP_FLAGS_UPDATE_IF_NOEXIST;
 	}
@@ -2039,14 +2048,14 @@ err:
 	return err;
 }
 
-int xdp_multiprog__detach(struct xdp_multiprog *mp, int ifindex)
+int xdp_multiprog__detach(struct xdp_multiprog *mp)
 {
 	int err;
 
 	if (!mp || !mp->is_loaded)
 		return -EINVAL;
 
-	err = xdp_multiprog__attach(mp, NULL, ifindex, mp->attach_mode);
+	err = xdp_multiprog__attach(mp, NULL, mp->attach_mode);
 	if (err)
 		return err;
 

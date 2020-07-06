@@ -195,11 +195,11 @@ will pin the component program references in =bpffs= before attaching the
 dispatcher to the network interface. The pathnames generated for pinning is as
 follows:
 
-- /sys/fs/bpf/xdp/dispatch-DID - dispatcher program with BPF program ID DID
-- /sys/fs/bpf/xdp/dispatch-DID/prog0-prog - component program 0, program reference
-- /sys/fs/bpf/xdp/dispatch-DID/prog0-link - component program 0, bpf_link reference
-- /sys/fs/bpf/xdp/dispatch-DID/prog1-prog - component program 1, program reference
-- /sys/fs/bpf/xdp/dispatch-DID/prog1-link - component program 1, bpf_link reference
+- /sys/fs/bpf/xdp/dispatch-IFINDEX-DID - dispatcher program for IFINDEX with BPF program ID DID
+- /sys/fs/bpf/xdp/dispatch-IFINDEX-DID/prog0-prog - component program 0, program reference
+- /sys/fs/bpf/xdp/dispatch-IFINDEX-DID/prog0-link - component program 0, bpf_link reference
+- /sys/fs/bpf/xdp/dispatch-IFINDEX-DID/prog1-prog - component program 1, program reference
+- /sys/fs/bpf/xdp/dispatch-IFINDEX-DID/prog1-link - component program 1, bpf_link reference
 - etc, up to ten component programs
 
 * BUGS

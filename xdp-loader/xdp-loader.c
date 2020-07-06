@@ -107,8 +107,9 @@ retry:
 
 		if (IS_ERR(p)) {
 			err = PTR_ERR(p);
+			libxdp_strerror(err, errmsg, sizeof(errmsg));
 			pr_warn("Couldn't open file '%s': %s\n",
-				opt->filenames.strings[i], strerror(-err));
+				opt->filenames.strings[i], errmsg);
 			goto out;
 		}
 
@@ -207,7 +208,7 @@ int do_unload(const void *cfg, const char *pin_root_path)
 	if (opt->all || (xdp_multiprog__is_legacy(mp) &&
 			 (xdp_program__id(xdp_multiprog__main_prog(mp)) ==
 			  opt->prog_id))) {
-		err = xdp_multiprog__detach(mp, opt->iface.ifindex);
+		err = xdp_multiprog__detach(mp);
 		if (err) {
 			pr_warn("Unable to detach XDP program: %s\n",
 				strerror(-err));
