@@ -836,6 +836,7 @@ static int reuse_bpf_maps(struct bpf_object *dst_obj,
 			  struct bpf_object_open_opts *opts)
 {
 	struct bpf_object *src_obj;
+	struct bpf_program *prog;
 	struct bpf_map *map;
 	int err = 0, fd;
 
@@ -850,6 +851,9 @@ static int reuse_bpf_maps(struct bpf_object *dst_obj,
 	src_obj = open_bpf_obj(filename, opts);
 	if (IS_ERR(src_obj))
 		return PTR_ERR(src_obj);
+
+	bpf_object__for_each_program(prog, src_obj)
+		bpf_program__set_type(prog, BPF_PROG_TYPE_XDP);
 
 	err = bpf_object__load(src_obj);
 	if (err)
