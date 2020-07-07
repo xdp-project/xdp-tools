@@ -136,14 +136,8 @@ retry:
 	err = xdp_program__attach_multi(progs, num_progs,
 					opt->iface.ifindex, opt->mode);
 	if (err) {
-		if (err == -EPERM) {
-			pr_debug("Permission denied when loading eBPF object; "
-				 "raising rlimit and retrying\n");
-
-			err = double_rlimit();
-			if (!err)
-				goto retry;
-		}
+		if (err == -EPERM && !double_rlimit())
+			goto retry;
 
 		libbpf_strerror(err, errmsg, sizeof(errmsg));
 		pr_warn("Couldn't attach XDP program on iface '%s': %s(%d)\n",

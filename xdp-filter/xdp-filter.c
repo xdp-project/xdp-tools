@@ -301,14 +301,9 @@ retry:
 
 	err = attach_xdp_program(p, &opt->iface, opt->mode, pin_root_path);
 	if (err) {
-		if (err == -EPERM) {
-			pr_debug("Permission denied when loading eBPF object; "
-				 "raising rlimit and retrying\n");
-
-			if (!double_rlimit()) {
-				xdp_program__close(p);
-				goto retry;
-			}
+		if (err == -EPERM && !double_rlimit()) {
+			xdp_program__close(p);
+			goto retry;
 		}
 
 		libxdp_strerror(err, errmsg, sizeof(errmsg));

@@ -42,6 +42,9 @@ int double_rlimit()
 	struct rlimit limit;
 	int err = 0;
 
+	pr_debug("Permission denied when loading eBPF object; "
+		 "raising rlimit and retrying\n");
+
 	err = getrlimit(RLIMIT_MEMLOCK, &limit);
 	if (err) {
 		err = -errno;

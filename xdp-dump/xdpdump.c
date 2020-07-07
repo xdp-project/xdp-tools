@@ -808,14 +808,9 @@ rlimit_loop:
 	if (err) {
 		char err_msg[STRERR_BUFSIZE];
 
-		if (err == -EPERM) {
-			pr_debug("Permission denied when loading eBPF object; "
-				 "raising rlimit and retrying\n");
-
-			if (!double_rlimit()) {
-				bpf_object__close(trace_obj);
-				goto rlimit_loop;
-			}
+		if (err == -EPERM && !double_rlimit()) {
+			bpf_object__close(trace_obj);
+			goto rlimit_loop;
 		}
 
 		libbpf_strerror(err, err_msg, sizeof(err_msg));
