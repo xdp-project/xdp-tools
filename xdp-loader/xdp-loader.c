@@ -90,13 +90,13 @@ int do_load(const void *cfg, const char *pin_root_path)
 	pr_debug("Loading %zu files on interface '%s'.\n",
 		 num_progs, opt->iface.ifname);
 
-retry:
 	/* libbpf spits out a lot of unhelpful error messages while loading.
 	 * Silence the logging so we can provide our own messages instead; this
 	 * is a noop if verbose logging is enabled.
 	 */
 	silence_libbpf_logging();
 
+retry:
 	for (i = 0; i < num_progs; i++) {
 		p = progs[i];
 		if (p)
