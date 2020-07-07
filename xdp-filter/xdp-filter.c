@@ -294,6 +294,9 @@ retry:
 	p = xdp_program__find_file(filename, progname, &opts);
 	err = libxdp_get_error(p);
 	if (err) {
+		if (err == -EPERM && !double_rlimit())
+			goto retry;
+
 		pr_warn("Couldn't load BPF program: %s\n", strerror(-err));
 		p = NULL;
 		goto out;

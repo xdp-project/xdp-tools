@@ -107,6 +107,10 @@ retry:
 
 		if (IS_ERR(p)) {
 			err = PTR_ERR(p);
+
+			if (err == -EPERM && !double_rlimit())
+				goto retry;
+
 			libxdp_strerror(err, errmsg, sizeof(errmsg));
 			pr_warn("Couldn't open file '%s': %s\n",
 				opt->filenames.strings[i], errmsg);
