@@ -60,6 +60,7 @@ static const struct dumpopt {
 	bool                  list_interfaces;
 	bool                  hex_dump;
 	bool                  use_pcap;
+	bool                  promiscuous;
 	struct iface          iface;
 	uint32_t              snaplen;
 	uint32_t              perf_wakeup;
@@ -98,6 +99,10 @@ static struct prog_option xdpdump_options[] = {
 		      .short_opt = 'p',
 		      .metavar = "<prog>",
 		      .help = "Specific program to attach to"),
+	DEFINE_OPTION("promiscuous-mode", OPT_BOOL, struct dumpopt,
+		      promiscuous,
+		      .short_opt = 'P',
+		      .help = "Open interface in promiscuous mode"),
 	DEFINE_OPTION("snapshot-length", OPT_U32, struct dumpopt, snaplen,
 		      .short_opt = 's',
 		      .metavar = "<snaplen>",
@@ -224,6 +229,62 @@ static char *get_if_drv_info(struct iface *iface, char *buffer, size_t len)
 exit:
 	close(fd);
 	return r_buffer;
+}
+
+/*****************************************************************************
+ * set_if_promiscuous_mode()
+ *****************************************************************************/
+static int set_if_promiscuous_mode(struct iface *iface, bool enable,
+				   bool *did_enable)
+{
+	int          fd;
+	int          rc = 0;
+	struct ifreq ifr;
+
+	if (iface == NULL)
+		return -EINVAL;
+
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd < 0)
+		return -errno;
+
+	memset(&ifr, 0, sizeof(ifr));
+	strncpy(ifr.ifr_name, iface->ifname, sizeof(ifr.ifr_name) - 1);
+
+	if (ioctl(fd, SIOCGIFFLAGS, &ifr) != 0) {
+		pr_debug("DBG: Failed getting promiscuous mode: %s\n",
+			 strerror(errno));
+		rc = -errno;
+		goto exit;
+	}
+	if (((ifr.ifr_flags & IFF_PROMISC) && enable) ||
+	    (!(ifr.ifr_flags & IFF_PROMISC) && !enable)) {
+		pr_debug("DBG: Promiscuous mode already %s!\n",
+			 enable ? "on" : "off");
+		goto exit;
+	}
+
+	if (enable)
+		ifr.ifr_flags |= IFF_PROMISC;
+	else
+		ifr.ifr_flags &= ~IFF_PROMISC;
+
+	if (ioctl(fd, SIOCSIFFLAGS, &ifr) != 0) {
+		pr_debug("DBG: Failed setting promiscuous mode %s: %s\n",
+			 enable ? "on" : "off", strerror(errno));
+		rc = -errno;
+		goto exit;
+	}
+
+	if (did_enable) {
+		if (enable)
+			*did_enable = true;
+		else
+			*did_enable = false;
+	}
+exit:
+	close(fd);
+	return rc;
 }
 
 /*****************************************************************************
@@ -483,7 +544,7 @@ static bool capture_on_legacy_interface(struct dumpopt *cfg)
 	}
 
 	pcap = pcap_open_live(cfg->iface.ifname, cfg->snaplen,
-			      false, 1000, errbuf);
+			      cfg->promiscuous, 1000, errbuf);
 	if (pcap == NULL) {
 		pr_warn("ERROR: Can't open pcap live interface: %s\n", errbuf);
 		goto error_exit;
@@ -736,6 +797,17 @@ static bool capture_on_interface(struct dumpopt *cfg)
 
 	if (find_target(mp, cfg->program_names, &tgt_prog, &tgt_func))
 		return false;
+
+	/* Enable promiscuous mode if requested. */
+	if (cfg->promiscuous) {
+		err = set_if_promiscuous_mode(&cfg->iface, true,
+					     &cfg->promiscuous);
+		if (err) {
+			pr_warn("ERROR: Failed setting promiscuous mode: "
+				"%s(%d)\n", strerror(-err), -err);
+			return false;
+		}
+	}
 
 	silence_libbpf_logging();
 
@@ -1015,6 +1087,13 @@ rlimit_loop:
 		perf_ctx.captured_packets);
 	fprintf(stderr, "%"PRIu64" packets dropped by perf ring\n",
 		perf_ctx.missed_events);
+
+	if (cfg->promiscuous) {
+		err = set_if_promiscuous_mode(&cfg->iface, false, NULL);
+		if (err)
+			pr_warn("ERROR: Failed disabling promiscuous mode: "
+				"%s(%d)\n", strerror(-err), -err);
+	}
 
 	rc = true;
 
