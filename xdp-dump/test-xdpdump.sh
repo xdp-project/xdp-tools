@@ -3,7 +3,7 @@
 #
 # shellcheck disable=2039
 #
-ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_term test_exitentry test_snap test_multi_pkt test_perf_wakeup test_none_xdp"
+ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_term test_exitentry test_snap test_multi_pkt test_perf_wakeup test_promiscuous test_none_xdp"
 
 XDPDUMP=${XDPDUMP:-./xdpdump}
 XDP_LOADER=${XDP_LOADER:-../xdp-loader/xdp-loader}
@@ -33,6 +33,7 @@ Options:
  -i, --interface <ifname>   Name of interface to capture on
      --perf-wakeup <events>  Wake up xdpdump every <events> packets
  -p, --program-names <prog>  Specific program to attach to
+ -P, --promiscuous-mode     Open interface in promiscuous mode
  -s, --snapshot-length <snaplen>  Minimum bytes of packet to capture
      --use-pcap             Use legacy pcap format for XDP traces
  -w, --write <file>         Write raw packets to pcap file
@@ -300,18 +301,18 @@ test_multi_pkt()
 
     for PKT_SIZE in "${PKT_SIZES[@]}" ; do
 
-	PID=$(start_background_no_stderr "$XDPDUMP -i $NS --rx-capture=entry,exit")
-	timeout 4 $PING6 -W 2 -s "$PKT_SIZE" -c 20000 -f "$INSIDE_IP6" || return 1
-	RESULT=$(stop_background "$PID")
-	if ! [[ $RESULT =~ $PASS_ENTRY_REGEX ]]; then
+        PID=$(start_background_no_stderr "$XDPDUMP -i $NS --rx-capture=entry,exit")
+        timeout 4 $PING6 -W 2 -s "$PKT_SIZE" -c 20000 -f "$INSIDE_IP6" || return 1
+        RESULT=$(stop_background "$PID")
+        if ! [[ $RESULT =~ $PASS_ENTRY_REGEX ]]; then
             print_result "IPv6 entry packet not received, $PKT_SIZE"
             return 1
-	fi
+        fi
 
-	if ! [[ $RESULT =~ $PASS_EXIT_REGEX ]]; then
+        if ! [[ $RESULT =~ $PASS_EXIT_REGEX ]]; then
             print_result "IPv6 exit packet not received, $PKT_SIZE"
             return 1
-	fi
+        fi
     done
 
     $XDP_LOADER unload "$NS" --all || return 1
@@ -339,8 +340,8 @@ test_perf_wakeup()
         RESULT=$(stop_background "$PID")
 
         if ! [[ $RESULT =~ $PASS_REGEX ]]; then
-	    print_result "IPv6 packet not received for wakeup $WAKEUP"
-	    return 1
+            print_result "IPv6 packet not received for wakeup $WAKEUP"
+            return 1
         fi
 
         # We sent 10k packets and see if the all arrive
@@ -366,13 +367,63 @@ test_none_xdp()
     PID=$(start_background "$XDPDUMP -i $NS")
     $PING6 -W 2 -c 4 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
-    echo "$RESULT"
     if [[ "$RESULT" != *"$PASS_PKT"* ]]; then
         print_result "IPv6 packet not received"
         return 1
     fi
     if [[ "$RESULT" != *"$WARN_MSG"* ]]; then
         print_result "Missing warning message"
+        return 1
+    fi
+}
+
+test_promiscuous()
+{
+    local PASS_PKT="packet size 118 bytes on if_name \"$NS\""
+    local PASS_REGEX="(@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+
+    $XDP_LOADER unload "$NS" --all
+    dmesg -C
+
+    PID=$(start_background "$XDPDUMP -i $NS -P")
+    $PING6 -W 2 -c 4 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    echo "$RESULT"
+    if [[ "$RESULT" != *"$PASS_PKT"* ]]; then
+        print_result "IPv6 packet not received [legacy mode]"
+        return 1
+    fi
+
+    RESULT=$(dmesg)
+    echo "$RESULT"
+    if [[ "$RESULT" != *"device $NS entered promiscuous mode"* ]]; then
+        print_result "Failed enabling promiscuous mode on legacy interface"
+        return 1
+    fi
+    if [[ "$RESULT" != *"device $NS left promiscuous mode"* ]]; then
+        print_result "Failed disabling promiscuous mode on legacy interface"
+        return 1
+    fi
+
+    $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
+    dmesg -C
+
+    PID=$(start_background "$XDPDUMP -i $NS -x --promiscuous-mode")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if ! [[ $RESULT =~ $PASS_REGEX ]]; then
+        print_result "IPv6 packet not received"
+        return 1
+    fi
+
+    RESULT=$(dmesg)
+    echo "$RESULT"
+    if [[ "$RESULT" != *"device $NS entered promiscuous mode"* ]]; then
+        print_result "Failed enabling promiscuous mode on interface"
+        return 1
+    fi
+    if [[ "$RESULT" != *"device $NS left promiscuous mode"* ]]; then
+        print_result "Failed disabling promiscuous mode on interface"
         return 1
     fi
 }

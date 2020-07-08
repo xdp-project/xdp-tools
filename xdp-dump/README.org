@@ -77,6 +77,8 @@ function name from the available BTF debug information. However, if multiple
 functions exist with the same leading name, it can not pick the correct one. It
 will dump the available functions, and you can choose the correct one, and
 supply it with this option.
+** -P, --promiscuous-mode
+This option puts the interface into promiscuous mode.
 ** -s, --snapshot-length <snaplen>
 Capture *snaplen* bytes of a packet rather than the default 262144 bytes.
 ** --use-pcap
