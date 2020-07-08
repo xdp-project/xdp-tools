@@ -62,7 +62,7 @@ all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) $(DISPATCHER_OBJ) man
 
 .PHONY: clean
 clean::
-	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(MAN_OBJ) $(MAN_PAGE) *.ll
+	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(USER_GEN) $(MAN_OBJ) $(MAN_PAGE) *.ll
 
 .PHONY: install
 install: all install_local
