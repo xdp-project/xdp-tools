@@ -22,6 +22,7 @@ LIB_HEADERS := $(wildcard $(HEADER_DIR)/xdp/*.h)
 BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(wildcard $(HEADER_DIR)/xdp/*.h)
 EXTRA_LIB_DEPS := $(OBJECT_LIBBPF) $(LIBMK) $(LIB_OBJS) $(LIB_HEADERS)
 PC_FILE := $(OBJDIR)/libxdp.pc
+TEMPLATED_SOURCES := xdp-dispatcher.c
 
 CFLAGS += -I$(HEADER_DIR) -I$(LIB_DIR)/util
 BPF_CFLAGS += -I$(HEADER_DIR)
@@ -37,7 +38,7 @@ endif
 all: $(STATIC_LIBS) $(SHARED_LIBS) $(XDP_OBJS) $(PC_FILE) check man
 
 clean:
-	$(Q)rm -f $(STATIC_LIBS) $(STATIC_OBJS) $(SHARED_LIBS) $(SHARED_OBJS) $(XDP_OBJS) $(PC_FILE) $(MAN_OBJ) $(MAN_PAGE)
+	$(Q)rm -f $(STATIC_LIBS) $(STATIC_OBJS) $(SHARED_LIBS) $(SHARED_OBJS) $(XDP_OBJS) $(PC_FILE) $(MAN_OBJ) $(MAN_PAGE) $(TEMPLATED_SOURCES)
 	$(Q)for d in $(SHARED_OBJDIR) $(STATIC_OBJDIR); do \
 		[ -d "$$d" ] && rmdir "$$d"; done || true
 
@@ -121,8 +122,8 @@ check_abi: $(OBJDIR)/libxdp.so
 	fi
 
 
-xdp-dispatcher.c: xdp-dispatcher.c.in Makefile
-	$(QUIET_M4)m4 $(DEFINES) $< > $@
+$(TEMPLATED_SOURCES): %.c: %.c.in Makefile
+	$(QUIET_M4)m4 $(DEFINES) $< > $@ || ( ret=$$?; rm -f $@; exit $$ret )
 
 $(XDP_OBJS): %.o: %.c $(BPF_HEADERS) $(LIBMK)
 	$(QUIET_CLANG)$(CLANG) -S \
