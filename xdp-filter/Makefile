@@ -10,7 +10,8 @@ EXTRA_DEPS := xdpfilt_prog.h
 MAN_PAGE := xdp-filter.8
 TEST_FILE := test-xdp-filter.sh
 
-EXTRA_USER_DEPS := prog_features.h
+USER_GEN := prog_features.h
+EXTRA_USER_DEPS := $(USER_GEN)
 
 LIB_DIR = ../lib
 
