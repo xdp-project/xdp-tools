@@ -46,8 +46,8 @@ specified by the program metadata (see *libxdp(3)*).
 The supported options are:
 
 ** -m, --mode <mode>
-Specifies which mode to load the XDP program to be loaded in. Valid values are
-'native', which is the default in-driver XDP mode, 'skb', which causes the
+Specifies which mode to load the XDP program to be loaded in. The valid values
+are 'native', which is the default in-driver XDP mode, 'skb', which causes the
 so-called /skb mode/ (also known as /generic XDP/) to be used, or 'hw' which
 causes the program to be offloaded to the hardware.
 
