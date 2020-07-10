@@ -1,4 +1,5 @@
 
+LIBBPF_CFLAGS:=$(if $(CFLAGS),$(CFLAGS),-g -O2 -Werror -Wall) -fPIC
 
 LIB_DIR = .
 include defines.mk
@@ -34,7 +35,7 @@ LIBBPF_SOURCES := $(wildcard libbpf/src/*.[ch])
 .PHONY: libbpf_clean
 libbpf/src/libbpf.a: $(LIBBPF_SOURCES)
 	@echo ; echo "  libbpf"
-	$(QUIET_CC)$(MAKE) -C libbpf/src $P
+	$(QUIET_CC)$(MAKE) -C libbpf/src CFLAGS="$(LIBBPF_CFLAGS)" $P
 	$(QUIET_INSTALL)$(MAKE) -C libbpf/src install_headers DESTDIR=root $P
 
 libbpf_clean:

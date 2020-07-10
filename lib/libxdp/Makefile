@@ -67,7 +67,7 @@ $(OBJDIR)/libxdp.so.$(LIBXDP_MAJOR_VERSION): $(OBJDIR)/libxdp.so.$(LIBXDP_VERSIO
 $(OBJDIR)/libxdp.so.$(LIBXDP_VERSION): $(SHARED_OBJS)
 	$(QUIET_LINK)$(CC) -shared -Wl,-soname,libxdp.so.$(LIBXDP_MAJOR_VERSION) \
 		      -Wl,--version-script=$(VERSION_SCRIPT) \
-		      $^ $(ALL_LDFLAGS) -o $@
+		      $^ $(LDFLAGS) $(LDLIBS) -o $@
 
 $(OBJDIR)/libxdp.pc:
 	$(Q)sed -e "s|@PREFIX@|$(PREFIX)|" \
