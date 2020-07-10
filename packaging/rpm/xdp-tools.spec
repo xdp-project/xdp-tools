@@ -81,7 +81,7 @@ export LIBDIR='%{_libdir}'
 export MANDIR='%{_mandir}'
 export DATADIR='%{_datadir}'
 export HDRDIR='%{_includedir}/xdp'
-make install
+make install V=1
 
 # Don't expose libxdp itself in -devel package just yet
 rm -f %{buildroot}%{_includedir}/xdp/libxdp.h
