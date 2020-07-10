@@ -1,5 +1,5 @@
 Name:             xdp-tools
-Version:          1.0.0~beta1
+Version:          1.0.0~beta2
 Release:          0.1%{?dist}
 Summary:          Utilities and example programs for use with XDP
 %global _soversion 1.0.0
@@ -65,10 +65,12 @@ The libxdp-static package contains the static library version of libxdp.
 export CFLAGS='%{build_cflags}'
 export LDFLAGS='%{build_ldflags}'
 export LIBDIR='%{_libdir}'
-export PRODUCTION=1
-export DYNAMIC_LIBXDP=1
 export CLANG=%{_bindir}/clang
 export LLC=%{_bindir}/llc
+export PRODUCTION=1
+export DYNAMIC_LIBXDP=1
+export FORCE_SYSTEM_LIBBPF=1
+export FORCE_EMACS=1
 ./configure
 make %{?_smp_mflags} V=1
 
@@ -109,6 +111,9 @@ rm -f %{buildroot}%{_libdir}/libxdp.so
 %{_includedir}/xdp/*.h
 
 %changelog
+* Fri Jul 10 2020 Toke Høiland-Jørgensen <toke@redhat.com> 1.0.0~beta2-0.1
+- Upstream version bump
+
 * Mon Jun 15 2020 Toke Høiland-Jørgensen <toke@redhat.com> 1.0.0~beta1-0.1
 - Upstream version bump
 
