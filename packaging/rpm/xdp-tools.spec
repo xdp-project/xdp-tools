@@ -46,6 +46,18 @@ Summary:          Static library files for libxdp
 Requires:         kernel-headers
 Requires:         libxdp-devel = %{version}-%{release}
 
+%package -n xdp-tools-tests
+Summary:          Selftests for xdp-tools
+Requires:         xdp-tools = %{version}-%{release}
+Requires:         tcpdump
+Requires:         wireshark-cli
+Requires:         nmap-ncat
+Requires:         iproute
+Requires:         iproute-tc
+Requires:         ethtool
+Requires:         iputils
+Requires:         sed
+
 %description -n libxdp
 The libxdp package contains the libxdp library for managing XDP programs,
 used by the %{name} package
@@ -56,6 +68,9 @@ libxdp.
 
 %description -n libxdp-static
 The libxdp-static package contains the static library version of libxdp.
+
+%description -n xdp-tools-tests
+The xdp-tools-tests package contains selftest scripts for xdp-tools
 
 %prep
 %autosetup -p1 -n %{name}-%{version}
@@ -90,7 +105,6 @@ make install V=1
 %{_mandir}/man8/*
 %{_libdir}/bpf/xdpfilt_*.o
 %{_libdir}/bpf/xdpdump_*.o
-%{_datadir}/xdp-tools/
 %license LICENSE
 
 %files -n libxdp
@@ -106,6 +120,9 @@ make install V=1
 %files -n libxdp-devel
 %{_includedir}/xdp/*.h
 %{_libdir}/libxdp.so
+
+%files -n xdp-tools-tests
+%{_datadir}/xdp-tools/
 
 %changelog
 * Fri Jul 10 2020 Toke Høiland-Jørgensen <toke@redhat.com> 1.0.0~beta2-0.1
