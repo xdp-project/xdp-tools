@@ -236,7 +236,7 @@ test_exitentry()
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/xdp_drop.o" || return 1
 
     PID=$(start_background "$XDPDUMP -i $NS --rx-capture=exit")
-    $PING6 -W 0.1 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
+    $PING6 -W 1 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
     RESULT=$(stop_background "$PID")
     if ! [[ $RESULT =~ $PASS_EXIT_D_REGEX ]]; then
         print_result "IPv6 drop exit packet not received"
@@ -244,7 +244,7 @@ test_exitentry()
     fi
 
     PID=$(start_background "$XDPDUMP -i $NS --rx-capture=exit,entry")
-    $PING6 -W 0.1 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
+    $PING6 -W 1 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
     RESULT=$(stop_background "$PID")
     if ! [[ $RESULT =~ $PASS_EXIT_D_REGEX && $RESULT =~ $PASS_ENTRY_REGEX ]]; then
         print_result "IPv6 drop entry/exit packet not received"
