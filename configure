@@ -51,6 +51,12 @@ check_toolchain()
         fi
     fi
 
+    if [ -z "$EMACS" ] && [ "${FORCE_EMACS:-0}" -eq "1" ]; then
+        echo "FORCE_EMACS is set, but no usable emacs found on system"
+        rm -f "$CONFIG"
+        exit 1
+    fi
+
     echo "PKG_CONFIG:=${PKG_CONFIG}" >>$CONFIG
     echo "CC:=${CC}" >>$CONFIG
     echo "CLANG:=${CLANG}" >>$CONFIG
