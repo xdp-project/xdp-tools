@@ -22,6 +22,7 @@ LIB_DIR ?= ../lib
 LDLIBS ?= $(USER_LIBS)
 
 include $(LIB_DIR)/defines.mk
+include $(LIB_DIR)/libxdp/libxdp.mk
 
 # get list of objects in util
 include $(LIB_DIR)/util/util.mk
