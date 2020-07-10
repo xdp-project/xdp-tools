@@ -83,10 +83,6 @@ export DATADIR='%{_datadir}'
 export HDRDIR='%{_includedir}/xdp'
 make install V=1
 
-# Don't expose libxdp itself in -devel package just yet
-rm -f %{buildroot}%{_includedir}/xdp/libxdp.h
-rm -f %{buildroot}%{_libdir}/libxdp.so
-
 %files
 %{_sbindir}/xdp-filter
 %{_sbindir}/xdp-loader
@@ -109,6 +105,7 @@ rm -f %{buildroot}%{_libdir}/libxdp.so
 
 %files -n libxdp-devel
 %{_includedir}/xdp/*.h
+%{_libdir}/libxdp.so
 
 %changelog
 * Fri Jul 10 2020 Toke Høiland-Jørgensen <toke@redhat.com> 1.0.0~beta2-0.1
