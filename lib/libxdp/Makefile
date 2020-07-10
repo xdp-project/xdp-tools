@@ -123,7 +123,7 @@ check_abi: $(OBJDIR)/libxdp.so
 
 
 $(TEMPLATED_SOURCES): %.c: %.c.in Makefile
-	$(QUIET_M4)m4 $(DEFINES) $< > $@ || ( ret=$$?; rm -f $@; exit $$ret )
+	$(QUIET_M4)$(M4) $(DEFINES) $< > $@ || ( ret=$$?; rm -f $@; exit $$ret )
 
 $(XDP_OBJS): %.o: %.c $(BPF_HEADERS) $(LIBMK)
 	$(QUIET_CLANG)$(CLANG) -S \
