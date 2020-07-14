@@ -233,6 +233,6 @@ test_ether_deny()
 
 cleanup_tests()
 {
-    $XDP_FILTER unload --all >/dev/null 2>&1
+    $XDP_FILTER unload $NS >/dev/null 2>&1
     $XDP_LOADER unload $NS --all >/dev/null 2>&1
 }
