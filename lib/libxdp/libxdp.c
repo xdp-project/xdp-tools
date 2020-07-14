@@ -1567,8 +1567,11 @@ legacy:
 
 	if (!mp->is_legacy) {
 		err = xdp_multiprog__link_pinned_progs(mp);
-		if (err)
-			goto err;
+		if (err) {
+			pr_warn("Unable to read pinned progs: %s\n", strerror(-err));
+			mp->is_legacy = true;
+			err = 0;
+		}
 	}
 
 	mp->is_loaded = true;
@@ -1579,10 +1582,6 @@ legacy:
 out:
 	free(info_linear);
 	return err;
-
-err:
-	xdp_program__close(prog);
-	goto out;
 }
 
 static struct xdp_multiprog *xdp_multiprog__from_fd(int fd, int ifindex)
