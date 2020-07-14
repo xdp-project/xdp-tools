@@ -908,6 +908,7 @@ int do_status(const void *cfg, const char *pin_root_path)
 	}
 	rec.stats[XDP_DROP].enabled = true;
 	rec.stats[XDP_PASS].enabled = true;
+	rec.stats[XDP_ABORTED].enabled = true;
 
 	err = stats_collect(map_fd, info.type, &rec);
 	if (err)
