@@ -52,8 +52,8 @@ int double_rlimit()
 		return err;
 	}
 
-	if (limit.rlim_cur == RLIM_INFINITY) {
-		pr_debug("Current rlimit is infinity. Not raising\n");
+	if (limit.rlim_cur == RLIM_INFINITY || limit.rlim_cur == 0) {
+		pr_debug("Current rlimit is infinity or 0. Not raising\n");
 		return -ENOMEM;
 	}
 
