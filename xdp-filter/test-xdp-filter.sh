@@ -1,6 +1,6 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 XDP_FILTER=${XDP_FILTER:-./xdp-filter}
-ALL_TESTS="test_load test_ports test_ipv6"
+ALL_TESTS="test_load test_ports_allow test_ports_deny test_ipv6_allow test_ipv6_deny test_ipv4_allow test_ipv4_deny"
 
 try_feat()
 {
@@ -94,9 +94,8 @@ check_port()
     check_packet "$type dst port $port" "$command" $expect
 }
 
-test_ports()
+test_ports_allow()
 {
-    trap on_error ERR
     local TEST_PORT=10000
 
     # default allow mode
@@ -112,7 +111,11 @@ test_ports()
     check_port tcp $TEST_PORT OK
     check_port udp $TEST_PORT OK
     check_run $XDP_FILTER unload $NS -v
+}
 
+test_ports_deny()
+{
+    local TEST_PORT=10000
     # default deny mode
     check_run $XDP_FILTER load -p deny $NS -v
     check_port tcp $TEST_PORT FAIL
@@ -130,10 +133,10 @@ test_ports()
 
 check_ping6()
 {
-    check_packet "dst $OUTSIDE_IP6" "ping -c 1 $OUTSIDE_IP6" $1
+    check_packet "dst $OUTSIDE_IP6" "$PING6 -c 1 $OUTSIDE_IP6" $1
 }
 
-test_ipv6()
+test_ipv6_allow()
 {
     check_ping6 OK
     check_run $XDP_FILTER load $NS -v
@@ -148,6 +151,55 @@ test_ipv6()
     check_run $XDP_FILTER unload $NS -v
 }
 
+test_ipv6_deny()
+{
+    check_ping6 OK
+    check_run $XDP_FILTER load -p deny $NS -v
+    check_run $XDP_FILTER ip $OUTSIDE_IP6
+    check_ping6 OK
+    check_run $XDP_FILTER ip -r $OUTSIDE_IP6
+    check_ping6 FAIL
+    check_run $XDP_FILTER ip -m src $INSIDE_IP6
+    check_ping6 OK
+    check_run $XDP_FILTER ip -m src -r $INSIDE_IP6
+    check_ping6 FAIL
+    check_run $XDP_FILTER unload $NS -v
+}
+
+check_ping4()
+{
+    check_packet "dst $OUTSIDE_IP4" "ping -c 1 $OUTSIDE_IP4" $1
+}
+
+test_ipv4_allow()
+{
+    check_ping4 OK
+    check_run $XDP_FILTER load $NS -v
+    check_run $XDP_FILTER ip $OUTSIDE_IP4
+    check_ping4 FAIL
+    check_run $XDP_FILTER ip -r $OUTSIDE_IP4
+    check_ping4 OK
+    check_run $XDP_FILTER ip -m src $INSIDE_IP4
+    check_ping4 FAIL
+    check_run $XDP_FILTER ip -m src -r $INSIDE_IP4
+    check_ping4 OK
+    check_run $XDP_FILTER unload $NS -v
+}
+
+test_ipv4_deny()
+{
+    check_ping4 OK
+    check_run $XDP_FILTER load -p deny $NS -v
+    check_run $XDP_FILTER ip $OUTSIDE_IP4
+    check_ping4 OK
+    check_run $XDP_FILTER ip -r $OUTSIDE_IP4
+    check_ping4 FAIL
+    check_run $XDP_FILTER ip -m src $INSIDE_IP4
+    check_ping4 OK
+    check_run $XDP_FILTER ip -m src -r $INSIDE_IP4
+    check_ping4 FAIL
+    check_run $XDP_FILTER unload $NS -v
+}
 
 cleanup_tests()
 {
