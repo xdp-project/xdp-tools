@@ -235,12 +235,12 @@ static struct prog_option load_options[] = {
 int do_load(const void *cfg, const char *pin_root_path)
 {
 	char errmsg[STRERR_BUFSIZE], featbuf[100];
-	char *filename, *progname = NULL, *chr;
 	const struct loadopt *opt = cfg;
 	struct xdp_program *p = NULL;
 	int err = EXIT_SUCCESS;
 	unsigned int features;
 	__u32 used_feats;
+	char *filename;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 
@@ -272,15 +272,6 @@ int do_load(const void *cfg, const char *pin_root_path)
 		return EXIT_FAILURE;
 	}
 
-	progname = strdup(filename);
-	if (!progname) {
-		pr_warn("Couldn't allocate memory\n");
-		goto out;
-	}
-	chr = strchr(progname, '.');
-	if (chr)
-		*chr = '\0';
-
 	pr_debug("Found prog '%s' matching feature set to be loaded on interface '%s'.\n",
 		 filename, opt->iface.ifname);
 
@@ -291,7 +282,7 @@ int do_load(const void *cfg, const char *pin_root_path)
 	silence_libbpf_logging();
 
 retry:
-	p = xdp_program__find_file(filename, progname, &opts);
+	p = xdp_program__find_file(filename, "xdp_filter", &opts);
 	err = libxdp_get_error(p);
 	if (err) {
 		if (err == -EPERM && !double_rlimit())
@@ -319,7 +310,6 @@ out:
 	if (p)
 		xdp_program__close(p);
 	free(filename);
-	free(progname);
 	return err;
 }
 

@@ -31,7 +31,7 @@ following example loads, then unloads, an XDP program from the 'lo' interface:
 struct xdp_program *prog;
 int err;
 
-prog = xdp_program__open_file("my-program.o", "prog_name", NULL);
+prog = xdp_program__open_file("my-program.o", "section_name", NULL);
 err = xdp_program__attach(prog, IFINDEX, XDP_MODE_NATIVE);
 
 if (!err)
@@ -47,12 +47,12 @@ program that is already loaded into the kernel:
 
 #+begin_src C
 struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
-					      const char *prog_name);
+					      const char *section_name);
 struct xdp_program *xdp_program__find_file(const char *filename,
-					   const char *prog_name,
+					   const char *section_name,
 					   struct bpf_object_open_opts *opts);
 struct xdp_program *xdp_program__open_file(const char *filename,
-					   const char *prog_name,
+					   const char *section_name,
 					   struct bpf_object_open_opts *opts);
 struct xdp_program *xdp_program__from_fd(int fd);
 struct xdp_program *xdp_program__from_id(__u32 prog_id);

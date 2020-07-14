@@ -43,12 +43,12 @@ int libxdp_strerror(int err, char *buf, size_t size);
 
 
 struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
-					      const char *prog_name);
+					      const char *section_name);
 struct xdp_program *xdp_program__find_file(const char *filename,
-					   const char *prog_name,
+					   const char *section_name,
 					   struct bpf_object_open_opts *opts);
 struct xdp_program *xdp_program__open_file(const char *filename,
-					   const char *prog_name,
+					   const char *section_name,
 					   struct bpf_object_open_opts *opts);
 struct xdp_program *xdp_program__from_fd(int fd);
 struct xdp_program *xdp_program__from_id(__u32 prog_id);

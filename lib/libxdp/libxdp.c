@@ -753,7 +753,7 @@ void xdp_program__close(struct xdp_program *xdp_prog)
 
 static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 				      struct bpf_object *obj,
-				      const char *prog_name,
+				      const char *section_name,
 				      bool external)
 {
 	struct bpf_program *bpf_prog;
@@ -762,15 +762,15 @@ static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 	if (!xdp_prog || !obj)
 		return -EINVAL;
 
-	if (prog_name)
-		bpf_prog = bpf_object__find_program_by_name(obj, prog_name);
+	if (section_name)
+		bpf_prog = bpf_object__find_program_by_title(obj, section_name);
 	else
 		bpf_prog = bpf_program__next(NULL, obj);
 
 	if(!bpf_prog) {
-		pr_warn("Couldn't find xdp program%s%s in bpf object\n",
-			prog_name ? " with name " : "",
-			prog_name ?: "");
+		pr_warn("Couldn't find xdp program in bpf object%s%s\n",
+			section_name ? " section " : "",
+			section_name ?: "");
 		return -ENOENT;
 	}
 
@@ -791,7 +791,7 @@ static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 }
 
 struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
-					      const char *prog_name)
+					      const char *section_name)
 {
 	struct xdp_program *xdp_prog;
 	int err;
@@ -803,7 +803,7 @@ struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
 	if (IS_ERR(xdp_prog))
 		return xdp_prog;
 
-	err = xdp_program__fill_from_obj(xdp_prog, obj, prog_name, true);
+	err = xdp_program__fill_from_obj(xdp_prog, obj, section_name, true);
 	if (err)
 		goto err;
 
@@ -882,7 +882,7 @@ out:
 }
 
 struct xdp_program *xdp_program__open_file(const char *filename,
-					   const char *prog_name,
+					   const char *section_name,
 					   struct bpf_object_open_opts *opts)
 {
 	struct xdp_program *xdp_prog;
@@ -908,7 +908,7 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 		goto err_close_obj;
 	}
 
-	err = xdp_program__fill_from_obj(xdp_prog, obj, prog_name, false);
+	err = xdp_program__fill_from_obj(xdp_prog, obj, section_name, false);
 	if (err)
 		goto err_close_prog;
 
@@ -962,7 +962,7 @@ static int find_bpf_file(char *buf, size_t buf_size, const char *progname)
 }
 
 struct xdp_program *xdp_program__find_file(const char *filename,
-					   const char *prog_name,
+					   const char *section_name,
 					   struct bpf_object_open_opts *opts)
 {
 	char buf[PATH_MAX];
@@ -972,8 +972,8 @@ struct xdp_program *xdp_program__find_file(const char *filename,
 	if (err)
 		return ERR_PTR(err);
 
-	pr_debug("Loading XDP program '%s' from '%s'\n", prog_name, buf);
-	return xdp_program__open_file(buf, prog_name, opts);
+	pr_debug("Loading XDP program from '%s' section '%s'\n", buf, section_name);
+	return xdp_program__open_file(buf, section_name, opts);
 }
 
 static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
@@ -1767,7 +1767,7 @@ xdp_multiprog__generate(struct xdp_program **progs,
 		return mp;
 
 	dispatcher = xdp_program__find_file("xdp-dispatcher.o",
-					    "xdp_dispatcher", NULL);
+					    "xdp/dispatcher", NULL);
 	if (IS_ERR(dispatcher)) {
 		err = PTR_ERR(dispatcher);
 		pr_warn("Couldn't open BPF file %s\n", buf);
