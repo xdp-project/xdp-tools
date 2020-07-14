@@ -1,6 +1,6 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 XDP_FILTER=${XDP_FILTER:-./xdp-filter}
-ALL_TESTS="test_load test_ports_allow test_ports_deny test_ipv6_allow test_ipv6_deny test_ipv4_allow test_ipv4_deny"
+ALL_TESTS="test_load test_ports_allow test_ports_deny test_ipv6_allow test_ipv6_deny test_ipv4_allow test_ipv4_deny test_ether_allow test_ether_deny"
 
 try_feat()
 {
@@ -198,6 +198,36 @@ test_ipv4_deny()
     check_ping4 OK
     check_run $XDP_FILTER ip -m src -r $INSIDE_IP4
     check_ping4 FAIL
+    check_run $XDP_FILTER unload $NS -v
+}
+
+test_ether_allow()
+{
+    check_ping6 OK
+    check_run $XDP_FILTER load  $NS -v
+    check_run $XDP_FILTER ether $OUTSIDE_MAC
+    check_ping6 FAIL
+    check_run $XDP_FILTER ether -r $OUTSIDE_MAC
+    check_ping6 OK
+    check_run $XDP_FILTER ether -m src $INSIDE_MAC
+    check_ping6 FAIL
+    check_run $XDP_FILTER ether -m src -r $INSIDE_MAC
+    check_ping6 OK
+    check_run $XDP_FILTER unload $NS -v
+}
+
+test_ether_deny()
+{
+    check_ping6 OK
+    check_run $XDP_FILTER load -p deny $NS -v
+    check_run $XDP_FILTER ether $OUTSIDE_MAC
+    check_ping6 OK
+    check_run $XDP_FILTER ether -r $OUTSIDE_MAC
+    check_ping6 FAIL
+    check_run $XDP_FILTER ether -m src $INSIDE_MAC
+    check_ping6 OK
+    check_run $XDP_FILTER ether -m src -r $INSIDE_MAC
+    check_ping6 FAIL
     check_run $XDP_FILTER unload $NS -v
 }
 
