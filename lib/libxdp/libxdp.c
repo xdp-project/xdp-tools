@@ -2058,7 +2058,9 @@ int xdp_multiprog__detach(struct xdp_multiprog *mp)
 	if (err)
 		return err;
 
-	return xdp_multiprog__unpin(mp);
+	if (!mp->is_legacy)
+		err = xdp_multiprog__unpin(mp);
+	return err;
 }
 
 
