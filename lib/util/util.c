@@ -408,6 +408,8 @@ int iterate_iface_multiprogs(multiprog_callback cb, void *arg)
 		if (IS_ERR_OR_NULL(mp)) {
 			if (PTR_ERR(mp) != -ENOENT) {
 				err = PTR_ERR(mp);
+				pr_warn("Error getting XDP status for interface %s: %s\n",
+					idx->if_name, strerror(-err));
 				goto out;
 			}
 			mp = NULL;
