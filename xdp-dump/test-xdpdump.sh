@@ -115,6 +115,11 @@ test_capt_pcapng()
     local HW=$(uname -m | sed -e 's/[]\/$*+.^|[]/\\&/g')
     local OS=$(uname -snrv | sed -e 's/[]\/$+*.^|[]/\\&/g')
     local INFOS_REGEX=""
+    local OLD_CAPINFOS=0
+
+    if [[ "$(capinfos --help)" == *"Capinfos (Wireshark) 2."* ]]; then
+        OLD_CAPINFOS=1
+    fi
 
     INFOS_REGEX+="(File type:           Wireshark\/\.\.\. - pcapng.*"
     INFOS_REGEX+="Capture hardware:    $HW.*"
@@ -123,12 +128,16 @@ test_capt_pcapng()
     INFOS_REGEX+="Interface #0 info:.*"
     INFOS_REGEX+="Name = ${NS}@fentry.*"
     INFOS_REGEX+="Description = ${NS}:xdp_dispatcher\(\)@fentry.*"
-    INFOS_REGEX+="Hardware = driver: \"veth\", version: \"1\.0\", fw-version: \"\", rom-version: \"\", bus-info: \"\".*"
+    if [ $OLD_CAPINFOS -eq 0 ]; then
+        INFOS_REGEX+="Hardware = driver: \"veth\", version: \"1\.0\", fw-version: \"\", rom-version: \"\", bus-info: \"\".*"
+    fi
     INFOS_REGEX+="Time precision = nanoseconds \(9\).*"
     INFOS_REGEX+="Interface #1 info:.*"
     INFOS_REGEX+="Name = ${NS}@fexit.*"
     INFOS_REGEX+="Description = ${NS}:xdp_dispatcher\(\)@fexit.*"
-    INFOS_REGEX+="Hardware = driver: \"veth\", version: \"1\.0\", fw-version: \"\", rom-version: \"\", bus-info: \"\".*"
+    if [ $OLD_CAPINFOS -eq 0 ]; then
+        INFOS_REGEX+="Hardware = driver: \"veth\", version: \"1\.0\", fw-version: \"\", rom-version: \"\", bus-info: \"\".*"
+    fi
     INFOS_REGEX+="Time precision = nanoseconds \(9\))"
 
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
