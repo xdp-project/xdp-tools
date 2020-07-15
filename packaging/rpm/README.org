@@ -11,6 +11,18 @@ commit made in (1.) on top of this and start over from the beginning. This
 ensures that we don't end up with a whole series of package revisions just to
 fix minor errors.
 
+** Prerequisites
+
+This assumes that the Fedora and RHEL dist-git repositories are checked out in
+=$FEDORA_DISTGIT_DIR= and =$RHEL_DISTGIT_DIR= respectively, and that the user
+has valid Kerberos tickets exist for Fedora and RHEL infrastructure (=kinit
+username@FEDORAPROJECT.ORG= and =kinit username@REDHAT.COM respectively=). The
+dist-git repositories can be found here:
+
+Fedora: https://src.fedoraproject.org/rpms/xdp-tools (master branch)
+RHEL: http://pkgs.devel.redhat.com/cgit/rpms/xdp-tools/ (rhel-8.3.0 branch)
+
+** Steps
 
 To release a new version of xdp-tools, follow these steps:
 
