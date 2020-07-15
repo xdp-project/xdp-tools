@@ -65,7 +65,7 @@ Display a list of available interfaces and any XDP program loaded
 ** -i, --interface <ifname>
 Listen on interface =ifname=. Note that if no XDP program is loaded on the
 interface it will use libpcap's live capture mode to capture the packets.
-** --perf-wakeup <events>
+** --perf-wakeup <events>                                     :feat_perfbuf:
 Let the Kernel wake up =xdpdump= once for every =<events>= being posted in the
 perf ring buffer. The higher the number the less the impact is on the actual
 XDP program. The default value is 0, which automatically calculates the

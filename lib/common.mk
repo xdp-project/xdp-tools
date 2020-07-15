@@ -14,7 +14,6 @@ XDP_C = ${XDP_TARGETS:=.c}
 XDP_OBJ = ${XDP_C:.c=.o}
 USER_C := ${USER_TARGETS:=.c}
 USER_OBJ := ${USER_C:.c=.o}
-MAN_OBJ := ${MAN_PAGE:.8=.man}
 XDP_OBJ_INSTALL ?= $(XDP_OBJ)
 
 # Expect this is defined by including Makefile, but define if not
@@ -63,7 +62,7 @@ all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) $(DISPATCHER_OBJ) man
 
 .PHONY: clean
 clean::
-	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(USER_GEN) $(MAN_OBJ) $(MAN_PAGE) *.ll
+	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(USER_GEN) $(MAN_PAGE) *.ll
 
 .PHONY: install
 install: all install_local
@@ -124,12 +123,9 @@ MAN_FILES :=
 else
 man: $(MAN_PAGE)
 MAN_FILES := $(MAN_PAGE)
-$(MAN_OBJ): README.org $(LIBMK)
-	$(Q)$(EMACS) -Q --batch --find-file $< --eval "(progn (require 'ox-man)(org-man-export-to-man))"
-
-$(MAN_PAGE): $(MAN_OBJ)
-	$(QUIET_GEN)sed -e "1 s/DATE/$(shell date '+%B %_d, %Y')/" -e "1 s/VERSION/v$(TOOLS_VERSION)/" $< > $@
-
+$(MAN_PAGE): README.org $(LIBMK) $(LIB_DIR)/export-man.el
+	$(QUIET_GEN)$(EMACS) -Q --batch --load "$(LIB_DIR)/export-man.el" \
+		--eval "(export-man-page \"$@\" \"$<\" \"$(HAVE_FEATURES)\" \"v$(TOOLS_VERSION)\")"
 endif
 
 .PHONY: test
