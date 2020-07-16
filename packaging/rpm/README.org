@@ -11,35 +11,69 @@ commit made in (1.) on top of this and start over from the beginning. This
 ensures that we don't end up with a whole series of package revisions just to
 fix minor errors.
 
-** Prerequisites
-
-This assumes that the Fedora and RHEL dist-git repositories are checked out in
-=$FEDORA_DISTGIT_DIR= and =$RHEL_DISTGIT_DIR= respectively, and that the user
-has valid Kerberos tickets exist for Fedora and RHEL infrastructure (=kinit
-username@FEDORAPROJECT.ORG= and =kinit username@REDHAT.COM respectively=). The
-dist-git repositories can be found here:
-
-Fedora: https://src.fedoraproject.org/rpms/xdp-tools (master branch)
-RHEL: http://pkgs.devel.redhat.com/cgit/rpms/xdp-tools/ (rhel-8.3.0 branch)
 
 ** Steps
 
 To release a new version of xdp-tools, follow these steps:
 
-1. Bump version in =version.mk= and =packacing/rpm/xdp-tools.spec= -- don't
+1. Make sure you have valid Kerberos tickets exist for the Fedora and RHEL
+   infrastructure:
+
+   #+begin_src sh
+   kinit <username>@FEDORAPROJECT.ORG
+   kinit <username>@REDHAT.COM
+   #+end_src
+
+2. Checkout this git repository as well as the RHEL and Fedora dist-git's.
+   Also, make sure you move to the correct branch for RHEL and Fedora.
+   Below is an example of how you could do this:
+
+   #+begin_src sh
+   export VERSION="<version, for example 1.0.0~beta3>"
+   mkdir release_$VERSION
+   cd release_$VERSION
+   git clone git@github.com:xdp-project/xdp-tools.git
+   cd xdp-tools
+   export XDP_TOOLS_DIR=$(pwd)
+
+   rhpkg clone xdp-tools xdp-tools-RHEL
+   cd xdp-tools-RHEL
+   rhpkg switch-branch -l
+   rhpkg switch-branch rhel-8.3.0
+   export RHEL_DISTGIT_DIR=$(pwd)
+   cd ..
+
+   fedpkg clone xdp-tools xdp-tools-FEDORA
+   cd xdp-tools-FEDORA
+   fedpkg switch-branch -l
+   export FEDORA_DISTGIT_DIR=$(pwd)
+   cd ..
+   #+end_src
+
+3. Bump version in =version.mk= and =packacing/rpm/xdp-tools.spec= -- don't
    forget a changelog entry in the latter. Commit this, bug don't tag and push
    until the rest of the steps below completed successfully.
 
-2. Run =make archive= to generate a source tarball (xdp-tools-$VERSION.tar.gz).
+4. Run =make archive= to generate a source tarball (xdp-tools-$VERSION.tar.gz).
+   #+begin_src sh
+   cd $XDP_TOOLS_DIR
+   git submodule init
+   git submodule update
+   make archive
+   #+end_src
 
-3. Copy source tarball to =~/rpmbuild/SOURCES=.
+5. Copy source tarball to =~/rpmbuild/SOURCES=.
+   #+begin_src sh
+   mkdir -p ~/rpmbuild/SOURCES/
+   cp ./xdp-tools-$VERSION.tar.gz ~/rpmbuild/SOURCES/
+   #+end_src
 
-4. Build local package using =rpmbuild -ba packaging/rpm/xdp-tools.spec=.
+6. Build local package using =rpmbuild -ba packaging/rpm/xdp-tools.spec=.
 
-5. Check that building a scratch build on Fedora infrastructure works:
-   =fedpkg scratch-build --srpm ~/rpmbuild/SRPMS/xdp-tools-$VERSION.fcXX.src.rpm=
+7. Check that building a scratch build on Fedora infrastructure works:
+   =cd $FEDORA_DISTGIT_DIR && fedpkg scratch-build --srpm ~/rpmbuild/SRPMS/xdp-tools-$VERSION.fcXX.src.rpm=
 
-6. Sync the xdp-tools.spec file to dist-git (but don't commit anything yet):
+7. Sync the xdp-tools.spec file to dist-git (but don't commit anything yet):
    - For Fedora, just copy over the new version
    - For RHEL, copy over the new version, then manually inspect the git diff and
      revert any changes specific to RHEL. This is mainly the changelog and the
@@ -47,14 +81,15 @@ To release a new version of xdp-tools, follow these steps:
 
    Make sure to be on the right branch in each dist-git.
 
-7. Create an SRPM and scratch build for RHEL (in RHEL dist-git directory):
+8. Create an SRPM and scratch build for RHEL (in RHEL dist-git directory):
    #+begin_src sh
+   cd $RHEL_DISTGIT_DIR
    cp ~/rpmbuild/SOURCES/xdp-tools-$VERSION.tar.gz .
    rhpkg srpm
    rhpkg scratch-build --srpm xdp-tools-$VERSION.el8.src.rpm
    #+end_src
 
-8. Upload new sources files to both Fedora and RHEL - this will also update
+9. Upload new sources files to both Fedora and RHEL - this will also update
    the 'sources' file in each directory, which is why we didn't commit
    anything earlier:
    #+begin_src sh
@@ -74,7 +109,7 @@ To release a new version of xdp-tools, follow these steps:
    reference a valid Bugzilla ID. See the commit log for earlier commits for
    syntax for this.
 
-9. Push the dist-git repositories and request builds for each:
+10. Push the dist-git repositories and request builds for each:
    #+begin_src sh
    cd $FEDORA_DISTGIT_DIR
    git push
@@ -85,17 +120,17 @@ To release a new version of xdp-tools, follow these steps:
    rhpkg build
    #+end_src
 
-10. Tag the commit in the xdp-tools repo and push the branch and tags to github.
+11. Tag the commit in the xdp-tools repo and push the branch and tags to github.
     Tag syntax is =v$VERSION=, where =~betaX= becomes =-betaX= (git doesn't
     allow tildes in tag names).
 
-11. Wait for the CI gating emails to tick in. Check any failures in the CI
+12. Wait for the CI gating emails to tick in. Check any failures in the CI
     dashboard and waive and/or fix as necessary. Then talk to QE to have them
     run the =manual.sst_networking.xdp-tools.tier1= tests and mark it as
     completed; this will cause the build to be tagged rhel-$VERSION-candidate (from
     rhel-$VERSION-gate) and allow it to proceed.
 
-12. Add the new build to the errata; this may entail moving the errata status
+13. Add the new build to the errata; this may entail moving the errata status
     back to =NEW_FILES=. After adding the new build, it should be moved to QE
     state; if this is not immediately possible, just resolve any issues blocking
     it.
