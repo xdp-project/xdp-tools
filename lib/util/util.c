@@ -189,7 +189,7 @@ int attach_xdp_program(struct xdp_program *prog, const struct iface *iface,
 
 	err = xdp_program__attach(prog, iface->ifindex, mode);
 	if (err) {
-		if (pin_root_path)
+		if (pin_root_path && err != -EEXIST)
 			unlink(pin_path);
 		return err;
 	}
