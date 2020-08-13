@@ -54,19 +54,19 @@ static int set_rlimit(unsigned int min_limit)
 		return -ENOMEM;
 	}
 
-        if (min_limit) {
+	if (min_limit) {
 		if (limit.rlim_cur >= min_limit) {
 			pr_debug("Current rlimit %lu already >= minimum %u\n",
 				 limit.rlim_cur, min_limit);
 			return 0;
 		}
-                pr_debug("Setting rlimit to minimum %u\n", min_limit);
+		pr_debug("Setting rlimit to minimum %u\n", min_limit);
 		limit.rlim_cur = min_limit;
-        } else {
+	} else {
 		pr_debug("Doubling current rlimit of %lu\n", limit.rlim_cur);
 		limit.rlim_cur <<= 1;
-        }
-        limit.rlim_max = max(limit.rlim_cur, limit.rlim_max);
+	}
+	limit.rlim_max = max(limit.rlim_cur, limit.rlim_max);
 
 	err = setrlimit(RLIMIT_MEMLOCK, &limit);
 	if (err) {
@@ -117,7 +117,7 @@ int find_bpf_file(char *buf, size_t buf_size, const char *progname)
 }
 
 struct bpf_object *open_bpf_file(const char *progname,
-                                 struct bpf_object_open_opts *opts)
+				 struct bpf_object_open_opts *opts)
 {
 	char buf[PATH_MAX];
 	int err;
@@ -191,14 +191,13 @@ int attach_xdp_program(struct xdp_program *prog, const struct iface *iface,
 
 	err = make_dir_subdir(pin_root_path, "programs");
 	if (err) {
-		pr_warn("Unable to create pin directory: %s\n",
-			strerror(-err));
+		pr_warn("Unable to create pin directory: %s\n", strerror(-err));
 		return err;
 	}
 
 	err = try_snprintf(pin_path, sizeof(pin_path), "%s/programs/%s/%s",
 			   pin_root_path, iface->ifname,
-			     xdp_program__name(prog));
+			   xdp_program__name(prog));
 	if (err)
 		return err;
 
@@ -210,8 +209,7 @@ int attach_xdp_program(struct xdp_program *prog, const struct iface *iface,
 	}
 
 	pr_debug("Program '%s' loaded on interface '%s'%s\n",
-		 xdp_program__name(prog),
-		 iface->ifname,
+		 xdp_program__name(prog), iface->ifname,
 		 mode == XDP_MODE_SKB ? " in skb mode" : "");
 
 	err = xdp_program__pin(prog, pin_path);
@@ -297,8 +295,7 @@ int get_pinned_program(const struct iface *iface, const char *pin_root_path,
 	while ((de = readdir(dr)) != NULL) {
 		struct xdp_program *prog;
 
-		if (!strcmp(".", de->d_name) ||
-		    !strcmp("..", de->d_name))
+		if (!strcmp(".", de->d_name) || !strcmp("..", de->d_name))
 			continue;
 
 		err = try_snprintf(pin_path, sizeof(pin_path),
@@ -345,8 +342,8 @@ out:
 	return ret;
 }
 
-int iterate_pinned_programs(const char *pin_root_path,
-			    program_callback cb, void *arg)
+int iterate_pinned_programs(const char *pin_root_path, program_callback cb,
+			    void *arg)
 {
 	char pin_path[PATH_MAX];
 	struct dirent *de;
@@ -367,8 +364,7 @@ int iterate_pinned_programs(const char *pin_root_path,
 		struct xdp_program *prog = NULL;
 		struct iface iface = {};
 
-		if (!strcmp(".", de->d_name) ||
-		    !strcmp("..", de->d_name))
+		if (!strcmp(".", de->d_name) || !strcmp("..", de->d_name))
 			continue;
 
 		iface.ifname = de->d_name;
@@ -412,7 +408,7 @@ int iterate_iface_multiprogs(multiprog_callback cb, void *arg)
 		return err;
 	}
 
-	for (idx = indexes; idx->if_index; idx++){
+	for (idx = indexes; idx->if_index; idx++) {
 		struct xdp_multiprog *mp;
 		struct iface iface = {
 			.ifindex = idx->if_index,
@@ -457,8 +453,8 @@ static const char *bpf_find_mntpt_single(unsigned long magic, char *mnt,
 					 int len, const char *mntpt)
 {
 	if (bpf_is_valid_mntpt(mntpt, magic)) {
-		strncpy(mnt, mntpt, len-1);
-		mnt[len-1] = '\0';
+		strncpy(mnt, mntpt, len - 1);
+		mnt[len - 1] = '\0';
 		return mnt;
 	}
 
@@ -489,8 +485,8 @@ static const char *bpf_find_mntpt(const char *fstype, unsigned long magic,
 	if (fp == NULL)
 		return NULL;
 
-	while (fscanf(fp, "%*s %" textify(PATH_MAX) "s %99s %*s %*d %*d\n",
-		      mnt, type) == 2) {
+	while (fscanf(fp, "%*s %" textify(PATH_MAX) "s %99s %*s %*d %*d\n", mnt,
+		      type) == 2) {
 		if (strcmp(type, fstype) == 0)
 			break;
 	}
@@ -522,7 +518,7 @@ static const char *bpf_get_work_dir()
 	static char bpf_wrk_dir[PATH_MAX];
 	static const char *mnt;
 	static bool bpf_mnt_cached;
-	static const char * const bpf_known_mnts[] = {
+	static const char *const bpf_known_mnts[] = {
 		BPF_DIR_MNT,
 		"/bpf",
 		0,
@@ -532,8 +528,8 @@ static const char *bpf_get_work_dir()
 	if (bpf_mnt_cached)
 		return mnt;
 
-	mnt = bpf_find_mntpt("bpf", BPF_FS_MAGIC, bpf_tmp,
-			     sizeof(bpf_tmp), bpf_known_mnts);
+	mnt = bpf_find_mntpt("bpf", BPF_FS_MAGIC, bpf_tmp, sizeof(bpf_tmp),
+			     bpf_known_mnts);
 	if (!mnt) {
 		mnt = BPF_DIR_MNT;
 		ret = bpf_mnt_check_target(mnt);
@@ -544,7 +540,7 @@ static const char *bpf_get_work_dir()
 	}
 
 	strncpy(bpf_wrk_dir, mnt, sizeof(bpf_wrk_dir));
-	bpf_wrk_dir[sizeof(bpf_wrk_dir) -1] = '\0';
+	bpf_wrk_dir[sizeof(bpf_wrk_dir) - 1] = '\0';
 	mnt = bpf_wrk_dir;
 out:
 	bpf_mnt_cached = true;
@@ -610,7 +606,7 @@ int unlink_pinned_map(int dir_fd, const char *map_name)
 	return 0;
 }
 
-#define XDP_UNKNOWN	XDP_REDIRECT + 1
+#define XDP_UNKNOWN (XDP_REDIRECT + 1)
 #ifndef XDP_ACTION_MAX
 #define XDP_ACTION_MAX (XDP_UNKNOWN + 1)
 #endif
@@ -626,9 +622,9 @@ static const char *xdp_action_names[XDP_ACTION_MAX] = {
 
 const char *action2str(__u32 action)
 {
-        if (action < XDP_ACTION_MAX)
-                return xdp_action_names[action];
-        return NULL;
+	if (action < XDP_ACTION_MAX)
+		return xdp_action_names[action];
+	return NULL;
 }
 
 int check_bpf_environ(const char *pin_root_path)
@@ -652,7 +648,7 @@ int check_bpf_environ(const char *pin_root_path)
 	 *
 	 * Ignore return code because an error shouldn't abort running.
 	 */
-	set_rlimit(1024*1024);
+	set_rlimit(1024 * 1024);
 
 	return 0;
 }
@@ -664,11 +660,8 @@ static pid_t prog_pid = 0;
 
 void prog_lock_release(int signal)
 {
+	struct sigaction sigact = { .sa_flags = SA_RESETHAND };
 	int err;
-	struct sigaction sigact = {
-		.sa_flags = SA_RESETHAND
-	};
-
 
 	if (prog_lock_fd < 0 || !prog_lock_file)
 		return;
@@ -701,14 +694,11 @@ out:
 	}
 }
 
-
 int prog_lock_get(const char *progname)
 {
 	char buf[PATH_MAX];
 	int err;
-	struct sigaction sigact = {
-		.sa_handler = prog_lock_release
-	};
+	struct sigaction sigact = { .sa_handler = prog_lock_release };
 
 	if (prog_lock_fd >= 0) {
 		pr_warn("Attempt to get prog_lock twice.\n");
@@ -738,7 +728,7 @@ int prog_lock_get(const char *progname)
 		return err;
 	}
 
-	prog_lock_fd = open(prog_lock_file, O_WRONLY|O_CREAT|O_EXCL, 0644);
+	prog_lock_fd = open(prog_lock_file, O_WRONLY | O_CREAT | O_EXCL, 0644);
 	if (prog_lock_fd < 0) {
 		err = -errno;
 		if (err == -EEXIST) {
@@ -755,7 +745,7 @@ int prog_lock_get(const char *progname)
 				return err;
 			}
 
-			len = read(fd, buf, sizeof(buf)-1);
+			len = read(fd, buf, sizeof(buf) - 1);
 			close(fd);
 			if (len > 0) {
 				buf[len] = '\0';
