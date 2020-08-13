@@ -37,13 +37,10 @@ int try_snprintf(char *buf, size_t buf_len, const char *format, ...)
 	return 0;
 }
 
-int double_rlimit()
+static int set_rlimit(unsigned int min_limit)
 {
 	struct rlimit limit;
 	int err = 0;
-
-	pr_debug("Permission denied when loading eBPF object; "
-		 "raising rlimit and retrying\n");
 
 	err = getrlimit(RLIMIT_MEMLOCK, &limit);
 	if (err) {
@@ -57,9 +54,19 @@ int double_rlimit()
 		return -ENOMEM;
 	}
 
-	pr_debug("Doubling current rlimit of %lu\n", limit.rlim_cur);
-	limit.rlim_cur <<= 1;
-	limit.rlim_max = max(limit.rlim_cur, limit.rlim_max);
+        if (min_limit) {
+		if (limit.rlim_cur >= min_limit) {
+			pr_debug("Current rlimit %lu already >= minimum %u\n",
+				 limit.rlim_cur, min_limit);
+			return 0;
+		}
+                pr_debug("Setting rlimit to minimum %u\n", min_limit);
+		limit.rlim_cur = min_limit;
+        } else {
+		pr_debug("Doubling current rlimit of %lu\n", limit.rlim_cur);
+		limit.rlim_cur <<= 1;
+        }
+        limit.rlim_max = max(limit.rlim_cur, limit.rlim_max);
 
 	err = setrlimit(RLIMIT_MEMLOCK, &limit);
 	if (err) {
@@ -69,6 +76,14 @@ int double_rlimit()
 	}
 
 	return 0;
+}
+
+int double_rlimit()
+{
+	pr_debug("Permission denied when loading eBPF object; "
+		 "raising rlimit and retrying\n");
+
+	return set_rlimit(0);
 }
 
 int find_bpf_file(char *buf, size_t buf_size, const char *progname)
@@ -630,6 +645,14 @@ int check_bpf_environ(const char *pin_root_path)
 			"Please mount bpffs at %s\n", BPF_DIR_MNT);
 		return 1;
 	}
+
+	/* Try to avoid probing errors due to rlimit exhaustion by starting out
+	 * with an rlimit of 1 MiB. This is not going to solve all issues, but
+	 * it will at least make things work when there is nothing else loaded.
+	 *
+	 * Ignore return code because an error shouldn't abort running.
+	 */
+	set_rlimit(1024*1024);
 
 	return 0;
 }
