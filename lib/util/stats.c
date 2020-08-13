@@ -17,7 +17,6 @@
 #include "util.h"
 #include "logging.h"
 
-
 #define NANOSEC_PER_SEC 1000000000 /* 10^9 */
 static int gettime(__u64 *nstime)
 {
@@ -30,7 +29,7 @@ static int gettime(__u64 *nstime)
 		return res;
 	}
 
-	*nstime = (__u64) t.tv_sec * NANOSEC_PER_SEC + t.tv_nsec;
+	*nstime = (__u64)t.tv_sec * NANOSEC_PER_SEC + t.tv_nsec;
 	return 0;
 }
 
@@ -41,7 +40,7 @@ static double calc_period(struct record *r, struct record *p)
 
 	period = r->timestamp - p->timestamp;
 	if (period > 0)
-		period_ = ((double) period / NANOSEC_PER_SEC);
+		period_ = ((double)period / NANOSEC_PER_SEC);
 
 	return period_;
 }
@@ -53,14 +52,13 @@ int stats_print_one(struct stats_record *stats_rec)
 	int i, err;
 
 	/* Print for each XDP actions stats */
-	for (i = 0; i < XDP_ACTION_MAX; i++)
-	{
+	for (i = 0; i < XDP_ACTION_MAX; i++) {
 		char *fmt = "  %-35s %'11lld pkts %'11lld KiB\n";
 		const char *action = action2str(i);
 
-		rec  = &stats_rec->stats[i];
+		rec = &stats_rec->stats[i];
 		packets = rec->total.rx_packets;
-		bytes   = rec->total.rx_bytes;
+		bytes = rec->total.rx_bytes;
 
 		if (rec->enabled) {
 			err = printf(fmt, action, packets, bytes / 1024);
@@ -72,8 +70,7 @@ int stats_print_one(struct stats_record *stats_rec)
 	return 0;
 }
 
-int stats_print(struct stats_record *stats_rec,
-		struct stats_record *stats_prev)
+int stats_print(struct stats_record *stats_rec, struct stats_record *stats_prev)
 {
 	struct record *rec, *prev;
 	__u64 packets, bytes;
@@ -91,13 +88,12 @@ int stats_print(struct stats_record *stats_rec,
 	}
 
 	/* Print for each XDP actions stats */
-	for (i = 0; i < XDP_ACTION_MAX; i++)
-	{
+	for (i = 0; i < XDP_ACTION_MAX; i++) {
 		char *fmt = "%-12s %'11lld pkts (%'10.0f pps)"
-			" %'11lld KiB (%'6.0f Mbits/s)\n";
+			    " %'11lld KiB (%'6.0f Mbits/s)\n";
 		const char *action = action2str(i);
 
-		rec  = &stats_rec->stats[i];
+		rec = &stats_rec->stats[i];
 		prev = &stats_prev->stats[i];
 
 		if (!rec->enabled)
@@ -108,7 +104,7 @@ int stats_print(struct stats_record *stats_rec,
 
 		period = calc_period(rec, prev);
 		if (period == 0)
-		       return 0;
+			return 0;
 
 		if (first) {
 			printf("Period of %fs ending at %lu.%06lu\n", period,
@@ -116,19 +112,17 @@ int stats_print(struct stats_record *stats_rec,
 			first = false;
 		}
 
-		pps     = packets / period;
+		pps = packets / period;
 
-		bps     = (bytes * 8)/ period / 1000000;
+		bps = (bytes * 8) / period / 1000000;
 
 		printf(fmt, action, rec->total.rx_packets, pps,
-		       rec->total.rx_bytes / 1024 , bps,
-		       period);
+		       rec->total.rx_bytes / 1024, bps, period);
 	}
 	printf("\n");
 
 	return 0;
 }
-
 
 /* BPF_MAP_TYPE_ARRAY */
 static int map_get_value_array(int fd, __u32 key, struct datarec *value)
@@ -208,8 +202,7 @@ static int map_collect(int fd, __u32 map_type, __u32 key, struct record *rec)
 	return 0;
 }
 
-int stats_collect(int map_fd, __u32 map_type,
-		  struct stats_record *stats_rec)
+int stats_collect(int map_fd, __u32 map_type, struct stats_record *stats_rec)
 {
 	/* Collect all XDP actions stats  */
 	__u32 key;
@@ -219,7 +212,8 @@ int stats_collect(int map_fd, __u32 map_type,
 		if (!stats_rec->stats[key].enabled)
 			continue;
 
-		err = map_collect(map_fd, map_type, key, &stats_rec->stats[key]);
+		err = map_collect(map_fd, map_type, key,
+				  &stats_rec->stats[key]);
 		if (err)
 			return err;
 	}
@@ -227,7 +221,8 @@ int stats_collect(int map_fd, __u32 map_type,
 	return 0;
 }
 
-int stats_poll(int map_fd, const char *pin_dir, const char *map_name, int interval)
+int stats_poll(int map_fd, const char *pin_dir, const char *map_name,
+	       int interval)
 {
 	struct bpf_map_info info = {};
 	struct stats_record prev, record = { 0 };
@@ -250,7 +245,7 @@ int stats_poll(int map_fd, const char *pin_dir, const char *map_name, int interv
 	/* Get initial reading quickly */
 	stats_collect(map_fd, map_type, &record);
 
-	usleep(1000000/4);
+	usleep(1000000 / 4);
 
 	while (1) {
 		memset(&info, 0, sizeof(info));
@@ -271,7 +266,7 @@ int stats_poll(int map_fd, const char *pin_dir, const char *map_name, int interv
 		err = stats_print(&record, &prev);
 		if (err)
 			return err;
-		usleep(interval*1000);
+		usleep(interval * 1000);
 	}
 
 	return 0;

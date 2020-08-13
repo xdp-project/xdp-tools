@@ -22,11 +22,11 @@ static int print_func(enum logging_print_level level, const char *format,
 static int libbpf_print_func(enum libbpf_print_level level, const char *format,
 			     va_list args)
 {
-	return print_func(level+1, format, args);
+	return print_func(level + 1, format, args);
 }
 
 static int libbpf_silent_func(enum libbpf_print_level level, const char *format,
-			     va_list args)
+			      va_list args)
 {
 	return 0;
 }
@@ -34,13 +34,13 @@ static int libbpf_silent_func(enum libbpf_print_level level, const char *format,
 static int libxdp_print_func(enum libxdp_print_level level, const char *format,
 			     va_list args)
 {
-	return print_func(level+1, format, args);
+	return print_func(level + 1, format, args);
 }
 
-#define __printf(a, b)	__attribute__((format(printf, a, b)))
+#define __printf(a, b) __attribute__((format(printf, a, b)))
 
-__printf(2, 3)
-void logging_print(enum logging_print_level level, const char *format, ...)
+__printf(2, 3) void logging_print(enum logging_print_level level,
+				  const char *format, ...)
 {
 	va_list args;
 

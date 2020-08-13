@@ -21,7 +21,6 @@
 #include "xdp/xdp_stats_kern.h"
 #include "xdp/parsing_helpers.h"
 
-
 #ifdef FILT_MODE_DENY
 #define VERDICT_HIT XDP_PASS
 #define VERDICT_MISS XDP_DROP
@@ -32,27 +31,29 @@
 #define FEATURE_OPMODE FEAT_ALLOW
 #endif
 
-#define CHECK_RET(ret) do {						\
-		if ((ret) < 0) {					\
-			action = XDP_ABORTED;				\
-			goto out;					\
-		}							\
-	} while(0)
-
-#define CHECK_VERDICT(type, param)					\
-	do {								\
-		if ((action = lookup_verdict_##type(param)) != VERDICT_MISS) \
-			goto out;					\
+#define CHECK_RET(ret)                        \
+	do {                                  \
+		if ((ret) < 0) {              \
+			action = XDP_ABORTED; \
+			goto out;             \
+		}                             \
 	} while (0)
 
-#define CHECK_MAP(map, key, mask) do {					\
-		__u64 *value;						\
-		value = bpf_map_lookup_elem(map, key);			\
-		if ((value) && (*(value) & (mask)) == (mask)) {	\
-			*value += (1 << COUNTER_SHIFT);		\
-			return VERDICT_HIT;				\
-		}							\
-	} while(0)
+#define CHECK_VERDICT(type, param)                                           \
+	do {                                                                 \
+		if ((action = lookup_verdict_##type(param)) != VERDICT_MISS) \
+			goto out;                                            \
+	} while (0)
+
+#define CHECK_MAP(map, key, mask)                               \
+	do {                                                    \
+		__u64 *value;                                   \
+		value = bpf_map_lookup_elem(map, key);          \
+		if ((value) && (*(value) & (mask)) == (mask)) { \
+			*value += (1 << COUNTER_SHIFT);         \
+			return VERDICT_HIT;                     \
+		}                                               \
+	} while (0)
 
 #if defined(FILT_MODE_TCP) || defined(FILT_MODE_UDP)
 struct {
@@ -208,7 +209,8 @@ int FUNCNAME(struct xdp_md *ctx)
 	CHECK_RET(eth_type);
 	CHECK_VERDICT_ETHERNET(eth);
 
-#if defined(FILT_MODE_IPV4) || defined(FILT_MODE_IPV6) || defined(FILT_MODE_TCP) || defined(FILT_MODE_UDP)
+#if defined(FILT_MODE_IPV4) || defined(FILT_MODE_IPV6) || \
+	defined(FILT_MODE_TCP) || defined(FILT_MODE_UDP)
 	struct iphdr *iphdr;
 	struct ipv6hdr *ipv6hdr;
 	int ip_type;
@@ -247,7 +249,9 @@ out:
 }
 
 char _license[] SEC("license") = "GPL";
-__u32 _features SEC("features") = (FEATURE_ETHERNET | FEATURE_IPV4 | FEATURE_IPV6 | FEATURE_UDP | FEATURE_TCP | FEATURE_OPMODE);
+__u32 _features SEC("features") = (FEATURE_ETHERNET | FEATURE_IPV4 |
+				   FEATURE_IPV6 | FEATURE_UDP | FEATURE_TCP |
+				   FEATURE_OPMODE);
 
 #else
 #error "Multiple includes of xdpfilt_prog.h"

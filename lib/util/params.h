@@ -12,18 +12,18 @@
 #include <bpf/libbpf.h>
 
 enum option_type {
-                  OPT_NONE,
-                  OPT_BOOL,
-                  OPT_FLAGS,
-                  OPT_STRING,
-                  OPT_U16,
-                  OPT_U32,
-                  OPT_MACADDR,
-                  OPT_IFNAME,
-                  OPT_IPADDR,
-                  OPT_ENUM,
-                  OPT_MULTISTRING,
-                  __OPT_MAX
+	OPT_NONE,
+	OPT_BOOL,
+	OPT_FLAGS,
+	OPT_STRING,
+	OPT_U16,
+	OPT_U32,
+	OPT_MACADDR,
+	OPT_IFNAME,
+	OPT_IPADDR,
+	OPT_ENUM,
+	OPT_MULTISTRING,
+	__OPT_MAX
 };
 
 struct prog_option {
@@ -42,51 +42,53 @@ struct prog_option {
 };
 
 struct flag_val {
-        const char *flagstring;
-        unsigned int flagval;
+	const char *flagstring;
+	unsigned int flagval;
 };
 
 struct enum_val {
-        const char *name;
-        unsigned int value;
+	const char *name;
+	unsigned int value;
 };
 
 struct multistring {
-        const char **strings;
-        size_t num_strings;
+	const char **strings;
+	size_t num_strings;
 };
 
 struct iface {
-        char *ifname;
-        int ifindex;
+	char *ifname;
+	int ifindex;
 };
 
 struct ip_addr {
-        int af;
-        union {
-                struct in_addr addr4;
-                struct in6_addr addr6;
-        } addr;
+	int af;
+	union {
+		struct in_addr addr4;
+		struct in6_addr addr6;
+	} addr;
 };
 
 struct mac_addr {
-        unsigned char addr[ETH_ALEN];
+	unsigned char addr[ETH_ALEN];
 };
 
 #define sizeof_field(TYPE, MEMBER) sizeof((((TYPE *)0)->MEMBER))
 
-#define DEFINE_OPTION(_name, _type, _cfgtype, _cfgmember, ...) {	\
-		.cfg_size = sizeof(_cfgtype),				\
-		.opt_size = sizeof_field(_cfgtype, _cfgmember),	\
-		.cfg_offset = offsetof(_cfgtype, _cfgmember),		\
-		.name = _name,						\
-		.type = _type,						\
-		__VA_ARGS__}
+#define DEFINE_OPTION(_name, _type, _cfgtype, _cfgmember, ...)               \
+	{                                                                    \
+		.cfg_size = sizeof(_cfgtype),                                \
+		.opt_size = sizeof_field(_cfgtype, _cfgmember),              \
+		.cfg_offset = offsetof(_cfgtype, _cfgmember), .name = _name, \
+		.type = _type, __VA_ARGS__                                   \
+	}
 
-#define END_OPTIONS 	{}
+#define END_OPTIONS \
+	{           \
+	}
 
-#define FOR_EACH_OPTION(_options, _opt)                 \
-        for (_opt = _options; _opt->type != OPT_NONE; _opt++)
+#define FOR_EACH_OPTION(_options, _opt) \
+	for (_opt = _options; _opt->type != OPT_NONE; _opt++)
 
 struct prog_command {
 	const char *name;
@@ -97,32 +99,33 @@ struct prog_command {
 	bool no_cfg;
 };
 
-#define DEFINE_COMMAND(_name, _doc) {					\
-		.name = textify(_name),				\
-		.func = do_##_name,					\
-		.options = _name ##_options,				\
-		.default_cfg = &defaults_##_name,			\
-		.doc = _doc}
-#define DEFINE_COMMAND_NODEF(_name, _doc) {				\
-		.name = textify(_name),				\
-		.func = do_##_name,					\
-		.options = _name ##_options,				\
-		.doc = _doc}
+#define DEFINE_COMMAND(_name, _doc)                                           \
+	{                                                                     \
+		.name = textify(_name), .func = do_##_name,                   \
+		.options = _name##_options, .default_cfg = &defaults_##_name, \
+		.doc = _doc                                                   \
+	}
+#define DEFINE_COMMAND_NODEF(_name, _doc)                   \
+	{                                                   \
+		.name = textify(_name), .func = do_##_name, \
+		.options = _name##_options, .doc = _doc     \
+	}
 
-#define END_COMMANDS {}
+#define END_COMMANDS \
+	{            \
+	}
 
-const char* get_enum_name(const struct enum_val *vals, unsigned int value);
+const char *get_enum_name(const struct enum_val *vals, unsigned int value);
 void print_flags(char *buf, size_t buf_len, const struct flag_val *flags,
-                 unsigned long flags_val);
+		 unsigned long flags_val);
 void print_addr(char *buf, size_t buf_len, const struct ip_addr *addr);
 void print_macaddr(char *buf, size_t buf_len, const struct mac_addr *addr);
 bool is_prefix(const char *prefix, const char *string);
 void usage(const char *prog_name, const char *doc,
-           const struct prog_option *long_options, bool full);
+	   const struct prog_option *long_options, bool full);
 
-int parse_cmdline_args(int argc, char **argv,
-                       struct prog_option *long_options,
-                       void *cfg, const char *prog, const char *doc,
+int parse_cmdline_args(int argc, char **argv, struct prog_option *long_options,
+		       void *cfg, const char *prog, const char *doc,
 		       const void *defaults);
 
 int dispatch_commands(const char *argv0, int argc, char **argv,

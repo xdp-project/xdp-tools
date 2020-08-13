@@ -23,7 +23,7 @@
 #include "common_kern_user.h"
 #include "prog_features.h"
 
-#define NEED_RLIMIT (20*1024*1024) /* 10 Mbyte */
+#define NEED_RLIMIT (20 * 1024 * 1024) /* 10 Mbyte */
 #define PROG_NAME "xdp-filter"
 
 struct flag_val map_flags_all[] = {
@@ -87,7 +87,7 @@ int map_get_counter_flags(int fd, void *key, __u64 *counter, __u8 *flags)
 		return -ENOMEM;
 
 	if ((bpf_map_lookup_elem(fd, key, values)) != 0) {
-		err =  -ENOENT;
+		err = -ENOENT;
 		goto out;
 	}
 
@@ -130,7 +130,7 @@ int map_set_flags(int fd, void *key, __u8 flags)
 		values[i]  = flags ? (values[i] & ~MAP_FLAGS) | (flags & MAP_FLAGS) : 0;
 
 	pr_debug("Setting new map value %" PRIu64 " from flags %u\n",
-		 (uint64_t) values[0], flags);
+		 (uint64_t)values[0], flags);
 
 	err = bpf_map_update_elem(fd, key, values, 0);
 
@@ -506,8 +506,7 @@ int print_ports(int map_fd)
 
 	printf("Filtered ports:\n");
 	printf("  %-40s Mode             Hit counter\n", "");
-	FOR_EACH_MAP_KEY(err, map_fd, map_key, next_key)
-	{
+	FOR_EACH_MAP_KEY (err, map_fd, map_key, next_key) {
 		char buf[100];
 		__u64 counter;
 		__u8 flags = 0;
@@ -619,11 +618,10 @@ out:
 
 int __print_ips(int map_fd, int af)
 {
-	struct ip_addr map_key = {.af = af}, next_key = {};
+	struct ip_addr map_key = { .af = af }, next_key = {};
 	int err;
 
-	FOR_EACH_MAP_KEY(err, map_fd, map_key.addr, next_key.addr)
-	{
+	FOR_EACH_MAP_KEY (err, map_fd, map_key.addr, next_key.addr) {
 		char flagbuf[100], addrbuf[100];
 		__u8 flags = 0;
 		__u64 counter;
@@ -786,8 +784,7 @@ int print_ethers(int map_fd)
 
 	printf("Filtered MAC addresses:\n");
 	printf("  %-40s Mode             Hit counter\n", "");
-	FOR_EACH_MAP_KEY(err, map_fd, map_key, next_key)
-	{
+	FOR_EACH_MAP_KEY (err, map_fd, map_key, next_key) {
 		char modebuf[100], addrbuf[100];
 		__u8 flags = 0;
 		__u64 counter;
@@ -812,7 +809,7 @@ static const struct etheropt {
 	bool print_status;
 	bool remove;
 } defaults_ether = {
-		.mode = MAP_FLAG_DST,
+	.mode = MAP_FLAG_DST,
 };
 
 static struct prog_option ether_options[] = {
@@ -866,12 +863,9 @@ out:
 	return err;
 }
 
-static struct prog_option status_options[] = {
-	END_OPTIONS
-};
+static struct prog_option status_options[] = { END_OPTIONS };
 
-int print_iface_status(const struct iface *iface,
-		       struct xdp_program *prog,
+int print_iface_status(const struct iface *iface, struct xdp_program *prog,
 		       enum xdp_attach_mode mode, void *arg)
 {
 	__u32 feat = 0;
@@ -963,9 +957,7 @@ out:
 
 static const struct pollopt {
 	__u32 interval;
-} defaults_poll = {
-		.interval = 1000
-};
+} defaults_poll = { .interval = 1000 };
 
 static struct prog_option poll_options[] = {
 	DEFINE_OPTION("interval", OPT_U32, struct pollopt, interval,
@@ -978,7 +970,7 @@ static struct prog_option poll_options[] = {
 int do_poll(const void *cfg, const char *pin_root_path)
 {
 	int err = 0, map_fd = -1;
- 	const struct pollopt *opt = cfg;
+	const struct pollopt *opt = cfg;
 
 	if (!opt->interval) {
 		err = -EINVAL;
@@ -1024,7 +1016,6 @@ int do_help(const void *cfg, const char *pin_root_path)
 	return -1;
 }
 
-
 static const struct prog_command cmds[] = {
 	DEFINE_COMMAND(load, "Load xdp-filter on an interface"),
 	DEFINE_COMMAND(unload, "Unload xdp-filter from an interface"),
@@ -1033,7 +1024,7 @@ static const struct prog_command cmds[] = {
 	DEFINE_COMMAND(ether, "Add or remove MAC addresses from xdp-filter"),
 	DEFINE_COMMAND(poll, "Poll xdp-filter statistics"),
 	DEFINE_COMMAND_NODEF(status, "Show xdp-filter status"),
-	{.name = "help", .func = do_help, .no_cfg = true},
+	{ .name = "help", .func = do_help, .no_cfg = true },
 	END_COMMANDS
 };
 
@@ -1049,9 +1040,8 @@ union all_opts {
 int main(int argc, char **argv)
 {
 	if (argc > 1)
-		return dispatch_commands(argv[1], argc-1, argv+1,
-					 cmds, sizeof(union all_opts),
-					 PROG_NAME);
+		return dispatch_commands(argv[1], argc - 1, argv + 1, cmds,
+					 sizeof(union all_opts), PROG_NAME);
 
 	return do_help(NULL, NULL);
 }

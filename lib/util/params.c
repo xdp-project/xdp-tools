@@ -133,7 +133,7 @@ void print_macaddr(char *buf, size_t buf_len, const struct mac_addr *addr)
 		buf += len;
 		buf_len -= len;
 
-		if (i < ETH_ALEN-1) {
+		if (i < ETH_ALEN - 1) {
 			*buf++ = ':';
 			buf_len -= 1;
 		}
@@ -145,7 +145,7 @@ void print_macaddr(char *buf, size_t buf_len, const struct mac_addr *addr)
 static const struct flag_val *find_flag(const struct flag_val *flag_vals,
 					const char *chr)
 {
-	while(flag_vals->flagstring) {
+	while (flag_vals->flagstring) {
 		if (strcmp(chr, flag_vals->flagstring) == 0)
 			return flag_vals;
 		flag_vals++;
@@ -173,7 +173,7 @@ static int handle_flags(char *optarg, void *tgt, void *typearg)
 
 		if (!c)
 			break;
-		optarg = c+1;
+		optarg = c + 1;
 	}
 	*opt_set = flagval;
 	return 0;
@@ -203,7 +203,7 @@ void print_addr(char *buf, size_t buf_len, const struct ip_addr *addr)
 static int handle_ipaddr(char *optarg, void *tgt, void *typearg)
 {
 	struct ip_addr *addr = tgt;
- 	int af;
+	int af;
 
 	af = strchr(optarg, ':') ? AF_INET6 : AF_INET;
 
@@ -219,7 +219,7 @@ static int handle_ipaddr(char *optarg, void *tgt, void *typearg)
 static const struct enum_val *find_enum(const struct enum_val *enum_vals,
 					const char *chr)
 {
-	while(enum_vals->name) {
+	while (enum_vals->name) {
 		if (strcmp(chr, enum_vals->name) == 0)
 			return enum_vals;
 		enum_vals++;
@@ -241,7 +241,8 @@ static int handle_enum(char *optarg, void *tgt, void *typearg)
 	return 0;
 }
 
-static void print_enum_vals(char *buf, size_t buf_len, const struct enum_val *vals)
+static void print_enum_vals(char *buf, size_t buf_len,
+			    const struct enum_val *vals)
 {
 	const struct enum_val *val;
 	bool first = true;
@@ -340,8 +341,6 @@ static void print_help_enum(const struct prog_option *opt)
 	printf("  %s (valid values: %s)", opt->help, buf);
 }
 
-
-
 static const struct helprinter {
 	void (*func)(const struct prog_option *opt);
 } help_printers[__OPT_MAX] = {
@@ -363,7 +362,7 @@ static void _print_positional(const struct prog_option *long_options)
 {
 	const struct prog_option *opt;
 
-	FOR_EACH_OPTION(long_options, opt) {
+	FOR_EACH_OPTION (long_options, opt) {
 		if (!opt->positional)
 			continue;
 
@@ -371,12 +370,11 @@ static void _print_positional(const struct prog_option *long_options)
 	}
 }
 
-static void _print_options(const struct prog_option *poptions,
-			   bool required)
+static void _print_options(const struct prog_option *poptions, bool required)
 {
 	const struct prog_option *opt;
 
-	FOR_EACH_OPTION(poptions, opt) {
+	FOR_EACH_OPTION (poptions, opt) {
 		if (opt->required != required)
 			continue;
 
@@ -396,7 +394,7 @@ static void _print_options(const struct prog_option *poptions,
 				continue;
 			}
 			if (opt->metavar)
-				snprintf(&buf[pos], BUFSIZE-pos, " %s",
+				snprintf(&buf[pos], BUFSIZE - pos, " %s",
 					 opt->metavar);
 			printf("%-22s", buf);
 		}
@@ -420,7 +418,7 @@ bool is_prefix(const char *pfx, const char *str)
 }
 
 void usage(const char *prog_name, const char *doc,
-           const struct prog_option *poptions, bool full)
+	   const struct prog_option *poptions, bool full)
 {
 	const struct prog_option *opt;
 	int num_req = 0;
@@ -434,7 +432,7 @@ void usage(const char *prog_name, const char *doc,
 		return;
 	}
 
-	FOR_EACH_OPTION(poptions, opt)
+	FOR_EACH_OPTION (poptions, opt)
 		if (opt->required)
 			num_req++;
 
@@ -453,8 +451,7 @@ void usage(const char *prog_name, const char *doc,
 }
 
 static int prog_options_to_options(struct prog_option *poptions,
-				   struct option **options,
-				   char **optstring)
+				   struct option **options, char **optstring)
 {
 	int num = 0, num_cmn = 0, n_sopt = VERSION_SHORT_OPT + 1;
 	struct option *new_options, *nopt;
@@ -469,13 +466,14 @@ static int prog_options_to_options(struct prog_option *poptions,
 	};
 
 	for (nopt = common_opts; nopt->name; nopt++) {
-		num++; num_cmn++;
+		num++;
+		num_cmn++;
 		if (nopt->val != VERSION_SHORT_OPT)
 			*c++ = nopt->val;
 	}
 
-	FOR_EACH_OPTION(poptions, opt)
-		if(!opt->positional)
+	FOR_EACH_OPTION (poptions, opt)
+		if (!opt->positional)
 			num++;
 
 	new_options = malloc(sizeof(struct option) * num);
@@ -484,7 +482,7 @@ static int prog_options_to_options(struct prog_option *poptions,
 	memcpy(new_options, &common_opts, sizeof(struct option) * num_cmn);
 	nopt = new_options + num_cmn;
 
-	FOR_EACH_OPTION(poptions, opt) {
+	FOR_EACH_OPTION (poptions, opt) {
 		if (opt->positional)
 			continue;
 		if (opt->short_opt) {
@@ -522,19 +520,18 @@ err:
 	return -1;
 }
 
-static struct prog_option *find_opt(struct prog_option *all_opts,
-				    int optchar)
+static struct prog_option *find_opt(struct prog_option *all_opts, int optchar)
 {
 	struct prog_option *opt;
 
-	FOR_EACH_OPTION(all_opts, opt)
+	FOR_EACH_OPTION (all_opts, opt)
 		if (opt->short_opt == optchar)
 			return opt;
 	return NULL;
 }
 
-static int set_opt(void *cfg, struct prog_option *all_opts,
-		   int optchar, char *optarg)
+static int set_opt(void *cfg, struct prog_option *all_opts, int optchar,
+		   char *optarg)
 {
 	struct prog_option *opt;
 	int ret;
@@ -558,7 +555,7 @@ static int set_pos_opt(void *cfg, struct prog_option *all_opts, char *optarg)
 	struct prog_option *o, *opt = NULL;
 	int ret;
 
-	FOR_EACH_OPTION(all_opts, o) {
+	FOR_EACH_OPTION (all_opts, o) {
 		if (o->positional && (!o->was_set || opt_is_multi(o))) {
 			opt = o;
 			break;
@@ -575,8 +572,7 @@ static int set_pos_opt(void *cfg, struct prog_option *all_opts, char *optarg)
 	return ret;
 }
 
-int parse_cmdline_args(int argc, char **argv,
-		       struct prog_option *poptions,
+int parse_cmdline_args(int argc, char **argv, struct prog_option *poptions,
 		       void *cfg, const char *prog, const char *doc,
 		       const void *defaults)
 {
@@ -625,7 +621,7 @@ int parse_cmdline_args(int argc, char **argv,
 		}
 	}
 
-	FOR_EACH_OPTION(poptions, opt_iter) {
+	FOR_EACH_OPTION (poptions, opt_iter) {
 		if (opt_iter->was_set)
 			continue;
 		if (opt_iter->required) {

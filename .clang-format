@@ -67,6 +67,7 @@ FixNamespaceComments: false # Unknown to clang-format-4.0
 ForEachMacros:
   - 'FOR_EACH_OPTION'
   - 'FOR_EACH_MAP_KEY'
+  - 'bpf_object__for_each_map'
 
 IncludeBlocks: Preserve # Unknown to clang-format-5.0
 IncludeCategories:

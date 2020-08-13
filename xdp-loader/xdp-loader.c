@@ -19,7 +19,6 @@
 
 #define PROG_NAME "xdp-loader"
 
-
 static const struct loadopt {
 	bool help;
 	struct iface iface;
@@ -203,9 +202,9 @@ int do_unload(const void *cfg, const char *pin_root_path)
 		goto out;
 	}
 
-	if (opt->all || (xdp_multiprog__is_legacy(mp) &&
-			 (xdp_program__id(xdp_multiprog__main_prog(mp)) ==
-			  opt->prog_id))) {
+	if (opt->all ||
+	    (xdp_multiprog__is_legacy(mp) &&
+	     (xdp_program__id(xdp_multiprog__main_prog(mp)) == opt->prog_id))) {
 		err = xdp_multiprog__detach(mp);
 		if (err) {
 			pr_warn("Unable to detach XDP program: %s\n",
@@ -241,33 +240,29 @@ out:
 	return err ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
-static struct prog_option status_options[] = {
-	END_OPTIONS
-};
+static struct prog_option status_options[] = { END_OPTIONS };
 
-static char *print_bpf_tag(char buf[BPF_TAG_SIZE*2+1],
+static char *print_bpf_tag(char buf[BPF_TAG_SIZE * 2 + 1],
 			   const unsigned char tag[BPF_TAG_SIZE])
 {
 	int i;
 
 	for (i = 0; i < BPF_TAG_SIZE; i++)
-		sprintf(&buf[i*2], "%02x", tag[i]);
-	buf[BPF_TAG_SIZE*2] = '\0';
+		sprintf(&buf[i * 2], "%02x", tag[i]);
+	buf[BPF_TAG_SIZE * 2] = '\0';
 	return buf;
 }
 
 int print_iface_status(const struct iface *iface,
-		       const struct xdp_multiprog *mp,
-		       void *arg)
+		       const struct xdp_multiprog *mp, void *arg)
 {
 	struct xdp_program *prog, *dispatcher;
-	char tag[BPF_TAG_SIZE*2+1];
+	char tag[BPF_TAG_SIZE * 2 + 1];
 	char buf[STRERR_BUFSIZE];
 	int err;
 
 	if (!mp) {
-		printf("%-16s <no XDP program>\n",
-		       iface->ifname);
+		printf("%-16s <no XDP program>\n", iface->ifname);
 		return 0;
 	}
 
@@ -288,7 +283,7 @@ int print_iface_status(const struct iface *iface,
 
 		err = xdp_program__print_chain_call_actions(prog, buf,
 							    sizeof(buf));
-		if(err)
+		if (err)
 			return err;
 
 		printf("%-16s %-5d %-16s %-8s %-4u %-17s %s\n",
@@ -332,12 +327,11 @@ int do_help(const void *cfg, const char *pin_root_path)
 	return -1;
 }
 
-
 static const struct prog_command cmds[] = {
 	DEFINE_COMMAND(load, "Load an XDP program on an interface"),
 	DEFINE_COMMAND(unload, "Unload an XDP program from an interface"),
 	DEFINE_COMMAND_NODEF(status, "Show XDP program status"),
-	{.name = "help", .func = do_help, .no_cfg = true},
+	{ .name = "help", .func = do_help, .no_cfg = true },
 	END_COMMANDS
 };
 
@@ -349,9 +343,8 @@ union all_opts {
 int main(int argc, char **argv)
 {
 	if (argc > 1)
-		return dispatch_commands(argv[1], argc-1, argv+1,
-					 cmds, sizeof(union all_opts),
-					 PROG_NAME);
+		return dispatch_commands(argv[1], argc - 1, argv + 1, cmds,
+					 sizeof(union all_opts), PROG_NAME);
 
 	return do_help(NULL, NULL);
 }
