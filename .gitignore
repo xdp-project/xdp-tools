@@ -58,3 +58,6 @@ xdp-dispatcher.c
 *.man
 
 /xdp-tools-*.tar.gz
+
+.ccls-cache
+compile_commands.json

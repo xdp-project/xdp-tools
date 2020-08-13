@@ -53,7 +53,7 @@ check_submodule:
 clobber:
 	touch config.mk
 	$(MAKE) clean
-	rm -f config.mk cscope.*
+	rm -f config.mk cscope.* compile_commands.json
 
 distclean: clobber
 
@@ -74,3 +74,6 @@ archive: xdp-tools-$(TOOLS_VERSION).tar.gz
 .PHONY: xdp-tools-$(TOOLS_VERSION).tar.gz
 xdp-tools-$(TOOLS_VERSION).tar.gz:
 	@./mkarchive.sh "$(TOOLS_VERSION)"
+
+compile_commands.json: clean
+	compiledb make V=1
