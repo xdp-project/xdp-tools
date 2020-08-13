@@ -32,6 +32,12 @@
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
 
+static const char *dispatcher_feature_err = \
+	"Got 'permission denied' error while attaching program to dispatcher.\n" \
+	"This most likely means that the kernel does not support the freplace\n" \
+	"dispatcher feature, either because it is too old, or because it is not\n" \
+	"yet supported on the current architecture.\n";
+
 struct xdp_program {
 	/* one of prog or prog_fd should be set */
 	struct bpf_program *bpf_prog;
@@ -1707,9 +1713,14 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 		lfd = bpf_raw_tracepoint_open(NULL, new_prog->prog_fd);
 		if (lfd < 0) {
 			err = lfd;
-			pr_warn("Failed to attach program %s to dispatcher: %s\n",
-				xdp_program__name(new_prog), strerror(-err));
-			goto err_free;
+                        if (err == -EPERM) {
+				pr_warn("%s\n", dispatcher_feature_err);
+				err = -EOPNOTSUPP;
+                        } else {
+				pr_warn("Failed to attach program %s to dispatcher: %s\n",
+					xdp_program__name(new_prog), strerror(-err));
+                        }
+                        goto err_free;
 		}
 
 		new_prog->attach_name = strdup(buf);
