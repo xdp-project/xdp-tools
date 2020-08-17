@@ -24,11 +24,11 @@
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
 
-#define FOR_EACH_MAP_KEY(_err, _map_fd, _map_key, _next_key)                \
-	for (_err = bpf_map_get_next_key(_map_fd, NULL, &_next_key);        \
+#define FOR_EACH_MAP_KEY(_err, _map_fd, _map_key, _prev_key)                \
+	for (_err = bpf_map_get_next_key(_map_fd, NULL, &_map_key);         \
              !_err;                                                         \
-	     _map_key = _next_key,                                          \
-	    _err = bpf_map_get_next_key(_map_fd, &_map_key, &_next_key))
+	     _prev_key = _map_key,                                          \
+	    _err = bpf_map_get_next_key(_map_fd, &_prev_key, &_map_key))
 
 #define min(x, y) ((x) < (y) ? x : y)
 #define max(x, y) ((x) > (y) ? x : y)
