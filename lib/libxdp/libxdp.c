@@ -279,6 +279,52 @@ static int xdp_lock_release(int lock_fd)
 	return err;
 }
 
+static int xdp_attach_fd(int prog_fd, int old_fd, int ifindex,
+			 enum xdp_attach_mode mode)
+{
+	int err = 0, xdp_flags = 0;
+	DECLARE_LIBBPF_OPTS(bpf_xdp_set_link_opts, opts, .old_fd = old_fd);
+
+	pr_debug("Replacing XDP fd %d with %d on ifindex %d\n",
+		 old_fd, prog_fd, ifindex);
+
+	if (old_fd == -1)
+		xdp_flags |= XDP_FLAGS_UPDATE_IF_NOEXIST;
+
+	switch (mode) {
+	case XDP_MODE_SKB:
+		xdp_flags |= XDP_FLAGS_SKB_MODE;
+		break;
+	case XDP_MODE_NATIVE:
+		xdp_flags |= XDP_FLAGS_DRV_MODE;
+		break;
+	case XDP_MODE_HW:
+		xdp_flags |= XDP_FLAGS_HW_MODE;
+		break;
+	case XDP_MODE_UNSPEC:
+		break;
+	}
+	err = bpf_set_link_xdp_fd_opts(ifindex, prog_fd, xdp_flags, &opts);
+	if (err < 0) {
+		pr_warn("Error attaching XDP program to ifindex %d: %s\n",
+			ifindex, strerror(-err));
+
+		switch (-err) {
+		case EBUSY:
+		case EEXIST:
+			pr_debug("XDP already loaded on device\n");
+			break;
+		case EOPNOTSUPP:
+			pr_debug(
+				"XDP mode not supported; try using SKB mode\n");
+			break;
+		default:
+			break;
+		}
+	}
+	return err;
+}
+
 const struct btf *xdp_program__btf(struct xdp_program *xdp_prog)
 {
 	if (!xdp_prog)
@@ -1978,8 +2024,7 @@ static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 				 struct xdp_multiprog *mp,
 				 enum xdp_attach_mode mode)
 {
-	int err = 0, xdp_flags = 0, prog_fd = -1, ifindex = -1;
-	DECLARE_LIBBPF_OPTS(bpf_xdp_set_link_opts, opts, .old_fd = -1);
+	int err = 0, prog_fd = -1, old_fd = -1, ifindex = -1;
 
 	if (!mp && !old_mp)
 		return -EINVAL;
@@ -1992,51 +2037,17 @@ static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 	}
 
 	if (old_mp) {
-		opts.old_fd = xdp_multiprog__main_fd(old_mp);
-		if (opts.old_fd < 0)
+		old_fd = xdp_multiprog__main_fd(old_mp);
+		if (old_fd < 0)
 			return -EINVAL;
 		if (ifindex > -1 && ifindex != old_mp->ifindex)
 			return -EINVAL;
 		ifindex = old_mp->ifindex;
-	} else {
-		xdp_flags |= XDP_FLAGS_UPDATE_IF_NOEXIST;
 	}
 
-	pr_debug("Replacing XDP fd %d with %d on ifindex %d\n",
-		 opts.old_fd, prog_fd, ifindex);
-
-	switch (mode) {
-	case XDP_MODE_SKB:
-		xdp_flags |= XDP_FLAGS_SKB_MODE;
-		break;
-	case XDP_MODE_NATIVE:
-		xdp_flags |= XDP_FLAGS_DRV_MODE;
-		break;
-	case XDP_MODE_HW:
-		xdp_flags |= XDP_FLAGS_HW_MODE;
-		break;
-	case XDP_MODE_UNSPEC:
-		break;
-	}
-
-	err = bpf_set_link_xdp_fd_opts(ifindex, prog_fd, xdp_flags, &opts);
-	if (err < 0) {
-		pr_warn("Error attaching XDP program to ifindex %d: %s\n",
-			ifindex, strerror(-err));
-
-		switch (-err) {
-		case EBUSY:
-		case EEXIST:
-			pr_debug("XDP already loaded on device\n");
-			break;
-		case EOPNOTSUPP:
-			pr_debug("XDP mode not supported; try using SKB mode\n");
-			break;
-		default:
-			break;
-		}
+	err = xdp_attach_fd(prog_fd, old_fd, ifindex, mode);
+	if (err < 0)
 		goto err;
-	}
 
 	if (mp)
 		pr_debug("Loaded %zu programs on ifindex '%d'%s\n",
