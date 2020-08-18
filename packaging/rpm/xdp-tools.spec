@@ -97,7 +97,6 @@ make install V=1
 %{_libdir}/libxdp.so.1
 %{_libdir}/libxdp.so.%{_soversion}
 %{_libdir}/bpf/xdp-dispatcher.o
-%{_libdir}/pkgconfig/libxdp.pc
 %{_mandir}/man3/*
 
 %files -n libxdp-static
@@ -106,6 +105,7 @@ make install V=1
 %files -n libxdp-devel
 %{_includedir}/xdp/*.h
 %{_libdir}/libxdp.so
+%{_libdir}/pkgconfig/libxdp.pc
 
 %changelog
 * Wed Jul 15 2020 Eelco Chaudron <echaudro@redhat.com> 1.0.0~beta3-0.1
