@@ -1,6 +1,6 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 XDP_FILTER=${XDP_FILTER:-./xdp-filter}
-ALL_TESTS="test_load test_ports_allow test_ports_deny test_ipv6_allow test_ipv6_deny test_ipv4_allow test_ipv4_deny test_ether_allow test_ether_deny"
+ALL_TESTS="test_load test_print test_ports_allow test_ports_deny test_ipv6_allow test_ipv6_deny test_ipv4_allow test_ipv4_deny test_ether_allow test_ether_deny"
 
 try_feat()
 {
@@ -228,6 +228,35 @@ test_ether_deny()
     check_ping6 OK
     check_run $XDP_FILTER ether -m src -r $INSIDE_MAC
     check_ping6 FAIL
+    check_run $XDP_FILTER unload $NS -v
+}
+
+check_status()
+{
+    local match
+    local output
+    match="$1"
+    output=$($XDP_FILTER status)
+
+    if echo "$output" | grep $match; then
+        echo "Output check for $match SUCCESS"
+        return 0
+    else
+        echo "Output check for $match FAILURE"
+        echo "Output: $output"
+        exit 1
+    fi
+}
+
+test_print()
+{
+    check_run $XDP_FILTER load $NS -v
+    check_run $XDP_FILTER ether aa:bb:cc:dd:ee:ff
+    check_status "aa:bb:cc:dd:ee:ff"
+    check_run $XDP_FILTER ip 1.2.3.4
+    check_status "1.2.3.4"
+    check_run $XDP_FILTER ip a:b:c:d:e:f
+    check_status "a:b:c:d:e:f"
     check_run $XDP_FILTER unload $NS -v
 }
 
