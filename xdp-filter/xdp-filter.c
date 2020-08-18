@@ -934,7 +934,7 @@ int do_status(const void *cfg, const char *pin_root_path)
 		map_fd = -1;
 	}
 
-	err = print_ips(pin_root_path);
+	err = print_ips();
 	if (err && err != -ENOENT)
 		goto out;
 
