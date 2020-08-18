@@ -77,13 +77,17 @@ int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 					  size_t buf_len);
 int xdp_program__pin(struct xdp_program *xdp_prog, const char *pin_path);
 int xdp_program__attach(struct xdp_program *xdp_prog,
-                        int ifindex, enum xdp_attach_mode mode);
+                        int ifindex, enum xdp_attach_mode mode,
+                        unsigned int flags);
 int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
-                              int ifindex, enum xdp_attach_mode mode);
+                              int ifindex, enum xdp_attach_mode mode,
+                              unsigned int flags);
 int xdp_program__detach(struct xdp_program *xdp_prog,
-                        int ifindex, enum xdp_attach_mode mode);
+                        int ifindex, enum xdp_attach_mode mode,
+                        unsigned int flags);
 int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
-                              int ifindex, enum xdp_attach_mode mode);
+                              int ifindex, enum xdp_attach_mode mode,
+                              unsigned int flags);
 
 struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex);
 struct xdp_program *xdp_multiprog__next_prog(const struct xdp_program *prog,

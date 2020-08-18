@@ -201,7 +201,7 @@ int attach_xdp_program(struct xdp_program *prog, const struct iface *iface,
 	if (err)
 		return err;
 
-	err = xdp_program__attach(prog, iface->ifindex, mode);
+	err = xdp_program__attach(prog, iface->ifindex, mode, 0);
 	if (err) {
 		if (pin_root_path && err != -EEXIST)
 			unlink(pin_path);
@@ -222,7 +222,7 @@ int attach_xdp_program(struct xdp_program *prog, const struct iface *iface,
 	return err;
 
 unload:
-	xdp_program__detach(prog, iface->ifindex, mode);
+	xdp_program__detach(prog, iface->ifindex, mode, 0);
 	return err;
 }
 
@@ -232,7 +232,7 @@ int detach_xdp_program(struct xdp_program *prog, const struct iface *iface,
 	char pin_path[PATH_MAX];
 	int err;
 
-	err = xdp_program__detach(prog, iface->ifindex, mode);
+	err = xdp_program__detach(prog, iface->ifindex, mode, 0);
 	if (err)
 		goto out;
 

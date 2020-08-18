@@ -137,7 +137,7 @@ retry:
 	}
 
 	err = xdp_program__attach_multi(progs, num_progs,
-					opt->iface.ifindex, opt->mode);
+					opt->iface.ifindex, opt->mode, 0);
 	if (err) {
 		if (err == -EPERM && !double_rlimit())
 			goto retry;
@@ -227,7 +227,7 @@ int do_unload(const void *cfg, const char *pin_root_path)
 		pr_debug("Detaching XDP program with ID %u from %s\n",
 			 xdp_program__id(prog), opt->iface.ifname);
 		err = xdp_program__detach(prog, opt->iface.ifindex,
-					  XDP_MODE_UNSPEC);
+					  XDP_MODE_UNSPEC, 0);
 		if (err) {
 			pr_warn("Unable to detach XDP program: %s\n",
 				strerror(-err));

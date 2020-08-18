@@ -1177,12 +1177,13 @@ static struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 }
 
 int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
-			      int ifindex, enum xdp_attach_mode mode)
+			      int ifindex, enum xdp_attach_mode mode,
+			      unsigned int flags)
 {
 	struct xdp_multiprog *old_mp, *mp;
 	int err = 0;
 
-	if (!progs || !num_progs)
+	if (!progs || !num_progs || flags)
 		return -EINVAL;
 
 	old_mp = xdp_multiprog__get_from_ifindex(ifindex);
@@ -1221,19 +1222,24 @@ out:
 }
 
 int xdp_program__attach(struct xdp_program *prog, int ifindex,
-			enum xdp_attach_mode mode)
+			enum xdp_attach_mode mode,
+			unsigned int flags)
 {
 	if (!prog || IS_ERR(prog))
 		return -EINVAL;
 
-	return xdp_program__attach_multi(&prog, 1, ifindex, mode);
+	return xdp_program__attach_multi(&prog, 1, ifindex, mode, flags);
 }
 
 int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
-			      int ifindex, enum xdp_attach_mode mode)
+			      int ifindex, enum xdp_attach_mode mode,
+			      unsigned int flags)
 {
 	struct xdp_multiprog *mp;
 	int err = 0, i;
+
+	if (flags)
+		return -EINVAL;
 
 	mp = xdp_multiprog__get_from_ifindex(ifindex);
 	if (IS_ERR_OR_NULL(mp) || mp->is_legacy) {
@@ -1290,12 +1296,13 @@ out:
 }
 
 int xdp_program__detach(struct xdp_program *prog, int ifindex,
-			enum xdp_attach_mode mode)
+			enum xdp_attach_mode mode,
+			unsigned int flags)
 {
 	if (!prog || IS_ERR(prog))
 		return -EINVAL;
 
-	return xdp_program__detach_multi(&prog, 1, ifindex, mode);
+	return xdp_program__detach_multi(&prog, 1, ifindex, mode, flags);
 }
 
 void xdp_multiprog__close(struct xdp_multiprog *mp)
