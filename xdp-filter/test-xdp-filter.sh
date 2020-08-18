@@ -238,7 +238,7 @@ check_status()
     match="$1"
     output=$($XDP_FILTER status)
 
-    if echo "$output" | grep $match; then
+    if echo "$output" | grep -q $match; then
         echo "Output check for $match SUCCESS"
         return 0
     else
@@ -255,8 +255,10 @@ test_print()
     check_status "aa:bb:cc:dd:ee:ff"
     check_run $XDP_FILTER ip 1.2.3.4
     check_status "1.2.3.4"
-    check_run $XDP_FILTER ip a:b:c:d:e:f
-    check_status "a:b:c:d:e:f"
+    check_run $XDP_FILTER ip aa::bb
+    check_status "aa::bb"
+    check_run $XDP_FILTER port 100
+    check_status "100.*dst,tcp,udp"
     check_run $XDP_FILTER unload $NS -v
 }
 
