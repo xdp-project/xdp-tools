@@ -1240,6 +1240,20 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 		return -EEXIST;
 	}
 
+	if (mode == XDP_MODE_HW) {
+		struct xdp_program *prog;
+
+		if (num_progs > 1)
+			return -EINVAL;
+
+		prog = progs[0];
+		err = xdp_program__load(prog);
+		if (err)
+			goto out;
+
+		return xdp_attach_fd(xdp_program__fd(prog), -1, ifindex, mode);
+	}
+
 	mp = xdp_multiprog__generate(progs, num_progs, ifindex);
 	if (IS_ERR(mp)) {
 		err = PTR_ERR(mp);
