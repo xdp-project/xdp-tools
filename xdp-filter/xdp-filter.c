@@ -501,12 +501,12 @@ out:
 
 int print_ports(int map_fd)
 {
-	__u32 map_key = -1, next_key = 0;
+	__u32 map_key = -1, prev_key = 0;
 	int err;
 
 	printf("Filtered ports:\n");
 	printf("  %-40s Mode             Hit counter\n", "");
-	FOR_EACH_MAP_KEY (err, map_fd, map_key, next_key) {
+	FOR_EACH_MAP_KEY (err, map_fd, map_key, prev_key) {
 		char buf[100];
 		__u64 counter;
 		__u8 flags = 0;
@@ -618,10 +618,10 @@ out:
 
 int __print_ips(int map_fd, int af)
 {
-	struct ip_addr map_key = { .af = af }, next_key = {};
+	struct ip_addr map_key = { .af = af }, prev_key = {};
 	int err;
 
-	FOR_EACH_MAP_KEY (err, map_fd, map_key.addr, next_key.addr) {
+	FOR_EACH_MAP_KEY (err, map_fd, map_key.addr, prev_key.addr) {
 		char flagbuf[100], addrbuf[100];
 		__u8 flags = 0;
 		__u64 counter;
@@ -779,12 +779,12 @@ out:
 
 int print_ethers(int map_fd)
 {
-	struct mac_addr map_key = {}, next_key = {};
+	struct mac_addr map_key = {}, prev_key = {};
 	int err;
 
 	printf("Filtered MAC addresses:\n");
 	printf("  %-40s Mode             Hit counter\n", "");
-	FOR_EACH_MAP_KEY (err, map_fd, map_key, next_key) {
+	FOR_EACH_MAP_KEY (err, map_fd, map_key, prev_key) {
 		char modebuf[100], addrbuf[100];
 		__u8 flags = 0;
 		__u64 counter;
