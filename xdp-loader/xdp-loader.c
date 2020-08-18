@@ -74,12 +74,15 @@ int do_load(const void *cfg, const char *pin_root_path)
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = opt->pin_path);
 
-	if (!opt->filenames.num_strings) {
+	num_progs = opt->filenames.num_strings;
+	if (!num_progs) {
 		pr_warn("Need at least one filename to load\n");
+		return EXIT_FAILURE;
+	} else if (num_progs > 1 && opt->mode == XDP_MODE_HW) {
+		pr_warn("Cannot attach multiple programs in HW mode\n");
 		return EXIT_FAILURE;
 	}
 
-	num_progs = opt->filenames.num_strings;
 	progs = calloc(num_progs, sizeof(*progs));
 	if (!progs) {
 		pr_warn("Couldn't allocate memory\n");
