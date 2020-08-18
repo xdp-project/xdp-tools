@@ -9,6 +9,7 @@
 #ifndef __LIBXDP_LIBXDP_H
 #define __LIBXDP_LIBXDP_H
 
+#include <stdio.h>
 #include <linux/bpf.h>
 #include <bpf/bpf.h>
 #include "xdp_helpers.h"
