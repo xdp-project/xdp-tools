@@ -34,8 +34,8 @@
 
 static const char *dispatcher_feature_err =
 	"This most likely means that the kernel does not support the features\n"
-	"needed by the dispatcher, either because it is too old entirely, or\n"
-	"because it is not yet supported on the current architecture.\n";
+	"needed by the multiprog dispatcher, either because it is too old entirely,\n"
+	"or because it is not yet supported on the current architecture.\n";
 
 struct xdp_program {
 	/* one of prog or prog_fd should be set */
