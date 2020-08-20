@@ -140,6 +140,14 @@ int libxdp_strerror(int err, char *buf, size_t size)
 	return libbpf_strerror(err, buf, size);
 }
 
+static char *libxdp_strerror_r(int err, char *dst, size_t size)
+{
+	int ret = libxdp_strerror(err, dst, size);
+	if (ret)
+		snprintf(dst, size, "ERROR: strerror_r(%d)=%d", err, ret);
+	return dst;
+}
+
 static int try_snprintf(char *buf, size_t buf_len, const char *format, ...)
 {
 	va_list args;
@@ -1407,6 +1415,7 @@ static struct xdp_multiprog *xdp_multiprog__new(int ifindex)
 
 static int xdp_multiprog__load(struct xdp_multiprog *mp)
 {
+	char buf[100];
 	int err = 0;
 
 	if (!mp || !mp->main_prog || mp->is_loaded || mp->is_legacy)
@@ -1417,7 +1426,8 @@ static int xdp_multiprog__load(struct xdp_multiprog *mp)
 
 	err = xdp_program__load(mp->main_prog);
 	if (err) {
-		pr_warn("Failed to load dispatcher: %s\n", strerror(-err));
+		pr_warn("Failed to load dispatcher: %s\n",
+			libxdp_strerror_r(err, buf, sizeof(buf)));
 		goto out;
 	}
 	mp->is_loaded = true;
