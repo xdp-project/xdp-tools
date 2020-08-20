@@ -1177,7 +1177,7 @@ static int cmp_xdp_programs(const void *_a, const void *_b)
 
 int xdp_program__pin(struct xdp_program *prog, const char *pin_path)
 {
-	if (!prog || !prog->prog_fd)
+	if (!prog || prog->prog_fd < 0)
 		return -EINVAL;
 
 	return bpf_program__pin(prog->bpf_prog, pin_path);
@@ -1214,7 +1214,7 @@ static struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 	/* Clone a loaded program struct by duplicating the fd and creating a
 	 * new structure from th ekernel state.
 	 */
-	if (!prog || !prog->prog_fd)
+	if (!prog || prog->prog_fd < 0)
 		return ERR_PTR(-EINVAL);
 
 	new_fd = fcntl(prog->prog_fd, F_DUPFD_CLOEXEC, 1);
