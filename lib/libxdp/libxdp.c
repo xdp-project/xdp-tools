@@ -1217,10 +1217,10 @@ static struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 	if (!prog || !prog->prog_fd)
 		return ERR_PTR(-EINVAL);
 
-	new_fd = fcntl(prog->prog_fd, F_DUPFD_CLOEXEC);
+	new_fd = fcntl(prog->prog_fd, F_DUPFD_CLOEXEC, 1);
 	if (new_fd < 0) {
 		err = -errno;
-		pr_warn("Error on fcntl: %s\n", strerror(-err));
+		pr_debug("Error on fcntl: %s\n", strerror(-err));
 		return ERR_PTR(err);
 	}
 
