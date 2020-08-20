@@ -33,10 +33,9 @@
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
 
 static const char *dispatcher_feature_err =
-	"Got 'permission denied' error while attaching program to dispatcher.\n"
-	"This most likely means that the kernel does not support the freplace\n"
-	"dispatcher feature, either because it is too old, or because it is not\n"
-	"yet supported on the current architecture.\n";
+	"This most likely means that the kernel does not support the features\n"
+	"needed by the dispatcher, either because it is too old entirely, or\n"
+	"because it is not yet supported on the current architecture.\n";
 
 struct xdp_program {
 	/* one of prog or prog_fd should be set */
@@ -1426,8 +1425,14 @@ static int xdp_multiprog__load(struct xdp_multiprog *mp)
 
 	err = xdp_program__load(mp->main_prog);
 	if (err) {
-		pr_warn("Failed to load dispatcher: %s\n",
-			libxdp_strerror_r(err, buf, sizeof(buf)));
+		if (err == -LIBBPF_ERRNO__VERIFY) {
+			pr_warn("Got verifier error while loading dispatcher.\n%s\n",
+				dispatcher_feature_err);
+			err = -EOPNOTSUPP;
+		} else {
+			pr_warn("Failed to load dispatcher: %s\n",
+				libxdp_strerror_r(err, buf, sizeof(buf)));
+		}
 		goto out;
 	}
 	mp->is_loaded = true;
@@ -1777,7 +1782,9 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 		if (lfd < 0) {
 			err = lfd;
 			if (err == -EPERM) {
-				pr_warn("%s\n", dispatcher_feature_err);
+				pr_warn("Got 'permission denied' error while "
+					"attaching program to dispatcher.\n%s\n",
+					dispatcher_feature_err);
 				err = -EOPNOTSUPP;
 			} else {
 				pr_warn("Failed to attach program %s to dispatcher: %s\n",
