@@ -1842,7 +1842,7 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	if (num_progs > 1)
 		qsort(progs, num_progs, sizeof(*progs), cmp_xdp_programs);
 
-	mp = xdp_multiprog__new(num_progs);
+	mp = xdp_multiprog__new(ifindex);
 	if (IS_ERR(mp))
 		return mp;
 
@@ -1861,7 +1861,6 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	}
 
 	mp->main_prog = dispatcher;
-	mp->ifindex = ifindex;
 
 	map = bpf_map__next(NULL, mp->main_prog->bpf_obj);
 	if (!map) {
