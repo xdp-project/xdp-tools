@@ -59,9 +59,8 @@ check_packet()
     local command="$2"
     local expect="$3"
     echo "Checking command '$command' filter '$filter'"
-    PID=$(start_background tcpdump -epni $NS "$filter")
+    PID=$(start_background tcpdump --immediate-mode -epni $NS "$filter")
     echo "Started listener as $PID"
-    sleep 1
     ns_exec bash -c "$command"
     sleep 1
     output=$(stop_background $PID)
