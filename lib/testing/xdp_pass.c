@@ -1,5 +1,11 @@
 #include <linux/bpf.h>
 #include <bpf/bpf_helpers.h>
+#include <xdp/xdp_helpers.h>
+
+struct {
+	__uint(priority, 10);
+	__uint(XDP_PASS, 1);
+} XDP_RUN_CONFIG(xdp_pass);
 
 SEC("prog")
 int xdp_pass(struct xdp_md *ctx)
