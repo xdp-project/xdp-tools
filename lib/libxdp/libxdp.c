@@ -1780,7 +1780,7 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 		/* The attach will disappear once this fd is closed */
 		lfd = bpf_raw_tracepoint_open(NULL, new_prog->prog_fd);
 		if (lfd < 0) {
-			err = lfd;
+			err = -errno;
 			if (err == -EPERM) {
 				pr_warn("Got 'permission denied' error while "
 					"attaching program to dispatcher.\n%s\n",
