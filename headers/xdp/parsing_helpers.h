@@ -24,6 +24,7 @@
 #include <linux/icmpv6.h>
 #include <linux/udp.h>
 #include <linux/tcp.h>
+#include <linux/in.h>
 
 /* Header cursor to keep track of current parsing position */
 struct hdr_cursor {
@@ -54,6 +55,12 @@ struct icmphdr_common {
 #ifndef VLAN_MAX_DEPTH
 #define VLAN_MAX_DEPTH 4
 #endif
+
+/* Longest chain of IPv6 extension headers to resolve */
+#ifndef IPV6_EXT_MAX_CHAIN
+#define IPV6_EXT_MAX_CHAIN 6
+#endif
+
 
 static __always_inline int proto_is_vlan(__u16 h_proto)
 {
@@ -101,6 +108,41 @@ static __always_inline int parse_ethhdr(struct hdr_cursor *nh, void *data_end,
 	return h_proto; /* network-byte-order */
 }
 
+static __always_inline int skip_ip6hdrext(struct hdr_cursor *nh,
+					  void *data_end,
+					  __u8 next_hdr_type)
+{
+	for (int i = 0; i < IPV6_EXT_MAX_CHAIN; ++i) {
+		struct ipv6_opt_hdr *hdr = nh->pos;
+
+		if (hdr + 1 > data_end)
+			return -1;
+
+		switch (next_hdr_type) {
+		case IPPROTO_HOPOPTS:
+		case IPPROTO_DSTOPTS:
+		case IPPROTO_ROUTING:
+		case IPPROTO_MH:
+			nh->pos = (char *)hdr + (hdr->hdrlen + 1) * 8;
+			next_hdr_type = hdr->nexthdr;
+			break;
+		case IPPROTO_AH:
+			nh->pos = (char *)hdr + (hdr->hdrlen + 2) * 4;
+			next_hdr_type = hdr->nexthdr;
+			break;
+		case IPPROTO_FRAGMENT:
+			nh->pos = (char *)hdr + 8;
+			next_hdr_type = hdr->nexthdr;
+			break;
+		default:
+			/* Found a header that is not an IPv6 extension header */
+			return next_hdr_type;
+		}
+	}
+
+	return -1;
+}
+
 static __always_inline int parse_ip6hdr(struct hdr_cursor *nh,
 					void *data_end,
 					struct ipv6hdr **ip6hdr)
@@ -117,7 +159,7 @@ static __always_inline int parse_ip6hdr(struct hdr_cursor *nh,
 	nh->pos = ip6h + 1;
 	*ip6hdr = ip6h;
 
-	return ip6h->nexthdr;
+	return skip_ip6hdrext(nh, data_end, ip6h->nexthdr);
 }
 
 static __always_inline int parse_iphdr(struct hdr_cursor *nh,
