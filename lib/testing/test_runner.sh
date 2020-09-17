@@ -450,6 +450,8 @@ TEST_DEFINITIONS="${1:-}"
 [ -f "$TEST_DEFINITIONS" ] || usage
 source "$TEST_DEFINITIONS"
 
+TOOL_TESTS_DIR="$(dirname "$TEST_DEFINITIONS")"
+
 shift
 trap teardown EXIT
 check_prereq

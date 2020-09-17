@@ -1,6 +1,6 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 XDP_FILTER=${XDP_FILTER:-./xdp-filter}
-ALL_TESTS="test_load test_print test_ports_allow test_ports_deny test_ipv6_allow test_ipv6_deny test_ipv4_allow test_ipv4_deny test_ether_allow test_ether_deny"
+ALL_TESTS="test_load test_print test_ports_allow test_ports_deny test_ipv6_allow test_ipv6_deny test_ipv4_allow test_ipv4_deny test_ether_allow test_ether_deny test_python_basic test_python_slow"
 
 try_feat()
 {
@@ -259,6 +259,65 @@ test_print()
     check_run $XDP_FILTER port 100
     check_status "100.*dst,tcp,udp"
     check_run $XDP_FILTER unload $NS -v
+}
+
+
+get_python()
+{
+    if [[ -z "${PYTHON:-}" ]]; then
+        local -a possible=(python3 python)
+        local -a available
+
+        available=($(which --skip-alias --skip-functions "${possible[@]}" 2> /dev/null))
+        # Return value of "which" is the number of failed arguments.
+        if [[ $? -ge "${#possible[@]}" ]]; then
+            # Could not find any Python executable.
+            return 1
+        fi
+        PYTHON="${available[0]}"
+    fi
+
+    $PYTHON -c "import xdp_test_harness" &> /dev/null
+    if [[ $? -ne 0 ]]; then
+        # Libraries are not installed.
+        return 1
+    fi
+
+    echo "$PYTHON"
+}
+
+run_python_test()
+{
+    local module="$1"
+    local module_path
+    local python
+
+    module_path="$(realpath --relative-to=. "$TOOL_TESTS_DIR" | sed "s/\//./g")"
+    if [[ $? -ne 0 ]] || [[ $module_path == "." ]]; then
+        return "$SKIPPED_TEST"
+    fi
+
+    python="$(get_python)"
+    if [[ $? -ne 0 ]]; then 
+        return "$SKIPPED_TEST"
+    fi
+
+    $python -m xdp_test_harness.runner client "$module_path"."$module"
+    if [[ $? -ne 0 ]]; then
+        return 1
+    fi
+
+    return 0
+}
+
+test_python_basic()
+{
+    run_python_test test_basic
+}
+
+test_python_slow()
+{
+    run_python_test test_slow
 }
 
 cleanup_tests()
