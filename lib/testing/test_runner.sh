@@ -442,6 +442,10 @@ if [ "$EUID" -ne "0" ]; then
     fi
 fi
 
+export XDP_FILTER
+export XDP_LOADER
+export XDPDUMP
+
 TEST_DEFINITIONS="${1:-}"
 [ -f "$TEST_DEFINITIONS" ] || usage
 source "$TEST_DEFINITIONS"
