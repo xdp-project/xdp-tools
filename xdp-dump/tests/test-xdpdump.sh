@@ -126,6 +126,7 @@ test_capt_pcapng()
     INFOS_REGEX+="Capture hardware:    $HW.*"
     INFOS_REGEX+="Capture oper-sys:    $OS.*"
     INFOS_REGEX+="Capture application: xdpdump v[0-9]+\.[0-9]+\.[0-9]+.*"
+    INFOS_REGEX+="Capture comment:     Capture was taken on interface xdptest, with the following XDP programs loaded:   xdp_dispatcher\(\)     xdp_test_prog_with_a_lon.*"
     INFOS_REGEX+="Interface #0 info:.*"
     INFOS_REGEX+="Name = ${NS}@fentry.*"
     INFOS_REGEX+="Description = ${NS}:xdp_dispatcher\(\)@fentry.*"
