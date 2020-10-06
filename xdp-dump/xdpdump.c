@@ -35,6 +35,8 @@
 #include <sys/sysinfo.h>
 #include <sys/utsname.h>
 
+#include <xdp/prog_dispatcher.h>
+
 #include "logging.h"
 #include "params.h"
 #include "util.h"
@@ -119,17 +121,31 @@ static struct prog_option xdpdump_options[] = {
 	END_OPTIONS
 };
 
+#define MAX_LOADED_XDP_PROGRAMS  (MAX_DISPATCHER_ACTIONS + 1)
+
+struct capture_programs {
+	/* Contains a list of programs to capture on, with the respective
+	 * program names. The order MUST be the same as the loaded order!
+	 */
+	unsigned int nr_of_progs;
+	struct prog_info {
+		struct xdp_program *prog;
+		const char         *func;
+	} progs[MAX_LOADED_XDP_PROGRAMS];
+};
+
 struct perf_handler_ctx {
-	uint64_t               missed_events;
-	uint64_t               last_missed_events;
-	uint64_t               captured_packets;
-	uint64_t               epoch_delta;
-	uint64_t               packet_id;
-	uint64_t               cpu_packet_id[MAX_CPUS];
-	struct dumpopt        *cfg;
-	pcap_t                *pcap;
-	pcap_dumper_t         *pcap_dumper;
-	struct xpcapng_dumper *pcapng_dumper;
+	uint64_t                 missed_events;
+	uint64_t                 last_missed_events;
+	uint64_t                 captured_packets;
+	uint64_t                 epoch_delta;
+	uint64_t                 packet_id;
+	uint64_t                 cpu_packet_id[MAX_CPUS];
+	struct dumpopt          *cfg;
+	struct capture_programs *xdp_progs;
+	pcap_t                  *pcap;
+	pcap_dumper_t           *pcap_dumper;
+	struct xpcapng_dumper   *pcapng_dumper;
 };
 
 bool    exit_xdpdump;
@@ -390,8 +406,10 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 						 int cpu,
 						 struct perf_event_header *event)
 {
-	bool                      fexit;
 	uint64_t                  ts;
+	bool                      fexit;
+	unsigned int              if_idx;
+	const char               *xdp_func;
 	struct perf_handler_ctx  *ctx = private_data;
 	struct perf_sample_event *e = container_of(event,
 						   struct perf_sample_event,
@@ -405,11 +423,16 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 
 		if (cpu >= MAX_CPUS ||
 		    e->header.size < sizeof(struct perf_sample_event) ||
-		    e->size < (sizeof(struct pkt_trace_metadata) + e->metadata.cap_len))
+		    e->size < (sizeof(struct pkt_trace_metadata) + e->metadata.cap_len) ||
+		    e->metadata.prog_index >= ctx->xdp_progs->nr_of_progs)
 			return LIBBPF_PERF_EVENT_CONT;
 
 		fexit = e->metadata.flags & MDF_DIRECTION_FEXIT;
-		if (!fexit || ctx->cfg->rx_capture == RX_FLAG_FEXIT)
+		if_idx = e->metadata.prog_index * 2 + fexit ? 1 : 0;
+		xdp_func = ctx->xdp_progs->progs[e->metadata.prog_index].func;
+
+		if ((!fexit && if_idx == 0) ||
+		    ctx->cfg->rx_capture == RX_FLAG_FEXIT)
 			ctx->cpu_packet_id[cpu] = ++ctx->packet_id;
 
 		ts = e->time + ctx->epoch_delta;
@@ -439,7 +462,7 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 			options.xdp_verdict = fexit ? &action : NULL;
 
 			xpcapng_dump_enhanced_pkt(ctx->pcapng_dumper,
-						  fexit ? 1 : 0, /* ifid */
+						  if_idx,
 						  e->packet,
 						  e->metadata.pkt_len,
 						  min(e->metadata.cap_len,
@@ -456,11 +479,12 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 			char hline[SNPRINTH_MIN_BUFFER_SIZE];
 
 			if (ctx->cfg->hex_dump) {
-				printf("%llu.%09lld: @%s%s: packet size %u "
+				printf("%llu.%09lld: %s()@%s%s: packet size %u "
 				       "bytes, captured %u bytes on if_index "
 				       "%u, rx queue %u, id %"PRIu64"\n",
 				       ts / 1000000000ULL,
 				       ts % 1000000000ULL,
+				       xdp_func,
 				       fexit ? "exit" : "entry",
 				       fexit ? get_xdp_action_string(
 					       e->metadata.action) : "",
@@ -477,11 +501,12 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 					printf("  %s\n", hline);
 				}
 			} else {
-				printf("%llu.%09lld: @%s%s: packet size %u "
+				printf("%llu.%09lld: %s()@%s%s: packet size %u "
 				       "bytes on if_index %u, rx queue %u, "
 				       "id %"PRIu64"\n",
 				       ts / 1000000000ULL,
 				       ts % 1000000000ULL,
+				       xdp_func,
 				       fexit ? "exit" : "entry",
 				       fexit ? get_xdp_action_string(
 					       e->metadata.action) : "",
@@ -690,10 +715,8 @@ static size_t find_func_matches(const struct btf *btf,
 /*****************************************************************************
  * find_target()
  *****************************************************************************/
-static int find_target(struct xdp_multiprog *mp,
-		       char *function_override,
-		       struct xdp_program **tgt_prog,
-		       const char **tgt_func)
+static int find_target(struct xdp_multiprog *mp, char *function_override,
+		       struct capture_programs *tgt_progs)
 {
 	bool match_exact = !!function_override;
 	struct xdp_program *prog, *p;
@@ -730,8 +753,9 @@ check:
 			function_override);
 		return -ENOENT;
 	} else if (matches == 1) {
-		*tgt_prog = prog;
-		*tgt_func = func;
+		tgt_progs->nr_of_progs = 1;
+		tgt_progs->progs[0].prog = prog;
+		tgt_progs->progs[0].func = func;
 		return 0;
 	}
 
@@ -754,8 +778,6 @@ check:
 	return -EAGAIN;
 }
 
-
-
 /*****************************************************************************
  * append_snprintf()
  *****************************************************************************/
@@ -766,7 +788,7 @@ int append_snprintf(char **buf, size_t *buf_len, size_t *offset,
 	va_list args;
 
 	if (buf == NULL || *buf == NULL || buf_len == NULL || *buf_len <= 0 ||
-	    offset == NULL || *offset < 0 || *buf_len - *offset <= 0)
+	    offset == NULL || *buf_len - *offset <= 0)
 		return -EINVAL;
 
 	while (true) {
@@ -849,6 +871,61 @@ error_out:
 	return NULL;
 }
 
+
+/*****************************************************************************
+ * add_interfaces_to_pcapng()
+ *****************************************************************************/
+static bool add_interfaces_to_pcapng(struct dumpopt *cfg,
+				     struct xpcapng_dumper *pcapng_dumper,
+				     struct capture_programs *progs)
+{
+	uint64_t if_speed;
+	char     if_drv[260];
+
+	if_speed = get_if_speed(&cfg->iface);
+	if_drv[0] = 0;
+	get_if_drv_info(&cfg->iface, if_drv, sizeof(if_drv));
+
+	for (int i = 0; i < progs->nr_of_progs; i++) {
+		char            if_name[IFNAMSIZ + BPF_OBJ_NAME_LEN + 10];
+		char            if_descr[BPF_OBJ_NAME_LEN + IFNAMSIZ + 10];
+
+		if (try_snprintf(if_name, sizeof(if_name), "%s:%s()@fentry",
+				 cfg->iface.ifname, progs->progs[i].func)) {
+			pr_warn("ERROR: Could not format interface name!\n");
+			return false;
+		}
+
+		if (xpcapng_dump_add_interface(pcapng_dumper,
+					       cfg->snaplen,
+					       if_name, if_descr, NULL,
+					       if_speed,
+					       9 /* nsec resolution */,
+					       if_drv) != 0) {
+			pr_warn("ERROR: Can't add entry interfaced to PcapNG file!\n");
+			return false;
+		}
+
+		if (try_snprintf(if_name, sizeof(if_name), "%s:%s()@fexit",
+				 cfg->iface.ifname, progs->progs[i].func)){
+			pr_warn("ERROR: Could not format interface name!\n");
+			return false;
+		}
+
+		if (xpcapng_dump_add_interface(pcapng_dumper,
+					       cfg->snaplen,
+					       if_name, if_descr, NULL,
+					       if_speed,
+					       9 /* nsec resolution */,
+					       if_drv) != 1) {
+			pr_warn("ERROR: Can't add exit interfaced to PcapNG file!\n");
+			return false;
+		}
+	}
+
+	return true;
+}
+
 /*****************************************************************************
  * capture_on_interface()
  *****************************************************************************/
@@ -880,8 +957,7 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	};
 	struct perf_handler_ctx      perf_ctx;
 	struct xdp_multiprog         *mp;
-	struct xdp_program           *tgt_prog;
-	const char                   *tgt_func;
+	struct capture_programs      tgt_progs = {};
 
 	mp = xdp_multiprog__get_from_ifindex(cfg->iface.ifindex);
 	if (IS_ERR_OR_NULL(mp)) {
@@ -890,13 +966,18 @@ static bool capture_on_interface(struct dumpopt *cfg)
 		return capture_on_legacy_interface(cfg);
 	}
 
-	if (find_target(mp, cfg->program_names, &tgt_prog, &tgt_func))
+	if (find_target(mp, cfg->program_names, &tgt_progs))
 		return false;
+
+	if (tgt_progs.nr_of_progs == 0) {
+		pr_warn("ERROR: Failed finding any attached XDP program!");
+		return false;
+	}
 
 	/* Enable promiscuous mode if requested. */
 	if (cfg->promiscuous) {
 		err = set_if_promiscuous_mode(&cfg->iface, true,
-					     &cfg->promiscuous);
+					      &cfg->promiscuous);
 		if (err) {
 			pr_warn("ERROR: Failed setting promiscuous mode: "
 				"%s(%d)\n", strerror(-err), -err);
@@ -935,6 +1016,7 @@ rlimit_loop:
 
 	trace_cfg.capture_if_ifindex = cfg->iface.ifindex;
 	trace_cfg.capture_snaplen = cfg->snaplen;
+	trace_cfg.capture_prog_index = 0; /* For now always the first entry */
 	if (bpf_map__set_initial_value(data_map, &trace_cfg,
 				       sizeof(trace_cfg))) {
 		pr_warn("ERROR: Can't set initial .data MAP in the trace "
@@ -964,11 +1046,11 @@ rlimit_loop:
 	bpf_program__set_expected_attach_type(trace_prog_fexit,
 					      BPF_TRACE_FEXIT);
 	bpf_program__set_attach_target(trace_prog_fentry,
-				       xdp_program__fd(tgt_prog),
-				       tgt_func);
+				       xdp_program__fd(tgt_progs.progs[0].prog),
+				       tgt_progs.progs[0].func);
 	bpf_program__set_attach_target(trace_prog_fexit,
-				       xdp_program__fd(tgt_prog),
-				       tgt_func);
+				       xdp_program__fd(tgt_progs.progs[0].prog),
+				       tgt_progs.progs[0].func);
 
 	/* Load the bpf object into memory */
 	err = bpf_object__load(trace_obj);
@@ -1036,18 +1118,15 @@ rlimit_loop:
 				goto error_exit;
 			}
 		} else {
-			char            if_name[IFNAMSIZ + 7];
-			char            if_descr[BPF_OBJ_NAME_LEN + IFNAMSIZ + 10];
-			char            if_drv[260];
-			uint64_t        if_speed;
 			char           *program_info;
 			struct utsname  utinfo;
+			char            os_info[260];
 
 			memset(&utinfo, 0, sizeof(utinfo));
 			uname(&utinfo);
 
-			if_drv[0] = 0;
-			if (try_snprintf(if_drv, sizeof(if_drv), "%s %s %s %s",
+			os_info[0] = 0;
+			if (try_snprintf(os_info, sizeof(os_info), "%s %s %s %s",
 					 utinfo.sysname, utinfo.nodename,
 					 utinfo.release, utinfo.version)) {
 				pr_warn("ERROR: Could not format OS information!\n");
@@ -1063,7 +1142,7 @@ rlimit_loop:
 			pcapng_dumper = xpcapng_dump_open(cfg->pcap_file,
 							  program_info,
 							  utinfo.machine,
-							  if_drv,
+							  os_info,
 							  "xdpdump v" TOOLS_VERSION);
 
 			free(program_info);
@@ -1072,51 +1151,12 @@ rlimit_loop:
 				goto error_exit;
 			}
 
-			if_speed = get_if_speed(&cfg->iface);
-			if_drv[0] = 0;
-			get_if_drv_info(&cfg->iface, if_drv, sizeof(if_drv));
 
-			if (try_snprintf(if_name, sizeof(if_name), "%s@fentry",
-					 cfg->iface.ifname)) {
-				pr_warn("ERROR: Could not format interface name!\n");
-				goto error_exit;
-			}
-
-			if (try_snprintf(if_descr, sizeof(if_descr), "%s:%s()@fentry",
-					 cfg->iface.ifname, tgt_func)) {
-				pr_warn("ERROR: Could not format interface description!\n");
-				goto error_exit;
-			}
-
-			if (xpcapng_dump_add_interface(pcapng_dumper,
-						       cfg->snaplen,
-						       if_name, if_descr, NULL,
-						       if_speed,
-						       9 /* nsec resolution */,
-						       if_drv) != 0) {
-				pr_warn("ERROR: Can't add entry interfaced to PcapNG file!\n");
-				goto error_exit;
-			}
-
-			if (try_snprintf(if_name, sizeof(if_name), "%s@fexit",
-					 cfg->iface.ifname)){
-				pr_warn("ERROR: Could not format interface name!\n");
-				goto error_exit;
-			}
-
-			if (try_snprintf(if_descr, sizeof(if_descr), "%s:%s()@fexit",
-					 cfg->iface.ifname, tgt_func)) {
-				pr_warn("ERROR: Could not format interface description!\n");
-				goto error_exit;
-			}
-
-			if (xpcapng_dump_add_interface(pcapng_dumper,
-						       cfg->snaplen,
-						       if_name, if_descr, NULL,
-						       if_speed,
-						       9 /* nsec resolution */,
-						       if_drv) != 1) {
-				pr_warn("ERROR: Can't add exit interfaced to PcapNG file!\n");
+			if (!add_interfaces_to_pcapng(cfg, pcapng_dumper,
+						     &tgt_progs)) {
+				/* Error output is handled in
+				 * add_interfaces_to_pcapng()
+				 */
 				goto error_exit;
 			}
 		}
@@ -1125,12 +1165,14 @@ rlimit_loop:
 	/* No more error conditions, display some capture information */
 	fprintf(stderr, "listening on %s, ingress XDP program ID %u func %s, "
 		"capture mode %s, capture size %d bytes\n",
-		cfg->iface.ifname, xdp_program__id(tgt_prog), tgt_func,
+		cfg->iface.ifname, xdp_program__id(tgt_progs.progs[0].prog),
+		tgt_progs.progs[0].func,
 		get_capture_mode_string(cfg->rx_capture), cfg->snaplen);
 
 	/* Setup perf context */
 	memset(&perf_ctx, 0, sizeof(perf_ctx));
 	perf_ctx.cfg = cfg;
+	perf_ctx.xdp_progs = &tgt_progs;
 	perf_ctx.pcap = pcap;
 	perf_ctx.pcap_dumper = pcap_dumper;
 	perf_ctx.pcapng_dumper = pcapng_dumper;

@@ -128,15 +128,13 @@ test_capt_pcapng()
     INFOS_REGEX+="Capture application: xdpdump v[0-9]+\.[0-9]+\.[0-9]+.*"
     INFOS_REGEX+="Capture comment:     Capture was taken on interface xdptest, with the following XDP programs loaded:   xdp_dispatcher\(\)     xdp_test_prog_with_a_lon.*"
     INFOS_REGEX+="Interface #0 info:.*"
-    INFOS_REGEX+="Name = ${NS}@fentry.*"
-    INFOS_REGEX+="Description = ${NS}:xdp_dispatcher\(\)@fentry.*"
+    INFOS_REGEX+="Name = ${NS}:xdp_dispatcher\(\)@fentry.*"
     if [ $OLD_CAPINFOS -eq 0 ]; then
         INFOS_REGEX+="Hardware = driver: \"veth\", version: \"1\.0\", fw-version: \"\", rom-version: \"\", bus-info: \"\".*"
     fi
     INFOS_REGEX+="Time precision = nanoseconds \(9\).*"
     INFOS_REGEX+="Interface #1 info:.*"
-    INFOS_REGEX+="Name = ${NS}@fexit.*"
-    INFOS_REGEX+="Description = ${NS}:xdp_dispatcher\(\)@fexit.*"
+    INFOS_REGEX+="Name = ${NS}:xdp_dispatcher\(\)@fexit.*"
     if [ $OLD_CAPINFOS -eq 0 ]; then
         INFOS_REGEX+="Hardware = driver: \"veth\", version: \"1\.0\", fw-version: \"\", rom-version: \"\", bus-info: \"\".*"
     fi
@@ -180,8 +178,8 @@ test_capt_pcapng()
 
 test_capt_term()
 {
-    local PASS_REGEX="(@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local PASS_X_REGEX="(@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_X_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PASS_X_OPT="0x0020:  00 00 00 00 00 02 fc 42 de ad ca fe 00 01 00 00"
 
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
@@ -218,11 +216,11 @@ test_capt_term()
 
 test_exitentry()
 {
-    local PASS_ENTRY_REGEX="(@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local PASS_EXIT_REGEX="(@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local PASS_EXIT_D_REGEX="(@exit\[DROP\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local ID_ENTRY_REGEX="@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id ([0-9]+)"
-    local ID_EXIT_REGEX="@exit\[DROP\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id ([0-9]+)"
+    local PASS_ENTRY_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_EXIT_REGEX="(xdp_dispatcher\(\)@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_EXIT_D_REGEX="(xdp_dispatcher\(\)@exit\[DROP\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local ID_ENTRY_REGEX="xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id ([0-9]+)"
+    local ID_EXIT_REGEX="xdp_dispatcher\(\)@exit\[DROP\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id ([0-9]+)"
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
 
@@ -275,8 +273,8 @@ test_exitentry()
 
 test_snap()
 {
-    local PASS_REGEX="(@entry: packet size 118 bytes, captured 16 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local PASS_II_REGEX="(@entry: packet size 118 bytes, captured 21 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 16 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_II_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 21 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
 
@@ -303,8 +301,8 @@ test_snap()
 
 test_multi_pkt()
 {
-    local PASS_ENTRY_REGEX="(@entry: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
-    local PASS_EXIT_REGEX="(@exit\[PASS\]: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
+    local PASS_ENTRY_REGEX="(xdp_dispatcher\(\)@entry: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
+    local PASS_EXIT_REGEX="(xdp_dispatcher\(\)@exit\[PASS\]: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
     local PKT_SIZES=(56 512 1500)
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
@@ -336,8 +334,8 @@ test_perf_wakeup()
         return "$SKIPPED_TEST"
     fi
 
-    local PASS_REGEX="(@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+)"
-    local PASS_10K_REGEX="(@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id 10000)"
+    local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+)"
+    local PASS_10K_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id 10000)"
     local WAKEUPS=(0 1 32 128)
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
@@ -390,7 +388,7 @@ test_none_xdp()
 test_promiscuous()
 {
     local PASS_PKT="packet size 118 bytes on if_name \"$NS\""
-    local PASS_REGEX="(@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
 
     $XDP_LOADER unload "$NS" --all
     dmesg -C
