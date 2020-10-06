@@ -26,6 +26,7 @@
 struct trace_configuration {
 	__u32 capture_if_ifindex;
 	__u32 capture_snaplen;
+	__u32 capture_prog_index;
 };
 
 /*****************************************************************************
@@ -39,6 +40,7 @@ struct pkt_trace_metadata {
 	__u16 pkt_len;
 	__u16 cap_len;
 	__u16 flags;
+	__u16 prog_index;
 	int   action;
 } __packed;
 
