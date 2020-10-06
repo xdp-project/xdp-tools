@@ -5,10 +5,12 @@ XDP_TARGETS  := xdpfilt_dny_udp xdpfilt_dny_tcp xdpfilt_dny_ip \
 	xdpfilt_alw_udp xdpfilt_alw_tcp xdpfilt_alw_ip \
 	xdpfilt_alw_eth xdpfilt_alw_all
 
+TOOL_NAME := xdp-filter
 USER_TARGETS := xdp-filter
 EXTRA_DEPS := xdpfilt_prog.h
 MAN_PAGE := xdp-filter.8
-TEST_FILE := test-xdp-filter.sh
+TEST_FILE := tests/test-xdp-filter.sh
+TEST_FILE_DEPS := $(wildcard tests/*.py)
 
 USER_GEN := prog_features.h
 EXTRA_USER_DEPS := $(USER_GEN)

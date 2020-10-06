@@ -74,8 +74,9 @@ install: all install_local
 	$(if $(MAN_FILES),install -m 0644 $(MAN_FILES) $(DESTDIR)$(MANDIR)/man8)
 	$(if $(SCRIPTS_FILES),install -m 0755 -d $(DESTDIR)$(SCRIPTSDIR))
 	$(if $(SCRIPTS_FILES),install -m 0755 $(SCRIPTS_FILES) $(DESTDIR)$(SCRIPTSDIR))
-	$(if $(TEST_FILE),install -m 0755 -d $(DESTDIR)$(SCRIPTSDIR)/tests)
-	$(if $(TEST_FILE),install -m 0644 $(TEST_FILE) $(DESTDIR)$(SCRIPTSDIR)/tests)
+	$(if $(TEST_FILE),install -m 0755 -d $(DESTDIR)$(SCRIPTSDIR)/tests/$(TOOL_NAME))
+	$(if $(TEST_FILE),install -m 0644 $(TEST_FILE) $(DESTDIR)$(SCRIPTSDIR)/tests/$(TOOL_NAME))
+	$(if $(TEST_FILE_DEPS),install -m 0644 $(TEST_FILE_DEPS) $(DESTDIR)$(SCRIPTSDIR)/tests/$(TOOL_NAME))
 
 .PHONY: install_local
 install_local::

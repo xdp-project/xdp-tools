@@ -387,7 +387,7 @@ exec_test()
     local output
     local ret
 
-    echo -n "     [$testn]"
+    printf "     %-30s" "[$testn]"
     if ! is_func "$testn"; then
         echo "INVALID"
         return 1
@@ -396,12 +396,12 @@ exec_test()
     output=$($testn 2>&1)
     ret=$?
     if [ "$ret" -eq "0" ]; then
-        printf "\t\tPASS\n"
+        echo "PASS"
     elif [ "$ret" -eq "$SKIPPED_TEST" ]; then
-        printf "\t\tSKIPPED\n"
+        echo "SKIPPED"
         ret=0
     else
-        printf "\t\tFAIL\n"
+        echo "FAIL"
     fi
     if [ "$ret" -ne "0" ] || [ "$VERBOSE_TESTS" -eq "1" ]; then
         echo "$output" | sed 's/^/\t/'
@@ -442,9 +442,15 @@ if [ "$EUID" -ne "0" ]; then
     fi
 fi
 
+export XDP_FILTER
+export XDP_LOADER
+export XDPDUMP
+
 TEST_DEFINITIONS="${1:-}"
 [ -f "$TEST_DEFINITIONS" ] || usage
 source "$TEST_DEFINITIONS"
+
+TOOL_TESTS_DIR="$(dirname "$TEST_DEFINITIONS")"
 
 shift
 trap teardown EXIT
