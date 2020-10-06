@@ -754,6 +754,101 @@ check:
 	return -EAGAIN;
 }
 
+
+
+/*****************************************************************************
+ * append_snprintf()
+ *****************************************************************************/
+int append_snprintf(char **buf, size_t *buf_len, size_t *offset,
+		    const char *format, ...)
+{
+	int     len;
+	va_list args;
+
+	if (buf == NULL || *buf == NULL || buf_len == NULL || *buf_len <= 0 ||
+	    offset == NULL || *offset < 0 || *buf_len - *offset <= 0)
+		return -EINVAL;
+
+	while (true) {
+		char   *new_buf;
+		size_t  new_buf_len;
+
+		va_start(args, format);
+		len = vsnprintf(*buf + *offset, *buf_len - *offset, format, args);
+		va_end(args);
+
+		if (len < 0)
+			break;
+
+		if ((size_t)len < *buf_len) {
+			*offset += len;
+			len = 0;
+			break;
+		}
+
+		if (*buf_len >= 2048)
+			return -ENOMEM;
+
+		new_buf_len = *buf_len * 2;
+		new_buf = realloc(*buf, new_buf_len);
+
+		if (!new_buf)
+			return -ENOMEM;
+
+		*buf = new_buf;
+		*buf_len = new_buf_len;
+	}
+	return len;
+}
+
+/*****************************************************************************
+ * get_loaded_program_info()
+ *****************************************************************************/
+static char *get_loaded_program_info(struct dumpopt *cfg)
+{
+	char                *info;
+	size_t               info_size = 128;
+	size_t               info_offset = 0;
+	struct xdp_multiprog *mp = NULL;
+
+	info = malloc(info_size);
+	if (!info)
+		return NULL;
+
+	if (append_snprintf(&info, &info_size, &info_offset,
+			    "Capture was taken on interface %s, with the "
+			    "following XDP programs loaded:\n",
+			    cfg->iface.ifname) < 0)
+		goto error_out;
+
+	mp = xdp_multiprog__get_from_ifindex(cfg->iface.ifindex);
+	if (IS_ERR_OR_NULL(mp)) {
+		append_snprintf(&info, &info_size, &info_offset,
+				"  %s()\n", "<No XDP program loaded!>");
+	} else {
+		struct xdp_program *prog = NULL;
+
+		if (append_snprintf(&info, &info_size, &info_offset, "  %s()\n",
+				    xdp_program__name(
+					    xdp_multiprog__main_prog(mp))) < 0)
+			goto error_out;
+
+		while ((prog = xdp_multiprog__next_prog(prog, mp)))
+			if (append_snprintf(&info, &info_size, &info_offset,
+					    "    %s()",
+					    xdp_program__name(prog)) < 0)
+				goto error_out;
+
+		xdp_multiprog__close(mp);
+	}
+	return info;
+
+error_out:
+	xdp_multiprog__close(mp);
+	free(info);
+	return NULL;
+}
+
 /*****************************************************************************
  * capture_on_interface()
  *****************************************************************************/
@@ -941,11 +1036,12 @@ rlimit_loop:
 				goto error_exit;
 			}
 		} else {
-			char           if_name[IFNAMSIZ + 7];
-			char           if_descr[BPF_OBJ_NAME_LEN + IFNAMSIZ + 10];
-			char           if_drv[260];
-			uint64_t       if_speed;
-			struct utsname utinfo;
+			char            if_name[IFNAMSIZ + 7];
+			char            if_descr[BPF_OBJ_NAME_LEN + IFNAMSIZ + 10];
+			char            if_drv[260];
+			uint64_t        if_speed;
+			char           *program_info;
+			struct utsname  utinfo;
 
 			memset(&utinfo, 0, sizeof(utinfo));
 			uname(&utinfo);
@@ -957,10 +1053,20 @@ rlimit_loop:
 				pr_warn("ERROR: Could not format OS information!\n");
 				goto error_exit;
 			}
+
+			program_info = get_loaded_program_info(cfg);
+			if (!program_info) {
+				pr_warn("ERROR: Could not format program information!\n");
+				goto error_exit;
+			}
+
 			pcapng_dumper = xpcapng_dump_open(cfg->pcap_file,
-							  NULL, utinfo.machine,
+							  program_info,
+							  utinfo.machine,
 							  if_drv,
 							  "xdpdump v" TOOLS_VERSION);
+
+			free(program_info);
 			if (!pcapng_dumper) {
 				pr_warn("ERROR: Can't open PcapNG file for writing!\n");
 				goto error_exit;
