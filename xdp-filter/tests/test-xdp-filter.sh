@@ -1,6 +1,6 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 XDP_FILTER=${XDP_FILTER:-./xdp-filter}
-ALL_TESTS="test_load test_print test_ports_allow test_ports_deny test_ipv6_allow test_ipv6_deny test_ipv4_allow test_ipv4_deny test_ether_allow test_ether_deny test_python_basic test_python_slow"
+ALL_TESTS="test_load test_print test_output_remove test_ports_allow test_ports_deny test_ipv6_allow test_ipv6_deny test_ipv4_allow test_ipv4_deny test_ether_allow test_ether_deny test_python_basic test_python_slow"
 
 try_feat()
 {
@@ -247,6 +247,23 @@ check_status()
     fi
 }
 
+check_status_no_match()
+{
+    local match
+    local output
+    match="$1"
+    output=$($XDP_FILTER status)
+
+    if echo "$output" | grep -q $match; then
+        echo "Output check for no $match FAILURE"
+        echo "Output: $output"
+        exit 1
+    else
+        echo "Output check for no $match SUCCESS"
+        return 0
+    fi
+}
+
 test_print()
 {
     check_run $XDP_FILTER load $NS -v
@@ -261,6 +278,49 @@ test_print()
     check_run $XDP_FILTER unload $NS -v
 }
 
+check_port_removal_from_all()
+{
+    local command_options=$1
+    local expected_output=$2
+
+    local TEST_PORT=54321
+
+    check_run $XDP_FILTER port $TEST_PORT -p tcp,udp -m src,dst
+    check_status "$TEST_PORT.*src,dst,tcp,udp"
+    
+    check_run $XDP_FILTER port $TEST_PORT $command_options -r
+    if [[ -z "$expected_output" ]]; then
+        check_status_no_match "$TEST_PORT"
+    else
+        check_status "$TEST_PORT.*$expected_output"
+    fi
+}
+
+test_output_remove()
+{
+    check_run $XDP_FILTER load $NS -v
+
+    # Remove only one mode/proto.
+    check_port_removal_from_all "-m src" "dst,tcp,udp"
+    check_port_removal_from_all "-m dst" "src,tcp,udp"
+    check_port_removal_from_all "-p udp" "src,dst,tcp"
+    check_port_removal_from_all "-p tcp" "src,dst,udp"
+
+    # Remove one from each.
+    check_port_removal_from_all "-m src -p udp" "dst,tcp"
+    check_port_removal_from_all "-m src -p tcp" "dst,udp"
+    check_port_removal_from_all "-m dst -p udp" "src,tcp"
+    check_port_removal_from_all "-m dst -p tcp" "src,udp"
+
+    # Remove everything.
+    check_port_removal_from_all "" ""
+    check_port_removal_from_all "-m src,dst" ""
+    check_port_removal_from_all "-p tcp,udp" ""
+    check_port_removal_from_all "-m src,dst -p tcp,udp" ""
+
+
+    check_run $XDP_FILTER unload $NS -v
+}
 
 get_python()
 {
