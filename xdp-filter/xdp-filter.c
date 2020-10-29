@@ -530,10 +530,7 @@ static const struct portopt {
 	__u16 port;
 	bool print_status;
 	bool remove;
-} defaults_port = {
-	.mode = MAP_FLAG_DST,
-	.proto = MAP_FLAG_TCP | MAP_FLAG_UDP,
-};
+} defaults_port = {};
 
 static struct prog_option port_options[] = {
 	DEFINE_OPTION("port", OPT_U16, struct portopt, port,
@@ -566,15 +563,12 @@ int do_port(const void *cfg, const char *pin_root_path)
 	int map_fd = -1, err = EXIT_SUCCESS;
 	char modestr[100], protostr[100];
 	const struct portopt *opt = cfg;
+	unsigned int proto = opt->proto;
+	unsigned int mode = opt->mode;
 	struct bpf_map_info info = {};
 	__u8 flags = 0;
 	__u64 counter;
 	__u32 map_key;
-
-	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt->mode);
-	print_flags(protostr, sizeof(protostr), map_flags_tcpudp, opt->proto);
-	pr_debug("%s %s port %u mode %s\n", opt->remove ? "Removing" : "Adding",
-		 protostr, opt->port, modestr);
 
 	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS), &info);
 	if (map_fd < 0) {
@@ -591,10 +585,26 @@ int do_port(const void *cfg, const char *pin_root_path)
 	if (err && err != -ENOENT)
 		goto out;
 
-	if (opt->remove)
-		flags &= ~(opt->mode | opt->proto);
-	else
-		flags |= opt->mode | opt->proto;
+	if (opt->remove) {
+		if (mode == 0 && proto == 0) {
+			mode = MAP_FLAG_SRC | MAP_FLAG_DST;
+			proto = MAP_FLAG_TCP | MAP_FLAG_UDP;
+		}
+
+		flags &= ~(mode | proto);
+	} else {
+		if (mode == 0)
+			mode = MAP_FLAG_DST;
+		if (proto == 0)
+			proto = MAP_FLAG_TCP | MAP_FLAG_UDP;
+
+		flags |= mode | proto;
+	}
+
+	print_flags(modestr, sizeof(modestr), map_flags_srcdst, mode);
+	print_flags(protostr, sizeof(protostr), map_flags_tcpudp, proto);
+	pr_debug("%s %s port %u mode %s\n", opt->remove ? "Removing" : "Adding",
+		 protostr, opt->port, modestr);
 
 	if (!(flags & (MAP_FLAG_DST | MAP_FLAG_SRC)) ||
 	    !(flags & (MAP_FLAG_TCP | MAP_FLAG_UDP)))
