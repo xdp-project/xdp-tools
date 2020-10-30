@@ -131,6 +131,7 @@ struct capture_programs {
 	struct prog_info {
 		struct xdp_program *prog;
 		const char         *func;
+		unsigned int        rx_capture;
 	} progs[MAX_LOADED_XDP_PROGRAMS];
 };
 
@@ -432,7 +433,7 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 		xdp_func = ctx->xdp_progs->progs[e->metadata.prog_index].func;
 
 		if ((!fexit && if_idx == 0) ||
-		    ctx->cfg->rx_capture == RX_FLAG_FEXIT)
+		    ctx->xdp_progs->progs[e->metadata.prog_index].rx_capture == RX_FLAG_FEXIT)
 			ctx->cpu_packet_id[cpu] = ++ctx->packet_id;
 
 		ts = e->time + ctx->epoch_delta;
@@ -653,132 +654,6 @@ error_exit:
 }
 
 /*****************************************************************************
- * find_func_matches()
- *****************************************************************************/
-static size_t find_func_matches(const struct btf *btf,
-				const char *func_name,
-				const char **found_name,
-				bool print, bool exact)
-{
-	const struct btf_type *t, *match;
-	size_t len, matches = 0;
-	const char *name;
-	int nr_types, i;
-
-	if (!btf) {
-		pr_debug("No BTF found for program\n");
-		return 0;
-	}
-
-	len = strlen(func_name);
-
-	nr_types = btf__get_nr_types(btf);
-	for (i = 1; i <= nr_types; i++) {
-		t = btf__type_by_id(btf, i);
-		if (!btf_is_func(t))
-			continue;
-
-		name = btf__name_by_offset(btf, t->name_off);
-		if (!strncmp(name, func_name, len)) {
-			pr_debug("Found func %s matching %s\n",
-				 name, func_name);
-
-			if (print)
-				pr_warn("  %s\n", name);
-
-			/* Do an exact match if the user specified a function
-			 * name, or if there is no possibility of truncation
-			 * because the length is different from the truncated
-			 * length.
-			 */
-			if (strlen(name) == len &&
-			    (exact || len != BPF_OBJ_NAME_LEN -1)) {
-				*found_name = name;
-				return 1; /* exact match */
-			}
-
-			/* prefix, may not be unique */
-			matches++;
-			match = t;
-		}
-	}
-
-	if (exact)
-		return 0;
-
-	if (matches == 1)
-		*found_name = btf__name_by_offset(btf, match->name_off);
-
-	return matches;
-}
-
-/*****************************************************************************
- * find_target()
- *****************************************************************************/
-static int find_target(struct xdp_multiprog *mp, char *function_override,
-		       struct capture_programs *tgt_progs)
-{
-	bool match_exact = !!function_override;
-	struct xdp_program *prog, *p;
-	size_t matches = 0;
-	const char *func;
-
-	prog = xdp_multiprog__main_prog(mp);
-	matches = find_func_matches(xdp_program__btf(prog),
-				    function_override ?: xdp_program__name(prog),
-				    &func, false, match_exact);
-
-	if (!function_override)
-		goto check;
-
-	for (p = xdp_multiprog__next_prog(NULL, mp);
-	     p;
-	     p = xdp_multiprog__next_prog(p, mp)) {
-		const char *f;
-		size_t m;
-
-		m = find_func_matches(xdp_program__btf(p),
-				      function_override, &f, false,
-				      match_exact);
-		if (m == 1) {
-			prog = p;
-			func = f;
-		}
-		matches += m;
-	}
-
-check:
-	if (!matches) {
-		pr_warn("ERROR: Can't find function '%s' on interface!\n",
-			function_override);
-		return -ENOENT;
-	} else if (matches == 1) {
-		tgt_progs->nr_of_progs = 1;
-		tgt_progs->progs[0].prog = prog;
-		tgt_progs->progs[0].func = func;
-		return 0;
-	}
-
-	pr_warn("ERROR: Can't identify the full XDP main function!\n"
-		"The following is a list of candidates:\n");
-
-	prog = xdp_multiprog__main_prog(mp);
-	find_func_matches(xdp_program__btf(prog),
-			  function_override ?: xdp_program__name(prog),
-			  &func, true, match_exact);
-
-	for (p = xdp_multiprog__next_prog(NULL, mp);
-	     p && function_override;
-	     p = xdp_multiprog__next_prog(p, mp))
-
-		find_func_matches(xdp_program__btf(p),
-				  function_override, &func, true, match_exact);
-
-	pr_warn("Please use the -p option to pick the correct one.\n");
-	return -EAGAIN;
-}
-
-/*****************************************************************************
  * append_snprintf()
  *****************************************************************************/
 int append_snprintf(char **buf, size_t *buf_len, size_t *offset,
@@ -788,7 +663,7 @@ int append_snprintf(char **buf, size_t *buf_len, size_t *offset,
 	va_list args;
 
 	if (buf == NULL || *buf == NULL || buf_len == NULL || *buf_len <= 0 ||
-	    offset == NULL || *buf_len - *offset <= 0)
+	    offset == NULL || *offset < 0 || *buf_len - *offset <= 0)
 		return -EINVAL;
 
 	while (true) {
@@ -823,6 +698,406 @@ int append_snprintf(char **buf, size_t *buf_len, size_t *offset,
 	return len;
 }
 
+
+/*****************************************************************************
+ * get_program_names_all()
+ *****************************************************************************/
+static char *get_program_names_all(struct capture_programs *progs, int skip_index)
+{
+	char   *program_names;
+	size_t  size = 128;
+	size_t  offset = 0;
+
+	program_names = malloc(size);
+	if (!program_names)
+		return NULL;
+
+	for (int i = 0; i < progs->nr_of_progs; i++) {
+		const char *kname = xdp_program__name(progs->progs[i].prog);
+		const char *fname = progs->progs[i].func;
+		uint32_t id = xdp_program__id(progs->progs[i].prog);
+
+		if (skip_index != i) {
+			if (append_snprintf(&program_names, &size, &offset,
+					    "%s%s@%d", i == 0 ? "" : ",",
+					    fname ? fname : kname, id) < 0)
+				return NULL;
+		} else {
+			if (append_snprintf(&program_names, &size, &offset,
+					    "%s%s@%d", i == 0 ? "" : ",",
+					    "<function_name>", id) < 0)
+				return NULL;
+		}
+	}
+	return program_names;
+}
+
+/*****************************************************************************
+ * find_func_matches()
+ *****************************************************************************/
+static size_t find_func_matches(const struct btf *btf,
+				const char *func_name,
+				const char **found_name,
+				bool print, int print_id, bool exact)
+{
+	const struct btf_type *t, *match;
+	size_t len, matches = 0;
+	const char *name;
+	int nr_types, i;
+
+	if (!btf) {
+		pr_debug("No BTF found for program\n");
+		return 0;
+	}
+
+	len = strlen(func_name);
+
+	nr_types = btf__get_nr_types(btf);
+	for (i = 1; i <= nr_types; i++) {
+		t = btf__type_by_id(btf, i);
+		if (!btf_is_func(t))
+			continue;
+
+		name = btf__name_by_offset(btf, t->name_off);
+		if (!strncmp(name, func_name, len)) {
+			pr_debug("Found func %s matching %s\n",
+				 name, func_name);
+
+			if (print) {
+				if (print_id < 0)
+					pr_warn("  %s\n", name);
+				else
+					pr_warn("  %s@%d\n", name, print_id);
+			}
+
+			/* Do an exact match if the user specified a function
+			 * name, or if there is no possibility of truncation
+			 * because the length is different from the truncated
+			 * length.
+			 */
+			if (strlen(name) == len &&
+			    (exact || len != BPF_OBJ_NAME_LEN - 1)) {
+				*found_name = name;
+				return 1; /* exact match */
+			}
+
+			/* prefix, may not be unique */
+			matches++;
+			match = t;
+		}
+	}
+
+	if (exact)
+		return 0;
+
+	if (matches == 1)
+		*found_name = btf__name_by_offset(btf, match->name_off);
+
+	return matches;
+}
+
+/*****************************************************************************
+ * match_target_function()
+ *****************************************************************************/
+static int match_target_function(struct dumpopt *cfg,
+				 struct capture_programs *all_progs,
+				 char *prog_name, int prog_id)
+{
+	int          i;
+	unsigned int matches = 0;
+
+	for (i = 0; i < all_progs->nr_of_progs; i++) {
+		const char *kname = xdp_program__name(all_progs->progs[i].prog);
+
+		if (prog_id != -1 &&
+		    xdp_program__id(all_progs->progs[i].prog) != prog_id)
+			continue;
+
+		if (!strncmp(kname, prog_name, strlen(kname))) {
+			if (all_progs->progs[i].func == NULL) {
+				if (find_func_matches(xdp_program__btf(all_progs->progs[i].prog),
+						      prog_name,
+						      &all_progs->progs[i].func,
+						      false, -1,
+						      true) == 1) {
+					all_progs->progs[i].rx_capture = cfg->rx_capture;
+					matches++;
+				} else if (strlen(prog_name) <= BPF_OBJ_NAME_LEN - 1) {
+					/* If the user cut and paste the
+					 * truncated function name, make sure
+					 * we tell him all the possible options!
+					 */
+					matches = UINT_MAX;
+					break;
+				}
+			} else if (!strcmp(all_progs->progs[i].func, prog_name)) {
+				all_progs->progs[i].rx_capture = cfg->rx_capture;
+				matches++;
+			}
+		}
+		if (prog_id != -1)
+			break;
+	}
+
+	if (!matches) {
+		if (prog_id == -1)
+			pr_warn("ERROR: Can't find function '%s' on interface!\n",
+				prog_name);
+		else
+			pr_warn("ERROR: Can't find function '%s' in interface program %d!\n",
+				prog_name, prog_id);
+
+		return -ENOENT;
+	} else if (matches == 1) {
+		return 0;
+	}
+
+	if (matches != UINT_MAX) {
+		pr_warn("ERROR: The function '%s' exists in multiple programs!\n",
+			prog_name);
+	} else {
+		if (prog_id == -1)
+			pr_warn("ERROR: Can't identify the full XDP '%s' function!\n",
+				prog_name);
+		else
+			pr_warn("ERROR: Can't identify the full XDP '%s' function in program %d!\n",
+				prog_name, prog_id);
+	}
+	pr_warn("The following is a list of candidates:\n");
+
+	for (i = 0; i < all_progs->nr_of_progs; i++) {
+		uint32_t    cur_prog_id = xdp_program__id(all_progs->progs[i].prog);
+		const char *func_dummy;
+
+		if (prog_id != -1 && cur_prog_id != prog_id)
+			continue;
+
+		find_func_matches(xdp_program__btf(all_progs->progs[1].prog),
+				  xdp_program__name(all_progs->progs[i].prog),
+				  &func_dummy, true,
+				  (prog_id == -1 &&
+				   matches == UINT_MAX) ? -1 : cur_prog_id,
+				  false);
+
+		if (prog_id != -1)
+			break;
+	}
+
+	pr_warn("Please use the -p option to pick the correct one.\n");
+	if (!strcmp("all", cfg->program_names)) {
+		char *program_names = get_program_names_all(all_progs, i);
+
+		if (program_names) {
+			pr_warn("Command line to replace 'all':\n  %s",
+				program_names);
+			free(program_names);
+		}
+	}
+
+	return -EAGAIN;
+}
+
+/*****************************************************************************
+ * find_target()
+ *
+ * What is this function trying to do? It will return a list of programs to
+ * capture on, based on the configured program-names. If this parameter is
+ * not given, it will attach to the first (main) program.
+ *
+ * Note that the kernel API will truncate function names at BPF_OBJ_NAME_LEN
+ * so we need to guess the correct function if not explicitly given with
+ * the program-names option.
+ *
+ *****************************************************************************/
+static int find_target(struct dumpopt *cfg, struct xdp_multiprog *mp,
+		       struct capture_programs *tgt_progs)
+{
+	const char              *func;
+	struct xdp_program      *prog, *p;
+	struct capture_programs  progs;
+	size_t                   matches;
+	char                    *prog_name;
+	char                    *prog_safe_ptr;
+	char                    *program_names = cfg->program_names;
+
+	prog = xdp_multiprog__main_prog(mp);
+
+	/* First take care of the default case, i.e. no function supplied */
+	if (!program_names) {
+		matches = find_func_matches(xdp_program__btf(prog),
+					    xdp_program__name(prog),
+					    &func, false, -1, false);
+
+		if (!matches) {
+			pr_warn("ERROR: Can't find function '%s' on interface!\n",
+				xdp_program__name(prog));
+			return -ENOENT;
+		} else if (matches == 1) {
+			tgt_progs->nr_of_progs = 1;
+			tgt_progs->progs[0].prog = prog;
+			tgt_progs->progs[0].func = func;
+			tgt_progs->progs[0].rx_capture = cfg->rx_capture;
+			return 0;
+		}
+
+		pr_warn("ERROR: Can't identify the full XDP main function!\n"
+			"The following is a list of candidates:\n");
+
+		prog = xdp_multiprog__main_prog(mp);
+		find_func_matches(xdp_program__btf(prog),
+				  xdp_program__name(prog),
+				  &func, true, -1, false);
+
+		pr_warn("Please use the -p option to pick the correct one.\n");
+		return -EAGAIN;
+	}
+
+	/* We end up here if we have a configured function(s), which can be
+	 * any function in one of the programs attached. In the case of
+	 * multiple programs we can even have duplicate functions amongst
+	 * programs and we need a way to differentiate. We do this by
+	 * supplying the @<program_id>. See the -D output for the program IDs.
+	 * We also have the "all" keyword, which will specify that all
+	 * functions need to be traced.
+	 */
+
+	/* Fill in the all_prog data structure to make matching easier */
+	memset(&progs, 0, sizeof(progs));
+
+	progs.progs[progs.nr_of_progs].prog = prog;
+	matches = find_func_matches(xdp_program__btf(prog),
+				    xdp_program__name(prog),
+				    &progs.progs[progs.nr_of_progs].func,
+				    false, -1, false);
+	if (matches != 1)
+		progs.progs[progs.nr_of_progs].func = NULL;
+	progs.nr_of_progs++;
+
+	for (p = xdp_multiprog__next_prog(NULL, mp);
+	     p;
+	     p = xdp_multiprog__next_prog(p, mp)) {
+
+		progs.progs[progs.nr_of_progs].prog = p;
+		matches = find_func_matches(xdp_program__btf(p),
+					    xdp_program__name(p),
+					    &progs.progs[progs.nr_of_progs].func,
+					    false, -1, false);
+		if (matches != 1)
+			progs.progs[progs.nr_of_progs].func = NULL;
+		progs.nr_of_progs++;
+
+		if (progs.nr_of_progs >= MAX_LOADED_XDP_PROGRAMS)
+			break;
+	}
+
+	/* If "all" option is specified create temp program names */
+	if (!strcmp("all", program_names)) {
+		program_names = get_program_names_all(&progs, -1);
+		if (!program_names) {
+			pr_warn("ERROR: Out of memory for 'all' programs!\n");
+			return -ENOMEM;
+		}
+	}
+
+	/* Split up the --program-names and walk over it */
+	for (prog_name = strtok_r(program_names, ",", &prog_safe_ptr);
+	     prog_name != NULL;
+	     prog_name = strtok_r(NULL, ",", &prog_safe_ptr)) {
+
+		int   rc;
+		int   id = -1;
+		char *id_str = strchr(prog_name, '@');
+		char *alloc_name = NULL;
+
+		if (id_str) {
+			int   i;
+			char *endptr;
+
+			errno = 0;
+			id_str++;
+			id = strtol(id_str, &endptr, 10);
+			if ((errno == ERANGE &&
+			     (id == LONG_MAX || id == LONG_MIN))
+			    || (errno != 0 && id == 0) || *endptr != '\0'
+			    || endptr == id_str) {
+
+				pr_warn("ERROR: Can't extract valid program id from \"%s\"!\n",
+					prog_name);
+				if (cfg->program_names != program_names)
+					free(program_names);
+				return -EINVAL;
+			}
+
+			for (i = 0; i < progs.nr_of_progs; i++) {
+				if (id == xdp_program__id(progs.progs[i].prog))
+					break;
+			}
+			if (i >= progs.nr_of_progs) {
+				pr_warn("ERROR: Invalid program id supplied, \"%s\"!\n",
+					prog_name);
+				if (cfg->program_names != program_names)
+					free(program_names);
+				return -EINVAL;
+			}
+
+			alloc_name = strndup(prog_name,
+					     id_str - prog_name - 1);
+			if (!alloc_name) {
+				pr_warn("ERROR: Out of memory while processing program-name argument!\n");
+				if (cfg->program_names != program_names)
+					free(program_names);
+				return -ENOMEM;
+			}
+			prog_name = alloc_name;
+		} else {
+			/* If no @id was specified, verify if the program name
+			 * was not a program_id. If so, locate the name and
+			 * use it in the lookup below.
+			 */
+			char *endptr;
+			int   prog_id;
+
+			prog_id = strtol(prog_name, &endptr, 10);
+			if (!((errno == ERANGE &&
+			       (id == LONG_MAX || id == LONG_MIN))
+			      || (errno != 0 && id == 0) || *endptr != '\0'
+			      || endptr == prog_name)) {
+
+				for (int i = 0; i < progs.nr_of_progs; i++) {
+					if (prog_id == xdp_program__id(progs.progs[i].prog)) {
+						alloc_name = strdup(progs.progs[i].func);
+						if (alloc_name) {
+							id = prog_id;
+							prog_name = alloc_name;
+						}
+						break;
+					}
+				}
+			}
+		}
+
+		rc = match_target_function(cfg, &progs, prog_name, id);
+		free(alloc_name);
+		if (rc < 0) {
+			if (cfg->program_names != program_names)
+				free(program_names);
+			return rc;
+		}
+	}
+
+	/* TODO: Add entry/exit optimization */
+
+	if (cfg->program_names != program_names)
+		free(program_names);
+
+	/* For now only report first program */
+	tgt_progs->nr_of_progs = 1;
+	tgt_progs->progs[0].prog = progs.progs[0].prog;
+	tgt_progs->progs[0].func = progs.progs[0].func;
+	tgt_progs->progs[0].rx_capture = progs.progs[0].rx_capture;
+	return 0;
+}
+
 /*****************************************************************************
  * get_loaded_program_info()
  *****************************************************************************/
@@ -855,11 +1130,12 @@ static char *get_loaded_program_info(struct dumpopt *cfg)
 					    xdp_multiprog__main_prog(mp))) < 0)
 			goto error_out;
 
-		while ((prog = xdp_multiprog__next_prog(prog, mp)))
+		while ((prog = xdp_multiprog__next_prog(prog, mp))) {
 			if (append_snprintf(&info, &info_size, &info_offset,
 					    "    %s()",
 					    xdp_program__name(prog)) < 0)
 				goto error_out;
+		}
 
 		xdp_multiprog__close(mp);
 	}
@@ -966,7 +1242,7 @@ static bool capture_on_interface(struct dumpopt *cfg)
 		return capture_on_legacy_interface(cfg);
 	}
 
-	if (find_target(mp, cfg->program_names, &tgt_progs))
+	if (find_target(cfg, mp, &tgt_progs))
 		return false;
 
 	if (tgt_progs.nr_of_progs == 0) {
@@ -1069,7 +1345,7 @@ rlimit_loop:
 	}
 
 	/* Attach trace programs only in the direction(s) needed */
-	if (cfg->rx_capture & RX_FLAG_FENTRY) {
+	if (tgt_progs.progs[0].rx_capture & RX_FLAG_FENTRY) {
 		trace_link_fentry = bpf_program__attach_trace(trace_prog_fentry);
 		err = libbpf_get_error(trace_link_fentry);
 		if (err) {
@@ -1079,7 +1355,7 @@ rlimit_loop:
 		}
 	}
 
-	if (cfg->rx_capture & RX_FLAG_FEXIT) {
+	if (tgt_progs.progs[0].rx_capture & RX_FLAG_FEXIT) {
 		trace_link_fexit = bpf_program__attach_trace(trace_prog_fexit);
 		err = libbpf_get_error(trace_link_fexit);
 		if (err) {
@@ -1167,7 +1443,8 @@ rlimit_loop:
 		"capture mode %s, capture size %d bytes\n",
 		cfg->iface.ifname, xdp_program__id(tgt_progs.progs[0].prog),
 		tgt_progs.progs[0].func,
-		get_capture_mode_string(cfg->rx_capture), cfg->snaplen);
+		get_capture_mode_string(tgt_progs.progs[0].rx_capture),
+		cfg->snaplen);
 
 	/* Setup perf context */
 	memset(&perf_ctx, 0, sizeof(perf_ctx));
