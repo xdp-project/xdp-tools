@@ -3,7 +3,7 @@
 #
 # shellcheck disable=2039
 #
-ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_term test_exitentry test_snap test_multi_pkt test_perf_wakeup test_promiscuous test_none_xdp"
+ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_term test_exitentry test_snap test_multi_pkt test_perf_wakeup test_promiscuous test_none_xdp test_pname_pars"
 
 XDPDUMP=${XDPDUMP:-./xdpdump}
 XDP_LOADER=${XDP_LOADER:-../xdp-loader/xdp-loader}
@@ -126,7 +126,7 @@ test_capt_pcapng()
     INFOS_REGEX+="Capture hardware:    $HW.*"
     INFOS_REGEX+="Capture oper-sys:    $OS.*"
     INFOS_REGEX+="Capture application: xdpdump v[0-9]+\.[0-9]+\.[0-9]+.*"
-    INFOS_REGEX+="Capture comment:     Capture was taken on interface xdptest, with the following XDP programs loaded:   xdp_dispatcher\(\)     xdp_test_prog_with_a_lon.*"
+    INFOS_REGEX+="Capture comment:     Capture was taken on interface xdptest, with the following XDP programs loaded:   xdp_dispatcher\(\)     xdp_test_prog_w.*"
     INFOS_REGEX+="Interface #0 info:.*"
     INFOS_REGEX+="Name = ${NS}:xdp_dispatcher\(\)@fentry.*"
     if [ $OLD_CAPINFOS -eq 0 ]; then
@@ -396,14 +396,12 @@ test_promiscuous()
     PID=$(start_background "$XDPDUMP -i $NS -P")
     $PING6 -W 2 -c 4 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
-    echo "$RESULT"
     if [[ "$RESULT" != *"$PASS_PKT"* ]]; then
         print_result "IPv6 packet not received [legacy mode]"
         return 1
     fi
 
     RESULT=$(dmesg)
-    echo "$RESULT"
     if [[ "$RESULT" != *"device $NS entered promiscuous mode"* ]]; then
         print_result "Failed enabling promiscuous mode on legacy interface"
         return 1
@@ -425,7 +423,6 @@ test_promiscuous()
     fi
 
     RESULT=$(dmesg)
-    echo "$RESULT"
     if [[ "$RESULT" != *"device $NS entered promiscuous mode"* ]]; then
         print_result "Failed enabling promiscuous mode on interface"
         return 1
@@ -436,7 +433,140 @@ test_promiscuous()
     fi
 }
 
+test_pname_pars()
+{
+    local PIN_DIR="/sys/fs/bpf/${NS}_PID_$$_$RANDOM"
+    local PASS_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+
+    # Here we load the programs without the xdp-tools loader to make sure
+    # they are not loaded as a multi-program.
+    bpftool prog loadall "$TEST_PROG_DIR/test_long_func_name.o" "$PIN_DIR"
+    bpftool net attach xdpgeneric pinned "$PIN_DIR/xdp_test_prog_long" dev "$NS"
+
+    # We need to specify the function name or else it should fail
+    PID=$(start_background "$XDPDUMP -i $NS")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't identify the full XDP main function!"* ]]; then
+        print_result "xdpdump should fail with duplicate function!"
+        rm -rf "$PIN_DIR"
+        return 1
+    fi
+
+    # Here we specify the correct function name so we should get the packet
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if ! [[ $RESULT =~ $PASS_REGEX ]]; then
+        print_result "IPv6 packet not received"
+        rm -rf "$PIN_DIR"
+        return 1
+    fi
+
+    # Here we specify the wrong correct function name so we should not get the packet
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name_too")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't load eBPF object: Kernel verifier blocks program loading"* ]]; then
+        print_result "xdpdump should fail being unable to attach!"
+        rm -rf "$PIN_DIR"
+        return 1
+    fi
+
+    # Here we specify an non-existing function
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_non_existing_name")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't find function 'xdp_test_prog_with_a_long_non_existing_name' on interface!"* ]]; then
+        print_result "xdpdump should fail with unknown function!"
+        rm -rf "$PIN_DIR"
+        return 1
+    fi
+
+    # Verify invalid program indexes
+    PID=$(start_background "$XDPDUMP -i $NS -p hallo@3e")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't extract valid program index from \"hallo@3e\"!"* ]]; then
+        print_result "xdpdump should fail with index value error!"
+        rm -rf "$PIN_DIR"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p hallo@128")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Invalid program index supplied, \"hallo@128\"!"* ]]; then
+        print_result "xdpdump should fail with index out of range!"
+        rm -rf "$PIN_DIR"
+        return 1
+    fi
+
+    # Remove pinned programs
+    rm -rf "$PIN_DIR"
+    ip link set dev "$NS" xdpgeneric off
+
+    # Now test actual multi-program parsing (negative test cases)
+    $XDP_LOADER unload "$NS" --all
+    $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" "$TEST_PROG_DIR/xdp_pass.o" "$TEST_PROG_DIR/xdp_drop.o"
+
+    PID=$(start_background "$XDPDUMP -i $NS -p all")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't identify the full XDP 'xdp_test_prog_w' function in program 1!"* &&
+          $RESULT != *"xdp_test_prog_with_a_long_name@1\n"* &&
+          $RESULT != *"xdp_test_prog_with_a_long_name_too@1\n"* &&
+          $RESULT != *"Command line to replace 'all':"* &&
+          $RESULT != *"  xdp_dispatcher@0,<function_name>@1,xdp_pass@2,xdp_drop@3"* ]]; then
+        print_result "xdpdump should fail with all list!"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p hallo@1")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't find function 'hallo' in interface program 1!"* ]]; then
+        print_result "xdpdump should fail with hallo not found on program 1!"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p hallo")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't find function 'hallo' on interface"* ]]; then
+        print_result "xdpdump should fail hallo not found!"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_w")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't identify the full XDP 'xdp_test_prog_w' function!"* &&
+          $RESULT != *"xdp_test_prog_with_a_long_name_too\n"* ]]; then
+        print_result "xdpdump should fail can't id xdp_test_prog_w!"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_w@1")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't identify the full XDP 'xdp_test_prog_w' function in program 1!"* &&
+          $RESULT != *"xdp_test_prog_with_a_long_name_too@1\n"* ]]; then
+        print_result "xdpdump should fail can't id xdp_test_prog_w@1!"
+        return 1
+    fi
+
+    # Now load XDP programs with duplicate functions
+    $XDP_LOADER unload "$NS" --all
+    $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" "$TEST_PROG_DIR/test_long_func_name.o" "$TEST_PROG_DIR/xdp_pass.o" "$TEST_PROG_DIR/xdp_drop.o"
+
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: The function 'xdp_test_prog_with_a_long_name' exists in multiple programs!"* &&
+          $RESULT != *"xdp_test_prog_with_a_long_name@1\n"* &&
+          $RESULT != *"xdp_test_prog_with_a_long_name@2\n"* ]]; then
+        print_result "xdpdump should fail with duplicate function!"
+        return 1
+    fi
+
+    $XDP_LOADER unload "$NS" --all
+    return 0
+}
+
 cleanup_tests()
 {
-    $XDP_LOADER unload $NS --all >/dev/null 2>&1
+    $XDP_LOADER unload "$NS" --all >/dev/null 2>&1
 }
