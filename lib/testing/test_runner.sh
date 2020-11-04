@@ -359,6 +359,13 @@ teardown()
         [[ "$CUR" == "$NS" ]] && rm -f "$STATEDIR/current"
     fi
 
+    for f in ${STATEDIR}/proc/*; do
+        if [ -f "$f" ]; then
+            local pid="${f/${STATEDIR}\/proc\//}"
+            stop_background "$pid" &> /dev/null || true
+        fi
+    done
+
     rm -rf "$STATEDIR"
 
     CLEANUP_FUNC=
