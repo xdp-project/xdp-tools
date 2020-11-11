@@ -15,7 +15,6 @@ umask 077
 TEST_PROG_DIR="${TEST_PROG_DIR:-$(dirname "${BASH_SOURCE[0]}")}"
 SETUP_SCRIPT="$TEST_PROG_DIR/setup-netns-env.sh"
 TEST_CONFIG="$TEST_PROG_DIR/test_config.sh"
-STATEDIR="${TMPDIR:-/tmp}/xdp-tools-tests"
 IP6_SUBNET=fc42:dead:cafe # must have exactly three :-separated elements
 IP6_PREFIX_SIZE=64 # Size of assigned prefixes
 IP6_FULL_PREFIX_SIZE=48 # Size of IP6_SUBNET
@@ -46,6 +45,7 @@ SKIPPED_TEST=249
 # Global state variables that will be set by options etc below
 GENERATE_NEW=0
 CLEANUP_FUNC=
+STATEDIR=
 STATEFILE=
 CMD=
 NS=
@@ -77,24 +77,24 @@ die()
 
 start_background()
 {
-    local TMP_FILE="/tmp/${NS}_PID_$$_$RANDOM"
-    eval "$* >& ${TMP_FILE} &"
+    local TMP_FILE="${STATEDIR}/tmp_proc_$$_$RANDOM"
+    setsid bash -c "$*" &> ${TMP_FILE} &
     local PID=$!
     sleep 1 # Wait to make sure the command is executed in the background
 
-    mv "$TMP_FILE" "/tmp/${NS}_PID_${PID}" >& /dev/null
+    mv "$TMP_FILE" "${STATEDIR}/proc/${PID}" >& /dev/null
 
     echo "$PID"
 }
 
 start_background_no_stderr()
 {
-    local TMP_FILE="/tmp/${NS}_PID_$$_$RANDOM"
-    eval "$* 1> ${TMP_FILE} 2>/dev/null &"
+    local TMP_FILE="${STATEDIR}/tmp_proc_$$_$RANDOM"
+    setsid bash -c "$*" 1> ${TMP_FILE} 2>/dev/null &
     local PID=$!
     sleep 1 # Wait to make sure the command is executed in the background
 
-    mv "$TMP_FILE" "/tmp/${NS}_PID_${PID}" >& /dev/null
+    mv "$TMP_FILE" "${STATEDIR}/proc/${PID}" >& /dev/null
 
     echo "$PID"
 }
@@ -103,10 +103,10 @@ stop_background()
 {
     local PID=$1
 
-    local OUTPUT_FILE="/tmp/${NS}_PID_${PID}"
-    kill -SIGINT "$PID"
+    local OUTPUT_FILE="${STATEDIR}/proc/${PID}"
+    kill -SIGINT "-$PID"
     sleep 1 # Wait to make sure the buffer is flushed after the shutdown
-    kill -SIGTERM "$PID" && sleep 1 # just in case SIGINT was not enough
+    kill -SIGTERM "-$PID" && sleep 1 # just in case SIGINT was not enough
     cat "$OUTPUT_FILE"
     rm "$OUTPUT_FILE" >& /dev/null
 }
@@ -123,7 +123,11 @@ check_prereq()
         die "This script needs root permissions to run."
     fi
 
-    [ -d "$STATEDIR" ] || mkdir -p "$STATEDIR" || die "Unable to create state dir $STATEDIR"
+    STATEDIR="$(mktemp -d --tmpdir=${TMPDIR:-/tmp} --suffix=.xdptest)" 
+    if [ $? -ne 0 ]; then
+        die "Unable to create state dir in $TMPDIR"
+    fi
+    mkdir ${STATEDIR}/proc
 
     if [ "$max_locked_mem" != "unlimited" ]; then
 	ulimit -l unlimited || die "Unable to set ulimit"
@@ -354,6 +358,13 @@ teardown()
         local CUR=$(< "$STATEDIR/current" )
         [[ "$CUR" == "$NS" ]] && rm -f "$STATEDIR/current"
     fi
+
+    for f in ${STATEDIR}/proc/*; do
+        if [ -f "$f" ]; then
+            local pid="${f/${STATEDIR}\/proc\//}"
+            stop_background "$pid" &> /dev/null || true
+        fi
+    done
 
     rm -rf "$STATEDIR"
 
