@@ -573,8 +573,8 @@ static int set_pos_opt(void *cfg, struct prog_option *all_opts, char *optarg)
 }
 
 int parse_cmdline_args(int argc, char **argv, struct prog_option *poptions,
-		       void *cfg, const char *prog, const char *doc,
-		       const void *defaults)
+		       void *cfg, const char *prog, const char *usage_cmd,
+		       const char *doc, const void *defaults)
 {
 	struct prog_option *opt_iter;
 	struct option *long_options;
@@ -593,14 +593,14 @@ int parse_cmdline_args(int argc, char **argv, struct prog_option *poptions,
 				  long_options, &longindex)) != -1) {
 		switch (opt) {
 		case 'h':
-			usage(prog, doc, poptions, true);
+			usage(usage_cmd, doc, poptions, true);
 			err = EXIT_FAILURE;
 			goto out;
 		case 'v':
 			increase_log_level();
 			break;
 		case VERSION_SHORT_OPT:
-			printf("%s version %s\n", prog, TOOLS_VERSION);
+			printf("%s version %s ", prog, TOOLS_VERSION);
 			err = EXIT_FAILURE;
 			goto out;
 		default:
@@ -615,7 +615,7 @@ int parse_cmdline_args(int argc, char **argv, struct prog_option *poptions,
 
 	for (i = optind; i < argc; i++) {
 		if (set_pos_opt(cfg, poptions, argv[i])) {
-			usage(prog, doc, poptions, full_help);
+			usage(usage_cmd, doc, poptions, full_help);
 			err = EXIT_FAILURE;
 			goto out;
 		}
@@ -655,7 +655,7 @@ int dispatch_commands(const char *argv0, int argc, char **argv,
 	const struct prog_command *c, *cmd = NULL;
 	int ret = EXIT_FAILURE, err, len;
 	char pin_root_path[PATH_MAX];
-	char namebuf[100];
+	char usagebuf[100];
 	void *cfg;
 
 	for (c = cmds; c->name; c++) {
@@ -680,11 +680,11 @@ int dispatch_commands(const char *argv0, int argc, char **argv,
 		return EXIT_FAILURE;
 	}
 
-	len = snprintf(namebuf, sizeof(namebuf), "%s %s", prog_name, cmd->name);
-	if (len < 0 || len >= sizeof(namebuf))
+	len = snprintf(usagebuf, sizeof(usagebuf), "%s %s", prog_name, cmd->name);
+	if (len < 0 || len >= sizeof(usagebuf))
 		goto out;
 
-	err = parse_cmdline_args(argc, argv, cmd->options, cfg, namebuf,
+	err = parse_cmdline_args(argc, argv, cmd->options, cfg, prog_name, usagebuf,
 				 cmd->doc, cmd->default_cfg);
 	if (err)
 		goto out;

@@ -125,8 +125,8 @@ void usage(const char *prog_name, const char *doc,
 	   const struct prog_option *long_options, bool full);
 
 int parse_cmdline_args(int argc, char **argv, struct prog_option *long_options,
-		       void *cfg, const char *prog, const char *doc,
-		       const void *defaults);
+		       void *cfg, const char *prog, const char *usage_cmd,
+		       const char *doc, const void *defaults);
 
 int dispatch_commands(const char *argv0, int argc, char **argv,
 		      const struct prog_command *cmds, size_t cfg_size,

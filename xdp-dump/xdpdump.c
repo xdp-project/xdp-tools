@@ -1178,7 +1178,7 @@ static void signal_handler(int signo)
 int main(int argc, char **argv)
 {
 	if (parse_cmdline_args(argc, argv, xdpdump_options, &cfg_dumpopt,
-			       PROG_NAME,
+			       PROG_NAME, PROG_NAME,
 			       "XDPDump tool to dump network traffic",
 			       &defaults_dumpopt) != 0)
 		return EXIT_FAILURE;
