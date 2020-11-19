@@ -86,6 +86,59 @@ int double_rlimit()
 	return set_rlimit(0);
 }
 
+static const char *_libbpf_compile_version = LIBBPF_VERSION;
+static char _libbpf_version[10] = {};
+
+const char *get_libbpf_version(void)
+{
+	/* Start by copying compile-time version into buffer so we have a
+	 * fallback value in case we are dynamically linked, or can't find a
+	 * version in /proc/self/maps below.
+	 */
+	strncpy(_libbpf_version, _libbpf_compile_version,
+		sizeof(_libbpf_version)-1);
+
+#ifdef LIBBPF_DYNAMIC
+	char path[PATH_MAX], buf[PATH_MAX], *s;
+	bool found = false;
+	FILE *fp;
+
+	/* When dynamically linking against libbpf, we can't be sure that the
+	 * version we discovered at compile time is actually the one we are
+	 * using at runtime. This can lead to hard-to-debug errors, so we try to
+	 * discover the correct version at runtime.
+	 *
+	 * The simple solution to this would be if libbpf itself exported a
+	 * version in its API. But since it doesn't, we work around this by
+	 * parsing the mappings of the binary at runtime, looking for the full
+	 * filename of libbpf.so and using that.
+	 */
+	fp = fopen("/proc/self/maps", "r");
+	if (fp == NULL)
+		goto out;
+
+	while ((s = fgets(buf, sizeof(buf), fp)) != NULL) {
+		/* We are looking for a line like:
+		 * 7f63c2105000-7f63c2106000 rw-p 00032000 fe:02 4200947                    /usr/lib/libbpf.so.0.1.0
+		 */
+		if (sscanf(buf, "%*x-%*x %*4c %*x %*5c %*d %s\n", path) == 1 &&
+		    (s = strstr(path, "libbpf.so.")) != NULL) {
+			strncpy(_libbpf_version, s+10, sizeof(_libbpf_version)-1);
+			found = true;
+			break;
+		}
+	}
+
+	fclose(fp);
+out:
+	if (!found)
+		pr_warn("Couldn't find runtime libbpf version - falling back to compile-time value!\n");
+
+#endif
+	_libbpf_version[sizeof(_libbpf_version)-1] = '\0';
+	return _libbpf_version;
+}
+
 int find_bpf_file(char *buf, size_t buf_size, const char *progname)
 {
 	static char *bpf_obj_paths[] = {

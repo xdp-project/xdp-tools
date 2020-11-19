@@ -145,6 +145,21 @@ EOF
     fi
 }
 
+get_libbpf_version()
+{
+    local libbpf_dir
+    local version
+    libbpf_dir="$1"
+
+    if [ -f "${libbpf_dir}/libbpf.map" ]; then
+        version=$(grep -oE '^LIBBPF_([0-9.]+)' "${libbpf_dir}/libbpf.map" | sort -rV | head -n1 | cut -d'_' -f2)
+    else
+        version=unknown
+    fi
+
+    echo $version
+}
+
 check_libbpf()
 {
     local libbpf_err
@@ -154,9 +169,11 @@ check_libbpf()
         if [ -n "$LIBBPF_DIR" ]; then
             LIBBPF_CFLAGS="-I${LIBBPF_DIR}/include -L${LIBBPF_DIR}/lib"
             LIBBPF_LDLIBS="-lbpf"
+            LIBBPF_VERSION=$(get_libbpf_version "$LIBBPF_DIR")
         else
             LIBBPF_CFLAGS=$(${PKG_CONFIG} libbpf --cflags)
             LIBBPF_LDLIBS=$(${PKG_CONFIG} libbpf --libs)
+            LIBBPF_VERSION=$(${PKG_CONFIG} libbpf --modversion)
         fi
 
         cat >$TMPDIR/libbpftest.c <<EOF
@@ -176,10 +193,11 @@ EOF
         libbpf_err=$($CC -o $TMPDIR/libbpftest $TMPDIR/libbpftest.c  $LIBBPF_CFLAGS -lbpf 2>&1)
         if [ "$?" -eq "0" ]; then
             echo "SYSTEM_LIBBPF:=y" >>$CONFIG
+            echo "LIBBPF_VERSION=$LIBBPF_VERSION" >>$CONFIG
             echo 'CFLAGS += ' $LIBBPF_CFLAGS >> $CONFIG
             echo 'LDLIBS += ' $LIBBPF_LDLIBS >>$CONFIG
             echo 'OBJECT_LIBBPF = ' >>$CONFIG
-            echo system
+            echo "system v$LIBBPF_VERSION"
 
             echo -n "perf_buffer__consume support: "
             check_perf_consume
@@ -196,8 +214,10 @@ EOF
         exit 1
     fi
 
-    echo submodule
+    LIBBPF_VERSION=$(get_libbpf_version "lib/libbpf/src")
+    echo "submodule v$LIBBPF_VERSION"
     echo "SYSTEM_LIBBPF:=n" >> $CONFIG
+    echo "LIBBPF_VERSION=$LIBBPF_VERSION" >>$CONFIG
     echo 'CFLAGS += -I$(LIB_DIR)/libbpf/src/root/usr/include' >>$CONFIG
     echo 'BPF_CFLAGS += -I$(LIB_DIR)/libbpf/src/root/usr/include' >>$CONFIG
     echo 'LDFLAGS += -L$(LIB_DIR)/libbpf/src' >>$CONFIG

@@ -89,4 +89,6 @@ const char *action2str(__u32 action);
 int prog_lock_get(const char *progname);
 void prog_lock_release(int signal);
 
+const char *get_libbpf_version(void);
+
 #endif
