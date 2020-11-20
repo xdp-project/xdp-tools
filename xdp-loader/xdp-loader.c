@@ -27,13 +27,14 @@ static const struct loadopt {
 	char *section_name;
 	enum xdp_attach_mode mode;
 } defaults_load = {
-	.mode = XDP_MODE_UNSPEC
+	.mode = XDP_MODE_NATIVE
 };
 
 struct enum_val xdp_modes[] = {
        {"native", XDP_MODE_NATIVE},
        {"skb", XDP_MODE_SKB},
        {"hw", XDP_MODE_HW},
+       {"unspecified", XDP_MODE_UNSPEC},
        {NULL, 0}
 };
 
@@ -43,7 +44,7 @@ static struct prog_option load_options[] = {
 		      .short_opt = 'm',
 		      .typearg = xdp_modes,
 		      .metavar = "<mode>",
-		      .help = "Load XDP program in <mode>; default unspecified"),
+		      .help = "Load XDP program in <mode>; default native"),
 	DEFINE_OPTION("pin-path", OPT_STRING, struct loadopt, pin_path,
 		      .short_opt = 'p',
 		      .help = "Path to pin maps under (must be in bpffs)."),
@@ -230,7 +231,7 @@ int do_unload(const void *cfg, const char *pin_root_path)
 		pr_debug("Detaching XDP program with ID %u from %s\n",
 			 xdp_program__id(prog), opt->iface.ifname);
 		err = xdp_program__detach(prog, opt->iface.ifindex,
-					  XDP_MODE_UNSPEC, 0);
+					  xdp_multiprog__attach_mode(mp), 0);
 		if (err) {
 			pr_warn("Unable to detach XDP program: %s\n",
 				strerror(-err));
