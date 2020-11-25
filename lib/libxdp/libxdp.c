@@ -28,6 +28,8 @@
 #include <xdp/libxdp.h>
 #include <xdp/prog_dispatcher.h>
 
+#include "compat.h"
+
 #define XDP_RUN_CONFIG_SEC ".xdp_run_config"
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))

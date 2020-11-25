@@ -242,6 +242,26 @@ EOF
     echo "HAVE_LIBBPF_PERF_BUFFER__CONSUME:=y" >>"$CONFIG"
 }
 
+check_secure_getenv()
+{
+    cat >$TMPDIR/secure_getenv.c <<EOF
+#define _GNU_SOURCE
+#include <stdlib.h>
+int main(int argc, char **argv) {
+	secure_getenv("test");
+    return 0;
+}
+EOF
+    secure_getenv_err=$($CC -o $TMPDIR/secure_getenv $TMPDIR/secure_getenv.c 2>&1)
+    if [ "$?" -eq "0" ]; then
+        echo "HAVE_SECURE_GETENV:=y" >>"$CONFIG"
+        echo "yes"
+    else
+        echo "HAVE_SECURE_GETENV:=n" >>"$CONFIG"
+        echo "no"
+    fi
+}
+
 quiet_config()
 {
     cat <<EOF
@@ -282,6 +302,9 @@ check_toolchain
 
 echo -n "libbpf support: "
 check_libbpf
+
+echo -n "secure_getenv support: "
+check_secure_getenv
 
 if [ -n "$KERNEL_HEADERS" ]; then
     echo "kernel headers: $KERNEL_HEADERS"
