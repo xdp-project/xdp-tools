@@ -37,6 +37,10 @@ endif
 ifeq ($(SYSTEM_LIBBPF),y)
 DEFINES += -DLIBBPF_DYNAMIC
 endif
+ifeq ($(HAVE_SECURE_GETENV),y)
+DEFINES += -DHAVE_SECURE_GETENV
+endif
+
 
 CFLAGS += -Werror $(DEFINES)
 BPF_CFLAGS += $(DEFINES)

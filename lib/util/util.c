@@ -56,14 +56,14 @@ static int set_rlimit(unsigned int min_limit)
 
 	if (min_limit) {
 		if (limit.rlim_cur >= min_limit) {
-			pr_debug("Current rlimit %lu already >= minimum %u\n",
-				 limit.rlim_cur, min_limit);
+			pr_debug("Current rlimit %ju already >= minimum %u\n",
+				 (uintmax_t)limit.rlim_cur, min_limit);
 			return 0;
 		}
 		pr_debug("Setting rlimit to minimum %u\n", min_limit);
 		limit.rlim_cur = min_limit;
 	} else {
-		pr_debug("Doubling current rlimit of %lu\n", limit.rlim_cur);
+		pr_debug("Doubling current rlimit of %ju\n", (uintmax_t)limit.rlim_cur);
 		limit.rlim_cur <<= 1;
 	}
 	limit.rlim_max = max(limit.rlim_cur, limit.rlim_max);

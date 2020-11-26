@@ -54,8 +54,11 @@ static int handle_multistring(char *optarg, void *tgt, void *typearg)
 	struct multistring *opt_set = tgt;
 	void *ptr;
 
-	ptr = reallocarray(opt_set->strings, sizeof(*opt_set->strings),
-			   opt_set->num_strings + 1);
+	if (opt_set->num_strings +1 > SIZE_MAX / sizeof(*opt_set->strings))
+		return -ENOMEM;
+
+	ptr = realloc(opt_set->strings, sizeof(*opt_set->strings) * (opt_set->num_strings +1));
+
 	if (!ptr)
 		return -errno;
 
