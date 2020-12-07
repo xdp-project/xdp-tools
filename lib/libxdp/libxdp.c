@@ -1858,7 +1858,8 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 
 	err = check_dispatcher_version(dispatcher->btf);
 	if (err) {
-		pr_warn("XDP dispatcher object version check failed\n");
+		pr_warn("XDP dispatcher object version check failed: %s\n",
+			strerror(-err));
 		goto err;
 	}
 
