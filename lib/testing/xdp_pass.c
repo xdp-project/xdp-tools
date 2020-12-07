@@ -7,7 +7,7 @@ struct {
 	__uint(XDP_PASS, 1);
 } XDP_RUN_CONFIG(xdp_pass);
 
-SEC("prog")
+SEC("xdp")
 int xdp_pass(struct xdp_md *ctx)
 {
     return XDP_PASS;
