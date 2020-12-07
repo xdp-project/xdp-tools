@@ -1738,6 +1738,12 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 	    mp->num_links >= mp->config.num_progs_enabled)
 		return -EINVAL;
 
+	if (!prog->btf) {
+		pr_warn("Program %s has no BTF information, so we can't load it as multiprog\n",
+			xdp_program__name(prog));
+		return -EOPNOTSUPP;
+	}
+
 	pr_debug("Linking prog %s as multiprog entry %zu\n",
 		 xdp_program__name(prog), mp->num_links);
 
