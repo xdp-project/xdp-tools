@@ -533,30 +533,37 @@ static struct prog_option *find_opt(struct prog_option *all_opts, int optchar)
 	return NULL;
 }
 
+static int _set_opt(void *cfg, struct prog_option *opt, char *optarg)
+{
+	int ret;
+
+	ret = handlers[opt->type].func(optarg, (cfg + opt->cfg_offset),
+				       opt->typearg);
+	if (ret)
+		pr_warn("Couldn't parse option %s: %s.\n", opt->name, strerror(-ret));
+	else
+		opt->was_set = true;
+	return ret;
+}
+
 static int set_opt(void *cfg, struct prog_option *all_opts, int optchar,
 		   char *optarg)
 {
 	struct prog_option *opt;
-	int ret;
 
 	if (!cfg)
 		return -EFAULT;
 
 	opt = find_opt(all_opts, optchar);
 	if (!opt)
-		return -1;
+		return -ENOENT;
 
-	ret = handlers[opt->type].func(optarg, (cfg + opt->cfg_offset),
-				       opt->typearg);
-	if (!ret)
-		opt->was_set = true;
-	return ret;
+	return _set_opt(cfg, opt, optarg);
 }
 
 static int set_pos_opt(void *cfg, struct prog_option *all_opts, char *optarg)
 {
 	struct prog_option *o, *opt = NULL;
-	int ret;
 
 	FOR_EACH_OPTION (all_opts, o) {
 		if (o->positional && (!o->was_set || opt_is_multi(o))) {
@@ -568,11 +575,7 @@ static int set_pos_opt(void *cfg, struct prog_option *all_opts, char *optarg)
 	if (!opt)
 		return -ENOENT;
 
-	ret = handlers[opt->type].func(optarg, (cfg + opt->cfg_offset),
-				       opt->typearg);
-	if (!ret)
-		opt->was_set = true;
-	return ret;
+	return _set_opt(cfg, opt, optarg);
 }
 
 int parse_cmdline_args(int argc, char **argv, struct prog_option *poptions,
