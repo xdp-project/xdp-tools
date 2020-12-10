@@ -132,6 +132,12 @@ struct capture_programs {
 		struct xdp_program *prog;
 		const char         *func;
 		unsigned int        rx_capture;
+		/* Fields used by the actual loader. */
+		bool                attached;
+		int                 perf_map_fd;
+		struct bpf_object  *prog_obj;
+		struct bpf_link    *fentry_link;
+		struct bpf_link    *fexit_link;
 	} progs[MAX_LOADED_XDP_PROGRAMS];
 };
 
@@ -409,7 +415,7 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 {
 	uint64_t                  ts;
 	bool                      fexit;
-	unsigned int              if_idx;
+	unsigned int              if_idx, prog_idx;
 	const char               *xdp_func;
 	struct perf_handler_ctx  *ctx = private_data;
 	struct perf_sample_event *e = container_of(event,
@@ -429,11 +435,13 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 			return LIBBPF_PERF_EVENT_CONT;
 
 		fexit = e->metadata.flags & MDF_DIRECTION_FEXIT;
-		if_idx = e->metadata.prog_index * 2 + fexit ? 1 : 0;
-		xdp_func = ctx->xdp_progs->progs[e->metadata.prog_index].func;
+		prog_idx = e->metadata.prog_index;
+		if_idx = prog_idx * 2 + fexit ? 1 : 0;
+		xdp_func = ctx->xdp_progs->progs[prog_idx].func;
 
-		if ((!fexit && if_idx == 0) ||
-		    ctx->xdp_progs->progs[e->metadata.prog_index].rx_capture == RX_FLAG_FEXIT)
+		if (prog_idx == 0 &&
+		    (!fexit ||
+		     ctx->xdp_progs->progs[prog_idx].rx_capture == RX_FLAG_FEXIT))
 			ctx->cpu_packet_id[cpu] = ++ctx->packet_id;
 
 		ts = e->time + ctx->epoch_delta;
@@ -1202,63 +1210,35 @@ static bool add_interfaces_to_pcapng(struct dumpopt *cfg,
 	return true;
 }
 
+
 /*****************************************************************************
- * capture_on_interface()
+ * load_and_attach_trace()
  *****************************************************************************/
-static bool capture_on_interface(struct dumpopt *cfg)
+static bool load_and_attach_trace(struct dumpopt *cfg,
+				  struct capture_programs *progs,
+				  unsigned int idx)
 {
 	int                          err;
-	int                          perf_map_fd;
-	bool                         rc = false;
-	pcap_t                      *pcap = NULL;
-	pcap_dumper_t               *pcap_dumper = NULL;
-	struct xpcapng_dumper       *pcapng_dumper = NULL;
+	struct bpf_object           *trace_obj = NULL;
+	struct bpf_program          *trace_prog_fentry;
+	struct bpf_program          *trace_prog_fexit;
 	struct bpf_link             *trace_link_fentry = NULL;
 	struct bpf_link             *trace_link_fexit = NULL;
 	struct bpf_map              *perf_map;
 	struct bpf_map              *data_map;
 	const struct bpf_map_def    *data_map_def;
-	struct bpf_object           *trace_obj = NULL;
-	struct bpf_program          *trace_prog_fentry;
-	struct bpf_program          *trace_prog_fexit;
 	struct trace_configuration   trace_cfg;
-	struct perf_buffer          *perf_buf;
-	struct perf_buffer_raw_opts  perf_opts = {};
-	struct perf_event_attr       perf_attr = {
-		.sample_type = PERF_SAMPLE_RAW | PERF_SAMPLE_TIME,
-		.type = PERF_TYPE_SOFTWARE,
-		.config = PERF_COUNT_SW_BPF_OUTPUT,
-		.sample_period = 1,
-		.wakeup_events = 1,
-	};
-	struct perf_handler_ctx      perf_ctx;
-	struct xdp_multiprog         *mp;
-	struct capture_programs      tgt_progs = {};
 
-	mp = xdp_multiprog__get_from_ifindex(cfg->iface.ifindex);
-	if (IS_ERR_OR_NULL(mp)) {
-		pr_warn("WARNING: Specified interface does not have an XDP "
-			"program loaded, capturing\n         in legacy mode!\n");
-		return capture_on_legacy_interface(cfg);
-	}
-
-	if (find_target(cfg, mp, &tgt_progs))
-		return false;
-
-	if (tgt_progs.nr_of_progs == 0) {
-		pr_warn("ERROR: Failed finding any attached XDP program!");
+	if (idx >= progs->nr_of_progs || progs->nr_of_progs == 0) {
+		pr_warn("ERROR: Attach program ID invalid!");
 		return false;
 	}
 
-	/* Enable promiscuous mode if requested. */
-	if (cfg->promiscuous) {
-		err = set_if_promiscuous_mode(&cfg->iface, true,
-					      &cfg->promiscuous);
-		if (err) {
-			pr_warn("ERROR: Failed setting promiscuous mode: "
-				"%s(%d)\n", strerror(-err), -err);
-			return false;
-		}
+	progs->progs[idx].attached = false;
+
+	if (progs->progs[idx].rx_capture == 0) {
+		pr_warn("ERROR: No RX capture mode to attach to!");
+		return false;
 	}
 
 	silence_libbpf_logging();
@@ -1322,11 +1302,27 @@ rlimit_loop:
 	bpf_program__set_expected_attach_type(trace_prog_fexit,
 					      BPF_TRACE_FEXIT);
 	bpf_program__set_attach_target(trace_prog_fentry,
-				       xdp_program__fd(tgt_progs.progs[0].prog),
-				       tgt_progs.progs[0].func);
+				       xdp_program__fd(progs->progs[idx].prog),
+				       progs->progs[idx].func);
 	bpf_program__set_attach_target(trace_prog_fexit,
-				       xdp_program__fd(tgt_progs.progs[0].prog),
-				       tgt_progs.progs[0].func);
+				       xdp_program__fd(progs->progs[idx].prog),
+				       progs->progs[idx].func);
+
+	/* Reuse the xdpdump_perf_map for all programs */
+	perf_map = bpf_object__find_map_by_name(trace_obj,
+						"xdpdump_perf_map");
+	if (!perf_map) {
+		pr_warn("ERROR: Can't find xdpdump_perf_map in trace program!\n");
+		goto error_exit;
+	}
+	if (idx != 0) {
+		err = bpf_map__reuse_fd(perf_map, progs->progs[0].perf_map_fd);
+		if (err) {
+			pr_warn("ERROR: Can't reuse xdpdump_perf_map: %s\n",
+				strerror(-err));
+			goto error_exit;
+		}
+	}
 
 	/* Load the bpf object into memory */
 	err = bpf_object__load(trace_obj);
@@ -1345,7 +1341,7 @@ rlimit_loop:
 	}
 
 	/* Attach trace programs only in the direction(s) needed */
-	if (tgt_progs.progs[0].rx_capture & RX_FLAG_FENTRY) {
+	if (progs->progs[idx].rx_capture & RX_FLAG_FENTRY) {
 		trace_link_fentry = bpf_program__attach_trace(trace_prog_fentry);
 		err = libbpf_get_error(trace_link_fentry);
 		if (err) {
@@ -1355,7 +1351,7 @@ rlimit_loop:
 		}
 	}
 
-	if (tgt_progs.progs[0].rx_capture & RX_FLAG_FEXIT) {
+	if (progs->progs[idx].rx_capture & RX_FLAG_FEXIT) {
 		trace_link_fexit = bpf_program__attach_trace(trace_prog_fexit);
 		err = libbpf_get_error(trace_link_fexit);
 		if (err) {
@@ -1365,17 +1361,99 @@ rlimit_loop:
 		}
 	}
 
-	/* Figure out the fd for the BPF_MAP_TYPE_PERF_EVENT_ARRAY trace map */
-	perf_map = bpf_object__find_map_by_name(trace_obj, "xdpdump_perf_map");
-	if (!perf_map) {
-		pr_warn("ERROR: Can't find xdpdump_perf_map in trace program!\n");
-		goto error_exit;
+	/* Figure out the fd for the BPF_MAP_TYPE_PERF_EVENT_ARRAY trace map. */
+	if (idx == 0) {
+		progs->progs[idx].perf_map_fd = bpf_map__fd(perf_map);
+		if (progs->progs[idx].perf_map_fd < 0) {
+			pr_warn("ERROR: Can't get xdpdump_perf_map file descriptor: %s\n",
+				strerror(errno));
+			return false;
+		}
+	} else {
+		progs->progs[idx].perf_map_fd = progs->progs[0].perf_map_fd;
 	}
-	perf_map_fd = bpf_map__fd(perf_map);
-	if (perf_map_fd < 0) {
-		pr_warn("ERROR: Can't get xdpdump_perf_map file descriptor: %s\n",
-			strerror(errno));
+
+	progs->progs[idx].attached = true;
+	progs->progs[idx].fentry_link = trace_link_fentry;
+	progs->progs[idx].fexit_link = trace_link_fexit;
+	progs->progs[idx].prog_obj = trace_obj;
+	return true;
+
+error_exit:
+	bpf_link__destroy(trace_link_fentry);
+	bpf_link__destroy(trace_link_fexit);
+	bpf_object__close(trace_obj);
+	return false;
+}
+
+/*****************************************************************************
+ * detach_trace()
+ *****************************************************************************/
+static void detach_trace(struct capture_programs *progs, unsigned int idx)
+{
+	if (idx >= progs->nr_of_progs || progs->nr_of_progs == 0 ||
+	    !progs->progs[idx].attached)
+		return;
+
+	bpf_link__destroy(progs->progs[idx].fentry_link);
+	bpf_link__destroy(progs->progs[idx].fexit_link);
+	bpf_object__close(progs->progs[idx].prog_obj);
+	progs->progs[idx].attached = false;
+}
+
+/*****************************************************************************
+ * capture_on_interface()
+ *****************************************************************************/
+static bool capture_on_interface(struct dumpopt *cfg)
+{
+	int                          err;
+	bool                         rc = false;
+	pcap_t                      *pcap = NULL;
+	pcap_dumper_t               *pcap_dumper = NULL;
+	struct xpcapng_dumper       *pcapng_dumper = NULL;
+	struct perf_buffer          *perf_buf;
+	struct perf_buffer_raw_opts  perf_opts = {};
+	struct perf_event_attr       perf_attr = {
+		.sample_type = PERF_SAMPLE_RAW | PERF_SAMPLE_TIME,
+		.type = PERF_TYPE_SOFTWARE,
+		.config = PERF_COUNT_SW_BPF_OUTPUT,
+		.sample_period = 1,
+		.wakeup_events = 1,
+	};
+	struct perf_handler_ctx      perf_ctx;
+	struct xdp_multiprog         *mp;
+	struct capture_programs      tgt_progs = {};
+
+	mp = xdp_multiprog__get_from_ifindex(cfg->iface.ifindex);
+	if (IS_ERR_OR_NULL(mp)) {
+		pr_warn("WARNING: Specified interface does not have an XDP "
+			"program loaded, capturing\n         in legacy mode!\n");
+		return capture_on_legacy_interface(cfg);
+	}
+
+	if (find_target(cfg, mp, &tgt_progs))
 		return false;
+
+	if (tgt_progs.nr_of_progs == 0) {
+		pr_warn("ERROR: Failed finding any attached XDP program!");
+		return false;
+	}
+
+	/* Enable promiscuous mode if requested. */
+	if (cfg->promiscuous) {
+		err = set_if_promiscuous_mode(&cfg->iface, true,
+					      &cfg->promiscuous);
+		if (err) {
+			pr_warn("ERROR: Failed setting promiscuous mode: %s(%d)\n",
+				strerror(-err), -err);
+			return false;
+		}
+	}
+
+	/* Load and attach program */
+	if (!load_and_attach_trace(cfg, &tgt_progs, 0)) {
+		/* Actual errors are reported in load_and_attach_trace(). */
+		goto error_exit;
 	}
 
         /* Open the pcap handle */
@@ -1487,7 +1565,8 @@ rlimit_loop:
 	perf_opts.attr = &perf_attr;
 	perf_opts.event_cb = handle_perf_event;
 	perf_opts.ctx = &perf_ctx;
-	perf_buf = perf_buffer__new_raw(perf_map_fd, PERF_MMAP_PAGE_COUNT,
+	perf_buf = perf_buffer__new_raw(tgt_progs.progs[0].perf_map_fd,
+					PERF_MMAP_PAGE_COUNT,
 					&perf_opts);
 
 	/* Loop trough the dumper */
@@ -1528,14 +1607,7 @@ error_exit:
 	if (pcap)
 		pcap_close(pcap);
 
-	if (trace_link_fentry)
-		bpf_link__destroy(trace_link_fentry);
-
-	if (trace_link_fexit)
-		bpf_link__destroy(trace_link_fexit);
-
-	if (trace_obj)
-		bpf_object__close(trace_obj);
+	detach_trace(&tgt_progs, 0);
 
 	if (mp)
 		xdp_multiprog__close(mp);
