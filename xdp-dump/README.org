@@ -70,13 +70,19 @@ Let the Kernel wake up =xdpdump= once for every =<events>= being posted in the
 perf ring buffer. The higher the number the less the impact is on the actual
 XDP program. The default value is 0, which automatically calculates the
 value based on the available CPUs/buffers. Use -v to see the actual used value.
-** -p, --program-names <prog>
-The Linux API does not provide the full name of the attached eBPF entry function
-if it's longer than 15 characters. xdpdump will try to guess the correct
-function name from the available BTF debug information. However, if multiple
-functions exist with the same leading name, it can not pick the correct one. It
-will dump the available functions, and you can choose the correct one, and
-supply it with this option.
+** -p, --program-names [<prog>|all]
+This option allows you to capture packets for a specific, set of, or all XDP
+programs loaded on the interface. Use the -D option to see the loaded programs.
+If you have multiple programs loaded with the same name, you can add the
+programs index to it with the =@<index>= prefix. The index starts with 0 being
+the dispatcher. See the Examples section for an example.
+
+In addition, the Linux API does not provide the full name of the attached eBPF
+entry function if it's longer than 15 characters. xdpdump will try to guess the
+correct function name from the available BTF debug information. However, if
+multiple functions exist with the same leading name, it can not pick the correct
+one. It will dump the available functions, and you can choose the correct one,
+and supply it with this option.
 ** -P, --promiscuous-mode
 This option puts the interface into promiscuous mode.
 ** -s, --snapshot-length <snaplen>
@@ -152,6 +158,33 @@ listening on eth0, ingress XDP program xdpfilt_dny_all, capture mode entry, capt
     1   0.000000 192.168.122.1 → 192.168.122.100 SSH 102 Client: Encrypted packet (len=36)
     2   0.000646 192.168.122.1 → 192.168.122.100 TCP 66 40158 → 22 [ACK] Seq=37 Ack=37 Win=1467 Len=0 TSval=1997621571 TSecr=1075416765
     3  12.218164 192.168.122.1 → 192.168.122.100 SSH 102 Client: Encrypted packet (len=36)
+#+end_src
+
+One final example capturing specific XDP programs loaded on the interface:
+
+#+begin_src
+# xdpdump -D
+if_index  if_name           XDP program entry function
+--------  ----------------  --------------------------------------------------
+1         lo                <No XDP program loaded!>
+2         eth0              xdp_dispatcher()
+                              xdp_test_prog_w()
+                              xdp_pass()
+                              xdp_pass()
+#+end_src
+
+We would like to see the packets on the =xdp_dispatcher()= and the 2nd =xdp_pass()= program:
+
+#+begin_src
+# xdpdump -i eth0 --rx-capture=entry,exit -p xdp_dispatcher,xdp_pass@2
+listening on eth0, ingress XDP program ID 4311 func xdp_dispatcher, capture mode entry/exit, capture size 262144 bytes
+1607694215.501287259: xdp_dispatcher()@entry: packet size 102 bytes on if_index 2, rx queue 0, id 1
+1607694215.501371504: xdp_pass()@entry: packet size 102 bytes on if_index 2, rx queue 0, id 1
+1607694215.501383099: xdp_pass()@exit[PASS]: packet size 102 bytes on if_index 2, rx queue 0, id 1
+1607694215.501394709: xdp_dispatcher()@exit[PASS]: packet size 102 bytes on if_index 2, rx queue 0, id 1
+^C
+4 packets captured
+0 packets dropped by perf ring
 #+end_src
 
 * BUGS

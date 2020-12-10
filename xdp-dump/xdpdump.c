@@ -671,7 +671,7 @@ int append_snprintf(char **buf, size_t *buf_len, size_t *offset,
 	va_list args;
 
 	if (buf == NULL || *buf == NULL || buf_len == NULL || *buf_len <= 0 ||
-	    offset == NULL || *offset < 0 || *buf_len - *offset <= 0)
+	    offset == NULL || *buf_len - *offset <= 0)
 		return -EINVAL;
 
 	while (true) {
@@ -682,10 +682,7 @@ int append_snprintf(char **buf, size_t *buf_len, size_t *offset,
 		len = vsnprintf(*buf + *offset, *buf_len - *offset, format, args);
 		va_end(args);
 
-		if (len < 0)
-			break;
-
-		if ((size_t)len < *buf_len) {
+		if ((size_t)len < (*buf_len - *offset)) {
 			*offset += len;
 			len = 0;
 			break;
@@ -706,7 +703,6 @@ int append_snprintf(char **buf, size_t *buf_len, size_t *offset,
 	return len;
 }
 
-
 /*****************************************************************************
  * get_program_names_all()
  *****************************************************************************/
@@ -720,11 +716,11 @@ static char *get_program_names_all(struct capture_programs *progs, int skip_inde
 	if (!program_names)
 		return NULL;
 
-	for (int i = 0; i < progs->nr_of_progs; i++) {
+	for (unsigned int i = 0; i < progs->nr_of_progs; i++) {
 		const char *kname = xdp_program__name(progs->progs[i].prog);
 		const char *fname = progs->progs[i].func;
 
-		if (skip_index != i) {
+		if (skip_index != (int)i) {
 			if (append_snprintf(&program_names, &size, &offset,
 					    "%s%s@%d", i == 0 ? "" : ",",
 					    fname ? fname : kname, i) < 0)
@@ -813,7 +809,7 @@ static int match_target_function(struct dumpopt *cfg,
 	int          i;
 	unsigned int matches = 0;
 
-	for (i = 0; i < all_progs->nr_of_progs; i++) {
+	for (i = 0; i < (int)all_progs->nr_of_progs; i++) {
 		const char *kname = xdp_program__name(all_progs->progs[i].prog);
 
 		if (prog_index != -1 && i != prog_index)
@@ -871,13 +867,13 @@ static int match_target_function(struct dumpopt *cfg,
 	}
 	pr_warn("The following is a list of candidates:\n");
 
-	for (i = 0; i < all_progs->nr_of_progs; i++) {
+	for (i = 0; i < (int)all_progs->nr_of_progs; i++) {
 		const char *func_dummy;
 
 		if (prog_index != -1 && i != prog_index)
 			continue;
 
-		find_func_matches(xdp_program__btf(all_progs->progs[1].prog),
+		find_func_matches(xdp_program__btf(all_progs->progs[i].prog),
 				  xdp_program__name(all_progs->progs[i].prog),
 				  &func_dummy, true,
 				  prog_index == -1 && matches == UINT_MAX ? -1 : i,
@@ -892,7 +888,7 @@ static int match_target_function(struct dumpopt *cfg,
 		char *program_names = get_program_names_all(all_progs, i);
 
 		if (program_names) {
-			pr_warn("Command line to replace 'all':\n  %s",
+			pr_warn("Command line to replace 'all':\n  %s\n",
 				program_names);
 			free(program_names);
 		}
@@ -1010,7 +1006,7 @@ static int find_target(struct dumpopt *cfg, struct xdp_multiprog *mp,
 	     prog_name = strtok_r(NULL, ",", &prog_safe_ptr)) {
 
 		int   rc;
-		int   index = -1;
+		long  index = -1;
 		char *index_str = strchr(prog_name, '@');
 		char *alloc_name = NULL;
 
@@ -1061,16 +1057,41 @@ static int find_target(struct dumpopt *cfg, struct xdp_multiprog *mp,
 		}
 	}
 
-	/* TODO: Add entry/exit optimization */
+#if 0
+	/* Removed this optimization for now as it will save one packet when
+	 * three programs are loaded, two for four, etc. In addition, it will
+	 * make the packet flow looks a bit weird, without it's more clear
+	 *  which programs the dispatcher has executed.
+	 */
+	if (cfg->rx_capture == (RX_FLAG_FENTRY | RX_FLAG_FEXIT)) {
+		/* If we do entry and exit captures we can remove fentry from
+		 * back to back programs to skip storing an identical packet.
+		 * We keep fexit due to the reported return code.
+		 *
+		 * First program is the dispatches (which should not modify
+		 * the packet, but we can't be sure). So we skip this and the
+		 * first sub-programs fexit).
+		 */
+		for (int i = 2; i < progs.nr_of_progs; i++)
+			if (progs.progs[i-1].rx_capture & RX_FLAG_FENTRY)
+				progs.progs[i].rx_capture &= ~RX_FLAG_FENTRY;
+	}
+#endif
 
 	if (cfg->program_names != program_names)
 		free(program_names);
 
-	/* For now only report first program */
-	tgt_progs->nr_of_progs = 1;
-	tgt_progs->progs[0].prog = progs.progs[0].prog;
-	tgt_progs->progs[0].func = progs.progs[0].func;
-	tgt_progs->progs[0].rx_capture = progs.progs[0].rx_capture;
+	/* Copy all the programs that need capture actions */
+	memset(tgt_progs, 0, sizeof(*tgt_progs));
+	for (unsigned int i = 0; i < progs.nr_of_progs; i++) {
+		if (!progs.progs[i].rx_capture)
+			continue;
+
+		tgt_progs->progs[tgt_progs->nr_of_progs].prog = progs.progs[i].prog;
+		tgt_progs->progs[tgt_progs->nr_of_progs].func = progs.progs[i].func;
+		tgt_progs->progs[tgt_progs->nr_of_progs].rx_capture = progs.progs[i].rx_capture;
+		tgt_progs->nr_of_progs++;
+	}
 	return 0;
 }
 
@@ -1123,7 +1144,6 @@ error_out:
 	return NULL;
 }
 
-
 /*****************************************************************************
  * add_interfaces_to_pcapng()
  *****************************************************************************/
@@ -1138,46 +1158,47 @@ static bool add_interfaces_to_pcapng(struct dumpopt *cfg,
 	if_drv[0] = 0;
 	get_if_drv_info(&cfg->iface, if_drv, sizeof(if_drv));
 
-	for (int i = 0; i < progs->nr_of_progs; i++) {
-		char            if_name[IFNAMSIZ + BPF_OBJ_NAME_LEN + 10];
-		char            if_descr[BPF_OBJ_NAME_LEN + IFNAMSIZ + 10];
+	for (unsigned int i = 0; i < progs->nr_of_progs; i++) {
+		char if_name[128];
 
 		if (try_snprintf(if_name, sizeof(if_name), "%s:%s()@fentry",
 				 cfg->iface.ifname, progs->progs[i].func)) {
-			pr_warn("ERROR: Could not format interface name!\n");
+			pr_warn("ERROR: Could not format interface name, %s:%s()@fentry!\n",
+				cfg->iface.ifname, progs->progs[i].func);
 			return false;
 		}
 
 		if (xpcapng_dump_add_interface(pcapng_dumper,
 					       cfg->snaplen,
-					       if_name, if_descr, NULL,
+					       if_name, NULL, NULL,
 					       if_speed,
 					       9 /* nsec resolution */,
-					       if_drv) != 0) {
-			pr_warn("ERROR: Can't add entry interfaced to PcapNG file!\n");
+					       if_drv) < 0) {
+			pr_warn("ERROR: Can't add %s interface to PcapNG file!\n",
+				if_name);
 			return false;
 		}
 
 		if (try_snprintf(if_name, sizeof(if_name), "%s:%s()@fexit",
-				 cfg->iface.ifname, progs->progs[i].func)){
-			pr_warn("ERROR: Could not format interface name!\n");
+				 cfg->iface.ifname, progs->progs[i].func)) {
+			pr_warn("ERROR: Could not format interface name, %s:%s()@fexit!\n",
+				cfg->iface.ifname, progs->progs[i].func);
 			return false;
 		}
 
 		if (xpcapng_dump_add_interface(pcapng_dumper,
 					       cfg->snaplen,
-					       if_name, if_descr, NULL,
+					       if_name, NULL, NULL,
 					       if_speed,
 					       9 /* nsec resolution */,
-					       if_drv) != 1) {
-			pr_warn("ERROR: Can't add exit interfaced to PcapNG file!\n");
+					       if_drv) < 0) {
+			pr_warn("ERROR: Can't add %s interface to PcapNG file!\n",
+				if_name);
 			return false;
 		}
 	}
-
 	return true;
 }
-
 
 /*****************************************************************************
  * load_and_attach_trace()
@@ -1198,14 +1219,14 @@ static bool load_and_attach_trace(struct dumpopt *cfg,
 	struct trace_configuration   trace_cfg;
 
 	if (idx >= progs->nr_of_progs || progs->nr_of_progs == 0) {
-		pr_warn("ERROR: Attach program ID invalid!");
+		pr_warn("ERROR: Attach program ID invalid!\n");
 		return false;
 	}
 
 	progs->progs[idx].attached = false;
 
 	if (progs->progs[idx].rx_capture == 0) {
-		pr_warn("ERROR: No RX capture mode to attach to!");
+		pr_warn("ERROR: No RX capture mode to attach to!\n");
 		return false;
 	}
 
@@ -1240,7 +1261,7 @@ rlimit_loop:
 
 	trace_cfg.capture_if_ifindex = cfg->iface.ifindex;
 	trace_cfg.capture_snaplen = cfg->snaplen;
-	trace_cfg.capture_prog_index = 0; /* For now always the first entry */
+	trace_cfg.capture_prog_index = idx;
 	if (bpf_map__set_initial_value(data_map, &trace_cfg,
 				       sizeof(trace_cfg))) {
 		pr_warn("ERROR: Can't set initial .data MAP in the trace "
@@ -1355,6 +1376,19 @@ error_exit:
 }
 
 /*****************************************************************************
+ * load_and_attach_traces()
+ *****************************************************************************/
+static bool load_and_attach_traces(struct dumpopt *cfg,
+				   struct capture_programs *progs)
+{
+	for (unsigned int i = 0; i < progs->nr_of_progs; i++)
+		if (!load_and_attach_trace(cfg, progs, i))
+			return false;
+
+	return true;
+}
+
+/*****************************************************************************
  * detach_trace()
  *****************************************************************************/
 static void detach_trace(struct capture_programs *progs, unsigned int idx)
@@ -1370,6 +1404,15 @@ static void detach_trace(struct capture_programs *progs, unsigned int idx)
 }
 
 /*****************************************************************************
+ * detach_traces()
+ *****************************************************************************/
+static void detach_traces(struct capture_programs *progs)
+{
+	for (unsigned int i = 0; i < progs->nr_of_progs; i++)
+		detach_trace(progs, i);
+}
+
+/*****************************************************************************
  * capture_on_interface()
  *****************************************************************************/
 static bool capture_on_interface(struct dumpopt *cfg)
@@ -1379,7 +1422,7 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	pcap_t                      *pcap = NULL;
 	pcap_dumper_t               *pcap_dumper = NULL;
 	struct xpcapng_dumper       *pcapng_dumper = NULL;
-	struct perf_buffer          *perf_buf;
+	struct perf_buffer          *perf_buf = NULL;
 	struct perf_buffer_raw_opts  perf_opts = {};
 	struct perf_event_attr       perf_attr = {
 		.sample_type = PERF_SAMPLE_RAW | PERF_SAMPLE_TIME,
@@ -1400,11 +1443,11 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	}
 
 	if (find_target(cfg, mp, &tgt_progs))
-		return false;
+		goto error_exit;
 
 	if (tgt_progs.nr_of_progs == 0) {
-		pr_warn("ERROR: Failed finding any attached XDP program!");
-		return false;
+		pr_warn("ERROR: Failed finding any attached XDP program!\n");
+		goto error_exit;
 	}
 
 	/* Enable promiscuous mode if requested. */
@@ -1414,12 +1457,12 @@ static bool capture_on_interface(struct dumpopt *cfg)
 		if (err) {
 			pr_warn("ERROR: Failed setting promiscuous mode: %s(%d)\n",
 				strerror(-err), -err);
-			return false;
+			goto error_exit;
 		}
 	}
 
-	/* Load and attach program */
-	if (!load_and_attach_trace(cfg, &tgt_progs, 0)) {
+	/* Load and attach programs */
+	if (!load_and_attach_traces(cfg, &tgt_progs)) {
 		/* Actual errors are reported in load_and_attach_trace(). */
 		goto error_exit;
 	}
@@ -1566,8 +1609,8 @@ static bool capture_on_interface(struct dumpopt *cfg)
 
 error_exit:
 	/* Cleanup all our resources */
-	if (pcapng_dumper)
-		xpcapng_dump_close(pcapng_dumper);
+	perf_buffer__free(perf_buf);
+	xpcapng_dump_close(pcapng_dumper);
 
 	if (pcap_dumper)
 		pcap_dump_close(pcap_dumper);
@@ -1575,18 +1618,15 @@ error_exit:
 	if (pcap)
 		pcap_close(pcap);
 
-	detach_trace(&tgt_progs, 0);
-
-	if (mp)
-		xdp_multiprog__close(mp);
-
+	detach_traces(&tgt_progs);
+	xdp_multiprog__close(mp);
 	return rc;
 }
 
 /*****************************************************************************
  * list_interfaces()
  *****************************************************************************/
-static bool list_interfaces(__unused struct dumpopt *cfg)
+static bool list_interfaces(void)
 {
 	struct if_nameindex *idx, *indexes;
 
@@ -1660,7 +1700,7 @@ int main(int argc, char **argv)
 
 	/* See if we need to dump interfaces and exit */
 	if (cfg_dumpopt.list_interfaces) {
-		if (list_interfaces(&cfg_dumpopt))
+		if (list_interfaces())
 			return EXIT_SUCCESS;
 		return EXIT_FAILURE;
 	}

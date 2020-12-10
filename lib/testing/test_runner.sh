@@ -26,7 +26,7 @@ GENERATED_NAME_PREFIX="xdptest"
 ALL_TESTS=""
 VERBOSE_TESTS=${V:-0}
 
-NEEDED_TOOLS="capinfos ethtool ip ping sed tc tcpdump timeout nc"
+NEEDED_TOOLS="capinfos ethtool ip ping sed tc tcpdump timeout nc tshark"
 MAX_NAMELEN=15
 
 if [ -f "$TEST_CONFIG" ]; then
