@@ -3,7 +3,7 @@
 #
 # shellcheck disable=2039
 #
-ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_term test_exitentry test_snap test_multi_pkt test_perf_wakeup test_promiscuous test_none_xdp test_pname_pars"
+ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_term test_exitentry test_snap test_multi_pkt test_perf_wakeup test_promiscuous test_none_xdp test_pname_parse test_multi_prog"
 
 XDPDUMP=${XDPDUMP:-./xdpdump}
 XDP_LOADER=${XDP_LOADER:-../xdp-loader/xdp-loader}
@@ -109,6 +109,11 @@ test_capt_pcap()
     fi
 }
 
+version_greater_or_equal()
+{
+    printf '%s\n%s\n' "$2" "$1" | sort -V -C
+}
+
 test_capt_pcapng()
 {
     local PCAP_FILE="/tmp/${NS}_PID_$$_$RANDOM.pcap"
@@ -117,6 +122,7 @@ test_capt_pcapng()
     local OS=$(uname -snrv | sed -e 's/[]\/$+*.^()|[]/\\&/g')
     local INFOS_REGEX=""
     local OLD_CAPINFOS=0
+    local TSHARK_VERSION=$(tshark --version 2> /dev/null | sed -ne 's/^TShark (Wireshark) \([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p')
 
     if [[ "$(capinfos --help)" == *"Capinfos (Wireshark) 2."* ]]; then
         OLD_CAPINFOS=1
@@ -163,18 +169,23 @@ test_capt_pcapng()
         return 1
     fi
 
-    #
-    # TODO: We can not yet check the epb_packetid, epb_queue and epb_verdict
-    #       fields. When they are implemented by WireShark we can add a test
-    #       case here. A hack/patch is available here:
-    #         https://github.com/chaudron/wireshark/tree/dev/pcapng_epb_options
-    #
+    if version_greater_or_equal "$TSHARK_VERSION" 3.4.0; then
+	local ATTRIB_REGEX="^xdptest:xdp_dispatcher\(\)@fentry	0	1	$.*^xdptest:xdp_dispatcher\(\)@fexit	0	1	2$.*"
+	RESULT=$(tshark -r "$PCAP_FILE" -T fields \
+			-e frame.interface_name \
+			-e frame.interface_queue \
+			-e frame.packet_id \
+			-e frame.verdict.ebpf_xdp)
+	if ! [[ $RESULT =~ $ATTRIB_REGEX ]]; then
+            print_result "Failed attributes content"
+            return 1
+	fi
+    fi
 
     rm "$PCAP_FILE" >& /dev/null
 
     $XDP_LOADER unload "$NS" --all || return 1
 }
-
 
 test_capt_term()
 {
@@ -433,7 +444,7 @@ test_promiscuous()
     fi
 }
 
-test_pname_pars()
+test_pname_parse()
 {
     local PIN_DIR="/sys/fs/bpf/${NS}_PID_$$_$RANDOM"
     local PASS_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
@@ -576,6 +587,76 @@ test_pname_pars()
           $RESULT != *"xdp_test_prog_with_a_long_name@$PROG_ID_2"* ||
           $RESULT != *"xdp_test_prog_with_a_long_name@$PROG_ID_3"* ]]; then
         print_result "xdpdump should fail with duplicate function!"
+        return 1
+    fi
+
+    $XDP_LOADER unload "$NS" --all
+    return 0
+}
+
+test_multi_prog()
+{
+    local ENTRY_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+).*(xdp_pass\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local EXIT_REGEX="(xdp_pass\(\)@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+).*(xdp_dispatcher\(\)@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PROG_ID_1=0
+    local PROG_ID_4=0
+
+    $XDP_LOADER load "$NS" "$TEST_PROG_DIR/xdp_pass.o" "$TEST_PROG_DIR/test_long_func_name.o" "$TEST_PROG_DIR/xdp_pass.o"
+
+    PID=$(start_background "$XDPDUMP -D")
+    RESULT=$(stop_background "$PID")
+    PROG_ID_1=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 1p | tr -d ' ')
+    PROG_ID_4=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 4p | tr -d ' ')
+
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_dispatcher,xdp_pass@$PROG_ID_4")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if ! [[ $RESULT =~ $ENTRY_REGEX ]]; then
+        print_result "Not received all fentry packets"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_dispatcher,xdp_pass@$PROG_ID_4 --rx-capture=exit")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if ! [[ $RESULT =~ $EXIT_REGEX ]]; then
+        print_result "Not received all fexit packets"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_dispatcher,xdp_pass@$PROG_ID_4 --rx-capture=exit,entry")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if ! [[ $RESULT =~ $ENTRY_REGEX ]]; then
+        print_result "Not received all fentry packets on entry/exit test"
+        return 1
+    fi
+    if ! [[ $RESULT =~ $EXIT_REGEX ]]; then
+        print_result "Not received all fexit packets on entry/exit test"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p $PROG_ID_1,$PROG_ID_4 --rx-capture=exit,entry")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if ! [[ $RESULT =~ $ENTRY_REGEX ]]; then
+        print_result "[IDs]Not received all fentry packets on entry/exit test"
+        return 1
+    fi
+    if ! [[ $RESULT =~ $EXIT_REGEX ]]; then
+        print_result "[IDs]Not received all fexit packets on entry/exit test"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_dispatcher,$PROG_ID_4 --rx-capture=exit,entry")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if ! [[ $RESULT =~ $ENTRY_REGEX ]]; then
+        print_result "[Mix]Not received all fentry packets on entry/exit test"
+        return 1
+    fi
+    if ! [[ $RESULT =~ $EXIT_REGEX ]]; then
+        print_result "[Mix]Not received all fexit packets on entry/exit test"
         return 1
     fi
 
