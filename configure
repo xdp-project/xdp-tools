@@ -145,6 +145,29 @@ EOF
     fi
 }
 
+check_is_little_endian()
+{
+    cat >$TMPDIR/is_little_endian.c <<EOF
+int main(int argc, char **argv) { // based on https://stackoverflow.com/a/4240014
+    short int number = 0x1;
+    char *numPtr = (char*)&number;
+    return (numPtr[0] == 1);
+}
+EOF
+    is_little_endian_err=$($CC -o $TMPDIR/is_little_endian $TMPDIR/is_little_endian.c $LIBBPF_CFLAGS $LIBBPF_LDLIBS 2>&1)
+    if [ ! "$?" -eq "0" ]; then
+        echo "Endianness Check Failed"
+    fi
+    is_little_endian=$($TMPDIR/is_little_endian)
+    if [ "$?" -eq "1" ]; then
+        echo "LITTLE_ENDIAN:=y" >>"$CONFIG"
+        echo "yes"
+    else
+        echo "LITTLE_ENDIAN:=y" >>"$CONFIG"
+        echo "no"
+    fi
+}
+
 get_libbpf_version()
 {
     local libbpf_dir
@@ -305,6 +328,9 @@ check_libbpf
 
 echo -n "secure_getenv support: "
 check_secure_getenv
+
+echo -n "little endian: "
+check_is_little_endian
 
 if [ -n "$KERNEL_HEADERS" ]; then
     echo "kernel headers: $KERNEL_HEADERS"
