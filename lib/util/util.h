@@ -14,6 +14,8 @@
 #define _textify(x) #x
 #define textify(x) _textify(x)
 
+#define __unused __attribute__((unused))
+
 #ifndef BPF_DIR_MNT
 #define BPF_DIR_MNT "/sys/fs/bpf"
 #endif

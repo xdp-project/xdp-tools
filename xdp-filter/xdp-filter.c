@@ -138,9 +138,9 @@ int map_set_flags(int fd, void *key, __u8 flags)
 	return err;
 }
 
-static int get_iface_features(const struct iface *iface,
+static int get_iface_features(__unused const struct iface *iface,
 			      struct xdp_program *prog,
-			      enum xdp_attach_mode mode, void *arg)
+			      __unused enum xdp_attach_mode mode, void *arg)
 {
 	__u32 *all_feats = arg;
 
@@ -876,7 +876,7 @@ out:
 static struct prog_option status_options[] = { END_OPTIONS };
 
 int print_iface_status(const struct iface *iface, struct xdp_program *prog,
-		       enum xdp_attach_mode mode, void *arg)
+		       enum xdp_attach_mode mode, __unused void *arg)
 {
 	__u32 feat = 0;
 	int err;
@@ -898,7 +898,7 @@ int print_iface_status(const struct iface *iface, struct xdp_program *prog,
 	return 0;
 }
 
-int do_status(const void *cfg, const char *pin_root_path)
+int do_status(__unused const void *cfg, const char *pin_root_path)
 {
 	int err = EXIT_SUCCESS, map_fd = -1;
 	struct stats_record rec = {};
@@ -1007,7 +1007,7 @@ out:
 	return err ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
-int do_help(const void *cfg, const char *pin_root_path)
+int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 {
 	fprintf(stderr,
 		"Usage: xdp-filter COMMAND [options]\n"

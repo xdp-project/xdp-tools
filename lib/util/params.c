@@ -33,7 +33,7 @@ static bool opt_is_multi(const struct prog_option *opt)
 	return opt->type == OPT_MULTISTRING;
 }
 
-static int handle_bool(char *optarg, void *tgt, void *typearg)
+static int handle_bool(__unused char *optarg, void *tgt, __unused void *typearg)
 {
 	bool *opt_set = tgt;
 
@@ -41,7 +41,7 @@ static int handle_bool(char *optarg, void *tgt, void *typearg)
 	return 0;
 }
 
-static int handle_string(char *optarg, void *tgt, void *typearg)
+static int handle_string(char *optarg, void *tgt, __unused void *typearg)
 {
 	char **opt_set = tgt;
 
@@ -49,7 +49,7 @@ static int handle_string(char *optarg, void *tgt, void *typearg)
 	return 0;
 }
 
-static int handle_multistring(char *optarg, void *tgt, void *typearg)
+static int handle_multistring(char *optarg, void *tgt, __unused void *typearg)
 {
 	struct multistring *opt_set = tgt;
 	void *ptr;
@@ -67,7 +67,7 @@ static int handle_multistring(char *optarg, void *tgt, void *typearg)
 	return 0;
 }
 
-static int handle_u32(char *optarg, void *tgt, void *typearg)
+static int handle_u32(char *optarg, void *tgt, __unused void *typearg)
 {
 	__u32 *opt_set = tgt;
 	unsigned long val;
@@ -80,7 +80,7 @@ static int handle_u32(char *optarg, void *tgt, void *typearg)
 	return 0;
 }
 
-static int handle_u16(char *optarg, void *tgt, void *typearg)
+static int handle_u16(char *optarg, void *tgt, __unused void *typearg)
 {
 	__u16 *opt_set = tgt;
 	unsigned long val;
@@ -112,7 +112,7 @@ static int parse_mac(char *str, unsigned char mac[ETH_ALEN])
 	return 0;
 }
 
-static int handle_macaddr(char *optarg, void *tgt, void *typearg)
+static int handle_macaddr(char *optarg, void *tgt, __unused void *typearg)
 {
 	struct mac_addr *opt_set = tgt;
 	int err;
@@ -130,7 +130,7 @@ void print_macaddr(char *buf, size_t buf_len, const struct mac_addr *addr)
 
 	for (i = 0; buf_len > 0 && i < ETH_ALEN; i++) {
 		len = snprintf(buf, buf_len, "%02x", addr->addr[i]);
-		if (len < 0 || len >= buf_len)
+		if (len < 0 || (size_t)len >= buf_len)
 			break;
 
 		buf += len;
@@ -182,7 +182,7 @@ static int handle_flags(char *optarg, void *tgt, void *typearg)
 	return 0;
 }
 
-static int handle_ifname(char *optarg, void *tgt, void *typearg)
+static int handle_ifname(char *optarg, void *tgt, __unused void *typearg)
 {
 	struct iface *iface = tgt;
 	int ifindex;
@@ -203,7 +203,7 @@ void print_addr(char *buf, size_t buf_len, const struct ip_addr *addr)
 	inet_ntop(addr->af, &addr->addr, buf, buf_len);
 }
 
-static int handle_ipaddr(char *optarg, void *tgt, void *typearg)
+static int handle_ipaddr(char *optarg, void *tgt, __unused void *typearg)
 {
 	struct ip_addr *addr = tgt;
 	int af;
@@ -260,7 +260,7 @@ static void print_enum_vals(char *buf, size_t buf_len,
 		first = false;
 
 		len = snprintf(buf, buf_len, "%s", val->name);
-		if (len < 0 || len >= buf_len)
+		if (len < 0 || (size_t)len >= buf_len)
 			break;
 		buf += len;
 		buf_len -= len;
@@ -312,7 +312,7 @@ void print_flags(char *buf, size_t buf_len, const struct flag_val *flags,
 		}
 		first = false;
 		len = snprintf(buf, buf_len, "%s", flag->flagstring);
-		if (len < 0 || len >= buf_len)
+		if (len < 0 || (size_t)len >= buf_len)
 			break;
 		buf += len;
 		buf_len -= len;
@@ -690,7 +690,7 @@ int dispatch_commands(const char *argv0, int argc, char **argv,
 	}
 
 	len = snprintf(usagebuf, sizeof(usagebuf), "%s %s", prog_name, cmd->name);
-	if (len < 0 || len >= sizeof(usagebuf))
+	if (len < 0 || (size_t)len >= sizeof(usagebuf))
 		goto out;
 
 	err = parse_cmdline_args(argc, argv, cmd->options, cfg, prog_name, usagebuf,

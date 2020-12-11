@@ -7,6 +7,7 @@
 #include <xdp/libxdp.h>
 
 #include "logging.h"
+#include "util.h"
 
 static enum logging_print_level log_level = LOG_INFO;
 
@@ -25,8 +26,9 @@ static int libbpf_print_func(enum libbpf_print_level level, const char *format,
 	return print_func(level + 1, format, args);
 }
 
-static int libbpf_silent_func(enum libbpf_print_level level, const char *format,
-			      va_list args)
+static int libbpf_silent_func(__unused enum libbpf_print_level level,
+			      __unused const char *format,
+			      __unused va_list args)
 {
 	return 0;
 }

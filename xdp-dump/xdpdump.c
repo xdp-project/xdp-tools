@@ -179,7 +179,7 @@ static uint64_t get_if_speed(struct iface *iface)
 		goto error_exit;
 
 	/* If speed is unknown return 0. */
-	if (ereq.req.speed == -1)
+	if (ereq.req.speed == -1U)
 		ereq.req.speed = 0;
 
 	close(fd);
@@ -336,7 +336,7 @@ static int snprinth(char *str, size_t size,
 	int i;
 	int pre_skip;
 	int post_skip;
-	int zero_offset;
+	size_t zero_offset;
 
 	if (str == NULL || size < SNPRINTH_MIN_BUFFER_SIZE ||
 	    buffer == NULL || offset >= buffer_size || buffer_size > 0xffff)
@@ -582,7 +582,7 @@ static bool capture_on_legacy_interface(struct dumpopt *cfg)
 			if (cfg->pcap_file[0] == '-' && cfg->pcap_file[1] == 0)
 				pcap_dump_flush(pcap_dumper);
 		} else {
-			int i;
+			size_t i;
 			char hline[SNPRINTH_MIN_BUFFER_SIZE];
 
 			if (cfg->hex_dump) {
@@ -1121,7 +1121,7 @@ error_exit:
 /*****************************************************************************
  * list_interfaces()
  *****************************************************************************/
-static bool list_interfaces(struct dumpopt *cfg)
+static bool list_interfaces(__unused struct dumpopt *cfg)
 {
 	struct if_nameindex *idx, *indexes;
 
@@ -1165,7 +1165,7 @@ static bool list_interfaces(struct dumpopt *cfg)
 /*****************************************************************************
  * signal_handler()
  *****************************************************************************/
-static void signal_handler(int signo)
+static void signal_handler(__unused int signo)
 {
 	exit_xdpdump = true;
 	if (exit_pcap)

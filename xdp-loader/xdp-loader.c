@@ -65,13 +65,13 @@ static struct prog_option load_options[] = {
 	END_OPTIONS
 };
 
-int do_load(const void *cfg, const char *pin_root_path)
+int do_load(const void *cfg, __unused const char *pin_root_path)
 {
 	const struct loadopt *opt = cfg;
 	struct xdp_program **progs, *p;
 	char errmsg[STRERR_BUFSIZE];
-	int err = EXIT_SUCCESS, i;
-	size_t num_progs;
+	int err = EXIT_SUCCESS;
+	size_t num_progs, i;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = opt->pin_path);
 
@@ -121,7 +121,7 @@ retry:
 		}
 
 		xdp_program__print_chain_call_actions(p, errmsg, sizeof(errmsg));
-		pr_debug("XDP program %d: Run prio: %d. Chain call actions: %s\n",
+		pr_debug("XDP program %zu: Run prio: %d. Chain call actions: %s\n",
 			 i, xdp_program__run_prio(p), errmsg);
 
 		if (!opt->pin_path) {
@@ -181,7 +181,7 @@ static struct prog_option unload_options[] = {
 	END_OPTIONS
 };
 
-int do_unload(const void *cfg, const char *pin_root_path)
+int do_unload(const void *cfg, __unused const char *pin_root_path)
 {
 	const struct unloadopt *opt = cfg;
 	struct xdp_multiprog *mp = NULL;
@@ -258,7 +258,7 @@ static char *print_bpf_tag(char buf[BPF_TAG_SIZE * 2 + 1],
 }
 
 int print_iface_status(const struct iface *iface,
-		       const struct xdp_multiprog *mp, void *arg)
+		       const struct xdp_multiprog *mp, __unused void *arg)
 {
 	struct xdp_program *prog, *dispatcher;
 	char tag[BPF_TAG_SIZE * 2 + 1];
@@ -301,7 +301,7 @@ int print_iface_status(const struct iface *iface,
 	return 0;
 }
 
-int do_status(const void *cfg, const char *pin_root_path)
+int do_status(__unused const void *cfg, __unused const char *pin_root_path)
 {
 	int err = EXIT_SUCCESS;
 
@@ -316,7 +316,7 @@ int do_status(const void *cfg, const char *pin_root_path)
 	return err;
 }
 
-int do_help(const void *cfg, const char *pin_root_path)
+int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 {
 	fprintf(stderr,
 		"Usage: xdp-loader COMMAND [options]\n"

@@ -476,7 +476,7 @@ int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 				first = false;
 			}
 			len = snprintf(pos, buf_len, "%s", xdp_action_names[i]);
-			if (len < 0 || len >= buf_len)
+			if (len < 0 || (size_t)len >= buf_len)
 				goto err_len;
 			pos += len;
 			buf_len -= len;
@@ -1305,7 +1305,8 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 			      unsigned int flags)
 {
 	struct xdp_multiprog *mp;
-	int err = 0, i;
+	int err = 0;
+	size_t i;
 
 	if (flags)
 		return -EINVAL;
@@ -1329,7 +1330,7 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 		bool found = false;
 
 		if (!progs[i]->prog_id) {
-			pr_warn("Program %d not loaded\n", i);
+			pr_warn("Program %zu not loaded\n", i);
 			err = -EINVAL;
 			goto out;
 		}
@@ -1840,7 +1841,8 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	struct xdp_multiprog *mp;
 	struct bpf_map *map;
 	char buf[PATH_MAX];
-	int err, i;
+	size_t i;
+	int err;
 
 	if (!progs || !num_progs || num_progs > MAX_DISPATCHER_ACTIONS)
 		return ERR_PTR(-EINVAL);

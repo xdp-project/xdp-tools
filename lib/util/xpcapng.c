@@ -269,7 +269,7 @@ static bool pcapng_write_shb(struct xpcapng_dumper *pd, const char *comment,
 	rc = write(pd->pd_fd, shb, shb_length);
 	free(shb);
 
-	if (rc != shb_length)
+	if ((size_t)rc != shb_length)
 		return false;
 
 	return true;
@@ -366,7 +366,7 @@ static bool pcapng_write_idb(struct xpcapng_dumper *pd, const char *name,
 	rc = write(pd->pd_fd, idb, idb_length);
 	free(idb);
 
-	if (rc != idb_length)
+	if ((size_t)rc != idb_length)
 		return false;
 
 	return true;
@@ -527,7 +527,7 @@ static bool pcapng_write_epb(struct xpcapng_dumper *pd, uint32_t ifid,
 		(epb_options->queue ? 8 : 0) +
 		(epb_options->xdp_verdict ? 16 : 0);
 	rc = writev(pd->pd_fd, iov, i);
-	if (rc != epb_length)
+	if ((size_t)rc != epb_length)
 		return false;
 
 	return true;
