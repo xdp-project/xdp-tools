@@ -42,7 +42,7 @@ DEFINES += -DHAVE_SECURE_GETENV
 endif
 
 
-CFLAGS += -std=gnu17 -Wextra -Werror $(DEFINES)
+CFLAGS += -std=gnu11 -Wextra -Werror $(DEFINES)
 BPF_CFLAGS += $(DEFINES)
 
 CONFIGMK := $(LIB_DIR)/../config.mk
