@@ -507,6 +507,7 @@ static int prog_options_to_options(struct prog_option *poptions,
 		nopt->has_arg = opt_needs_arg(opt) ? required_argument : no_argument;
 		nopt->name = opt->name;
 		nopt->val = opt->short_opt;
+		nopt->flag = NULL;
 		nopt++;
 	}
 	*(c++) = '\0';
