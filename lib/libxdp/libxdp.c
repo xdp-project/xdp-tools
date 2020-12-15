@@ -292,8 +292,9 @@ static int xdp_lock_release(int lock_fd)
 static int xdp_attach_fd(int prog_fd, int old_fd, int ifindex,
 			 enum xdp_attach_mode mode)
 {
-	int err = 0, xdp_flags = 0;
 	DECLARE_LIBBPF_OPTS(bpf_xdp_set_link_opts, opts, .old_fd = old_fd);
+	struct bpf_xdp_set_link_opts *setopts = &opts;
+	int err = 0, xdp_flags = 0;
 
 	pr_debug("Replacing XDP fd %d with %d on ifindex %d\n",
 		 old_fd, prog_fd, ifindex);
@@ -314,8 +315,14 @@ static int xdp_attach_fd(int prog_fd, int old_fd, int ifindex,
 	case XDP_MODE_UNSPEC:
 		break;
 	}
-	err = bpf_set_link_xdp_fd_opts(ifindex, prog_fd, xdp_flags, &opts);
+again:
+	err = bpf_set_link_xdp_fd_opts(ifindex, prog_fd, xdp_flags, setopts);
 	if (err < 0) {
+		if (err == -EINVAL && setopts) {
+			pr_debug("Got 'invalid argument', trying again without old_fd\n");
+			setopts = NULL;
+			goto again;
+		}
 		pr_warn("Error attaching XDP program to ifindex %d: %s\n",
 			ifindex, strerror(-err));
 
