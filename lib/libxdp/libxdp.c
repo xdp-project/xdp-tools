@@ -35,8 +35,8 @@
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
 
 static const char *dispatcher_feature_err =
-	"This most likely means that the kernel does not support the features\n"
-	"needed by the multiprog dispatcher, either because it is too old entirely,\n"
+	"This means that the kernel does not support the features needed\n"
+	"by the multiprog dispatcher, either because it is too old entirely,\n"
 	"or because it is not yet supported on the current architecture.\n";
 
 struct xdp_program {
@@ -1281,10 +1281,15 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 	if (IS_ERR(mp)) {
 		err = PTR_ERR(mp);
 		mp = NULL;
-		if (err == -EOPNOTSUPP && num_progs == 1) {
-			pr_warn("Falling back to loading single prog "
-				"without dispatcher\n");
-			return xdp_program__attach_single(progs[0], ifindex, mode);
+		if (err == -EOPNOTSUPP) {
+			if (num_progs == 1) {
+				pr_warn("Falling back to loading single prog "
+					"without dispatcher\n");
+				return xdp_program__attach_single(progs[0], ifindex, mode);
+			} else {
+				pr_warn("Can't fall back to legacy load with %zu "
+					"programs\n%s\n", num_progs, dispatcher_feature_err);
+			}
 		}
 		goto out;
 	}
@@ -1448,8 +1453,7 @@ static int xdp_multiprog__load(struct xdp_multiprog *mp)
 	err = xdp_program__load(mp->main_prog);
 	if (err) {
 		if (err == -LIBBPF_ERRNO__VERIFY) {
-			pr_warn("Got verifier error while loading dispatcher.\n%s\n",
-				dispatcher_feature_err);
+			pr_warn("Got verifier error while loading dispatcher.\n");
 			err = -EOPNOTSUPP;
 		} else {
 			pr_warn("Failed to load dispatcher: %s\n",
@@ -1850,8 +1854,7 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 		if (err) {
 			if (err == -E2BIG) {
 				pr_warn("Got 'argument list too long' error while "
-					"loading component program.\n%s\n",
-					dispatcher_feature_err);
+					"loading component program.\n");
 				err = -EOPNOTSUPP;
 			} else {
 				char buf[100] = {};
@@ -1877,8 +1880,7 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 			err = -errno;
 			if (err == -EPERM) {
 				pr_warn("Got 'permission denied' error while "
-					"attaching program to dispatcher.\n%s\n",
-					dispatcher_feature_err);
+					"attaching program to dispatcher.\n");
 				err = -EOPNOTSUPP;
 			} else {
 				pr_warn("Failed to attach program %s to dispatcher: %s\n",
