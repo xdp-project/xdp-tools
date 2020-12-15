@@ -1858,7 +1858,6 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	struct xdp_program *dispatcher;
 	struct xdp_multiprog *mp;
 	struct bpf_map *map;
-	char buf[PATH_MAX];
 	size_t i;
 	int err;
 
@@ -1878,7 +1877,7 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 					    "xdp/dispatcher", NULL);
 	if (IS_ERR(dispatcher)) {
 		err = PTR_ERR(dispatcher);
-		pr_warn("Couldn't open BPF file %s\n", buf);
+		pr_warn("Couldn't open BPF file 'xdp-dispatcher.o'\n");
 		goto err;
 	}
 
@@ -1893,7 +1892,7 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 
 	map = bpf_map__next(NULL, mp->main_prog->bpf_obj);
 	if (!map) {
-		pr_warn("Couldn't find rodata map in object file %s\n", buf);
+		pr_warn("Couldn't find rodata map in object file 'xdp-dispatcher.o'\n");
 		err = -ENOENT;
 		goto err;
 	}
@@ -1908,7 +1907,7 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 
 	err = bpf_map__set_initial_value(map, &mp->config, sizeof(mp->config));
 	if (err) {
-		pr_warn("Failed to set rodata for object file %s\n", buf);
+		pr_warn("Failed to set rodata for object file 'xdp-dispatcher.o'\n");
 		goto err;
 	}
 
