@@ -1231,6 +1231,19 @@ static struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 	return new_prog;
 }
 
+static int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
+				      enum xdp_attach_mode mode)
+{
+	int err;
+
+	bpf_program__set_type(prog->bpf_prog, BPF_PROG_TYPE_XDP);
+	err = xdp_program__load(prog);
+	if (err)
+		return err;
+
+	return xdp_attach_fd(xdp_program__fd(prog), -1, ifindex, mode);
+}
+
 int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 			      int ifindex, enum xdp_attach_mode mode,
 			      unsigned int flags)
@@ -1250,23 +1263,21 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 	}
 
 	if (mode == XDP_MODE_HW) {
-		struct xdp_program *prog;
-
 		if (num_progs > 1)
 			return -EINVAL;
 
-		prog = progs[0];
-		err = xdp_program__load(prog);
-		if (err)
-			goto out;
-
-		return xdp_attach_fd(xdp_program__fd(prog), -1, ifindex, mode);
+		return xdp_program__attach_single(progs[0], ifindex, mode);
 	}
 
 	mp = xdp_multiprog__generate(progs, num_progs, ifindex);
 	if (IS_ERR(mp)) {
 		err = PTR_ERR(mp);
 		mp = NULL;
+		if (err == -EOPNOTSUPP && num_progs == 1) {
+			pr_warn("Falling back to loading single prog "
+				"without dispatcher\n");
+			return xdp_program__attach_single(progs[0], ifindex, mode);
+		}
 		goto out;
 	}
 
@@ -1770,10 +1781,17 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 		bpf_program__set_type(prog->bpf_prog, BPF_PROG_TYPE_EXT);
 		err = xdp_program__load(prog);
 		if (err) {
-			char buf[100] = {};
-			libxdp_strerror(err, buf, sizeof(buf));
-			pr_warn("Failed to load program %s: %s\n",
-				xdp_program__name(prog), buf);
+			if (err == -E2BIG) {
+				pr_warn("Got 'argument list too long' error while "
+					"loading component program.\n%s\n",
+					dispatcher_feature_err);
+				err = -EOPNOTSUPP;
+			} else {
+				char buf[100] = {};
+				libxdp_strerror(err, buf, sizeof(buf));
+				pr_warn("Failed to load program %s: %s\n",
+					xdp_program__name(prog), buf);
+			}
 			goto err;
 		}
 
