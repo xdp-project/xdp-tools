@@ -66,6 +66,7 @@ struct xdp_multiprog {
 	size_t num_links;
 	bool is_loaded;
 	bool is_legacy;
+	bool checked_compat;
 	enum xdp_attach_mode attach_mode;
 	int ifindex;
 };
@@ -1739,6 +1740,61 @@ struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex)
 	return mp;
 }
 
+static int xdp_multiprog__check_compat(struct xdp_multiprog *mp)
+{
+	struct xdp_program *test_prog;
+	int err, lfd;
+
+	if (mp->checked_compat)
+		return 0;
+
+	pr_debug("Checking dispatcher compatibility\n");
+	test_prog = xdp_program__find_file("xdp-dispatcher.o", "xdp/pass", NULL);
+	if (IS_ERR(test_prog)) {
+		err = PTR_ERR(test_prog);
+		pr_warn("Couldn't open BPF file xdp-dispatcher.o\n");
+		return err;
+	}
+
+	err = bpf_program__set_attach_target(test_prog->bpf_prog,
+					     mp->main_prog->prog_fd,
+					     "prog0");
+	if (err) {
+		pr_debug("Failed to set attach target: %s\n", strerror(-err));
+		goto out;
+	}
+
+	bpf_program__set_type(test_prog->bpf_prog, BPF_PROG_TYPE_EXT);
+	err = xdp_program__load(test_prog);
+	if (err) {
+		char buf[100] = {};
+		libxdp_strerror(err, buf, sizeof(buf));
+		pr_debug("Failed to load program %s: %s\n",
+			xdp_program__name(test_prog), buf);
+		goto out;
+	}
+
+	lfd = bpf_raw_tracepoint_open(NULL, test_prog->prog_fd);
+	if (lfd < 0) {
+		err = -errno;
+		pr_debug("Failed to attach test program to dispatcher: %s\n",
+			 strerror(-err));
+		goto out;
+	}
+	close(lfd);
+	mp->checked_compat = true;
+out:
+	xdp_program__close(test_prog);
+
+	if (err) {
+		pr_warn("Compatibility check for dispatcher program failed: %s\n",
+			strerror(-err));
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
 static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 				    struct xdp_program *prog)
 {
@@ -1749,6 +1805,10 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 	if (!mp || !prog || !mp->is_loaded ||
 	    mp->num_links >= mp->config.num_progs_enabled)
 		return -EINVAL;
+
+	err = xdp_multiprog__check_compat(mp);
+	if (err)
+		return err;
 
 	if (!prog->btf) {
 		pr_warn("Program %s has no BTF information, so we can't load it as multiprog\n",

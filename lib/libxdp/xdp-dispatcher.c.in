@@ -57,5 +57,11 @@ out:
         return XDP_PASS;
 }
 
+SEC("xdp/pass")
+int xdp_pass(struct xdp_md *ctx)
+{
+        return XDP_PASS;
+}
+
 char _license[] SEC("license") = "GPL";
 __uint(dispatcher_version, XDP_DISPATCHER_VERSION) SEC(XDP_METADATA_SECTION);
