@@ -1776,6 +1776,7 @@ static int xdp_multiprog__check_compat(struct xdp_multiprog *mp)
 	}
 
 	bpf_program__set_type(test_prog->bpf_prog, BPF_PROG_TYPE_EXT);
+	bpf_program__set_expected_attach_type(test_prog->bpf_prog, 0);
 	err = xdp_program__load(test_prog);
 	if (err) {
 		char buf[100] = {};
@@ -1850,6 +1851,7 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 		}
 
 		bpf_program__set_type(prog->bpf_prog, BPF_PROG_TYPE_EXT);
+		bpf_program__set_expected_attach_type(prog->bpf_prog, 0);
 		err = xdp_program__load(prog);
 		if (err) {
 			if (err == -E2BIG) {
