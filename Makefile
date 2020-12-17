@@ -39,7 +39,7 @@ help:
 	@echo "Make Arguments:"
 	@echo " V=[0|1]             - set build verbosity level"
 
-config.mk:
+config.mk: configure
 	sh configure
 
 check_submodule:
