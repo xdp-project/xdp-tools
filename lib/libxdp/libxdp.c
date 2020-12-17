@@ -63,6 +63,7 @@ struct xdp_multiprog {
 	struct xdp_dispatcher_config config;
 	struct xdp_program *main_prog; // dispatcher or legacy prog pointer
 	struct xdp_program *first_prog; // uses xdp_program->next to build a list
+	struct xdp_program *hw_prog;
 	size_t num_links;
 	bool is_loaded;
 	bool is_legacy;
@@ -363,6 +364,12 @@ xdp_program__is_attached(const struct xdp_program *xdp_prog, int ifindex)
 	mp = xdp_multiprog__get_from_ifindex(ifindex);
 	if (IS_ERR_OR_NULL(mp))
 		return ret;
+
+	prog = xdp_multiprog__hw_prog(mp);
+	if (xdp_program__id(prog) == xdp_program__id(xdp_prog)) {
+		ret = XDP_MODE_HW;
+		goto out;
+	}
 
 	if (xdp_multiprog__is_legacy(mp)) {
 		prog = xdp_multiprog__main_prog(mp);
@@ -1200,6 +1207,17 @@ static int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
 	return xdp_attach_fd(xdp_program__fd(prog), -1, ifindex, mode);
 }
 
+static int xdp_multiprog__hw_fd(struct xdp_multiprog *mp)
+{
+	if (!mp)
+		return -EINVAL;
+
+	if (!mp->hw_prog)
+		return -ENOENT;
+
+	return mp->hw_prog->prog_fd;
+}
+
 static int xdp_program__attach_hw(struct xdp_program *prog, int ifindex)
 {
 	struct bpf_map *map;
@@ -1210,6 +1228,28 @@ static int xdp_program__attach_hw(struct xdp_program *prog, int ifindex)
 	}
 
 	return xdp_program__attach_single(prog, ifindex, XDP_MODE_HW);
+}
+
+static int xdp_multiprog__detach_hw(struct xdp_multiprog *old_mp)
+{
+	int err = 0, hw_fd = -1, ifindex = -1;
+
+	if (!old_mp)
+		return -EINVAL;
+
+	ifindex = old_mp->ifindex;
+
+	hw_fd = xdp_multiprog__hw_fd(old_mp);
+	if (hw_fd < 0)
+		return -EINVAL;
+
+	err = xdp_attach_fd(-1, hw_fd, ifindex, XDP_MODE_HW);
+	if (err < 0)
+		return err;
+
+	pr_debug("Detached hw program on ifindex '%d'\n", ifindex);
+
+	return 0;
 }
 
 int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
@@ -1223,7 +1263,8 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 		return -EINVAL;
 
 	old_mp = xdp_multiprog__get_from_ifindex(ifindex);
-	if (!IS_ERR_OR_NULL(old_mp)) {
+	if (!IS_ERR_OR_NULL(old_mp) &&
+	    (mode == XDP_MODE_HW) == (xdp_multiprog__hw_prog(old_mp) != NULL)) {
 		pr_warn("XDP program already loaded on ifindex %d; "
 			"replacing not yet supported\n", ifindex);
 		xdp_multiprog__close(old_mp);
@@ -1296,15 +1337,31 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 		return -EINVAL;
 
 	mp = xdp_multiprog__get_from_ifindex(ifindex);
-	if (IS_ERR_OR_NULL(mp) || mp->is_legacy) {
+	if (IS_ERR_OR_NULL(mp)) {
 		pr_warn("No XDP dispatcher found on ifindex %d\n", ifindex);
 		return -ENOENT;
+	}
+
+	if (mode == XDP_MODE_HW) {
+		if (num_progs > 1)
+			return -EINVAL;
+
+		err = xdp_multiprog__detach_hw(mp);
+		goto out;
 	}
 
 	if (mode != XDP_MODE_UNSPEC && mp->attach_mode != mode) {
 		pr_warn("XDP dispatcher attached in mode %d, requested %d\n",
 			mp->attach_mode, mode);
 		err = -ENOENT;
+		goto out;
+	}
+
+	if (mp->is_legacy) {
+		if (num_progs > 1)
+			return -EINVAL;
+
+		err = xdp_multiprog__attach(mp, NULL, mode);
 		goto out;
 	}
 
@@ -1333,7 +1390,12 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 	}
 
 	if (num_progs == mp->num_links) {
-		err = xdp_multiprog__detach(mp);
+		err = xdp_multiprog__attach(mp, NULL, mp->attach_mode);
+		if (err)
+			goto out;
+
+		if (!mp->is_legacy)
+			err = xdp_multiprog__unpin(mp);
 		if (err)
 			goto out;
 	} else {
@@ -1371,6 +1433,7 @@ void xdp_multiprog__close(struct xdp_multiprog *mp)
 		next = p->next;
 		xdp_program__close(p);
 	}
+	xdp_program__close(mp->hw_prog);
 
 	free(mp);
 }
@@ -1535,10 +1598,11 @@ err:
 	goto out;
 }
 
-static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp, int prog_fd)
+static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp, 
+				       int prog_fd, int hw_fd)
 {
 	__u32 *map_id, map_key = 0, map_info_len = sizeof(struct bpf_map_info);
-	struct bpf_prog_info_linear *info_linear;
+	struct bpf_prog_info_linear *info_linear = NULL;
 	struct bpf_map_info map_info = {};
 	struct bpf_prog_info *info;
 	struct xdp_program *prog;
@@ -1551,100 +1615,130 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp, int prog_fd)
 		return -EINVAL;
 
 	arrays = (1UL << BPF_PROG_INFO_MAP_IDS);
-	info_linear = bpf_program__get_prog_info_linear(prog_fd, arrays);
-	if (IS_ERR_OR_NULL(info_linear)) {
-		pr_warn("couldn't get program info for fd: %d", prog_fd);
-		return -EINVAL;
-	}
 
-	info = &info_linear->info;
-	if (!info->btf_id) {
-		pr_debug("No BTF for prog ID %u\n", info->id);
-		mp->is_legacy = true;
-		goto legacy;
-	}
+	if (prog_fd > 0) {
+		info_linear = bpf_program__get_prog_info_linear(prog_fd, arrays);
+		if (IS_ERR_OR_NULL(info_linear)) {
+			pr_warn("couldn't get program info for fd: %d", prog_fd);
+			return -EINVAL;
+		}
 
-	err = btf__get_from_id(info->btf_id, &btf);
-	if (err) {
-		pr_warn("Couldn't get BTF for ID %ul\n", info->btf_id);
-		goto out;
-	}
-
-	err = check_dispatcher_version(btf);
-	if (err) {
-		if (err != -ENOENT) {
-			pr_warn("Dispatcher version check failed for ID %d\n",
-				info->id);
-			goto out;
-		} else {
-			/* no dispatcher, mark as legacy prog */
+		info = &info_linear->info;
+		if (!info->btf_id) {
+			pr_debug("No BTF for prog ID %u\n", info->id);
 			mp->is_legacy = true;
-			err = 0;
 			goto legacy;
 		}
-	}
 
-	if (info->nr_map_ids != 1) {
-		pr_warn("Expected a single map for dispatcher, found %d\n",
-			info->nr_map_ids);
-		err = -EINVAL;
-		goto out;
-	}
-	map_id = (void *)info_linear->data;
+		err = btf__get_from_id(info->btf_id, &btf);
+		if (err) {
+			pr_warn("Couldn't get BTF for ID %ul\n", info->btf_id);
+			goto out;
+		}
 
-	map_fd = bpf_map_get_fd_by_id(*map_id);
-	if (map_fd < 0) {
-		err = map_fd;
-		pr_warn("Could not get config map fd: %s\n", strerror(-err));
-		goto out;
-	}
-	err = bpf_obj_get_info_by_fd(map_fd, &map_info, &map_info_len);
-	if (err) {
-		pr_warn("Couldn't get map info: %s\n", strerror(-err));
-		goto out;
-	}
+		err = check_dispatcher_version(btf);
+		if (err) {
+			if (err != -ENOENT) {
+				pr_warn("Dispatcher version check failed for ID %d\n",
+					info->id);
+				goto out;
+			} else {
+				/* no dispatcher, mark as legacy prog */
+				mp->is_legacy = true;
+				err = 0;
+				goto legacy;
+			}
+		}
 
-	if (map_info.key_size != sizeof(map_key) ||
-	    map_info.value_size != sizeof(mp->config)) {
-		pr_warn("Map key or value size mismatch\n");
-		err = -EINVAL;
-		goto out;
-	}
+		if (info->nr_map_ids != 1) {
+			pr_warn("Expected a single map for dispatcher, found %d\n",
+				info->nr_map_ids);
+			err = -EINVAL;
+			goto out;
+		}
+		map_id = (void *)info_linear->data;
 
-	err = bpf_map_lookup_elem(map_fd, &map_key, &mp->config);
-	if (err) {
-		pr_warn("Could not lookup map value: %s\n", strerror(-err));
-		goto out;
-	}
+		map_fd = bpf_map_get_fd_by_id(*map_id);
+		if (map_fd < 0) {
+			err = map_fd;
+			pr_warn("Could not get config map fd: %s\n", strerror(-err));
+			goto out;
+		}
+		err = bpf_obj_get_info_by_fd(map_fd, &map_info, &map_info_len);
+		if (err) {
+			pr_warn("Couldn't get map info: %s\n", strerror(-err));
+			goto out;
+		}
+
+		if (map_info.key_size != sizeof(map_key) ||
+		map_info.value_size != sizeof(mp->config)) {
+			pr_warn("Map key or value size mismatch\n");
+			err = -EINVAL;
+			goto out;
+		}
+
+		err = bpf_map_lookup_elem(map_fd, &map_key, &mp->config);
+		if (err) {
+			pr_warn("Could not lookup map value: %s\n", strerror(-err));
+			goto out;
+		}
 
 legacy:
-	prog = xdp_program__from_fd(prog_fd);
-	if (IS_ERR(prog)) {
-		err = PTR_ERR(prog);
-		goto out;
-	}
-	mp->main_prog = prog;
-
-	if (!mp->is_legacy) {
-		err = xdp_multiprog__link_pinned_progs(mp);
-		if (err) {
-			pr_warn("Unable to read pinned progs: %s\n", strerror(-err));
-			mp->is_legacy = true;
-			err = 0;
+		prog = xdp_program__from_fd(prog_fd);
+		if (IS_ERR(prog)) {
+			err = PTR_ERR(prog);
+			goto out;
 		}
+
+		mp->main_prog = prog;
+
+		if (!mp->is_legacy) {
+			err = xdp_multiprog__link_pinned_progs(mp);
+			if (err) {
+				pr_warn("Unable to read pinned progs: %s\n", strerror(-err));
+				mp->is_legacy = true;
+				err = 0;
+			}
+		}
+
+		pr_debug("Found %s with id %d and %zu component progs\n",
+			mp->is_legacy ? "legacy program" : "multiprog",
+			mp->main_prog->prog_id, mp->num_links);
+	}
+
+	if (prog_fd > 0 && hw_fd > 0)
+		free(info_linear);
+
+	if (hw_fd > 0) {
+		info_linear = bpf_program__get_prog_info_linear(hw_fd, arrays);
+		if (IS_ERR_OR_NULL(info_linear)) {
+			pr_warn("couldn't get program info for fd: %d", hw_fd);
+			return -EINVAL;
+		}
+
+		prog = xdp_program__from_fd(hw_fd);
+		if (IS_ERR(prog)) {
+			err = PTR_ERR(prog);
+			goto out;
+		}
+
+		if (mp->first_prog == NULL)
+			mp->is_legacy = true;
+
+		mp->hw_prog = prog;
+
+		pr_debug("Found hw program with id %d\n", mp->hw_prog->prog_id);
 	}
 
 	mp->is_loaded = true;
-	pr_debug("Found %s with id %d and %zu component progs\n",
-		 mp->is_legacy ? "legacy program" : "multiprog",
-		 mp->main_prog->prog_id, mp->num_links);
 
 out:
 	free(info_linear);
 	return err;
 }
 
-static struct xdp_multiprog *xdp_multiprog__from_fd(int fd, int ifindex)
+static struct xdp_multiprog *xdp_multiprog__from_fd(int fd, int hw_fd,
+						    int ifindex)
 {
 	struct xdp_multiprog *mp = NULL;
 	int err;
@@ -1653,7 +1747,7 @@ static struct xdp_multiprog *xdp_multiprog__from_fd(int fd, int ifindex)
 	if (IS_ERR(mp))
 		return mp;
 
-	err = xdp_multiprog__fill_from_fd(mp, fd);
+	err = xdp_multiprog__fill_from_fd(mp, fd, hw_fd);
 	if (err)
 		goto err;
 
@@ -1664,28 +1758,39 @@ err:
 }
 
 
-static struct xdp_multiprog *xdp_multiprog__from_id(__u32 id, int ifindex)
+static struct xdp_multiprog *xdp_multiprog__from_id(__u32 id, __u32 hw_id,
+						    int ifindex)
 {
 	struct xdp_multiprog *mp;
-	int fd, err;
+	int hw_fd = 0;
+	int fd = 0;
+	int err;
 
-	fd = bpf_prog_get_fd_by_id(id);
-	if (fd < 0) {
+	if (id)
+		fd = bpf_prog_get_fd_by_id(id);
+
+	if (hw_id)
+		hw_fd = bpf_prog_get_fd_by_id(hw_id);
+
+	if (fd < 0 || hw_fd < 0) {
 		err = -errno;
 		pr_warn("couldn't get program fd: %s", strerror(-err));
 		return ERR_PTR(err);
 	}
-	mp = xdp_multiprog__from_fd(fd, ifindex);
+
+	mp = xdp_multiprog__from_fd(fd, hw_fd, ifindex);
 	if (IS_ERR_OR_NULL(mp))
 		close(fd);
 	return mp;
 }
+
 
 struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex)
 {
 	struct xdp_link_info xinfo = {};
 	enum xdp_attach_mode mode;
 	struct xdp_multiprog *mp;
+	__u32 hw_prog_id = 0;
 	__u32 prog_id = 0;
 	int err;
 
@@ -1696,18 +1801,29 @@ struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex)
 	if (xinfo.attach_mode == XDP_ATTACHED_SKB) {
 		prog_id = xinfo.skb_prog_id;
 		mode = XDP_MODE_SKB;
-	} else if (xinfo.attach_mode == XDP_ATTACHED_HW) {
-		prog_id = xinfo.hw_prog_id;
-		mode = XDP_MODE_HW;
-	} else {
+	} else if (xinfo.attach_mode == XDP_ATTACHED_DRV) {
 		prog_id = xinfo.drv_prog_id;
 		mode = XDP_MODE_NATIVE;
+	} else if (xinfo.attach_mode == XDP_ATTACHED_HW) {
+		hw_prog_id = xinfo.hw_prog_id;
+		mode = XDP_MODE_UNSPEC;
+	} else if (xinfo.attach_mode == XDP_ATTACHED_MULTI) {
+		if (xinfo.drv_prog_id) {
+			prog_id = xinfo.drv_prog_id;
+			mode = XDP_MODE_NATIVE;
+		}
+		if (xinfo.skb_prog_id) {
+			prog_id = xinfo.skb_prog_id;
+			mode = XDP_MODE_SKB;
+		}
+		hw_prog_id = xinfo.hw_prog_id;
 	}
 
-	if (!prog_id)
+	if (!prog_id && !hw_prog_id) {
 		return ERR_PTR(-ENOENT);
+	}
 
-	mp = xdp_multiprog__from_id(prog_id, ifindex);
+	mp = xdp_multiprog__from_id(prog_id, hw_prog_id, ifindex);
 	if (!IS_ERR_OR_NULL(mp))
 		mp->attach_mode = mode;
 
@@ -2121,6 +2237,9 @@ static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 	if (!mp && !old_mp)
 		return -EINVAL;
 
+	if (mode == XDP_MODE_HW)
+		return -EINVAL;
+
 	if (mp) {
 		prog_fd = xdp_multiprog__main_fd(mp);
 		if (prog_fd < 0)
@@ -2136,6 +2255,7 @@ static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 			return -EINVAL;
 		ifindex = old_mp->ifindex;
 	}
+
 
 	err = xdp_attach_fd(prog_fd, old_fd, ifindex, mode);
 	if (err < 0)
@@ -2161,9 +2281,17 @@ int xdp_multiprog__detach(struct xdp_multiprog *mp)
 	if (!mp || !mp->is_loaded)
 		return -EINVAL;
 
-	err = xdp_multiprog__attach(mp, NULL, mp->attach_mode);
-	if (err)
-		return err;
+	if (mp->main_prog) {
+		err = xdp_multiprog__attach(mp, NULL, mp->attach_mode);
+		if (err)
+			return err;
+	}
+
+	if (mp->hw_prog) {
+		err = xdp_multiprog__detach_hw(mp);
+		if (err)
+			return err;
+	}
 
 	if (!mp->is_legacy)
 		err = xdp_multiprog__unpin(mp);
@@ -2180,6 +2308,14 @@ struct xdp_program *xdp_multiprog__next_prog(const struct xdp_program *prog,
 		return prog->next;
 
 	return mp->first_prog;
+}
+
+struct xdp_program *xdp_multiprog__hw_prog(const struct xdp_multiprog *mp)
+{
+	if (!mp)
+		return NULL;
+
+	return mp->hw_prog;
 }
 
 enum xdp_attach_mode xdp_multiprog__attach_mode(const struct xdp_multiprog *mp)
