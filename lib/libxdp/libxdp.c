@@ -890,54 +890,6 @@ static struct bpf_object *open_bpf_obj(const char *filename,
 	return obj;
 }
 
-static int reuse_bpf_maps(struct bpf_object *dst_obj, const char *filename,
-			  struct bpf_object_open_opts *opts)
-{
-	struct bpf_object *src_obj;
-	struct bpf_program *prog;
-	struct bpf_map *map;
-	int err = 0, fd;
-
-	/* We can't load the XDP program before attaching it because it needs to
-	 * know about the dispatcher. As a workaround, open the file a second
-	 * time, load *that* object, and reuse all the file descriptors.
-	 *
-	 * This is just a stopgap solution until we get support for freplace
-	 * reattachment in the kernel, but it makes it possible to access the
-	 * map fds after calling xdp_program__open_file().
-	 */
-	src_obj = open_bpf_obj(filename, opts);
-	if (IS_ERR(src_obj))
-		return PTR_ERR(src_obj);
-
-	bpf_object__for_each_program(prog, src_obj)
-		bpf_program__set_type(prog, BPF_PROG_TYPE_XDP);
-
-	err = bpf_object__load(src_obj);
-	if (err)
-		goto out;
-
-	bpf_object__for_each_map (map, dst_obj) {
-		if (bpf_map__is_internal(map))
-			continue;
-
-		fd = bpf_object__find_map_fd_by_name(src_obj,
-						     bpf_map__name(map));
-		if (fd < 0) {
-			err = fd;
-			goto out;
-		}
-
-		err = bpf_map__reuse_fd(map, fd);
-		if (err)
-			goto out;
-	}
-
-out:
-	bpf_object__close(src_obj);
-	return err;
-}
-
 struct xdp_program *xdp_program__open_file(const char *filename,
 					   const char *section_name,
 					   struct bpf_object_open_opts *opts)
@@ -954,10 +906,6 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 		err = PTR_ERR(obj);
 		goto err;
 	}
-
-	err = reuse_bpf_maps(obj, filename, opts);
-	if (err)
-		goto err_close_obj;
 
 	xdp_prog = xdp_program__new();
 	if (IS_ERR(xdp_prog)) {
