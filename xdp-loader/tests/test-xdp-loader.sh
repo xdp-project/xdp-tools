@@ -9,7 +9,7 @@ test_load()
 
 test_section()
 {
-    check_run $XDP_LOADER load $NS $TEST_PROG_DIR/xdp_drop.o -s prog -vv
+    check_run $XDP_LOADER load $NS $TEST_PROG_DIR/xdp_drop.o -s xdp -vv
     check_run $XDP_LOADER unload $NS --all -vv
 }
 
