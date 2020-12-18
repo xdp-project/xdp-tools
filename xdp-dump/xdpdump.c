@@ -1119,50 +1119,6 @@ error_exit:
 }
 
 /*****************************************************************************
- * list_interfaces()
- *****************************************************************************/
-static bool list_interfaces(__unused struct dumpopt *cfg)
-{
-	struct if_nameindex *idx, *indexes;
-
-	indexes = if_nameindex();
-	if (!indexes) {
-		pr_warn("Couldn't get list of interfaces: %s\n",
-			strerror(errno));
-		return false;
-	}
-
-	printf("%-8.8s  %-16.16s  %s\n", "if_index", "if_name",
-	       "XDP program entry function");
-	printf("--------  ----------------  "
-	       "--------------------------------------------------\n");
-	for (idx = indexes; idx->if_index; idx++) {
-		struct xdp_multiprog *mp;
-
-		mp = xdp_multiprog__get_from_ifindex(idx->if_index);
-		if (IS_ERR_OR_NULL(mp)) {
-			printf("%-8d  %-16.16s  %s\n",
-			       idx->if_index, idx->if_name,
-			       "<No XDP program loaded!>");
-		} else {
-			struct xdp_program *prog = NULL;
-
-			printf("%-8d  %-16.16s  %s()\n",
-			       idx->if_index, idx->if_name,
-			       xdp_program__name(xdp_multiprog__main_prog(mp)));
-
-			while ((prog = xdp_multiprog__next_prog(prog, mp)))
-				printf("%-29s %s()\n", "",
-				       xdp_program__name(prog));
-
-			xdp_multiprog__close(mp);
-		}
-	}
-	if_freenameindex(indexes);
-	return true;
-}
-
-/*****************************************************************************
  * signal_handler()
  *****************************************************************************/
 static void signal_handler(__unused int signo)
@@ -1195,7 +1151,7 @@ int main(int argc, char **argv)
 
 	/* See if we need to dump interfaces and exit */
 	if (cfg_dumpopt.list_interfaces) {
-		if (list_interfaces(&cfg_dumpopt))
+		if (iface_print_status())
 			return EXIT_SUCCESS;
 		return EXIT_FAILURE;
 	}

@@ -20,6 +20,14 @@
 #include "util.h"
 #include "logging.h"
 
+static struct enum_val xdp_modes[] = {
+       {"native", XDP_MODE_NATIVE},
+       {"skb", XDP_MODE_SKB},
+       {"hw", XDP_MODE_HW},
+       {"unspecified", XDP_MODE_UNSPEC},
+       {NULL, 0}
+};
+
 int try_snprintf(char *buf, size_t buf_len, const char *format, ...)
 {
 	va_list args;
@@ -839,5 +847,86 @@ out_err:
 	free(prog_lock_file);
 	prog_lock_file = NULL;
 	prog_lock_fd = -1;
+	return err;
+}
+
+static char *print_bpf_tag(char buf[BPF_TAG_SIZE * 2 + 1],
+			   const unsigned char tag[BPF_TAG_SIZE])
+{
+	int i;
+
+	for (i = 0; i < BPF_TAG_SIZE; i++)
+		sprintf(&buf[i * 2], "%02x", tag[i]);
+	buf[BPF_TAG_SIZE * 2] = '\0';
+	return buf;
+}
+
+static int print_iface_status(const struct iface *iface,
+			      const struct xdp_multiprog *mp,
+			      __unused void *arg)
+{
+	struct xdp_program *prog, *dispatcher, *hw_prog;
+	char tag[BPF_TAG_SIZE * 2 + 1];
+	char buf[STRERR_BUFSIZE];
+	int err;
+
+	if (!mp) {
+		printf("%-22s <No XDP program loaded!>\n", iface->ifname);
+		return 0;
+	}
+
+	hw_prog = xdp_multiprog__hw_prog(mp);
+	if (hw_prog) {
+		printf("%-16s %-5s %-17s %-8s %-4d %-17s\n",
+		       iface->ifname,
+		       "",
+		       xdp_program__name(hw_prog),
+		       get_enum_name(xdp_modes, XDP_MODE_HW),
+		       xdp_program__id(hw_prog),
+		       print_bpf_tag(tag, xdp_program__tag(hw_prog)));
+	}
+
+	dispatcher = xdp_multiprog__main_prog(mp);
+	if (dispatcher) {
+		printf("%-16s %-5s %-17s %-8s %-4d %-17s\n",
+		iface->ifname,
+		"",
+		xdp_program__name(dispatcher),
+		get_enum_name(xdp_modes, xdp_multiprog__attach_mode(mp)),
+		xdp_program__id(dispatcher),
+		print_bpf_tag(tag, xdp_program__tag(dispatcher)));
+
+
+		for (prog = xdp_multiprog__next_prog(NULL, mp);
+		     prog;
+		     prog = xdp_multiprog__next_prog(prog, mp)) {
+
+			err = xdp_program__print_chain_call_actions(prog, buf,
+								    sizeof(buf));
+			if (err)
+				return err;
+
+			printf("%-16s %-5d  %-16s %-8s %-4u %-17s %s\n",
+			       " =>", xdp_program__run_prio(prog),
+			       xdp_program__name(prog),
+			       "", xdp_program__id(prog),
+			       print_bpf_tag(tag, xdp_program__tag(prog)),
+			       buf);
+		}
+	}
+
+	return 0;
+}
+
+int iface_print_status(void)
+{
+	int err;
+
+	printf("%-16s %-5s %-17s Mode     ID   %-17s %s\n",
+	       "Interface", "Prio", "Program name", "Tag", "Chain actions");
+	printf("--------------------------------------------------------------------------------------\n");
+
+	err = iterate_iface_multiprogs(print_iface_status, NULL);
+	printf("\n");
 	return err;
 }

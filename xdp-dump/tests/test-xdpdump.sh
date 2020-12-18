@@ -64,8 +64,8 @@ END
 
 test_interfaces()
 {
-    local NO_PROG_REGEX="([0-9]+ +$NS +<No XDP program loaded!>)"
-    local PROG_REGEX="([0-9]+ +$NS +xdp_dispatcher\(\)[[:space:]]+xdp_drop\(\))"
+    local NO_PROG_REGEX="($NS +<No XDP program loaded!>)"
+    local PROG_REGEX="($NS[[:space:]]+xdp_dispatcher.+xdp_drop)"
 
     RESULT=$($XDPDUMP -D)
     if ! [[ $RESULT =~ $NO_PROG_REGEX ]]; then
