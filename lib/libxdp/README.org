@@ -152,11 +152,11 @@ int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 #+end_src
 
 * The dispatcher program
-To support multiple programs on the same network interface, =libxdp= uses a
-*dispatcher program* which is a small wrapper program that will call each
-component program in turn, expect the return code, and then chain call to the
-next program based on the chain call actions of the previous program (see the
-*Program metadata* section above).
+To support multiple non-offloaded programs on the same network interface,
+=libxdp= uses a *dispatcher program* which is a small wrapper program that will
+call each component program in turn, expect the return code, and then chain call
+to the next program based on the chain call actions of the previous program (see
+the *Program metadata* section above).
 
 While applications using =libxdp= do not need to know the details of the
 dispatcher program to just load an XDP program unto an interface, =libxdp= does
@@ -176,17 +176,23 @@ void xdp_multiprog__close(struct xdp_multiprog *mp);
 int xdp_multiprog__detach(struct xdp_multiprog *mp, int ifindex);
 enum xdp_attach_mode xdp_multiprog__attach_mode(const struct xdp_multiprog *mp);
 struct xdp_program *xdp_multiprog__main_prog(const struct xdp_multiprog *mp);
+struct xdp_program *xdp_multiprog__hw_prog(const struct xdp_multiprog *mp);
 bool xdp_multiprog__is_legacy(const struct xdp_multiprog *mp);
 #+end_src
 
-If a program is attached to the interface which =libxdp= doesn't recognise as a
-dispatcher program, an =xdp_multiprog= structure will still be returned, and
-=xdp_multiprog__is_legacy()= will return true for that program. A reference to
-that (regular) XDP program can be obtained by =xdp_multiprog__main_prog()=. If
-the program attached to the interface *is* a dispatcher program,
-=xdp_multiprog__main_prog()= will return a reference to the dispatcher program
-itself, which is mainly useful for obtaining other data about that program (such
-as the program ID).
+If a non-offloaded program is attached to the interface which =libxdp= doesn't
+recognise as a dispatcher program, an =xdp_multiprog= structure will still be
+returned, and =xdp_multiprog__is_legacy()= will return true for that program
+(note that this also holds true if only an offloaded program is loaded). A
+reference to that (regular) XDP program can be obtained by
+=xdp_multiprog__main_prog()=. If the program attached to the interface *is* a
+dispatcher program, =xdp_multiprog__main_prog()= will return a reference to the
+dispatcher program itself, which is mainly useful for obtaining other data about
+that program (such as the program ID). A reference to an offloaded program can
+be acquired using =xdp_multiprog_hw_prog()=. Function
+=xdp_multiprog__attach_mode()= returns the attach mode of the non-offloaded
+program, whether an offloaded program is attached should be checked through
+=xdp_multiprog_hw_prog()=.
 
 ** Pinning in bpffs
 The kernel will automatically detach component programs from the dispatcher once
