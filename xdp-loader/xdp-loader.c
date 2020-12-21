@@ -185,6 +185,7 @@ int do_unload(const void *cfg, __unused const char *pin_root_path)
 {
 	const struct unloadopt *opt = cfg;
 	struct xdp_multiprog *mp = NULL;
+	enum xdp_attach_mode mode;
 	int err = EXIT_FAILURE;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
@@ -206,9 +207,7 @@ int do_unload(const void *cfg, __unused const char *pin_root_path)
 		goto out;
 	}
 
-	if (opt->all ||
-	    (xdp_multiprog__is_legacy(mp) &&
-	     (xdp_program__id(xdp_multiprog__main_prog(mp)) == opt->prog_id))) {
+	if (opt->all) {
 		err = xdp_multiprog__detach(mp);
 		if (err) {
 			pr_warn("Unable to detach XDP program: %s\n",
@@ -219,19 +218,35 @@ int do_unload(const void *cfg, __unused const char *pin_root_path)
 		struct xdp_program *prog = NULL;
 
 		while ((prog = xdp_multiprog__next_prog(prog, mp))) {
-			if (xdp_program__id(prog) == opt->prog_id)
-				break;
+			if (xdp_program__id(prog) == opt->prog_id) {
+				mode = xdp_multiprog__attach_mode(mp);
+				goto found;
+			}
 		}
-		if (!prog) {
-			pr_warn("Program with ID %u not loaded on %s\n",
-				opt->prog_id, opt->iface.ifname);
-			err = -ENOENT;
-			goto out;
+
+		if (xdp_multiprog__is_legacy(mp)) {
+			prog = xdp_multiprog__main_prog(mp);
+			if (xdp_program__id(prog) == opt->prog_id) {
+				mode = xdp_multiprog__attach_mode(mp);
+				goto found;
+			}
 		}
+
+		prog = xdp_multiprog__hw_prog(mp);
+		if (xdp_program__id(prog) == opt->prog_id) {
+			mode = XDP_MODE_HW;
+			goto found;
+		}
+
+		pr_warn("Program with ID %u not loaded on %s\n",
+			opt->prog_id, opt->iface.ifname);
+		err = -ENOENT;
+		goto out;
+
+found:
 		pr_debug("Detaching XDP program with ID %u from %s\n",
 			 xdp_program__id(prog), opt->iface.ifname);
-		err = xdp_program__detach(prog, opt->iface.ifindex,
-					  xdp_multiprog__attach_mode(mp), 0);
+		err = xdp_program__detach(prog, opt->iface.ifindex, mode, 0);
 		if (err) {
 			pr_warn("Unable to detach XDP program: %s\n",
 				strerror(-err));
@@ -260,7 +275,7 @@ static char *print_bpf_tag(char buf[BPF_TAG_SIZE * 2 + 1],
 int print_iface_status(const struct iface *iface,
 		       const struct xdp_multiprog *mp, __unused void *arg)
 {
-	struct xdp_program *prog, *dispatcher;
+	struct xdp_program *prog, *dispatcher, *hw_prog;
 	char tag[BPF_TAG_SIZE * 2 + 1];
 	char buf[STRERR_BUFSIZE];
 	int err;
@@ -270,32 +285,44 @@ int print_iface_status(const struct iface *iface,
 		return 0;
 	}
 
+	hw_prog = xdp_multiprog__hw_prog(mp);
+	if (hw_prog) {
+		printf("%-16s %-5s %-16s %-8s %-4d %-17s\n",
+		       iface->ifname,
+		       "",
+		       xdp_program__name(hw_prog),
+		       get_enum_name(xdp_modes, XDP_MODE_HW),
+		       xdp_program__id(hw_prog),
+		       print_bpf_tag(tag, xdp_program__tag(hw_prog)));
+	}
+
 	dispatcher = xdp_multiprog__main_prog(mp);
+	if (dispatcher) {
+		printf("%-16s %-5s %-16s %-8s %-4d %-17s\n",
+		iface->ifname,
+		"",
+		xdp_program__name(dispatcher),
+		get_enum_name(xdp_modes, xdp_multiprog__attach_mode(mp)),
+		xdp_program__id(dispatcher),
+		print_bpf_tag(tag, xdp_program__tag(dispatcher)));
 
-	printf("%-16s %-5s %-16s %-8s %-4d %-17s\n",
-	       iface->ifname,
-	       "",
-	       xdp_program__name(dispatcher),
-	       get_enum_name(xdp_modes, xdp_multiprog__attach_mode(mp)),
-	       xdp_program__id(dispatcher),
-	       print_bpf_tag(tag, xdp_program__tag(dispatcher)));
 
+		for (prog = xdp_multiprog__next_prog(NULL, mp);
+		     prog;
+		     prog = xdp_multiprog__next_prog(prog, mp)) {
 
-	for (prog = xdp_multiprog__next_prog(NULL, mp);
-	     prog;
-	     prog = xdp_multiprog__next_prog(prog, mp)) {
+			err = xdp_program__print_chain_call_actions(prog, buf,
+								    sizeof(buf));
+			if (err)
+				return err;
 
-		err = xdp_program__print_chain_call_actions(prog, buf,
-							    sizeof(buf));
-		if (err)
-			return err;
-
-		printf("%-16s %-5d %-16s %-8s %-4u %-17s %s\n",
-		       " =>", xdp_program__run_prio(prog),
-		       xdp_program__name(prog),
-		       "", xdp_program__id(prog),
-		       print_bpf_tag(tag, xdp_program__tag(prog)),
-		       buf);
+			printf("%-16s %-5d %-16s %-8s %-4u %-17s %s\n",
+			       " =>", xdp_program__run_prio(prog),
+			       xdp_program__name(prog),
+			       "", xdp_program__id(prog),
+			       print_bpf_tag(tag, xdp_program__tag(prog)),
+			       buf);
+		}
 	}
 
 	return 0;

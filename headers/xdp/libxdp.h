@@ -97,6 +97,7 @@ void xdp_multiprog__close(struct xdp_multiprog *mp);
 int xdp_multiprog__detach(struct xdp_multiprog *mp);
 enum xdp_attach_mode xdp_multiprog__attach_mode(const struct xdp_multiprog *mp);
 struct xdp_program *xdp_multiprog__main_prog(const struct xdp_multiprog *mp);
+struct xdp_program *xdp_multiprog__hw_prog(const struct xdp_multiprog *mp);
 bool xdp_multiprog__is_legacy(const struct xdp_multiprog *mp);
 
 #endif

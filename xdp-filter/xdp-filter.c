@@ -244,6 +244,11 @@ int do_load(const void *cfg, const char *pin_root_path)
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 
+	if (opt->mode == XDP_MODE_HW) {
+		pr_warn("xdp-filter does not support offloading.\n");
+		return EXIT_FAILURE;
+	}
+
 	err = get_used_features(pin_root_path, &used_feats);
 	if (err) {
 		pr_warn("Error getting list of loaded programs: %s\n",

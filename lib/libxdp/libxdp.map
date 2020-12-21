@@ -11,6 +11,7 @@ LIBXDP_1.0.0 {
 		xdp_multiprog__is_legacy;
 		xdp_multiprog__next_prog;
 		xdp_multiprog__main_prog;
+		xdp_multiprog__hw_prog;
 		xdp_program__attach;
 		xdp_program__attach_multi;
 		xdp_program__bpf_obj;
