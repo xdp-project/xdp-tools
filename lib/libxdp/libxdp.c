@@ -1801,22 +1801,36 @@ static struct xdp_multiprog *xdp_multiprog__from_id(__u32 id, __u32 hw_id,
 	int fd = 0;
 	int err;
 
-	if (id)
+	if (id) {
 		fd = bpf_prog_get_fd_by_id(id);
+		if (fd < 0) {
+			err = -errno;
+			pr_warn("couldn't get program fd: %s", strerror(-err));
+			goto err;
+		}
+	}
 
-	if (hw_id)
+	if (hw_id) {
 		hw_fd = bpf_prog_get_fd_by_id(hw_id);
-
-	if (fd < 0 || hw_fd < 0) {
-		err = -errno;
-		pr_warn("couldn't get program fd: %s", strerror(-err));
-		return ERR_PTR(err);
+		if (hw_fd < 0) {
+			err = -errno;
+			pr_warn("couldn't get program fd: %s", strerror(-err));
+			goto err;
+		}
 	}
 
 	mp = xdp_multiprog__from_fd(fd, hw_fd, ifindex);
-	if (IS_ERR_OR_NULL(mp))
-		close(fd);
+	if (IS_ERR(mp)) {
+		err = PTR_ERR(mp);
+		goto err;
+	}
 	return mp;
+err:
+	if (fd > 0)
+		close(fd);
+	if (hw_fd > 0)
+		close(hw_fd);
+	return ERR_PTR(err);
 }
 
 
