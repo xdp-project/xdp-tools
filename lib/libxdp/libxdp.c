@@ -1207,6 +1207,26 @@ static int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
 	return xdp_attach_fd(xdp_program__fd(prog), -1, ifindex, mode);
 }
 
+
+static int xdp_multiprog__main_fd(struct xdp_multiprog *mp)
+{
+	if (!mp)
+		return -EINVAL;
+
+	if (!mp->main_prog)
+		return -ENOENT;
+
+	return mp->main_prog->prog_fd;
+}
+
+static __u32 xdp_multiprog__main_id(struct xdp_multiprog *mp)
+{
+	if (!mp || !mp->main_prog)
+		return 0;
+
+	return mp->main_prog->prog_id;
+}
+
 static int xdp_multiprog__hw_fd(struct xdp_multiprog *mp)
 {
 	if (!mp)
@@ -1216,6 +1236,14 @@ static int xdp_multiprog__hw_fd(struct xdp_multiprog *mp)
 		return -ENOENT;
 
 	return mp->hw_prog->prog_fd;
+}
+
+static __u32 xdp_multiprog__hw_id(struct xdp_multiprog *mp)
+{
+	if (!mp || !mp->hw_prog)
+		return 0;
+
+	return mp->hw_prog->prog_id;
 }
 
 static int xdp_program__attach_hw(struct xdp_program *prog, int ifindex)
@@ -1333,7 +1361,7 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 	int err = 0;
 	size_t i;
 
-	if (flags)
+	if (flags || !num_progs || !progs)
 		return -EINVAL;
 
 	mp = xdp_multiprog__get_from_ifindex(ifindex);
@@ -1342,10 +1370,32 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 		return -ENOENT;
 	}
 
-	if (mode == XDP_MODE_HW) {
-		if (num_progs > 1)
-			return -EINVAL;
+	if (mode == XDP_MODE_HW || xdp_multiprog__is_legacy(mp)) {
+		__u32 id = (mode == XDP_MODE_HW) ?
+			xdp_multiprog__hw_id(mp) :
+			xdp_multiprog__main_id(mp);
 
+		if (num_progs > 1) {
+			pr_warn("Can only detach one program in legacy or HW mode\n");
+			err = -EINVAL;
+			goto out;
+		}
+
+		if (!xdp_program__id(progs[0])) {
+			pr_warn("Program 0 not loaded\n");
+			err = -EINVAL;
+			goto out;
+		}
+
+		if (id != xdp_program__id(progs[0])) {
+			pr_warn("Asked to unload prog %u but %u is loaded\n",
+				xdp_program__id(progs[0]), id);
+			err = -ENOENT;
+			goto out;
+		}
+	}
+
+	if (mode == XDP_MODE_HW) {
 		err = xdp_multiprog__detach_hw(mp);
 		goto out;
 	}
@@ -1358,9 +1408,6 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 	}
 
 	if (mp->is_legacy) {
-		if (num_progs > 1)
-			return -EINVAL;
-
 		err = xdp_multiprog__attach(mp, NULL, mode);
 		goto out;
 	}
@@ -1394,8 +1441,7 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 		if (err)
 			goto out;
 
-		if (!mp->is_legacy)
-			err = xdp_multiprog__unpin(mp);
+		err = xdp_multiprog__unpin(mp);
 		if (err)
 			goto out;
 	} else {
@@ -1436,17 +1482,6 @@ void xdp_multiprog__close(struct xdp_multiprog *mp)
 	xdp_program__close(mp->hw_prog);
 
 	free(mp);
-}
-
-static int xdp_multiprog__main_fd(struct xdp_multiprog *mp)
-{
-	if (!mp)
-		return -EINVAL;
-
-	if (!mp->main_prog)
-		return -ENOENT;
-
-	return mp->main_prog->prog_fd;
 }
 
 static struct xdp_multiprog *xdp_multiprog__new(int ifindex)
@@ -1598,7 +1633,7 @@ err:
 	goto out;
 }
 
-static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp, 
+static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 				       int prog_fd, int hw_fd)
 {
 	__u32 *map_id, map_key = 0, map_info_len = sizeof(struct bpf_map_info);
