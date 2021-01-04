@@ -51,8 +51,11 @@ To release a new version of xdp-tools, follow these steps:
    #+end_src
 
 3. Bump version in =version.mk= and =packacing/rpm/xdp-tools.spec= -- don't
-   forget a changelog entry in the latter. Commit this, bug don't tag and push
-   until the rest of the steps below completed successfully.
+   forget a changelog entry in the latter. If applicable, also update the
+   versions in =lib/libxdp/libxdp.mk= and =lib/libxdp/libxdp.map=.
+
+   Commit this, bug don't tag and push until the rest of the steps below
+   completed successfully.
 
 4. Run =make archive= to generate a source tarball (xdp-tools-$VERSION.tar.gz).
    #+begin_src sh
