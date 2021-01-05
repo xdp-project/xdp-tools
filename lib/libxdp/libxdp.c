@@ -1836,8 +1836,8 @@ err:
 
 struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex)
 {
+	enum xdp_attach_mode mode = XDP_MODE_UNSPEC;
 	struct xdp_link_info xinfo = {};
-	enum xdp_attach_mode mode;
 	struct xdp_multiprog *mp;
 	__u32 hw_prog_id = 0;
 	__u32 prog_id = 0;
@@ -1860,8 +1860,7 @@ struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex)
 		if (xinfo.drv_prog_id) {
 			prog_id = xinfo.drv_prog_id;
 			mode = XDP_MODE_NATIVE;
-		}
-		if (xinfo.skb_prog_id) {
+		} else if (xinfo.skb_prog_id) {
 			prog_id = xinfo.skb_prog_id;
 			mode = XDP_MODE_SKB;
 		}
@@ -2325,7 +2324,7 @@ err:
 
 int xdp_multiprog__detach(struct xdp_multiprog *mp)
 {
-	int err;
+	int err = 0;
 
 	if (!mp || !mp->is_loaded)
 		return -EINVAL;

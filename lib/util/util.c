@@ -121,7 +121,7 @@ const char *get_libbpf_version(void)
 		/* We are looking for a line like:
 		 * 7f63c2105000-7f63c2106000 rw-p 00032000 fe:02 4200947                    /usr/lib/libbpf.so.0.1.0
 		 */
-		if (sscanf(buf, "%*x-%*x %*4c %*x %*5c %*d %s\n", path) == 1 &&
+		if (sscanf(s, "%*x-%*x %*4c %*x %*5c %*d %s\n", path) == 1 &&
 		    (s = strstr(path, "libbpf.so.")) != NULL) {
 			strncpy(_libbpf_version, s+10, sizeof(_libbpf_version)-1);
 			found = true;
