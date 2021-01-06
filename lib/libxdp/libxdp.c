@@ -2329,20 +2329,20 @@ int xdp_multiprog__detach(struct xdp_multiprog *mp)
 	if (!mp || !mp->is_loaded)
 		return -EINVAL;
 
-	if (mp->main_prog) {
-		err = xdp_multiprog__attach(mp, NULL, mp->attach_mode);
-		if (err)
-			return err;
-	}
-
 	if (mp->hw_prog) {
 		err = xdp_multiprog__detach_hw(mp);
 		if (err)
 			return err;
 	}
 
-	if (!mp->is_legacy)
-		err = xdp_multiprog__unpin(mp);
+	if (mp->main_prog) {
+		err = xdp_multiprog__attach(mp, NULL, mp->attach_mode);
+		if (err)
+			return err;
+
+		if (!mp->is_legacy)
+			err = xdp_multiprog__unpin(mp);
+	}
 	return err;
 }
 
