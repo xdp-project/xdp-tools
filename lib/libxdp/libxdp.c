@@ -1471,7 +1471,7 @@ void xdp_multiprog__close(struct xdp_multiprog *mp)
 {
 	struct xdp_program *p, *next = NULL;
 
-	if (!mp)
+	if (IS_ERR_OR_NULL(mp))
 		return;
 
 	xdp_program__close(mp->main_prog);

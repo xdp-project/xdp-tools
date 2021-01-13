@@ -58,22 +58,35 @@ struct flag_val rx_capture_flags[] = {
 	{}
 };
 
+struct enum_val xdp_modes[] = {
+	{"native", XDP_MODE_NATIVE},
+	{"skb", XDP_MODE_SKB},
+	{"hw", XDP_MODE_HW},
+	{"unspecified", XDP_MODE_UNSPEC},
+	{NULL, 0}
+};
+
 static const struct dumpopt {
-	bool                  list_interfaces;
 	bool                  hex_dump;
-	bool                  use_pcap;
+	bool                  list_interfaces;
+	bool                  load_xdp;
 	bool                  promiscuous;
+	bool                  use_pcap;
 	struct iface          iface;
-	uint32_t              snaplen;
 	uint32_t              perf_wakeup;
+	uint32_t              snaplen;
 	char                 *pcap_file;
 	char                 *program_names;
+	unsigned int          load_xdp_mode;
 	unsigned int          rx_capture;
 } defaults_dumpopt = {
-	.list_interfaces = false,
 	.hex_dump = false,
+	.list_interfaces = false,
+	.load_xdp = false,
+	.promiscuous = false,
 	.use_pcap = false,
 	.snaplen = DEFAULT_SNAP_LEN,
+	.load_xdp_mode = XDP_MODE_NATIVE,
 	.rx_capture = RX_FLAG_FENTRY,
 };
 struct dumpopt cfg_dumpopt;
@@ -87,6 +100,12 @@ static struct prog_option xdpdump_options[] = {
 		      list_interfaces,
 		      .short_opt = 'D',
 		      .help = "Print the list of available interfaces"),
+	DEFINE_OPTION("load-xdp-mode", OPT_ENUM, struct dumpopt, load_xdp_mode,
+		      .typearg = xdp_modes,
+		      .metavar = "<mode>",
+		      .help = "Mode used for --load-xdp-mode, default native"),
+	DEFINE_OPTION("load-xdp-program", OPT_BOOL, struct dumpopt, load_xdp,
+		      .help = "Load XDP trace program if no XDP program is loaded"),
 	DEFINE_OPTION("interface", OPT_IFNAME, struct dumpopt, iface,
 		      .short_opt = 'i',
 		      .metavar = "<ifname>",
@@ -445,21 +464,8 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 			ctx->cpu_packet_id[cpu] = ++ctx->packet_id;
 
 		ts = e->time + ctx->epoch_delta;
-		if (ctx->pcap_dumper) {
-			struct pcap_pkthdr h;
 
-			h.ts.tv_sec = ts / 1000000000ULL;
-			h.ts.tv_usec = ts % 1000000000ULL / 1000;
-			h.caplen = min(e->metadata.cap_len, ctx->cfg->snaplen);
-			h.len = e->metadata.pkt_len;
-			pcap_dump((u_char *) ctx->pcap_dumper, &h,
-				  e->packet);
-
-			if (ctx->cfg->pcap_file[0] == '-' &&
-			    ctx->cfg->pcap_file[1] == 0)
-				pcap_dump_flush(ctx->pcap_dumper);
-
-		} else if (ctx->pcapng_dumper) {
+		if (ctx->pcapng_dumper) {
 			struct xpcapng_epb_options_s options = {};
 			int64_t  action = e->metadata.action;
 			uint32_t queue = e->metadata.rx_queue;
@@ -483,6 +489,19 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 			if (ctx->cfg->pcap_file[0] == '-' &&
 			    ctx->cfg->pcap_file[1] == 0)
 				xpcapng_dump_flush(ctx->pcapng_dumper);
+		} else if (ctx->pcap_dumper) {
+			struct pcap_pkthdr h;
+
+			h.ts.tv_sec = ts / 1000000000ULL;
+			h.ts.tv_usec = ts % 1000000000ULL / 1000;
+			h.caplen = min(e->metadata.cap_len, ctx->cfg->snaplen);
+			h.len = e->metadata.pkt_len;
+			pcap_dump((u_char *) ctx->pcap_dumper, &h,
+				  e->packet);
+
+			if (ctx->cfg->pcap_file[0] == '-' &&
+			    ctx->cfg->pcap_file[1] == 0)
+				pcap_dump_flush(ctx->pcap_dumper);
 		} else {
 			int  i;
 			char hline[SNPRINTH_MIN_BUFFER_SIZE];
@@ -1445,12 +1464,128 @@ static void detach_traces(struct capture_programs *progs)
 }
 
 /*****************************************************************************
+ * load_xdp_trace_program()
+ *****************************************************************************/
+static bool load_xdp_trace_program(struct dumpopt *cfg,
+				   struct capture_programs *progs)
+{
+	int                         fd, rc;
+	char                        errmsg[STRERR_BUFSIZE];
+	struct xdp_program         *prog;
+	struct bpf_map             *perf_map;
+	struct bpf_map             *data_map;
+	const struct bpf_map_def   *data_map_def;
+	struct trace_configuration  trace_cfg;
+
+	if (!cfg || !progs)
+		return false;
+
+	silence_libbpf_logging();
+	silence_libxdp_logging();
+
+	prog = xdp_program__find_file("xdpdump_xdp.o", "xdpdump_xdp", NULL);
+	if (libxdp_get_error(prog)) {
+		int err = libxdp_get_error(prog);
+
+		libxdp_strerror(err, errmsg, sizeof(errmsg));
+		pr_warn("ERROR: Can't open XDP trace program: %s(%d)\n",
+			errmsg, err);
+		return false;
+	}
+
+	perf_map = bpf_object__find_map_by_name(xdp_program__bpf_obj(prog),
+						"xdpdump_perf_map");
+	if (!perf_map) {
+		pr_warn("ERROR: Can't find xdpdump_perf_map in the xdp program!\n");
+		goto error_exit;
+	}
+
+	/* Set the trace configuration in the DATA map */
+	data_map = bpf_object__find_map_by_name(xdp_program__bpf_obj(prog),
+						"xdpdump_.data");
+	if (!data_map) {
+		pr_warn("ERROR: Can't find the .data MAP in the xdp program!\n");
+		goto error_exit;
+	}
+
+	data_map_def = bpf_map__def(data_map);
+	if (!data_map_def ||
+	    data_map_def->value_size != sizeof(trace_cfg)) {
+		pr_warn("ERROR: Can't find the correct sized .data MAP in the xdp program!\n");
+		goto error_exit;
+	}
+
+	trace_cfg.capture_if_ifindex = cfg->iface.ifindex;
+	trace_cfg.capture_snaplen = cfg->snaplen;
+	trace_cfg.capture_prog_index = 0;
+	if (bpf_map__set_initial_value(data_map, &trace_cfg,
+				       sizeof(trace_cfg))) {
+		pr_warn("ERROR: Can't set initial .data MAP in the xdp program!\n");
+		goto error_exit;
+	}
+
+	do {
+		rc = xdp_program__attach(prog, cfg->iface.ifindex,
+					 cfg->load_xdp_mode, 0);
+
+	} while (rc == -EPERM && !double_rlimit());
+
+	if (rc) {
+		libxdp_strerror(rc, errmsg, sizeof(errmsg));
+		pr_warn("ERROR: Can't attach XDP trace program: %s(%d)\n",
+			errmsg, rc);
+		goto error_exit;
+	}
+
+	fd = bpf_map__fd(perf_map);
+	if (fd < 0) {
+		pr_warn("ERROR: Can't get xdpdump_perf_map file descriptor: %s\n",
+			strerror(fd));
+
+		xdp_program__detach(prog, cfg->iface.ifindex,
+				    cfg->load_xdp_mode, 0);
+		goto error_exit;
+	}
+
+	progs->progs[0].prog = prog;
+	progs->progs[0].func = xdp_program__name(prog);
+	progs->progs[0].rx_capture = RX_FLAG_FENTRY;
+	progs->progs[0].perf_map_fd = fd;
+	progs->nr_of_progs = 1;
+
+	return true;
+
+error_exit:
+	xdp_program__close(prog);
+	return false;
+}
+
+/*****************************************************************************
+ * unload_xdp_trace_program()
+ *****************************************************************************/
+static void unload_xdp_trace_program(struct dumpopt *cfg,
+				     struct capture_programs *progs)
+{
+	if (!progs || progs->nr_of_progs != 1)
+		return;
+
+	xdp_program__detach(progs->progs[0].prog, cfg->iface.ifindex,
+			    cfg->load_xdp_mode, 0);
+	xdp_program__close(progs->progs[0].prog);
+
+	progs->progs[0].prog = NULL;
+	progs->nr_of_progs = 0;
+}
+
+/*****************************************************************************
  * capture_on_interface()
  *****************************************************************************/
 static bool capture_on_interface(struct dumpopt *cfg)
 {
 	int                          err;
 	bool                         rc = false;
+	bool                         load_xdp = false;
+	bool                         promiscuous = false;
 	pcap_t                      *pcap = NULL;
 	pcap_dumper_t               *pcap_dumper = NULL;
 	struct xpcapng_dumper       *pcapng_dumper = NULL;
@@ -1469,17 +1604,24 @@ static bool capture_on_interface(struct dumpopt *cfg)
 
 	mp = xdp_multiprog__get_from_ifindex(cfg->iface.ifindex);
 	if (IS_ERR_OR_NULL(mp)) {
-		pr_warn("WARNING: Specified interface does not have an XDP "
-			"program loaded, capturing\n         in legacy mode!\n");
-		return capture_on_legacy_interface(cfg);
+		if (!cfg->load_xdp) {
+			pr_warn("WARNING: Specified interface does not have an XDP "
+				"program loaded, capturing\n         in legacy mode!\n");
+			return capture_on_legacy_interface(cfg);
+		}
+		pr_warn("WARNING: Specified interface does not have an XDP program loaded!\n"
+			"         Will load a capture only XDP program!\n");
+		load_xdp = true;
 	}
 
-	if (find_target(cfg, mp, &tgt_progs))
-		goto error_exit;
+	if (!load_xdp) {
+		if (find_target(cfg, mp, &tgt_progs))
+			goto error_exit;
 
-	if (tgt_progs.nr_of_progs == 0) {
-		pr_warn("ERROR: Failed finding any attached XDP program!\n");
-		goto error_exit;
+		if (tgt_progs.nr_of_progs == 0) {
+			pr_warn("ERROR: Failed finding any attached XDP program!\n");
+			goto error_exit;
+		}
 	}
 
 	/* Enable promiscuous mode if requested. */
@@ -1491,12 +1633,20 @@ static bool capture_on_interface(struct dumpopt *cfg)
 				strerror(-err), -err);
 			goto error_exit;
 		}
+		promiscuous = true;
 	}
 
 	/* Load and attach programs */
-	if (!load_and_attach_traces(cfg, &tgt_progs)) {
-		/* Actual errors are reported in load_and_attach_trace(). */
-		goto error_exit;
+	if (!load_xdp) {
+		if (!load_and_attach_traces(cfg, &tgt_progs)) {
+			/* Actual errors are reported in the above function. */
+			goto error_exit;
+		}
+	} else {
+		if (!load_xdp_trace_program(cfg, &tgt_progs)) {
+			/* Actual errors are reported in the above function. */
+			goto error_exit;
+		}
 	}
 
         /* Open the pcap handle */
@@ -1635,17 +1785,18 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	fprintf(stderr, "%"PRIu64" packets dropped by perf ring\n",
 		perf_ctx.missed_events);
 
-	if (cfg->promiscuous) {
+
+	rc = true;
+
+error_exit:
+	/* Cleanup all our resources */
+	if (promiscuous && cfg->promiscuous) {
 		err = set_if_promiscuous_mode(&cfg->iface, false, NULL);
 		if (err)
 			pr_warn("ERROR: Failed disabling promiscuous mode: "
 				"%s(%d)\n", strerror(-err), -err);
 	}
 
-	rc = true;
-
-error_exit:
-	/* Cleanup all our resources */
 	perf_buffer__free(perf_buf);
 	xpcapng_dump_close(pcapng_dumper);
 
@@ -1655,7 +1806,11 @@ error_exit:
 	if (pcap)
 		pcap_close(pcap);
 
-	detach_traces(&tgt_progs);
+	if (load_xdp)
+		unload_xdp_trace_program(cfg, &tgt_progs);
+	else
+		detach_traces(&tgt_progs);
+
 	xdp_multiprog__close(mp);
 	return rc;
 }

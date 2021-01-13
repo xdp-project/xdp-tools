@@ -62,6 +62,20 @@ use the *entry,exit* option. With this, each packet is captured twice. The
 default value for this is *entry*.
 ** -D, --list-interfaces
 Display a list of available interfaces and any XDP program loaded
+** --load-xdp-mode
+Specifies which loader mode to use with the =--load-xdp-program= option. The
+valid values are ‘native’, which is the default in-driver XDP mode, ‘skb’, which
+causes the so-called skb mode (also known as generic XDP) to be used, ‘hw’ which
+causes the program to be offloaded to the hardware, or ‘unspecified’ which
+leaves it up to the kernel to pick a mode (which it will do by picking native
+mode if the driver supports it, or generic mode otherwise). Note that using
+‘unspecified’ can make it difficult to predict what mode a program will end up
+being loaded in. For this reason, the default is ‘native’.
+** --load-xdp-program
+If no XDP program is loaded on the interface, by default, xdpdump will fallback
+to libpcap's live capture mode to capture the packets. Alternatively, with this
+option, you can ask xdpdump to load an XDP program to capture the packets
+directly.
 ** -i, --interface <ifname>
 Listen on interface =ifname=. Note that if no XDP program is loaded on the
 interface it will use libpcap's live capture mode to capture the packets.
