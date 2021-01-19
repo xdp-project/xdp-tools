@@ -3,8 +3,7 @@
 #
 # shellcheck disable=2039
 #
-ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_term test_exitentry test_snap test_multi_pkt test_perf_wakeup test_promiscuous test_none_xdp test_pname_parse test_multi_prog"
-
+ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_term test_exitentry test_snap test_multi_pkt test_perf_wakeup test_promiscuous test_none_xdp test_pname_parse test_multi_prog test_xdp_load"
 XDPDUMP=${XDPDUMP:-./xdpdump}
 XDP_LOADER=${XDP_LOADER:-../xdp-loader/xdp-loader}
 
@@ -30,6 +29,8 @@ Usage: xdpdump [options]
 Options:
      --rx-capture <mode>    Capture point for the rx direction (valid values: entry,exit)
  -D, --list-interfaces      Print the list of available interfaces
+     --load-xdp-mode <mode>  Mode used for --load-xdp-mode, default native (valid values: native,skb,hw,unspecified)
+     --load-xdp-program     Load XDP trace program if no XDP program is loaded
  -i, --interface <ifname>   Name of interface to capture on
      --perf-wakeup <events>  Wake up xdpdump every <events> packets
  -p, --program-names <prog>  Specific program to attach to
@@ -365,7 +366,7 @@ test_perf_wakeup()
 
         # We sent 10k packets and see if the all arrive
         PID=$(start_background_no_stderr "$XDPDUMP -i $NS --perf-wakeup=$WAKEUP")
-        timeout 2 $PING6 -W 2 -c 10000 -f  "$INSIDE_IP6" || return 1
+        timeout 2 "$PING6" -W 2 -c 10000 -f  "$INSIDE_IP6" || return 1
         RESULT=$(stop_background "$PID")
         if ! [[ $RESULT =~ $PASS_10K_REGEX ]]; then
             print_result "IPv6 10k packet not received for wakeup $WAKEUP"
@@ -662,6 +663,24 @@ test_multi_prog()
 
     $XDP_LOADER unload "$NS" --all
     return 0
+}
+
+test_xdp_load()
+{
+    local PASS_REGEX="(xdpdump\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local WARN_MSG="Will load a capture only XDP program!"
+
+    PID=$(start_background "$XDPDUMP -i $NS --load-xdp-program")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if [[ "$RESULT" != *"$WARN_MSG"* ]]; then
+        print_result "Missing warning message"
+        return 1
+    fi
+    if ! [[ $RESULT =~ $PASS_REGEX ]]; then
+        print_result "IPv6 packet not received"
+        return 1
+    fi
 }
 
 cleanup_tests()

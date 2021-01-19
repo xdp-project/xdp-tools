@@ -28,6 +28,7 @@ extern void logging_print(enum logging_print_level level, const char *format,
 
 void init_lib_logging(void);
 void silence_libbpf_logging(void);
+void silence_libxdp_logging(void);
 enum logging_print_level set_log_level(enum logging_print_level level);
 enum logging_print_level increase_log_level();
 
