@@ -35,6 +35,8 @@
 #include <sys/sysinfo.h>
 #include <sys/utsname.h>
 
+#include <xdp/prog_dispatcher.h>
+
 #include "logging.h"
 #include "params.h"
 #include "util.h"
@@ -119,17 +121,38 @@ static struct prog_option xdpdump_options[] = {
 	END_OPTIONS
 };
 
+#define MAX_LOADED_XDP_PROGRAMS  (MAX_DISPATCHER_ACTIONS + 1)
+
+struct capture_programs {
+	/* Contains a list of programs to capture on, with the respective
+	 * program names. The order MUST be the same as the loaded order!
+	 */
+	unsigned int nr_of_progs;
+	struct prog_info {
+		struct xdp_program *prog;
+		const char         *func;
+		unsigned int        rx_capture;
+		/* Fields used by the actual loader. */
+		bool                attached;
+		int                 perf_map_fd;
+		struct bpf_object  *prog_obj;
+		struct bpf_link    *fentry_link;
+		struct bpf_link    *fexit_link;
+	} progs[MAX_LOADED_XDP_PROGRAMS];
+};
+
 struct perf_handler_ctx {
-	uint64_t               missed_events;
-	uint64_t               last_missed_events;
-	uint64_t               captured_packets;
-	uint64_t               epoch_delta;
-	uint64_t               packet_id;
-	uint64_t               cpu_packet_id[MAX_CPUS];
-	struct dumpopt        *cfg;
-	pcap_t                *pcap;
-	pcap_dumper_t         *pcap_dumper;
-	struct xpcapng_dumper *pcapng_dumper;
+	uint64_t                 missed_events;
+	uint64_t                 last_missed_events;
+	uint64_t                 captured_packets;
+	uint64_t                 epoch_delta;
+	uint64_t                 packet_id;
+	uint64_t                 cpu_packet_id[MAX_CPUS];
+	struct dumpopt          *cfg;
+	struct capture_programs *xdp_progs;
+	pcap_t                  *pcap;
+	pcap_dumper_t           *pcap_dumper;
+	struct xpcapng_dumper   *pcapng_dumper;
 };
 
 bool    exit_xdpdump;
@@ -390,8 +413,10 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 						 int cpu,
 						 struct perf_event_header *event)
 {
-	bool                      fexit;
 	uint64_t                  ts;
+	bool                      fexit;
+	unsigned int              if_idx, prog_idx;
+	const char               *xdp_func;
 	struct perf_handler_ctx  *ctx = private_data;
 	struct perf_sample_event *e = container_of(event,
 						   struct perf_sample_event,
@@ -405,11 +430,18 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 
 		if (cpu >= MAX_CPUS ||
 		    e->header.size < sizeof(struct perf_sample_event) ||
-		    e->size < (sizeof(struct pkt_trace_metadata) + e->metadata.cap_len))
+		    e->size < (sizeof(struct pkt_trace_metadata) + e->metadata.cap_len) ||
+		    e->metadata.prog_index >= ctx->xdp_progs->nr_of_progs)
 			return LIBBPF_PERF_EVENT_CONT;
 
 		fexit = e->metadata.flags & MDF_DIRECTION_FEXIT;
-		if (!fexit || ctx->cfg->rx_capture == RX_FLAG_FEXIT)
+		prog_idx = e->metadata.prog_index;
+		if_idx = prog_idx * 2 + (fexit ? 1 : 0);
+		xdp_func = ctx->xdp_progs->progs[prog_idx].func;
+
+		if (prog_idx == 0 &&
+		    (!fexit ||
+		     ctx->xdp_progs->progs[prog_idx].rx_capture == RX_FLAG_FEXIT))
 			ctx->cpu_packet_id[cpu] = ++ctx->packet_id;
 
 		ts = e->time + ctx->epoch_delta;
@@ -439,7 +471,7 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 			options.xdp_verdict = fexit ? &action : NULL;
 
 			xpcapng_dump_enhanced_pkt(ctx->pcapng_dumper,
-						  fexit ? 1 : 0, /* ifid */
+						  if_idx,
 						  e->packet,
 						  e->metadata.pkt_len,
 						  min(e->metadata.cap_len,
@@ -456,11 +488,12 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 			char hline[SNPRINTH_MIN_BUFFER_SIZE];
 
 			if (ctx->cfg->hex_dump) {
-				printf("%llu.%09lld: @%s%s: packet size %u "
+				printf("%llu.%09lld: %s()@%s%s: packet size %u "
 				       "bytes, captured %u bytes on if_index "
 				       "%u, rx queue %u, id %"PRIu64"\n",
 				       ts / 1000000000ULL,
 				       ts % 1000000000ULL,
+				       xdp_func,
 				       fexit ? "exit" : "entry",
 				       fexit ? get_xdp_action_string(
 					       e->metadata.action) : "",
@@ -477,11 +510,12 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 					printf("  %s\n", hline);
 				}
 			} else {
-				printf("%llu.%09lld: @%s%s: packet size %u "
+				printf("%llu.%09lld: %s()@%s%s: packet size %u "
 				       "bytes on if_index %u, rx queue %u, "
 				       "id %"PRIu64"\n",
 				       ts / 1000000000ULL,
 				       ts % 1000000000ULL,
+				       xdp_func,
 				       fexit ? "exit" : "entry",
 				       fexit ? get_xdp_action_string(
 					       e->metadata.action) : "",
@@ -628,12 +662,87 @@ error_exit:
 }
 
 /*****************************************************************************
+ * append_snprintf()
+ *****************************************************************************/
+int append_snprintf(char **buf, size_t *buf_len, size_t *offset,
+		    const char *format, ...)
+{
+	int     len;
+	va_list args;
+
+	if (buf == NULL || *buf == NULL || buf_len == NULL || *buf_len <= 0 ||
+	    offset == NULL || *buf_len - *offset <= 0)
+		return -EINVAL;
+
+	while (true) {
+		char   *new_buf;
+		size_t  new_buf_len;
+
+		va_start(args, format);
+		len = vsnprintf(*buf + *offset, *buf_len - *offset, format, args);
+		va_end(args);
+
+		if ((size_t)len < (*buf_len - *offset)) {
+			*offset += len;
+			len = 0;
+			break;
+		}
+
+		if (*buf_len >= 2048)
+			return -ENOMEM;
+
+		new_buf_len = *buf_len * 2;
+		new_buf = realloc(*buf, new_buf_len);
+
+		if (!new_buf)
+			return -ENOMEM;
+
+		*buf = new_buf;
+		*buf_len = new_buf_len;
+	}
+	return len;
+}
+
+/*****************************************************************************
+ * get_program_names_all()
+ *****************************************************************************/
+static char *get_program_names_all(struct capture_programs *progs, int skip_index)
+{
+	char   *program_names;
+	size_t  size = 128;
+	size_t  offset = 0;
+
+	program_names = malloc(size);
+	if (!program_names)
+		return NULL;
+
+	for (unsigned int i = 0; i < progs->nr_of_progs; i++) {
+		const char *kname = xdp_program__name(progs->progs[i].prog);
+		const char *fname = progs->progs[i].func;
+		uint32_t id = xdp_program__id(progs->progs[i].prog);
+
+		if (skip_index != (int)i) {
+			if (append_snprintf(&program_names, &size, &offset,
+					    "%s%s@%d", i == 0 ? "" : ",",
+					    fname ? fname : kname, id) < 0)
+				return NULL;
+		} else {
+			if (append_snprintf(&program_names, &size, &offset,
+					    "%s%s@%d", i == 0 ? "" : ",",
+					    "<function_name>", id) < 0)
+				return NULL;
+		}
+	}
+	return program_names;
+}
+
+/*****************************************************************************
  * find_func_matches()
  *****************************************************************************/
 static size_t find_func_matches(const struct btf *btf,
 				const char *func_name,
 				const char **found_name,
-				bool print, bool exact)
+				bool print, int print_id, bool exact)
 {
 	const struct btf_type *t, *match;
 	size_t len, matches = 0;
@@ -658,8 +767,12 @@ static size_t find_func_matches(const struct btf *btf,
 			pr_debug("Found func %s matching %s\n",
 				 name, func_name);
 
-			if (print)
-				pr_warn("  %s\n", name);
+			if (print) {
+				if (print_id < 0)
+					pr_warn("  %s\n", name);
+				else
+					pr_warn("  %s@%d\n", name, print_id);
+			}
 
 			/* Do an exact match if the user specified a function
 			 * name, or if there is no possibility of truncation
@@ -667,7 +780,7 @@ static size_t find_func_matches(const struct btf *btf,
 			 * length.
 			 */
 			if (strlen(name) == len &&
-			    (exact || len != BPF_OBJ_NAME_LEN -1)) {
+			    (exact || len != BPF_OBJ_NAME_LEN - 1)) {
 				*found_name = name;
 				return 1; /* exact match */
 			}
@@ -688,125 +801,465 @@ static size_t find_func_matches(const struct btf *btf,
 }
 
 /*****************************************************************************
- * find_target()
+ * match_target_function()
  *****************************************************************************/
-static int find_target(struct xdp_multiprog *mp,
-		       char *function_override,
-		       struct xdp_program **tgt_prog,
-		       const char **tgt_func)
+static int match_target_function(struct dumpopt *cfg,
+				 struct capture_programs *all_progs,
+				 char *prog_name, int prog_id)
 {
-	bool match_exact = !!function_override;
-	struct xdp_program *prog, *p;
-	size_t matches = 0;
-	const char *func;
+	int          i;
+	unsigned int matches = 0;
 
-	prog = xdp_multiprog__main_prog(mp);
-	matches = find_func_matches(xdp_program__btf(prog),
-				    function_override ?: xdp_program__name(prog),
-				    &func, false, match_exact);
+	for (i = 0; i < (int)all_progs->nr_of_progs; i++) {
+		const char *kname = xdp_program__name(all_progs->progs[i].prog);
 
-	if (!function_override)
-		goto check;
+		if (prog_id != -1 &&
+		    xdp_program__id(all_progs->progs[i].prog) != (uint32_t) prog_id)
+			continue;
 
-	for (p = xdp_multiprog__next_prog(NULL, mp);
-	     p;
-	     p = xdp_multiprog__next_prog(p, mp)) {
-		const char *f;
-		size_t m;
-
-		m = find_func_matches(xdp_program__btf(p),
-				      function_override, &f, false,
-				      match_exact);
-		if (m == 1) {
-			prog = p;
-			func = f;
+		if (!strncmp(kname, prog_name, strlen(kname))) {
+			if (all_progs->progs[i].func == NULL) {
+				if (find_func_matches(xdp_program__btf(all_progs->progs[i].prog),
+						      prog_name,
+						      &all_progs->progs[i].func,
+						      false, -1,
+						      true) == 1) {
+					all_progs->progs[i].rx_capture = cfg->rx_capture;
+					matches++;
+				} else if (strlen(prog_name) <= BPF_OBJ_NAME_LEN - 1) {
+					/* If the user cut and paste the
+					 * truncated function name, make sure
+					 * we tell him all the possible options!
+					 */
+					matches = UINT_MAX;
+					break;
+				}
+			} else if (!strcmp(all_progs->progs[i].func, prog_name)) {
+				all_progs->progs[i].rx_capture = cfg->rx_capture;
+				matches++;
+			}
 		}
-		matches += m;
+		if (prog_id != -1)
+			break;
 	}
 
-check:
 	if (!matches) {
-		pr_warn("ERROR: Can't find function '%s' on interface!\n",
-			function_override);
+		if (prog_id == -1)
+			pr_warn("ERROR: Can't find function '%s' on interface!\n",
+				prog_name);
+		else
+			pr_warn("ERROR: Can't find function '%s' in interface program %d!\n",
+				prog_name, prog_id);
+
 		return -ENOENT;
 	} else if (matches == 1) {
-		*tgt_prog = prog;
-		*tgt_func = func;
 		return 0;
 	}
 
-	pr_warn("ERROR: Can't identify the full XDP main function!\n"
-		"The following is a list of candidates:\n");
+	if (matches != UINT_MAX) {
+		pr_warn("ERROR: The function '%s' exists in multiple programs!\n",
+			prog_name);
+	} else {
+		if (prog_id == -1)
+			pr_warn("ERROR: Can't identify the full XDP '%s' function!\n",
+				prog_name);
+		else
+			pr_warn("ERROR: Can't identify the full XDP '%s' function in program %d!\n",
+				prog_name, prog_id);
+	}
+	pr_warn("The following is a list of candidates:\n");
 
-	prog = xdp_multiprog__main_prog(mp);
-	find_func_matches(xdp_program__btf(prog),
-			  function_override ?: xdp_program__name(prog),
-			  &func, true, match_exact);
+	for (i = 0; i < (int)all_progs->nr_of_progs; i++) {
+		uint32_t    cur_prog_id = xdp_program__id(all_progs->progs[i].prog);
+		const char *func_dummy;
 
-	for (p = xdp_multiprog__next_prog(NULL, mp);
-	     p && function_override;
-	     p = xdp_multiprog__next_prog(p, mp))
+		if (prog_id != -1 && cur_prog_id != (uint32_t) prog_id)
+			continue;
 
-		find_func_matches(xdp_program__btf(p),
-				  function_override, &func, true, match_exact);
+		find_func_matches(xdp_program__btf(all_progs->progs[i].prog),
+				  xdp_program__name(all_progs->progs[i].prog),
+				  &func_dummy, true,
+				  (prog_id == -1 &&
+				   matches == UINT_MAX) ? -1 : (int) cur_prog_id,
+				  false);
+
+		if (prog_id != -1)
+			break;
+	}
 
 	pr_warn("Please use the -p option to pick the correct one.\n");
+	if (!strcmp("all", cfg->program_names)) {
+		char *program_names = get_program_names_all(all_progs, i);
+
+		if (program_names) {
+			pr_warn("Command line to replace 'all':\n  %s\n",
+				program_names);
+			free(program_names);
+		}
+	}
+
 	return -EAGAIN;
 }
 
 /*****************************************************************************
- * capture_on_interface()
+ * find_target()
+ *
+ * What is this function trying to do? It will return a list of programs to
+ * capture on, based on the configured program-names. If this parameter is
+ * not given, it will attach to the first (main) program.
+ *
+ * Note that the kernel API will truncate function names at BPF_OBJ_NAME_LEN
+ * so we need to guess the correct function if not explicitly given with
+ * the program-names option.
+ *
  *****************************************************************************/
-static bool capture_on_interface(struct dumpopt *cfg)
+static int find_target(struct dumpopt *cfg, struct xdp_multiprog *mp,
+		       struct capture_programs *tgt_progs)
+{
+	const char              *func;
+	struct xdp_program      *prog, *p;
+	struct capture_programs  progs;
+	size_t                   matches;
+	char                    *prog_name;
+	char                    *prog_safe_ptr;
+	char                    *program_names = cfg->program_names;
+
+	prog = xdp_multiprog__main_prog(mp);
+
+	/* First take care of the default case, i.e. no function supplied */
+	if (!program_names) {
+		matches = find_func_matches(xdp_program__btf(prog),
+					    xdp_program__name(prog),
+					    &func, false, -1, false);
+
+		if (!matches) {
+			pr_warn("ERROR: Can't find function '%s' on interface!\n",
+				xdp_program__name(prog));
+			return -ENOENT;
+		} else if (matches == 1) {
+			tgt_progs->nr_of_progs = 1;
+			tgt_progs->progs[0].prog = prog;
+			tgt_progs->progs[0].func = func;
+			tgt_progs->progs[0].rx_capture = cfg->rx_capture;
+			return 0;
+		}
+
+		pr_warn("ERROR: Can't identify the full XDP main function!\n"
+			"The following is a list of candidates:\n");
+
+		prog = xdp_multiprog__main_prog(mp);
+		find_func_matches(xdp_program__btf(prog),
+				  xdp_program__name(prog),
+				  &func, true, -1, false);
+
+		pr_warn("Please use the -p option to pick the correct one.\n");
+		return -EAGAIN;
+	}
+
+	/* We end up here if we have a configured function(s), which can be
+	 * any function in one of the programs attached. In the case of
+	 * multiple programs we can even have duplicate functions amongst
+	 * programs and we need a way to differentiate. We do this by
+	 * supplying the @<program_id>. See the -D output for the program IDs.
+	 * We also have the "all" keyword, which will specify that all
+	 * functions need to be traced.
+	 */
+
+	/* Fill in the all_prog data structure to make matching easier */
+	memset(&progs, 0, sizeof(progs));
+
+	progs.progs[progs.nr_of_progs].prog = prog;
+	matches = find_func_matches(xdp_program__btf(prog),
+				    xdp_program__name(prog),
+				    &progs.progs[progs.nr_of_progs].func,
+				    false, -1, false);
+	if (matches != 1)
+		progs.progs[progs.nr_of_progs].func = NULL;
+	progs.nr_of_progs++;
+
+	for (p = xdp_multiprog__next_prog(NULL, mp);
+	     p;
+	     p = xdp_multiprog__next_prog(p, mp)) {
+
+		progs.progs[progs.nr_of_progs].prog = p;
+		matches = find_func_matches(xdp_program__btf(p),
+					    xdp_program__name(p),
+					    &progs.progs[progs.nr_of_progs].func,
+					    false, -1, false);
+		if (matches != 1)
+			progs.progs[progs.nr_of_progs].func = NULL;
+		progs.nr_of_progs++;
+
+		if (progs.nr_of_progs >= MAX_LOADED_XDP_PROGRAMS)
+			break;
+	}
+
+	/* If "all" option is specified create temp program names */
+	if (!strcmp("all", program_names)) {
+		program_names = get_program_names_all(&progs, -1);
+		if (!program_names) {
+			pr_warn("ERROR: Out of memory for 'all' programs!\n");
+			return -ENOMEM;
+		}
+	}
+
+	/* Split up the --program-names and walk over it */
+	for (prog_name = strtok_r(program_names, ",", &prog_safe_ptr);
+	     prog_name != NULL;
+	     prog_name = strtok_r(NULL, ",", &prog_safe_ptr)) {
+
+		int   rc;
+		long  id = -1;
+		char *id_str = strchr(prog_name, '@');
+		char *alloc_name = NULL;
+
+		if (id_str) {
+			unsigned int  i;
+			char         *endptr;
+
+			errno = 0;
+			id_str++;
+			id = strtol(id_str, &endptr, 10);
+			if ((errno == ERANGE &&
+			     (id == LONG_MAX || id == LONG_MIN))
+			    || (errno != 0 && id == 0) || *endptr != '\0'
+			    || endptr == id_str) {
+
+				pr_warn("ERROR: Can't extract valid program id from \"%s\"!\n",
+					prog_name);
+				if (cfg->program_names != program_names)
+					free(program_names);
+				return -EINVAL;
+			}
+
+			for (i = 0; i < progs.nr_of_progs; i++) {
+				if (id == xdp_program__id(progs.progs[i].prog))
+					break;
+			}
+			if (i >= progs.nr_of_progs) {
+				pr_warn("ERROR: Invalid program id supplied, \"%s\"!\n",
+					prog_name);
+				if (cfg->program_names != program_names)
+					free(program_names);
+				return -EINVAL;
+			}
+
+			alloc_name = strndup(prog_name,
+					     id_str - prog_name - 1);
+			if (!alloc_name) {
+				pr_warn("ERROR: Out of memory while processing program-name argument!\n");
+				if (cfg->program_names != program_names)
+					free(program_names);
+				return -ENOMEM;
+			}
+			prog_name = alloc_name;
+		} else {
+			/* If no @id was specified, verify if the program name
+			 * was not a program_id. If so, locate the name and
+			 * use it in the lookup below.
+			 */
+			char *endptr;
+			long  prog_id;
+
+			prog_id = strtoul(prog_name, &endptr, 10);
+			if (!((errno == ERANGE &&
+			       (id == LONG_MAX || id == LONG_MIN))
+			      || (errno != 0 && id == 0) || *endptr != '\0'
+			      || endptr == prog_name)) {
+
+				for (unsigned int i = 0; i < progs.nr_of_progs; i++) {
+					if (prog_id == xdp_program__id(progs.progs[i].prog)) {
+						alloc_name = strdup(progs.progs[i].func);
+						if (alloc_name) {
+							id = prog_id;
+							prog_name = alloc_name;
+						}
+						break;
+					}
+				}
+			}
+		}
+
+		rc = match_target_function(cfg, &progs, prog_name, id);
+		free(alloc_name);
+		if (rc < 0) {
+			if (cfg->program_names != program_names)
+				free(program_names);
+			return rc;
+		}
+	}
+
+#if 0
+	/* Removed this optimization for now as it will save one packet when
+	 * three programs are loaded, two for four, etc. In addition, it will
+	 * make the packet flow looks a bit weird, without it's more clear
+	 *  which programs the dispatcher has executed.
+	 */
+	if (cfg->rx_capture == (RX_FLAG_FENTRY | RX_FLAG_FEXIT)) {
+		/* If we do entry and exit captures we can remove fentry from
+		 * back to back programs to skip storing an identical packet.
+		 * We keep fexit due to the reported return code.
+		 *
+		 * First program is the dispatches (which should not modify
+		 * the packet, but we can't be sure). So we skip this and the
+		 * first sub-programs fexit).
+		 */
+		for (int i = 2; i < progs.nr_of_progs; i++)
+			if (progs.progs[i-1].rx_capture & RX_FLAG_FENTRY)
+				progs.progs[i].rx_capture &= ~RX_FLAG_FENTRY;
+	}
+#endif
+
+	if (cfg->program_names != program_names)
+		free(program_names);
+
+	/* Copy all the programs that need capture actions */
+	memset(tgt_progs, 0, sizeof(*tgt_progs));
+	for (unsigned int i = 0; i < progs.nr_of_progs; i++) {
+		if (!progs.progs[i].rx_capture)
+			continue;
+
+		tgt_progs->progs[tgt_progs->nr_of_progs].prog = progs.progs[i].prog;
+		tgt_progs->progs[tgt_progs->nr_of_progs].func = progs.progs[i].func;
+		tgt_progs->progs[tgt_progs->nr_of_progs].rx_capture = progs.progs[i].rx_capture;
+		tgt_progs->nr_of_progs++;
+	}
+	return 0;
+}
+
+/*****************************************************************************
+ * get_loaded_program_info()
+ *****************************************************************************/
+static char *get_loaded_program_info(struct dumpopt *cfg)
+{
+	char                *info;
+	size_t               info_size = 128;
+	size_t               info_offset = 0;
+	struct xdp_multiprog *mp = NULL;
+
+	info = malloc(info_size);
+	if (!info)
+		return NULL;
+
+	if (append_snprintf(&info, &info_size, &info_offset,
+			    "Capture was taken on interface %s, with the "
+			    "following XDP programs loaded:\n",
+			    cfg->iface.ifname) < 0)
+		goto error_out;
+
+	mp = xdp_multiprog__get_from_ifindex(cfg->iface.ifindex);
+	if (IS_ERR_OR_NULL(mp)) {
+		append_snprintf(&info, &info_size, &info_offset,
+				"  %s()\n", "<No XDP program loaded!>");
+	} else {
+		struct xdp_program *prog = NULL;
+
+		if (append_snprintf(&info, &info_size, &info_offset, "  %s()\n",
+				    xdp_program__name(
+					    xdp_multiprog__main_prog(mp))) < 0)
+			goto error_out;
+
+		while ((prog = xdp_multiprog__next_prog(prog, mp))) {
+			if (append_snprintf(&info, &info_size, &info_offset,
+					    "    %s()\n",
+					    xdp_program__name(prog)) < 0)
+				goto error_out;
+		}
+
+		xdp_multiprog__close(mp);
+	}
+	return info;
+
+error_out:
+	xdp_multiprog__close(mp);
+	free(info);
+	return NULL;
+}
+
+/*****************************************************************************
+ * add_interfaces_to_pcapng()
+ *****************************************************************************/
+static bool add_interfaces_to_pcapng(struct dumpopt *cfg,
+				     struct xpcapng_dumper *pcapng_dumper,
+				     struct capture_programs *progs)
+{
+	uint64_t if_speed;
+	char     if_drv[260];
+
+	if_speed = get_if_speed(&cfg->iface);
+	if_drv[0] = 0;
+	get_if_drv_info(&cfg->iface, if_drv, sizeof(if_drv));
+
+	for (unsigned int i = 0; i < progs->nr_of_progs; i++) {
+		char if_name[128];
+
+		if (try_snprintf(if_name, sizeof(if_name), "%s:%s()@fentry",
+				 cfg->iface.ifname, progs->progs[i].func)) {
+			pr_warn("ERROR: Could not format interface name, %s:%s()@fentry!\n",
+				cfg->iface.ifname, progs->progs[i].func);
+			return false;
+		}
+
+		if (xpcapng_dump_add_interface(pcapng_dumper,
+					       cfg->snaplen,
+					       if_name, NULL, NULL,
+					       if_speed,
+					       9 /* nsec resolution */,
+					       if_drv) < 0) {
+			pr_warn("ERROR: Can't add %s interface to PcapNG file!\n",
+				if_name);
+			return false;
+		}
+
+		if (try_snprintf(if_name, sizeof(if_name), "%s:%s()@fexit",
+				 cfg->iface.ifname, progs->progs[i].func)) {
+			pr_warn("ERROR: Could not format interface name, %s:%s()@fexit!\n",
+				cfg->iface.ifname, progs->progs[i].func);
+			return false;
+		}
+
+		if (xpcapng_dump_add_interface(pcapng_dumper,
+					       cfg->snaplen,
+					       if_name, NULL, NULL,
+					       if_speed,
+					       9 /* nsec resolution */,
+					       if_drv) < 0) {
+			pr_warn("ERROR: Can't add %s interface to PcapNG file!\n",
+				if_name);
+			return false;
+		}
+	}
+	return true;
+}
+
+/*****************************************************************************
+ * load_and_attach_trace()
+ *****************************************************************************/
+static bool load_and_attach_trace(struct dumpopt *cfg,
+				  struct capture_programs *progs,
+				  unsigned int idx)
 {
 	int                          err;
-	int                          perf_map_fd;
-	bool                         rc = false;
-	pcap_t                      *pcap = NULL;
-	pcap_dumper_t               *pcap_dumper = NULL;
-	struct xpcapng_dumper       *pcapng_dumper = NULL;
+	struct bpf_object           *trace_obj = NULL;
+	struct bpf_program          *trace_prog_fentry;
+	struct bpf_program          *trace_prog_fexit;
 	struct bpf_link             *trace_link_fentry = NULL;
 	struct bpf_link             *trace_link_fexit = NULL;
 	struct bpf_map              *perf_map;
 	struct bpf_map              *data_map;
 	const struct bpf_map_def    *data_map_def;
-	struct bpf_object           *trace_obj = NULL;
-	struct bpf_program          *trace_prog_fentry;
-	struct bpf_program          *trace_prog_fexit;
 	struct trace_configuration   trace_cfg;
-	struct perf_buffer          *perf_buf;
-	struct perf_buffer_raw_opts  perf_opts = {};
-	struct perf_event_attr       perf_attr = {
-		.sample_type = PERF_SAMPLE_RAW | PERF_SAMPLE_TIME,
-		.type = PERF_TYPE_SOFTWARE,
-		.config = PERF_COUNT_SW_BPF_OUTPUT,
-		.sample_period = 1,
-		.wakeup_events = 1,
-	};
-	struct perf_handler_ctx      perf_ctx;
-	struct xdp_multiprog         *mp;
-	struct xdp_program           *tgt_prog;
-	const char                   *tgt_func;
 
-	mp = xdp_multiprog__get_from_ifindex(cfg->iface.ifindex);
-	if (IS_ERR_OR_NULL(mp)) {
-		pr_warn("WARNING: Specified interface does not have an XDP "
-			"program loaded, capturing\n         in legacy mode!\n");
-		return capture_on_legacy_interface(cfg);
+	if (idx >= progs->nr_of_progs || progs->nr_of_progs == 0) {
+		pr_warn("ERROR: Attach program ID invalid!\n");
+		return false;
 	}
 
-	if (find_target(mp, cfg->program_names, &tgt_prog, &tgt_func))
-		return false;
+	progs->progs[idx].attached = false;
 
-	/* Enable promiscuous mode if requested. */
-	if (cfg->promiscuous) {
-		err = set_if_promiscuous_mode(&cfg->iface, true,
-					     &cfg->promiscuous);
-		if (err) {
-			pr_warn("ERROR: Failed setting promiscuous mode: "
-				"%s(%d)\n", strerror(-err), -err);
-			return false;
-		}
+	if (progs->progs[idx].rx_capture == 0) {
+		pr_warn("ERROR: No RX capture mode to attach to!\n");
+		return false;
 	}
 
 	silence_libbpf_logging();
@@ -840,6 +1293,7 @@ rlimit_loop:
 
 	trace_cfg.capture_if_ifindex = cfg->iface.ifindex;
 	trace_cfg.capture_snaplen = cfg->snaplen;
+	trace_cfg.capture_prog_index = idx;
 	if (bpf_map__set_initial_value(data_map, &trace_cfg,
 				       sizeof(trace_cfg))) {
 		pr_warn("ERROR: Can't set initial .data MAP in the trace "
@@ -869,11 +1323,27 @@ rlimit_loop:
 	bpf_program__set_expected_attach_type(trace_prog_fexit,
 					      BPF_TRACE_FEXIT);
 	bpf_program__set_attach_target(trace_prog_fentry,
-				       xdp_program__fd(tgt_prog),
-				       tgt_func);
+				       xdp_program__fd(progs->progs[idx].prog),
+				       progs->progs[idx].func);
 	bpf_program__set_attach_target(trace_prog_fexit,
-				       xdp_program__fd(tgt_prog),
-				       tgt_func);
+				       xdp_program__fd(progs->progs[idx].prog),
+				       progs->progs[idx].func);
+
+	/* Reuse the xdpdump_perf_map for all programs */
+	perf_map = bpf_object__find_map_by_name(trace_obj,
+						"xdpdump_perf_map");
+	if (!perf_map) {
+		pr_warn("ERROR: Can't find xdpdump_perf_map in trace program!\n");
+		goto error_exit;
+	}
+	if (idx != 0) {
+		err = bpf_map__reuse_fd(perf_map, progs->progs[0].perf_map_fd);
+		if (err) {
+			pr_warn("ERROR: Can't reuse xdpdump_perf_map: %s\n",
+				strerror(-err));
+			goto error_exit;
+		}
+	}
 
 	/* Load the bpf object into memory */
 	err = bpf_object__load(trace_obj);
@@ -892,7 +1362,7 @@ rlimit_loop:
 	}
 
 	/* Attach trace programs only in the direction(s) needed */
-	if (cfg->rx_capture & RX_FLAG_FENTRY) {
+	if (progs->progs[idx].rx_capture & RX_FLAG_FENTRY) {
 		trace_link_fentry = bpf_program__attach_trace(trace_prog_fentry);
 		err = libbpf_get_error(trace_link_fentry);
 		if (err) {
@@ -902,7 +1372,7 @@ rlimit_loop:
 		}
 	}
 
-	if (cfg->rx_capture & RX_FLAG_FEXIT) {
+	if (progs->progs[idx].rx_capture & RX_FLAG_FEXIT) {
 		trace_link_fexit = bpf_program__attach_trace(trace_prog_fexit);
 		err = libbpf_get_error(trace_link_fexit);
 		if (err) {
@@ -912,17 +1382,121 @@ rlimit_loop:
 		}
 	}
 
-	/* Figure out the fd for the BPF_MAP_TYPE_PERF_EVENT_ARRAY trace map */
-	perf_map = bpf_object__find_map_by_name(trace_obj, "xdpdump_perf_map");
-	if (!perf_map) {
-		pr_warn("ERROR: Can't find xdpdump_perf_map in trace program!\n");
+	/* Figure out the fd for the BPF_MAP_TYPE_PERF_EVENT_ARRAY trace map. */
+	if (idx == 0) {
+		progs->progs[idx].perf_map_fd = bpf_map__fd(perf_map);
+		if (progs->progs[idx].perf_map_fd < 0) {
+			pr_warn("ERROR: Can't get xdpdump_perf_map file descriptor: %s\n",
+				strerror(errno));
+			return false;
+		}
+	} else {
+		progs->progs[idx].perf_map_fd = progs->progs[0].perf_map_fd;
+	}
+
+	progs->progs[idx].attached = true;
+	progs->progs[idx].fentry_link = trace_link_fentry;
+	progs->progs[idx].fexit_link = trace_link_fexit;
+	progs->progs[idx].prog_obj = trace_obj;
+	return true;
+
+error_exit:
+	bpf_link__destroy(trace_link_fentry);
+	bpf_link__destroy(trace_link_fexit);
+	bpf_object__close(trace_obj);
+	return false;
+}
+
+/*****************************************************************************
+ * load_and_attach_traces()
+ *****************************************************************************/
+static bool load_and_attach_traces(struct dumpopt *cfg,
+				   struct capture_programs *progs)
+{
+	for (unsigned int i = 0; i < progs->nr_of_progs; i++)
+		if (!load_and_attach_trace(cfg, progs, i))
+			return false;
+
+	return true;
+}
+
+/*****************************************************************************
+ * detach_trace()
+ *****************************************************************************/
+static void detach_trace(struct capture_programs *progs, unsigned int idx)
+{
+	if (idx >= progs->nr_of_progs || progs->nr_of_progs == 0 ||
+	    !progs->progs[idx].attached)
+		return;
+
+	bpf_link__destroy(progs->progs[idx].fentry_link);
+	bpf_link__destroy(progs->progs[idx].fexit_link);
+	bpf_object__close(progs->progs[idx].prog_obj);
+	progs->progs[idx].attached = false;
+}
+
+/*****************************************************************************
+ * detach_traces()
+ *****************************************************************************/
+static void detach_traces(struct capture_programs *progs)
+{
+	for (unsigned int i = 0; i < progs->nr_of_progs; i++)
+		detach_trace(progs, i);
+}
+
+/*****************************************************************************
+ * capture_on_interface()
+ *****************************************************************************/
+static bool capture_on_interface(struct dumpopt *cfg)
+{
+	int                          err;
+	bool                         rc = false;
+	pcap_t                      *pcap = NULL;
+	pcap_dumper_t               *pcap_dumper = NULL;
+	struct xpcapng_dumper       *pcapng_dumper = NULL;
+	struct perf_buffer          *perf_buf = NULL;
+	struct perf_buffer_raw_opts  perf_opts = {};
+	struct perf_event_attr       perf_attr = {
+		.sample_type = PERF_SAMPLE_RAW | PERF_SAMPLE_TIME,
+		.type = PERF_TYPE_SOFTWARE,
+		.config = PERF_COUNT_SW_BPF_OUTPUT,
+		.sample_period = 1,
+		.wakeup_events = 1,
+	};
+	struct perf_handler_ctx      perf_ctx;
+	struct xdp_multiprog         *mp;
+	struct capture_programs      tgt_progs = {};
+
+	mp = xdp_multiprog__get_from_ifindex(cfg->iface.ifindex);
+	if (IS_ERR_OR_NULL(mp)) {
+		pr_warn("WARNING: Specified interface does not have an XDP "
+			"program loaded, capturing\n         in legacy mode!\n");
+		return capture_on_legacy_interface(cfg);
+	}
+
+	if (find_target(cfg, mp, &tgt_progs))
+		goto error_exit;
+
+	if (tgt_progs.nr_of_progs == 0) {
+		pr_warn("ERROR: Failed finding any attached XDP program!\n");
 		goto error_exit;
 	}
-	perf_map_fd = bpf_map__fd(perf_map);
-	if (perf_map_fd < 0) {
-		pr_warn("ERROR: Can't get xdpdump_perf_map file descriptor: %s\n",
-			strerror(errno));
-		return false;
+
+	/* Enable promiscuous mode if requested. */
+	if (cfg->promiscuous) {
+		err = set_if_promiscuous_mode(&cfg->iface, true,
+					      &cfg->promiscuous);
+		if (err) {
+			pr_warn("ERROR: Failed setting promiscuous mode: %s(%d)\n",
+				strerror(-err), -err);
+			goto error_exit;
+		}
+	}
+
+	/* Load and attach programs */
+	if (!load_and_attach_traces(cfg, &tgt_progs)) {
+		/* Actual errors are reported in load_and_attach_trace(). */
+		goto error_exit;
 	}
 
         /* Open the pcap handle */
@@ -941,90 +1515,67 @@ rlimit_loop:
 				goto error_exit;
 			}
 		} else {
-			char           if_name[IFNAMSIZ + 7];
-			char           if_descr[BPF_OBJ_NAME_LEN + IFNAMSIZ + 10];
-			char           if_drv[260];
-			uint64_t       if_speed;
-			struct utsname utinfo;
+			char           *program_info;
+			struct utsname  utinfo;
+			char            os_info[260];
 
 			memset(&utinfo, 0, sizeof(utinfo));
 			uname(&utinfo);
 
-			if_drv[0] = 0;
-			if (try_snprintf(if_drv, sizeof(if_drv), "%s %s %s %s",
+			os_info[0] = 0;
+			if (try_snprintf(os_info, sizeof(os_info), "%s %s %s %s",
 					 utinfo.sysname, utinfo.nodename,
 					 utinfo.release, utinfo.version)) {
 				pr_warn("ERROR: Could not format OS information!\n");
 				goto error_exit;
 			}
+
+			program_info = get_loaded_program_info(cfg);
+			if (!program_info) {
+				pr_warn("ERROR: Could not format program information!\n");
+				goto error_exit;
+			}
+
 			pcapng_dumper = xpcapng_dump_open(cfg->pcap_file,
-							  NULL, utinfo.machine,
-							  if_drv,
+							  program_info,
+							  utinfo.machine,
+							  os_info,
 							  "xdpdump v" TOOLS_VERSION);
+
+			free(program_info);
 			if (!pcapng_dumper) {
 				pr_warn("ERROR: Can't open PcapNG file for writing!\n");
 				goto error_exit;
 			}
 
-			if_speed = get_if_speed(&cfg->iface);
-			if_drv[0] = 0;
-			get_if_drv_info(&cfg->iface, if_drv, sizeof(if_drv));
 
-			if (try_snprintf(if_name, sizeof(if_name), "%s@fentry",
-					 cfg->iface.ifname)) {
-				pr_warn("ERROR: Could not format interface name!\n");
-				goto error_exit;
-			}
-
-			if (try_snprintf(if_descr, sizeof(if_descr), "%s:%s()@fentry",
-					 cfg->iface.ifname, tgt_func)) {
-				pr_warn("ERROR: Could not format interface description!\n");
-				goto error_exit;
-			}
-
-			if (xpcapng_dump_add_interface(pcapng_dumper,
-						       cfg->snaplen,
-						       if_name, if_descr, NULL,
-						       if_speed,
-						       9 /* nsec resolution */,
-						       if_drv) != 0) {
-				pr_warn("ERROR: Can't add entry interfaced to PcapNG file!\n");
-				goto error_exit;
-			}
-
-			if (try_snprintf(if_name, sizeof(if_name), "%s@fexit",
-					 cfg->iface.ifname)){
-				pr_warn("ERROR: Could not format interface name!\n");
-				goto error_exit;
-			}
-
-			if (try_snprintf(if_descr, sizeof(if_descr), "%s:%s()@fexit",
-					 cfg->iface.ifname, tgt_func)) {
-				pr_warn("ERROR: Could not format interface description!\n");
-				goto error_exit;
-			}
-
-			if (xpcapng_dump_add_interface(pcapng_dumper,
-						       cfg->snaplen,
-						       if_name, if_descr, NULL,
-						       if_speed,
-						       9 /* nsec resolution */,
-						       if_drv) != 1) {
-				pr_warn("ERROR: Can't add exit interfaced to PcapNG file!\n");
+			if (!add_interfaces_to_pcapng(cfg, pcapng_dumper,
+						     &tgt_progs)) {
+				/* Error output is handled in
+				 * add_interfaces_to_pcapng()
+				 */
 				goto error_exit;
 			}
 		}
 	}
 
 	/* No more error conditions, display some capture information */
-	fprintf(stderr, "listening on %s, ingress XDP program ID %u func %s, "
-		"capture mode %s, capture size %d bytes\n",
-		cfg->iface.ifname, xdp_program__id(tgt_prog), tgt_func,
-		get_capture_mode_string(cfg->rx_capture), cfg->snaplen);
+	fprintf(stderr, "listening on %s, ingress XDP program ",
+		cfg->iface.ifname);
+
+	for (unsigned int i = 0; i < tgt_progs.nr_of_progs; i++)
+		fprintf(stderr, "ID %u func %s, ",
+			xdp_program__id(tgt_progs.progs[i].prog),
+			tgt_progs.progs[i].func);
+
+	fprintf(stderr, "capture mode %s, capture size %d bytes\n",
+		get_capture_mode_string(tgt_progs.progs[0].rx_capture),
+		cfg->snaplen);
 
 	/* Setup perf context */
 	memset(&perf_ctx, 0, sizeof(perf_ctx));
 	perf_ctx.cfg = cfg;
+	perf_ctx.xdp_progs = &tgt_progs;
 	perf_ctx.pcap = pcap;
 	perf_ctx.pcap_dumper = pcap_dumper;
 	perf_ctx.pcapng_dumper = pcapng_dumper;
@@ -1062,7 +1613,8 @@ rlimit_loop:
 	perf_opts.attr = &perf_attr;
 	perf_opts.event_cb = handle_perf_event;
 	perf_opts.ctx = &perf_ctx;
-	perf_buf = perf_buffer__new_raw(perf_map_fd, PERF_MMAP_PAGE_COUNT,
+	perf_buf = perf_buffer__new_raw(tgt_progs.progs[0].perf_map_fd,
+					PERF_MMAP_PAGE_COUNT,
 					&perf_opts);
 
 	/* Loop trough the dumper */
@@ -1094,8 +1646,8 @@ rlimit_loop:
 
 error_exit:
 	/* Cleanup all our resources */
-	if (pcapng_dumper)
-		xpcapng_dump_close(pcapng_dumper);
+	perf_buffer__free(perf_buf);
+	xpcapng_dump_close(pcapng_dumper);
 
 	if (pcap_dumper)
 		pcap_dump_close(pcap_dumper);
@@ -1103,63 +1655,9 @@ error_exit:
 	if (pcap)
 		pcap_close(pcap);
 
-	if (trace_link_fentry)
-		bpf_link__destroy(trace_link_fentry);
-
-	if (trace_link_fexit)
-		bpf_link__destroy(trace_link_fexit);
-
-	if (trace_obj)
-		bpf_object__close(trace_obj);
-
-	if (mp)
-		xdp_multiprog__close(mp);
-
+	detach_traces(&tgt_progs);
+	xdp_multiprog__close(mp);
 	return rc;
-}
-
-/*****************************************************************************
- * list_interfaces()
- *****************************************************************************/
-static bool list_interfaces(__unused struct dumpopt *cfg)
-{
-	struct if_nameindex *idx, *indexes;
-
-	indexes = if_nameindex();
-	if (!indexes) {
-		pr_warn("Couldn't get list of interfaces: %s\n",
-			strerror(errno));
-		return false;
-	}
-
-	printf("%-8.8s  %-16.16s  %s\n", "if_index", "if_name",
-	       "XDP program entry function");
-	printf("--------  ----------------  "
-	       "--------------------------------------------------\n");
-	for (idx = indexes; idx->if_index; idx++) {
-		struct xdp_multiprog *mp;
-
-		mp = xdp_multiprog__get_from_ifindex(idx->if_index);
-		if (IS_ERR_OR_NULL(mp)) {
-			printf("%-8d  %-16.16s  %s\n",
-			       idx->if_index, idx->if_name,
-			       "<No XDP program loaded!>");
-		} else {
-			struct xdp_program *prog = NULL;
-
-			printf("%-8d  %-16.16s  %s()\n",
-			       idx->if_index, idx->if_name,
-			       xdp_program__name(xdp_multiprog__main_prog(mp)));
-
-			while ((prog = xdp_multiprog__next_prog(prog, mp)))
-				printf("%-29s %s()\n", "",
-				       xdp_program__name(prog));
-
-			xdp_multiprog__close(mp);
-		}
-	}
-	if_freenameindex(indexes);
-	return true;
 }
 
 /*****************************************************************************
@@ -1195,7 +1693,7 @@ int main(int argc, char **argv)
 
 	/* See if we need to dump interfaces and exit */
 	if (cfg_dumpopt.list_interfaces) {
-		if (list_interfaces(&cfg_dumpopt))
+		if (iface_print_status())
 			return EXIT_SUCCESS;
 		return EXIT_FAILURE;
 	}

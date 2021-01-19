@@ -70,13 +70,22 @@ Let the Kernel wake up =xdpdump= once for every =<events>= being posted in the
 perf ring buffer. The higher the number the less the impact is on the actual
 XDP program. The default value is 0, which automatically calculates the
 value based on the available CPUs/buffers. Use -v to see the actual used value.
-** -p, --program-names <prog>
-The Linux API does not provide the full name of the attached eBPF entry function
-if it's longer than 15 characters. xdpdump will try to guess the correct
-function name from the available BTF debug information. However, if multiple
-functions exist with the same leading name, it can not pick the correct one. It
-will dump the available functions, and you can choose the correct one, and
-supply it with this option.
+** -p, --program-names [<prog>|all]
+This option allows you to capture packets for a specific, set of, or all XDP
+programs loaded on the interface. You can either specify the actual program
+names or program IDs separated by commas. In the case where multiple programs
+are attached with the same name, you should use the program ID. Use the -D
+option to see the loaded programs and their IDs.
+
+
+In addition, the Linux API does not provide the full name of the attached eBPF
+entry function if it's longer than 15 characters. xdpdump will try to guess the
+correct function name from the available BTF debug information. However, if
+multiple functions exist with the same leading name, it can not pick the correct
+one. It will dump the available functions, and you can choose the correct one,
+and supply it with this option. If you have programs with duplicate long names,
+you also need to specify the program ID with the full name. This can be done by
+adding the id to the name with the =@<id>= suffix.
 ** -P, --promiscuous-mode
 This option puts the interface into promiscuous mode.
 ** -s, --snapshot-length <snaplen>
@@ -103,18 +112,19 @@ actual filtering:
 # xdp-filter load --mode skb eth0
 #
 # xdpdump -D
-if_index  if_name           XDP program entry function
---------  ----------------  --------------------------------------------------
-1         lo                <No XDP program loaded!>
-2         eth0              xdpfilt_dny_all()
+Interface        Prio  Program name      Mode     ID   Tag               Chain actions
+--------------------------------------------------------------------------------------
+lo                     <No XDP program loaded!>
+eth0                   xdp_dispatcher    skb      10651 d51e469e988d81da 
+ =>              10     xdpfilt_alw_all           10669 0b394f43ab24501c  XDP_PASS
 #+end_src
 
 Now we can try =xdpdump=:
 
 #+begin_src
 # xdpdump -i eth0 -x
-listening on eth0, ingress XDP program xdpfilt_dny_all, capture mode entry, capture size 262144 bytes
-1584373839.460733895: packet size 102 bytes, captured 102 bytes on if_index 2, rx queue 0, @entry
+listening on eth0, ingress XDP program ID 10651 func xdp_dispatcher, capture mode entry, capture size 262144 bytes
+1584373839.460733895: xdp_dispatcher()@entry: packet size 102 bytes, captured 102 bytes on if_index 2, rx queue 0, id 1
   0x0000:  52 54 00 db 44 b6 52 54 00 34 38 da 08 00 45 48  RT..D.RT.48...EH
   0x0010:  00 58 d7 dd 40 00 40 06 ec c3 c0 a8 7a 01 c0 a8  .X..@.@.....z...
   0x0020:  7a 64 9c de 00 16 0d d5 c6 bc 46 c9 bb 11 80 18  zd........F.....
@@ -123,7 +133,7 @@ listening on eth0, ingress XDP program xdpfilt_dny_all, capture mode entry, capt
   0x0050:  d6 d9 ee 42 42 f0 82 c9 4f 12 ed 7b 19 ab 22 0d  ...BB...O..{..".
   0x0060:  09 29 a9 ee df 89                                .)....
 
-1584373839.462340808: packet size 66 bytes, captured 66 bytes on if_index 2, rx queue 0, @entry
+1584373839.462340808: xdp_dispatcher()@entry: packet size 66 bytes, captured 66 bytes on if_index 2, rx queue 0, id 2
   0x0000:  52 54 00 db 44 b6 52 54 00 34 38 da 08 00 45 48  RT..D.RT.48...EH
   0x0010:  00 34 d7 de 40 00 40 06 ec e6 c0 a8 7a 01 c0 a8  .4..@.@.....z...
   0x0020:  7a 64 9c de 00 16 0d d5 c6 e0 46 c9 bc 85 80 10  zd........F.....
@@ -139,7 +149,7 @@ Below are two more examples redirecting the capture file to =tcpdump= or
 
 #+begin_src
 # xdpdump -i eth0 -w - | tcpdump -r - -n
-listening on eth0, ingress XDP program xdpfilt_dny_all, capture mode entry, capture size 262144 bytes
+listening on eth0, ingress XDP program ID 10651 func xdp_dispatcher, capture mode entry, capture size 262144 bytes
 reading from file -, link-type EN10MB (Ethernet)
 15:55:09.075887 IP 192.168.122.1.40928 > 192.168.122.100.ssh: Flags [P.], seq 3857553815:3857553851, ack 3306438882, win 501, options [nop,nop,TS val 1997449167 ecr 1075234328], length 36
 15:55:09.077756 IP 192.168.122.1.40928 > 192.168.122.100.ssh: Flags [.], ack 37, win 501, options [nop,nop,TS val 1997449169 ecr 1075244363], length 0
@@ -148,10 +158,39 @@ reading from file -, link-type EN10MB (Ethernet)
 
 #+begin_src
 # xdpdump -i eth0 -w - | tshark -r - -n
-listening on eth0, ingress XDP program xdpfilt_dny_all, capture mode entry, capture size 262144 bytes
+listening on eth0, ingress XDP program ID 10651 func xdp_dispatcher, capture mode entry, capture size 262144 bytes
     1   0.000000 192.168.122.1 → 192.168.122.100 SSH 102 Client: Encrypted packet (len=36)
     2   0.000646 192.168.122.1 → 192.168.122.100 TCP 66 40158 → 22 [ACK] Seq=37 Ack=37 Win=1467 Len=0 TSval=1997621571 TSecr=1075416765
     3  12.218164 192.168.122.1 → 192.168.122.100 SSH 102 Client: Encrypted packet (len=36)
+#+end_src
+
+One final example capturing specific XDP programs loaded on the interface:
+
+#+begin_src
+# xdpdump -D
+Interface        Prio  Program name      Mode     ID   Tag               Chain actions
+--------------------------------------------------------------------------------------
+lo                     <No XDP program loaded!>
+eth0                   xdp_dispatcher    skb      10558 d51e469e988d81da 
+ =>              5      xdp_test_prog_w           10576 b5a46c6e9935298c  XDP_PASS
+ =>              10     xdp_pass                  10582 3b185187f1855c4c  XDP_PASS
+ =>              10     xdp_pass                  10587 3b185187f1855c4c  XDP_PASS
+#+end_src
+
+We would like to see the packets on the =xdp_dispatcher()= and the 2nd =xdp_pass()= program:
+
+#+begin_src
+# xdpdump -i eth0 --rx-capture=entry,exit -p xdp_dispatcher,xdp_pass@10587
+  or
+# xdpdump -i eth0 --rx-capture=entry,exit -p 10558,10587
+listening on eth0, ingress XDP program ID 10558 func xdp_dispatcher, ID 10587 func xdp_pass, capture mode entry/exit, capture size 262144 bytes
+1607694215.501287259: xdp_dispatcher()@entry: packet size 102 bytes on if_index 2, rx queue 0, id 1
+1607694215.501371504: xdp_pass()@entry: packet size 102 bytes on if_index 2, rx queue 0, id 1
+1607694215.501383099: xdp_pass()@exit[PASS]: packet size 102 bytes on if_index 2, rx queue 0, id 1
+1607694215.501394709: xdp_dispatcher()@exit[PASS]: packet size 102 bytes on if_index 2, rx queue 0, id 1
+^C
+4 packets captured
+0 packets dropped by perf ring
 #+end_src
 
 * BUGS

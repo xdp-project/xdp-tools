@@ -3,7 +3,7 @@
 #
 # shellcheck disable=2039
 #
-ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_term test_exitentry test_snap test_multi_pkt test_perf_wakeup test_promiscuous test_none_xdp"
+ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_term test_exitentry test_snap test_multi_pkt test_perf_wakeup test_promiscuous test_none_xdp test_pname_parse test_multi_prog"
 
 XDPDUMP=${XDPDUMP:-./xdpdump}
 XDP_LOADER=${XDP_LOADER:-../xdp-loader/xdp-loader}
@@ -64,8 +64,8 @@ END
 
 test_interfaces()
 {
-    local NO_PROG_REGEX="([0-9]+ +$NS +<No XDP program loaded!>)"
-    local PROG_REGEX="([0-9]+ +$NS +xdp_dispatcher\(\)[[:space:]]+xdp_drop\(\))"
+    local NO_PROG_REGEX="($NS +<No XDP program loaded!>)"
+    local PROG_REGEX="($NS[[:space:]]+xdp_dispatcher.+xdp_drop)"
 
     RESULT=$($XDPDUMP -D)
     if ! [[ $RESULT =~ $NO_PROG_REGEX ]]; then
@@ -109,6 +109,11 @@ test_capt_pcap()
     fi
 }
 
+version_greater_or_equal()
+{
+    printf '%s\n%s\n' "$2" "$1" | sort -V -C
+}
+
 test_capt_pcapng()
 {
     local PCAP_FILE="/tmp/${NS}_PID_$$_$RANDOM.pcap"
@@ -117,6 +122,7 @@ test_capt_pcapng()
     local OS=$(uname -snrv | sed -e 's/[]\/$+*.^()|[]/\\&/g')
     local INFOS_REGEX=""
     local OLD_CAPINFOS=0
+    local TSHARK_VERSION=$(tshark --version 2> /dev/null | sed -ne 's/^TShark (Wireshark) \([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p')
 
     if [[ "$(capinfos --help)" == *"Capinfos (Wireshark) 2."* ]]; then
         OLD_CAPINFOS=1
@@ -126,16 +132,15 @@ test_capt_pcapng()
     INFOS_REGEX+="Capture hardware:    $HW.*"
     INFOS_REGEX+="Capture oper-sys:    $OS.*"
     INFOS_REGEX+="Capture application: xdpdump v[0-9]+\.[0-9]+\.[0-9]+.*"
+    INFOS_REGEX+="Capture comment:     Capture was taken on interface xdptest, with the following XDP programs loaded:   xdp_dispatcher\(\)     xdp_test_prog_w.*"
     INFOS_REGEX+="Interface #0 info:.*"
-    INFOS_REGEX+="Name = ${NS}@fentry.*"
-    INFOS_REGEX+="Description = ${NS}:xdp_dispatcher\(\)@fentry.*"
+    INFOS_REGEX+="Name = ${NS}:xdp_dispatcher\(\)@fentry.*"
     if [ $OLD_CAPINFOS -eq 0 ]; then
         INFOS_REGEX+="Hardware = driver: \"veth\", version: \"1\.0\", fw-version: \"\", rom-version: \"\", bus-info: \"\".*"
     fi
     INFOS_REGEX+="Time precision = nanoseconds \(9\).*"
     INFOS_REGEX+="Interface #1 info:.*"
-    INFOS_REGEX+="Name = ${NS}@fexit.*"
-    INFOS_REGEX+="Description = ${NS}:xdp_dispatcher\(\)@fexit.*"
+    INFOS_REGEX+="Name = ${NS}:xdp_dispatcher\(\)@fexit.*"
     if [ $OLD_CAPINFOS -eq 0 ]; then
         INFOS_REGEX+="Hardware = driver: \"veth\", version: \"1\.0\", fw-version: \"\", rom-version: \"\", bus-info: \"\".*"
     fi
@@ -164,23 +169,28 @@ test_capt_pcapng()
         return 1
     fi
 
-    #
-    # TODO: We can not yet check the epb_packetid, epb_queue and epb_verdict
-    #       fields. When they are implemented by WireShark we can add a test
-    #       case here. A hack/patch is available here:
-    #         https://github.com/chaudron/wireshark/tree/dev/pcapng_epb_options
-    #
+    if version_greater_or_equal "$TSHARK_VERSION" 3.4.0; then
+	local ATTRIB_REGEX="^xdptest:xdp_dispatcher\(\)@fentry	0	1	$.*^xdptest:xdp_dispatcher\(\)@fexit	0	1	2$.*"
+	RESULT=$(tshark -r "$PCAP_FILE" -T fields \
+			-e frame.interface_name \
+			-e frame.interface_queue \
+			-e frame.packet_id \
+			-e frame.verdict.ebpf_xdp)
+	if ! [[ $RESULT =~ $ATTRIB_REGEX ]]; then
+            print_result "Failed attributes content"
+            return 1
+	fi
+    fi
 
     rm "$PCAP_FILE" >& /dev/null
 
     $XDP_LOADER unload "$NS" --all || return 1
 }
 
-
 test_capt_term()
 {
-    local PASS_REGEX="(@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local PASS_X_REGEX="(@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_X_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PASS_X_OPT="0x0020:  00 00 00 00 00 02 fc 42 de ad ca fe 00 01 00 00"
 
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
@@ -217,11 +227,11 @@ test_capt_term()
 
 test_exitentry()
 {
-    local PASS_ENTRY_REGEX="(@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local PASS_EXIT_REGEX="(@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local PASS_EXIT_D_REGEX="(@exit\[DROP\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local ID_ENTRY_REGEX="@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id ([0-9]+)"
-    local ID_EXIT_REGEX="@exit\[DROP\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id ([0-9]+)"
+    local PASS_ENTRY_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_EXIT_REGEX="(xdp_dispatcher\(\)@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_EXIT_D_REGEX="(xdp_dispatcher\(\)@exit\[DROP\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local ID_ENTRY_REGEX="xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id ([0-9]+)"
+    local ID_EXIT_REGEX="xdp_dispatcher\(\)@exit\[DROP\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id ([0-9]+)"
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
 
@@ -274,8 +284,8 @@ test_exitentry()
 
 test_snap()
 {
-    local PASS_REGEX="(@entry: packet size 118 bytes, captured 16 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local PASS_II_REGEX="(@entry: packet size 118 bytes, captured 21 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 16 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_II_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 21 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
 
@@ -302,8 +312,8 @@ test_snap()
 
 test_multi_pkt()
 {
-    local PASS_ENTRY_REGEX="(@entry: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
-    local PASS_EXIT_REGEX="(@exit\[PASS\]: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
+    local PASS_ENTRY_REGEX="(xdp_dispatcher\(\)@entry: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
+    local PASS_EXIT_REGEX="(xdp_dispatcher\(\)@exit\[PASS\]: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
     local PKT_SIZES=(56 512 1500)
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
@@ -335,8 +345,8 @@ test_perf_wakeup()
         return "$SKIPPED_TEST"
     fi
 
-    local PASS_REGEX="(@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+)"
-    local PASS_10K_REGEX="(@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id 10000)"
+    local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+)"
+    local PASS_10K_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id 10000)"
     local WAKEUPS=(0 1 32 128)
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
@@ -389,7 +399,7 @@ test_none_xdp()
 test_promiscuous()
 {
     local PASS_PKT="packet size 118 bytes on if_name \"$NS\""
-    local PASS_REGEX="(@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
 
     $XDP_LOADER unload "$NS" --all
     dmesg -C
@@ -397,14 +407,12 @@ test_promiscuous()
     PID=$(start_background "$XDPDUMP -i $NS -P")
     $PING6 -W 2 -c 4 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
-    echo "$RESULT"
     if [[ "$RESULT" != *"$PASS_PKT"* ]]; then
         print_result "IPv6 packet not received [legacy mode]"
         return 1
     fi
 
     RESULT=$(dmesg)
-    echo "$RESULT"
     if [[ "$RESULT" != *"device $NS entered promiscuous mode"* ]]; then
         print_result "Failed enabling promiscuous mode on legacy interface"
         return 1
@@ -426,7 +434,6 @@ test_promiscuous()
     fi
 
     RESULT=$(dmesg)
-    echo "$RESULT"
     if [[ "$RESULT" != *"device $NS entered promiscuous mode"* ]]; then
         print_result "Failed enabling promiscuous mode on interface"
         return 1
@@ -437,7 +444,227 @@ test_promiscuous()
     fi
 }
 
+test_pname_parse()
+{
+    local PIN_DIR="/sys/fs/bpf/${NS}_PID_$$_$RANDOM"
+    local PASS_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PROG_ID_1=0
+    local PROG_ID_2=0
+    local PROG_ID_3=0
+    local PROG_ID_4=0
+
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+
+    # Here we load the programs without the xdp-tools loader to make sure
+    # they are not loaded as a multi-program.
+    bpftool prog loadall "$TEST_PROG_DIR/test_long_func_name.o" "$PIN_DIR"
+    bpftool net attach xdpgeneric pinned "$PIN_DIR/xdp_test_prog_long" dev "$NS"
+
+    # We need to specify the function name or else it should fail
+    PID=$(start_background "$XDPDUMP -i $NS")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't identify the full XDP main function!"* ]]; then
+        print_result "xdpdump should fail with duplicate function!"
+        rm -rf "$PIN_DIR"
+        return 1
+    fi
+
+    # Here we specify the correct function name so we should get the packet
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if ! [[ $RESULT =~ $PASS_REGEX ]]; then
+        print_result "IPv6 packet not received"
+        rm -rf "$PIN_DIR"
+        return 1
+    fi
+
+    # Here we specify the wrong correct function name so we should not get the packet
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name_too")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't load eBPF object: Kernel verifier blocks program loading"* ]]; then
+        print_result "xdpdump should fail being unable to attach!"
+        rm -rf "$PIN_DIR"
+        return 1
+    fi
+
+    # Here we specify an non-existing function
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_non_existing_name")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't find function 'xdp_test_prog_with_a_long_non_existing_name' on interface!"* ]]; then
+        print_result "xdpdump should fail with unknown function!"
+        rm -rf "$PIN_DIR"
+        return 1
+    fi
+
+    # Verify invalid program indexes
+    PID=$(start_background "$XDPDUMP -i $NS -p hallo@3e")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't extract valid program id from \"hallo@3e\"!"* ]]; then
+        print_result "xdpdump should fail with id value error!"
+        rm -rf "$PIN_DIR"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p hallo@128")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Invalid program id supplied, \"hallo@128\"!"* ]]; then
+        print_result "xdpdump should fail with invalid id!"
+        rm -rf "$PIN_DIR"
+        return 1
+    fi
+
+    # Remove pinned programs
+    rm -rf "$PIN_DIR"
+    ip link set dev "$NS" xdpgeneric off
+
+    # Now test actual multi-program parsing (negative test cases)
+    $XDP_LOADER unload "$NS" --all
+    $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" "$TEST_PROG_DIR/xdp_pass.o" "$TEST_PROG_DIR/xdp_drop.o"
+
+    PID=$(start_background "$XDPDUMP -D")
+    RESULT=$(stop_background "$PID")
+    PROG_ID_1=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 1p | tr -d ' ')
+    PROG_ID_2=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 2p | tr -d ' ')
+    PROG_ID_3=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 3p | tr -d ' ')
+    PROG_ID_4=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 4p | tr -d ' ')
+
+    PID=$(start_background "$XDPDUMP -i $NS -p all")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't identify the full XDP 'xdp_test_prog_w' function in program $PROG_ID_2!"* ||
+          $RESULT != *"xdp_test_prog_with_a_long_name@$PROG_ID_2"* ||
+          $RESULT != *"xdp_test_prog_with_a_long_name_too@$PROG_ID_2"* ||
+          $RESULT != *"Command line to replace 'all':"* ||
+          $RESULT != *"xdp_dispatcher@$PROG_ID_1,<function_name>@$PROG_ID_2,xdp_pass@$PROG_ID_3,xdp_drop@$PROG_ID_4"* ]]; then
+        print_result "xdpdump should fail with all list!"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p hallo@$PROG_ID_1")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't find function 'hallo' in interface program $PROG_ID_1!"* ]]; then
+        print_result "xdpdump should fail with hallo not found on program $PROG_ID_1!"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p hallo")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't find function 'hallo' on interface"* ]]; then
+        print_result "xdpdump should fail hallo not found!"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_w")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't identify the full XDP 'xdp_test_prog_w' function!"* ||
+          $RESULT != *"xdp_test_prog_with_a_long_name_too"* ]]; then
+        print_result "xdpdump should fail can't id xdp_test_prog_w!"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_w@$PROG_ID_2")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: Can't identify the full XDP 'xdp_test_prog_w' function in program $PROG_ID_2!"* ||
+          $RESULT != *"xdp_test_prog_with_a_long_name_too@$PROG_ID_2"* ]]; then
+        print_result "xdpdump should fail can't id xdp_test_prog_w@$PROG_ID_2!"
+        return 1
+    fi
+
+    # Now load XDP programs with duplicate functions
+    $XDP_LOADER unload "$NS" --all
+    $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" "$TEST_PROG_DIR/test_long_func_name.o" "$TEST_PROG_DIR/xdp_pass.o" "$TEST_PROG_DIR/xdp_drop.o"
+
+    PID=$(start_background "$XDPDUMP -D")
+    RESULT=$(stop_background "$PID")
+    PROG_ID_1=$(echo "$RESULT" | grep "$NS" -A2 | cut -c51-55 | sed -n 1p | tr -d ' ')
+    PROG_ID_2=$(echo "$RESULT" | grep "$NS" -A2 | cut -c51-55 | sed -n 2p | tr -d ' ')
+    PROG_ID_3=$(echo "$RESULT" | grep "$NS" -A2 | cut -c51-55 | sed -n 2p | tr -d ' ')
+
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name")
+    RESULT=$(stop_background "$PID")
+    if [[ $RESULT != *"ERROR: The function 'xdp_test_prog_with_a_long_name' exists in multiple programs!"* ||
+          $RESULT != *"xdp_test_prog_with_a_long_name@$PROG_ID_2"* ||
+          $RESULT != *"xdp_test_prog_with_a_long_name@$PROG_ID_3"* ]]; then
+        print_result "xdpdump should fail with duplicate function!"
+        return 1
+    fi
+
+    $XDP_LOADER unload "$NS" --all
+    return 0
+}
+
+test_multi_prog()
+{
+    local ENTRY_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+).*(xdp_pass\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local EXIT_REGEX="(xdp_pass\(\)@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+).*(xdp_dispatcher\(\)@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PROG_ID_1=0
+    local PROG_ID_4=0
+
+    $XDP_LOADER load "$NS" "$TEST_PROG_DIR/xdp_pass.o" "$TEST_PROG_DIR/test_long_func_name.o" "$TEST_PROG_DIR/xdp_pass.o"
+
+    PID=$(start_background "$XDPDUMP -D")
+    RESULT=$(stop_background "$PID")
+    PROG_ID_1=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 1p | tr -d ' ')
+    PROG_ID_4=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 4p | tr -d ' ')
+
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_dispatcher,xdp_pass@$PROG_ID_4")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if ! [[ $RESULT =~ $ENTRY_REGEX ]]; then
+        print_result "Not received all fentry packets"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_dispatcher,xdp_pass@$PROG_ID_4 --rx-capture=exit")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if ! [[ $RESULT =~ $EXIT_REGEX ]]; then
+        print_result "Not received all fexit packets"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_dispatcher,xdp_pass@$PROG_ID_4 --rx-capture=exit,entry")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if ! [[ $RESULT =~ $ENTRY_REGEX ]]; then
+        print_result "Not received all fentry packets on entry/exit test"
+        return 1
+    fi
+    if ! [[ $RESULT =~ $EXIT_REGEX ]]; then
+        print_result "Not received all fexit packets on entry/exit test"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p $PROG_ID_1,$PROG_ID_4 --rx-capture=exit,entry")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if ! [[ $RESULT =~ $ENTRY_REGEX ]]; then
+        print_result "[IDs]Not received all fentry packets on entry/exit test"
+        return 1
+    fi
+    if ! [[ $RESULT =~ $EXIT_REGEX ]]; then
+        print_result "[IDs]Not received all fexit packets on entry/exit test"
+        return 1
+    fi
+
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_dispatcher,$PROG_ID_4 --rx-capture=exit,entry")
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    RESULT=$(stop_background "$PID")
+    if ! [[ $RESULT =~ $ENTRY_REGEX ]]; then
+        print_result "[Mix]Not received all fentry packets on entry/exit test"
+        return 1
+    fi
+    if ! [[ $RESULT =~ $EXIT_REGEX ]]; then
+        print_result "[Mix]Not received all fexit packets on entry/exit test"
+        return 1
+    fi
+
+    $XDP_LOADER unload "$NS" --all
+    return 0
+}
+
 cleanup_tests()
 {
-    $XDP_LOADER unload $NS --all >/dev/null 2>&1
+    $XDP_LOADER unload "$NS" --all >/dev/null 2>&1
 }

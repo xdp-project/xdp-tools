@@ -261,86 +261,10 @@ out:
 
 static struct prog_option status_options[] = { END_OPTIONS };
 
-static char *print_bpf_tag(char buf[BPF_TAG_SIZE * 2 + 1],
-			   const unsigned char tag[BPF_TAG_SIZE])
-{
-	int i;
-
-	for (i = 0; i < BPF_TAG_SIZE; i++)
-		sprintf(&buf[i * 2], "%02x", tag[i]);
-	buf[BPF_TAG_SIZE * 2] = '\0';
-	return buf;
-}
-
-int print_iface_status(const struct iface *iface,
-		       const struct xdp_multiprog *mp, __unused void *arg)
-{
-	struct xdp_program *prog, *dispatcher, *hw_prog;
-	char tag[BPF_TAG_SIZE * 2 + 1];
-	char buf[STRERR_BUFSIZE];
-	int err;
-
-	if (!mp) {
-		printf("%-16s <no XDP program>\n", iface->ifname);
-		return 0;
-	}
-
-	hw_prog = xdp_multiprog__hw_prog(mp);
-	if (hw_prog) {
-		printf("%-16s %-5s %-16s %-8s %-4d %-17s\n",
-		       iface->ifname,
-		       "",
-		       xdp_program__name(hw_prog),
-		       get_enum_name(xdp_modes, XDP_MODE_HW),
-		       xdp_program__id(hw_prog),
-		       print_bpf_tag(tag, xdp_program__tag(hw_prog)));
-	}
-
-	dispatcher = xdp_multiprog__main_prog(mp);
-	if (dispatcher) {
-		printf("%-16s %-5s %-16s %-8s %-4d %-17s\n",
-		iface->ifname,
-		"",
-		xdp_program__name(dispatcher),
-		get_enum_name(xdp_modes, xdp_multiprog__attach_mode(mp)),
-		xdp_program__id(dispatcher),
-		print_bpf_tag(tag, xdp_program__tag(dispatcher)));
-
-
-		for (prog = xdp_multiprog__next_prog(NULL, mp);
-		     prog;
-		     prog = xdp_multiprog__next_prog(prog, mp)) {
-
-			err = xdp_program__print_chain_call_actions(prog, buf,
-								    sizeof(buf));
-			if (err)
-				return err;
-
-			printf("%-16s %-5d %-16s %-8s %-4u %-17s %s\n",
-			       " =>", xdp_program__run_prio(prog),
-			       xdp_program__name(prog),
-			       "", xdp_program__id(prog),
-			       print_bpf_tag(tag, xdp_program__tag(prog)),
-			       buf);
-		}
-	}
-
-	return 0;
-}
-
 int do_status(__unused const void *cfg, __unused const char *pin_root_path)
 {
-	int err = EXIT_SUCCESS;
-
 	printf("CURRENT XDP PROGRAM STATUS:\n\n");
-	printf("%-16s %-5s %-16s Mode     ID   %-17s %s\n",
-	       "Interface", "Prio", "Program name", "Tag", "Chain actions");
-	printf("-------------------------------------------------------------------------------------\n");
-
-	err = iterate_iface_multiprogs(print_iface_status, NULL);
-	printf("\n");
-
-	return err;
+	return iface_print_status();
 }
 
 int do_help(__unused const void *cfg, __unused const char *pin_root_path)
