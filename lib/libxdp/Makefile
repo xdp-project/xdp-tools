@@ -20,7 +20,7 @@ MAN_OBJ := ${MAN_PAGE:.3=.man}
 SHARED_CFLAGS += -fPIC -DSHARED
 LIB_HEADERS := $(wildcard $(HEADER_DIR)/xdp/*.h)
 BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(wildcard $(HEADER_DIR)/xdp/*.h)
-EXTRA_LIB_DEPS := $(OBJECT_LIBBPF) $(LIBMK) $(LIB_OBJS) $(LIB_HEADERS)
+EXTRA_LIB_DEPS := $(OBJECT_LIBBPF) $(LIBMK) $(LIB_OBJS) $(LIB_HEADERS) compat.h
 PC_FILE := $(OBJDIR)/libxdp.pc
 TEMPLATED_SOURCES := xdp-dispatcher.c
 
