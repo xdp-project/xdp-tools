@@ -1603,14 +1603,19 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	struct capture_programs      tgt_progs = {};
 
 	mp = xdp_multiprog__get_from_ifindex(cfg->iface.ifindex);
-	if (IS_ERR_OR_NULL(mp)) {
+	if (IS_ERR_OR_NULL(mp) || xdp_multiprog__main_prog(mp) == NULL) {
+
 		if (!cfg->load_xdp) {
-			pr_warn("WARNING: Specified interface does not have an XDP "
-				"program loaded, capturing\n         in legacy mode!\n");
+			pr_warn("WARNING: Specified interface does not have an XDP program loaded%s,"
+				"\n         capturing in legacy mode!\n",
+				IS_ERR_OR_NULL(mp) ? "" : " in software");
+
+			xdp_multiprog__close(mp);
 			return capture_on_legacy_interface(cfg);
 		}
-		pr_warn("WARNING: Specified interface does not have an XDP program loaded!\n"
-			"         Will load a capture only XDP program!\n");
+		pr_warn("WARNING: Specified interface does not have an XDP program loaded%s!\n"
+			"         Will load a capture only XDP program!\n",
+			IS_ERR_OR_NULL(mp) ? "" : " in software");
 		load_xdp = true;
 	}
 
