@@ -93,7 +93,7 @@ test_interfaces()
 
 test_capt_pcap()
 {
-    local PASS_PKT="IP6 $INSIDE_IP6 > $OUTSIDE_IP6: ICMP6, echo reply, seq 1, length 64"
+    local PASS_PKT="IP6 $INSIDE_IP6 > $OUTSIDE_IP6: ICMP6, echo reply(, id [0-9]+)?, seq 1, length 64"
 
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
@@ -104,7 +104,7 @@ test_capt_pcap()
 
     $XDP_LOADER unload "$NS" --all || return 1
 
-    if [[ "$RESULT" != *"$PASS_PKT"* ]]; then
+    if ! [[ $RESULT =~ $PASS_PKT ]]; then
         print_result "IPv6 packet not received"
         return 1
     fi
@@ -118,7 +118,7 @@ version_greater_or_equal()
 test_capt_pcapng()
 {
     local PCAP_FILE="/tmp/${NS}_PID_$$_$RANDOM.pcap"
-    local PASS_PKT="IP6 $INSIDE_IP6 > $OUTSIDE_IP6: ICMP6, echo reply, seq 1, length 64"
+    local PASS_PKT="IP6 $INSIDE_IP6 > $OUTSIDE_IP6: ICMP6, echo reply(, id [0-9]+)?, seq 1, length 64"
     local HW=$(uname -m | sed -e 's/[]\/$*+.^|[]/\\&/g')
     local OS=$(uname -snrv | sed -e 's/[]\/$+*.^()|[]/\\&/g')
     local INFOS_REGEX=""
@@ -154,7 +154,7 @@ test_capt_pcapng()
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
 
-    if [[ "$RESULT" != *"$PASS_PKT"* ]]; then
+    if ! [[ $RESULT =~ $PASS_PKT ]]; then
         print_result "IPv6 packet not received"
         return 1
     fi
