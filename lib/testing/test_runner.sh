@@ -123,7 +123,7 @@ check_prereq()
         die "This script needs root permissions to run."
     fi
 
-    STATEDIR="$(mktemp -d --tmpdir=${TMPDIR:-/tmp} --suffix=.xdptest)" 
+    STATEDIR="$(mktemp -d --tmpdir=${TMPDIR:-/tmp} --suffix=.xdptest)"
     if [ $? -ne 0 ]; then
         die "Unable to create state dir in $TMPDIR"
     fi
@@ -385,6 +385,8 @@ is_func()
 
 check_run()
 {
+    local ret
+
     "$@"
     ret=$?
     if [ "$ret" -ne "0" ]; then
