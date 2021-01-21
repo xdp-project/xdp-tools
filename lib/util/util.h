@@ -92,6 +92,6 @@ int prog_lock_get(const char *progname);
 void prog_lock_release(int signal);
 
 const char *get_libbpf_version(void);
-int iface_print_status(void);
+int iface_print_status(const struct iface *iface);
 
 #endif

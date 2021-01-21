@@ -918,15 +918,32 @@ static int print_iface_status(const struct iface *iface,
 	return 0;
 }
 
-int iface_print_status(void)
+int iface_print_status(const struct iface *iface)
 {
-	int err;
+	int err = 0;
 
 	printf("%-16s %-5s %-17s Mode     ID   %-17s %s\n",
 	       "Interface", "Prio", "Program name", "Tag", "Chain actions");
 	printf("--------------------------------------------------------------------------------------\n");
 
-	err = iterate_iface_multiprogs(print_iface_status, NULL);
+	if (iface) {
+		struct xdp_multiprog *mp;
+
+		mp = xdp_multiprog__get_from_ifindex(iface->ifindex);
+		if (IS_ERR_OR_NULL(mp)) {
+			if (PTR_ERR(mp) != -ENOENT) {
+				err = PTR_ERR(mp);
+				pr_warn("Error getting XDP status for interface %s: %s\n",
+					iface->ifname, strerror(-err));
+				goto out;
+			}
+			mp = NULL;
+		}
+		print_iface_status(iface, mp, NULL);
+	} else {
+		err = iterate_iface_multiprogs(print_iface_status, NULL);
+	}
 	printf("\n");
+out:
 	return err;
 }
