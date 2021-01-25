@@ -380,7 +380,7 @@ test_perf_wakeup()
 test_none_xdp()
 {
     local PASS_PKT="packet size 118 bytes on if_name \"$NS\""
-    local WARN_MSG="WARNING: Specified interface does not have an XDP program loaded, capturing"
+    local WARN_MSG="WARNING: Specified interface does not have an XDP program loaded,"
 
     $XDP_LOADER unload "$NS" --all
 
