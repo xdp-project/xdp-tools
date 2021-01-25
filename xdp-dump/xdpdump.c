@@ -743,13 +743,17 @@ static char *get_program_names_all(struct capture_programs *progs, int skip_inde
 		if (skip_index != (int)i) {
 			if (append_snprintf(&program_names, &size, &offset,
 					    "%s%s@%d", i == 0 ? "" : ",",
-					    fname ? fname : kname, id) < 0)
+					    fname ? fname : kname, id) < 0) {
+				free(program_names);
 				return NULL;
+			}
 		} else {
 			if (append_snprintf(&program_names, &size, &offset,
 					    "%s%s@%d", i == 0 ? "" : ",",
-					    "<function_name>", id) < 0)
+					    "<function_name>", id) < 0) {
+				free(program_names);
 				return NULL;
+			}
 		}
 	}
 	return program_names;
@@ -1168,8 +1172,9 @@ static char *get_loaded_program_info(struct dumpopt *cfg)
 
 	mp = xdp_multiprog__get_from_ifindex(cfg->iface.ifindex);
 	if (IS_ERR_OR_NULL(mp)) {
-		append_snprintf(&info, &info_size, &info_offset,
-				"  %s()\n", "<No XDP program loaded!>");
+		if (append_snprintf(&info, &info_size, &info_offset,
+				    "  %s()\n", "<No XDP program loaded!>"))
+			goto error_out;
 	} else {
 		struct xdp_program *prog = NULL;
 
