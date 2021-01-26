@@ -1858,7 +1858,7 @@ int main(int argc, char **argv)
 
 	/* See if we need to dump interfaces and exit */
 	if (cfg_dumpopt.list_interfaces) {
-		if (iface_print_status())
+		if (iface_print_status(NULL))
 			return EXIT_SUCCESS;
 		return EXIT_FAILURE;
 	}

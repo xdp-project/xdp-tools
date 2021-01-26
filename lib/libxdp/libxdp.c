@@ -129,7 +129,9 @@ static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 				 enum xdp_attach_mode mode);
 static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 						     size_t num_progs,
-						     int ifindex);
+						     int ifindex,
+						     struct xdp_multiprog *old_mp,
+						     bool remove_progs);
 static int xdp_multiprog__pin(struct xdp_multiprog *mp);
 static int xdp_multiprog__unpin(struct xdp_multiprog *mp);
 
@@ -1284,29 +1286,34 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 			      int ifindex, enum xdp_attach_mode mode,
 			      unsigned int flags)
 {
-	struct xdp_multiprog *old_mp, *mp;
+	struct xdp_multiprog *old_mp = NULL, *mp;
 	int err = 0;
 
 	if (!progs || !num_progs || flags)
 		return -EINVAL;
 
 	old_mp = xdp_multiprog__get_from_ifindex(ifindex);
-	if (!IS_ERR_OR_NULL(old_mp) &&
-	    (mode == XDP_MODE_HW) == (xdp_multiprog__hw_prog(old_mp) != NULL)) {
-		pr_warn("XDP program already loaded on ifindex %d; "
-			"replacing not yet supported\n", ifindex);
-		xdp_multiprog__close(old_mp);
-		return -EEXIST;
-	}
+	if (IS_ERR_OR_NULL(old_mp))
+		old_mp = NULL;
 
 	if (mode == XDP_MODE_HW) {
+		bool old_hw_prog = xdp_multiprog__hw_prog(old_mp) != NULL;
+
+		xdp_multiprog__close(old_mp);
+
+		if (old_hw_prog) {
+			pr_warn("XDP program already loaded in HW mode on ifindex %d; "
+				"replacing HW mode programs not supported\n", ifindex);
+			return -EEXIST;
+		}
+
 		if (num_progs > 1)
 			return -EINVAL;
 
 		return xdp_program__attach_hw(progs[0], ifindex);
 	}
 
-	mp = xdp_multiprog__generate(progs, num_progs, ifindex);
+	mp = xdp_multiprog__generate(progs, num_progs, ifindex, old_mp, false);
 	if (IS_ERR(mp)) {
 		err = PTR_ERR(mp);
 		mp = NULL;
@@ -1329,7 +1336,7 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 		goto out_close;
 	}
 
-	err = xdp_multiprog__attach(NULL, mp, mode);
+	err = xdp_multiprog__attach(old_mp, mp, mode);
 	if (err) {
 		pr_warn("Failed to attach dispatcher on ifindex %d: %s\n",
 			ifindex, strerror(-err));
@@ -1337,9 +1344,20 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 		goto out_close;
 	}
 
+	if (old_mp) {
+		err = xdp_multiprog__unpin(old_mp);
+		if (err) {
+			pr_warn("Failed to unpin old dispatcher: %s\n",
+				strerror(-err));
+			err = 0;
+		}
+	}
+
 out_close:
 	xdp_multiprog__close(mp);
 out:
+	if (old_mp)
+		xdp_multiprog__close(old_mp);
 	return err;
 }
 
@@ -1357,7 +1375,7 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 			      int ifindex, enum xdp_attach_mode mode,
 			      unsigned int flags)
 {
-	struct xdp_multiprog *mp;
+	struct xdp_multiprog *new_mp = NULL, *mp = NULL;
 	int err = 0;
 	size_t i;
 
@@ -1445,15 +1463,41 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 		if (err)
 			goto out;
 	} else {
-		pr_warn("Asked to detach %zu progs, but %zu loaded on ifindex %d; "
-			"partial detach not yet supported.\n",
-			num_progs, mp->num_links, ifindex);
-		err = -EINVAL;
-		goto out;
+		new_mp = xdp_multiprog__generate(progs, num_progs, ifindex, mp, true);
+		if (IS_ERR(new_mp)) {
+			err = PTR_ERR(new_mp);
+			if (err == -EOPNOTSUPP) {
+				pr_warn("Asked to detach %zu progs, but %zu loaded on ifindex %d, "
+					"and partial detach is not supported by the kernel.\n",
+					num_progs, mp->num_links, ifindex);
+			}
+			goto out;
+		}
+		err = xdp_multiprog__pin(new_mp);
+		if (err) {
+			pr_warn("Failed to pin program: %s\n", strerror(-err));
+			goto out;
+		}
+
+		err = xdp_multiprog__attach(mp, new_mp, mode);
+		if (err) {
+			pr_warn("Failed to attach dispatcher on ifindex %d: %s\n",
+				ifindex, strerror(-err));
+			xdp_multiprog__unpin(new_mp);
+			goto out;
+		}
+
+		err = xdp_multiprog__unpin(mp);
+		if (err) {
+			pr_warn("Failed to unpin old dispatcher: %s\n",
+				strerror(-err));
+			err = 0;
+		}
 	}
 
 out:
 	xdp_multiprog__close(mp);
+	xdp_multiprog__close(new_mp);
 	return err;
 }
 
@@ -1934,12 +1978,48 @@ out:
 	return 0;
 }
 
+static int find_prog_btf_id(const char *name, __u32 attach_prog_fd)
+{
+	struct bpf_prog_info_linear *info_linear;
+	struct bpf_prog_info *info;
+	struct btf *btf = NULL;
+	int err = -EINVAL;
+
+	info_linear = bpf_program__get_prog_info_linear(attach_prog_fd, 0);
+	if (IS_ERR_OR_NULL(info_linear)) {
+		pr_warn("failed get_prog_info_linear for FD %d\n",
+			attach_prog_fd);
+		return -EINVAL;
+	}
+	info = &info_linear->info;
+	if (!info->btf_id) {
+		pr_warn("The target program doesn't have BTF\n");
+		goto out;
+	}
+	if (btf__get_from_id(info->btf_id, &btf)) {
+		pr_warn("Failed to get BTF of the program\n");
+		goto out;
+	}
+	err = btf__find_by_name_kind(btf, name, BTF_KIND_FUNC);
+	btf__free(btf);
+	if (err <= 0) {
+		pr_warn("%s is not found in prog's BTF\n", name);
+		goto out;
+	}
+out:
+	free(info_linear);
+	return err;
+}
+
 static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 				    struct xdp_program *prog)
 {
+	DECLARE_LIBBPF_OPTS(bpf_link_create_opts, opts);
 	struct xdp_program *new_prog, *p;
+	bool was_loaded = false;
 	char buf[PATH_MAX];
-	int err, lfd;
+	int err, lfd = -1;
+	__s32 btf_id;
 
 	if (!mp || !prog || !mp->is_loaded ||
 	    mp->num_links >= mp->config.num_progs_enabled)
@@ -1962,13 +2042,14 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 	if (err)
 		goto err;
 
-	if (prog->prog_fd >= 0) {
-		/* FIXME: We want to be able to re-attach already-loaded
-		 * programs into a new dispatcher here; but the kernel doesn't
-		 * currently allow this.
-		 */
-		return -EOPNOTSUPP;
-	} else {
+	btf_id = find_prog_btf_id(buf, mp->main_prog->prog_fd);
+	if (btf_id <= 0) {
+		err = btf_id;
+		pr_debug("Couldn't find BTF ID for %s: %d\n", buf, err);
+		goto err;
+	}
+
+	if (prog->prog_fd < 0) {
 		err = bpf_program__set_attach_target(prog->bpf_prog,
 						     mp->main_prog->prog_fd,
 						     buf);
@@ -1994,82 +2075,173 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 			goto err;
 		}
 
-		/* clone the xdp_program ref so we can keep it */
-		new_prog = xdp_program__clone(prog);
-		if (IS_ERR(new_prog)) {
-			err = PTR_ERR(new_prog);
-			pr_warn("Failed to clone xdp_program: %s\n",
-				strerror(-err));
-			goto err;
-		}
+		was_loaded = true;
+	}
 
-		/* The attach will disappear once this fd is closed */
-		lfd = bpf_raw_tracepoint_open(NULL, new_prog->prog_fd);
-		if (lfd < 0) {
-			err = -errno;
-			if (err == -EPERM) {
-				pr_warn("Got 'permission denied' error while "
-					"attaching program to dispatcher.\n");
+	/* clone the xdp_program ref so we can keep it */
+	new_prog = xdp_program__clone(prog);
+	if (IS_ERR(new_prog)) {
+		err = PTR_ERR(new_prog);
+		pr_warn("Failed to clone xdp_program: %s\n", strerror(-err));
+		goto err;
+	}
+
+	opts.target_btf_id = btf_id;
+
+	/* The attach will disappear once this fd is closed */
+	lfd = bpf_link_create(new_prog->prog_fd, mp->main_prog->prog_fd, 0, &opts);
+	if (lfd < 0) {
+		err = -errno;
+		if (err == -EINVAL) {
+			if (!was_loaded) {
+				pr_warn("Kernel doesn't support re-attaching "
+					"freplace programs.\n");
 				err = -EOPNOTSUPP;
 			} else {
-				pr_warn("Failed to attach program %s to dispatcher: %s\n",
-					xdp_program__name(new_prog),
-					strerror(-err));
+				pr_debug("Got EINVAL, retrying "
+					 "raw_tracepoint_open() without target\n");
+				/* we just loaded the program, so should be able
+				 * to attach the old way */
+				lfd = bpf_raw_tracepoint_open(NULL, new_prog->prog_fd);
+				if (lfd < 0)
+					err = -errno;
+				else
+					goto attach_ok;
 			}
-			goto err_free;
 		}
-
-		new_prog->attach_name = strdup(buf);
-		if (!new_prog->attach_name) {
-			err = -ENOMEM;
-			goto err_free;
-		}
-
-		pr_debug("Attached prog '%s' with priority %d in dispatcher entry '%s' with fd %d\n",
-			 xdp_program__name(new_prog), xdp_program__run_prio(new_prog),
-			 new_prog->attach_name, lfd);
-		new_prog->link_fd = lfd;
-
-		if (!mp->first_prog) {
-			mp->first_prog = new_prog;
+		if (err == -EPERM) {
+			pr_warn("Got 'permission denied' error while "
+				"attaching program to dispatcher.\n%s\n",
+				dispatcher_feature_err);
+			err = -EOPNOTSUPP;
 		} else {
-			p = mp->first_prog;
-			while (p->next)
-				p = p->next;
-			p->next = new_prog;
+			pr_warn("Failed to attach program %s to dispatcher: %s\n",
+				xdp_program__name(new_prog), strerror(-err));
 		}
+		goto err_free;
+	}
+
+attach_ok:
+	new_prog->attach_name = strdup(buf);
+	if (!new_prog->attach_name) {
+		err = -ENOMEM;
+		goto err_free;
+	}
+
+	pr_debug(
+		"Attached prog '%s' with priority %d in dispatcher entry '%s' with fd %d\n",
+		xdp_program__name(new_prog), xdp_program__run_prio(new_prog),
+		new_prog->attach_name, lfd);
+	new_prog->link_fd = lfd;
+
+	if (!mp->first_prog) {
+		mp->first_prog = new_prog;
+	} else {
+		p = mp->first_prog;
+		while (p->next)
+			p = p->next;
+		p->next = new_prog;
 	}
 
 	mp->num_links++;
 	return 0;
 
 err_free:
+	if (lfd >= 0)
+		close(lfd);
 	xdp_program__close(new_prog);
 err:
 	return err;
 }
 
+/*
+ * xdp_multiprog__generate - generate a new multiprog dispatcher
+ *
+ * This generates a new multiprog dispatcher for the programs in progs. If
+ * old_mp is set, the progs will either be added to or removed from the existing
+ * set of programs in the dispatcher represented by old_mp, depending on the
+ * value of remove_progs. If old_mp is not set, a new dispatcher will be created
+ * just holding the programs in progs. In both cases, the full set of programs
+ * will be sorted according to their run order (see cmp_xdp_programs).
+ *
+ * When called with remove_progs set, the caller is responsible for checking
+ * that all the programs in progs are actually present in old_mp.
+ */
 static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 						     size_t num_progs,
-						     int ifindex)
+						     int ifindex,
+						     struct xdp_multiprog *old_mp,
+						     bool remove_progs)
 {
+	size_t num_new_progs = old_mp ? old_mp->num_links : 0;
 	struct xdp_program *dispatcher;
+	struct xdp_program **new_progs;
 	struct xdp_multiprog *mp;
 	struct bpf_map *map;
 	size_t i;
 	int err;
 
-	if (!progs || !num_progs || num_progs > MAX_DISPATCHER_ACTIONS)
+	if (!progs || !num_progs || (!old_mp && remove_progs))
 		return ERR_PTR(-EINVAL);
 
-	pr_debug("Generating multi-prog dispatcher for %zu programs\n", num_progs);
+	num_new_progs += remove_progs ? -num_progs : num_progs;
 
-	if (num_progs > 1)
-		qsort(progs, num_progs, sizeof(*progs), cmp_xdp_programs);
+	if (num_new_progs > MAX_DISPATCHER_ACTIONS)
+		return ERR_PTR(-E2BIG);
+
+	pr_debug("Generating multi-prog dispatcher for %zu programs\n",
+		 num_new_progs);
 
 	mp = xdp_multiprog__new(ifindex);
 	if (IS_ERR(mp))
 		return mp;
+
+	if (old_mp) {
+		struct xdp_program *prog;
+		size_t j;
+
+		new_progs = calloc(num_new_progs, sizeof(*new_progs));
+		if (!new_progs) {
+			xdp_multiprog__close(mp);
+			return ERR_PTR(-ENOMEM);
+		}
+
+		for (i = 0, prog = old_mp->first_prog; prog; prog = prog->next) {
+			if (remove_progs) {
+				/* remove_new means new_progs is an array of
+				 * programs we should remove from old_mp instead
+				 * of adding them.
+				 */
+				bool found = false;
+
+				for (j = 0; j < num_progs; j++)
+					if (progs[j]->prog_id == prog->prog_id)
+						found = true;
+				if (found)
+					continue;
+
+				/* Sanity check: caller should ensure all
+				 * programs to remove actually exist; check here
+				 * anyway to ensure we don't overrun the array
+				 * if this is not done correctly.
+				 */
+				if (i >= num_new_progs) {
+					pr_warn("Not all programs to remove were found\n");
+					err = -EINVAL;
+					goto err;
+				}
+			}
+			new_progs[i++] = prog;
+		}
+		if (!remove_progs)
+			for (j = 0; i < num_new_progs; i++, j++)
+				new_progs[i] = progs[j];
+	} else {
+		new_progs = progs;
+	}
+
+	if (num_new_progs > 1)
+		qsort(new_progs, num_new_progs, sizeof(*new_progs), cmp_xdp_programs);
 
 	dispatcher = xdp_program__find_file("xdp-dispatcher.o",
 					    "xdp/dispatcher", NULL);
@@ -2095,12 +2267,12 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 		goto err;
 	}
 
-	mp->config.num_progs_enabled = num_progs;
-	for (i = 0; i < num_progs; i++) {
+	mp->config.num_progs_enabled = num_new_progs;
+	for (i = 0; i < num_new_progs; i++) {
 		mp->config.chain_call_actions[i] =
-			(progs[i]->chain_call_actions |
+			(new_progs[i]->chain_call_actions |
 			 (1U << XDP_DISPATCHER_RETVAL));
-		mp->config.run_prios[i] = progs[i]->run_prio;
+		mp->config.run_prios[i] = new_progs[i]->run_prio;
 	}
 
 	err = bpf_map__set_initial_value(map, &mp->config, sizeof(mp->config));
@@ -2113,15 +2285,20 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	if (err)
 		goto err;
 
-	for (i = 0; i < num_progs; i++) {
-		err = xdp_multiprog__link_prog(mp, progs[i]);
+	for (i = 0; i < num_new_progs; i++) {
+		err = xdp_multiprog__link_prog(mp, new_progs[i]);
 		if (err)
 			goto err;
 	}
 
+	if (old_mp)
+		free(new_progs);
+
 	return mp;
 
 err:
+	if (old_mp)
+		free(new_progs);
 	xdp_multiprog__close(mp);
 	return ERR_PTR(err);
 }

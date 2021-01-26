@@ -87,7 +87,7 @@ static int handle_u16(char *optarg, void *tgt, __unused void *typearg)
 
 	val = strtoul(optarg, NULL, 10);
 	if (errno || val > 0xffff)
-		return -1;
+		return -EINVAL;
 	*opt_set = val;
 	return 0;
 }
@@ -168,10 +168,8 @@ static int handle_flags(char *optarg, void *tgt, void *typearg)
 		if (c)
 			*c = '\0';
 		flag = find_flag(flag_vals, optarg);
-		if (!flag) {
-			fprintf(stderr, "invalid flag: %s\n", optarg);
-			return -1;
-		}
+		if (!flag)
+			return -EINVAL;
 		flagval |= flag->flagval;
 
 		if (!c)
@@ -190,7 +188,7 @@ static int handle_ifname(char *optarg, void *tgt, __unused void *typearg)
 	ifindex = if_nametoindex(optarg);
 	if (!ifindex) {
 		pr_warn("Couldn't find network interface '%s'.\n", optarg);
-		return -1;
+		return -ENOENT;
 	}
 
 	iface->ifname = optarg;
@@ -212,7 +210,7 @@ static int handle_ipaddr(char *optarg, void *tgt, __unused void *typearg)
 
 	if (inet_pton(af, optarg, &addr->addr) != 1) {
 		pr_warn("Invalid IP address: %s\n", optarg);
-		return -EINVAL;
+		return -ENOENT; /* caller won't print error on ENOENT */
 	}
 
 	addr->af = af;
@@ -236,10 +234,8 @@ static int handle_enum(char *optarg, void *tgt, void *typearg)
 	unsigned int *opt_set = tgt;
 
 	val = find_enum(all_vals, optarg);
-	if (!val) {
-		fprintf(stderr, "invalid value: %s\n", optarg);
-		return -1;
-	}
+	if (!val)
+		return -EINVAL;
 	*opt_set = val->value;
 	return 0;
 }
@@ -540,10 +536,10 @@ static int _set_opt(void *cfg, struct prog_option *opt, char *optarg)
 
 	ret = handlers[opt->type].func(optarg, (cfg + opt->cfg_offset),
 				       opt->typearg);
-	if (ret)
-		pr_warn("Couldn't parse option %s: %s.\n", opt->name, strerror(-ret));
-	else
+	if (!ret)
 		opt->was_set = true;
+	else if (ret != -ENOENT)
+		pr_warn("Couldn't parse option %s: %s.\n", opt->name, strerror(-ret));
 	return ret;
 }
 

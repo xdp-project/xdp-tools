@@ -259,12 +259,23 @@ out:
 	return err ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
-static struct prog_option status_options[] = { END_OPTIONS };
+static const struct statusopt {
+	struct iface iface;
+} defaults_status = {};
 
-int do_status(__unused const void *cfg, __unused const char *pin_root_path)
+static struct prog_option status_options[] = {
+	DEFINE_OPTION("dev", OPT_IFNAME, struct statusopt, iface,
+		      .positional = true, .metavar = "[ifname]",
+		      .help = "Show status for device [ifname] (default all interfaces)"),
+	END_OPTIONS
+};
+
+int do_status(const void *cfg, __unused const char *pin_root_path)
 {
+	const struct statusopt *opt = cfg;
+
 	printf("CURRENT XDP PROGRAM STATUS:\n\n");
-	return iface_print_status();
+	return iface_print_status(opt->iface.ifindex ? &opt->iface : NULL);
 }
 
 int do_help(__unused const void *cfg, __unused const char *pin_root_path)
@@ -285,7 +296,7 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 static const struct prog_command cmds[] = {
 	DEFINE_COMMAND(load, "Load an XDP program on an interface"),
 	DEFINE_COMMAND(unload, "Unload an XDP program from an interface"),
-	DEFINE_COMMAND_NODEF(status, "Show XDP program status"),
+	DEFINE_COMMAND(status, "Show XDP program status"),
 	{ .name = "help", .func = do_help, .no_cfg = true },
 	END_COMMANDS
 };
@@ -293,6 +304,7 @@ static const struct prog_command cmds[] = {
 union all_opts {
 	struct loadopt load;
 	struct unloadopt unload;
+	struct statusopt status;
 };
 
 int main(int argc, char **argv)
