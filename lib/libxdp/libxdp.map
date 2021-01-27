@@ -41,4 +41,13 @@ LIBXDP_1.0.0 {
 LIBXDP_1.2.0 {
 		libxdp_clean_references;
 		xdp_multiprog__program_count;
+	        xsk_setup_xdp_prog;
+		xsk_socket__create;
+		xsk_socket__create_shared;
+		xsk_socket__delete;
+		xsk_socket__fd;
+		xsk_socket__update_xskmap;
+		xsk_umem__create;
+		xsk_umem__delete;
+		xsk_umem__fd;
 } LIBXDP_1.0.0;

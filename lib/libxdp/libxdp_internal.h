@@ -7,6 +7,8 @@
 
 #define __printf(a, b) __attribute__((format(printf, a, b)))
 
+extern void silence_libbpf_logging(void);
+
 LIBXDP_HIDE_SYMBOL __printf(2, 3) void libxdp_print(enum libxdp_print_level level,
 						    const char *format, ...);
 #define __pr(level, fmt, ...)                                       \
