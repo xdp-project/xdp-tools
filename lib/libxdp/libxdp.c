@@ -31,6 +31,7 @@
 #include <xdp/prog_dispatcher.h>
 
 #include "compat.h"
+#include "libxdp_internal.h"
 
 #define XDP_RUN_CONFIG_SEC ".xdp_run_config"
 
@@ -102,10 +103,7 @@ libxdp_print_fn_t libxdp_set_print(libxdp_print_fn_t fn)
 	return old_print_fn;
 }
 
-#define __printf(a, b) __attribute__((format(printf, a, b)))
-
-__printf(2, 3) static void libxdp_print(enum libxdp_print_level level,
-					const char *format, ...)
+__printf(2, 3) void libxdp_print(enum libxdp_print_level level, const char *format, ...)
 {
 	va_list args;
 
@@ -116,15 +114,6 @@ __printf(2, 3) static void libxdp_print(enum libxdp_print_level level,
 	__libxdp_pr(level, format, args);
 	va_end(args);
 }
-
-#define __pr(level, fmt, ...)                                       \
-	do {                                                        \
-		libxdp_print(level, "libxdp: " fmt, ##__VA_ARGS__); \
-	} while (0)
-
-#define pr_warn(fmt, ...) __pr(LIBXDP_WARN, fmt, ##__VA_ARGS__)
-#define pr_info(fmt, ...) __pr(LIBXDP_INFO, fmt, ##__VA_ARGS__)
-#define pr_debug(fmt, ...) __pr(LIBXDP_DEBUG, fmt, ##__VA_ARGS__)
 
 static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 				 struct xdp_multiprog *mp,
