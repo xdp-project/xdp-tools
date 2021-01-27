@@ -2063,14 +2063,14 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 		err = xdp_program__load(prog);
 		if (err) {
 			if (err == -E2BIG) {
-				pr_warn("Got 'argument list too long' error while "
-					"loading component program.\n");
+				pr_debug("Got 'argument list too long' error while "
+					 "loading component program.\n");
 				err = -EOPNOTSUPP;
 			} else {
 				char buf[100] = {};
 				libxdp_strerror(err, buf, sizeof(buf));
-				pr_warn("Failed to load program %s: %s\n",
-					xdp_program__name(prog), buf);
+				pr_debug("Failed to load program %s: %s\n",
+					 xdp_program__name(prog), buf);
 			}
 			goto err;
 		}
@@ -2094,8 +2094,8 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 		err = -errno;
 		if (err == -EINVAL) {
 			if (!was_loaded) {
-				pr_warn("Kernel doesn't support re-attaching "
-					"freplace programs.\n");
+				pr_debug("Kernel doesn't support re-attaching "
+					 "freplace programs.\n");
 				err = -EOPNOTSUPP;
 			} else {
 				pr_debug("Got EINVAL, retrying "
@@ -2110,8 +2110,8 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 			}
 		}
 		if (err == -EPERM) {
-			pr_warn("Got 'permission denied' error while "
-				"attaching program to dispatcher.\n%s\n",
+			pr_debug("Got 'permission denied' error while "
+				 "attaching program to dispatcher.\n%s\n",
 				dispatcher_feature_err);
 			err = -EOPNOTSUPP;
 		} else {
