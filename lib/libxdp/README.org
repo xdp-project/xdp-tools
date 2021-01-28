@@ -113,6 +113,7 @@ contains helper macros to include this information, which can be used as
 follows:
 
 #+begin_src C
+#include <bpf/bpf_helpers.h>
 #include <xdp/xdp_helpers.h>
 
 struct {
@@ -207,6 +208,9 @@ follows:
 - /sys/fs/bpf/xdp/dispatch-IFINDEX-DID/prog1-prog - component program 1, program reference
 - /sys/fs/bpf/xdp/dispatch-IFINDEX-DID/prog1-link - component program 1, bpf_link reference
 - etc, up to ten component programs
+
+If set, the =LIBXDP_BPFFS= environment variable will override the location of
+=bpffs=, but the =xdp= subdirectory is always used.
 
 * BUGS
 Please report any bugs on Github: https://github.com/xdp-project/xdp-tools/issues
