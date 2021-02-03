@@ -45,7 +45,7 @@ check_toolchain()
         EMACS=""
     else
         emacs_version=$($EMACS --version 2>/dev/null | head -n 1)
-        if echo $emacs_version | grep -Eq 'GNU Emacs 2[67]'; then
+        if echo $emacs_version | grep -Eq 'GNU Emacs 2[6789]'; then
             echo "using emacs: $emacs_version"
         else
             echo "not using emacs: $emacs_version"
