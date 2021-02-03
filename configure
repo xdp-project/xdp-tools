@@ -180,10 +180,11 @@ check_libbpf()
 
         cat >$TMPDIR/libbpftest.c <<EOF
 #include <bpf/libbpf.h>
+#include <bpf/bpf.h>
 int main(int argc, char **argv) {
     void *ptr;
     DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts, .pin_root_path = "/path");
-    DECLARE_LIBBPF_OPTS(bpf_xdp_set_link_opts, lopts, .old_fd = -1);
+    DECLARE_LIBBPF_OPTS(bpf_xdp_set_link_opts, xlopts, .old_fd = -1);
     DECLARE_LIBBPF_OPTS(bpf_link_create_opts, lopts, .target_btf_id = 0);
     (void) bpf_object__open_file("file", &opts);
     (void) bpf_program__name(ptr);
