@@ -1032,7 +1032,7 @@ static int find_target(struct dumpopt *cfg, struct xdp_multiprog *mp,
 	     prog_name = strtok_r(NULL, ",", &prog_safe_ptr)) {
 
 		int   rc;
-		long  id = -1;
+		unsigned long id = -1;
 		char *id_str = strchr(prog_name, '@');
 		char *alloc_name = NULL;
 
@@ -1042,9 +1042,8 @@ static int find_target(struct dumpopt *cfg, struct xdp_multiprog *mp,
 
 			errno = 0;
 			id_str++;
-			id = strtol(id_str, &endptr, 10);
-			if ((errno == ERANGE &&
-			     (id == LONG_MAX || id == LONG_MIN))
+			id = strtoul(id_str, &endptr, 10);
+			if ((errno == ERANGE && id == ULONG_MAX)
 			    || (errno != 0 && id == 0) || *endptr != '\0'
 			    || endptr == id_str) {
 
@@ -1082,12 +1081,11 @@ static int find_target(struct dumpopt *cfg, struct xdp_multiprog *mp,
 			 * use it in the lookup below.
 			 */
 			char *endptr;
-			long  prog_id;
+			unsigned long prog_id;
 
 			prog_id = strtoul(prog_name, &endptr, 10);
-			if (!((errno == ERANGE &&
-			       (id == LONG_MAX || id == LONG_MIN))
-			      || (errno != 0 && id == 0) || *endptr != '\0'
+			if (!((errno == ERANGE && prog_id == ULONG_MAX)
+			      || (errno != 0 && prog_id == 0) || *endptr != '\0'
 			      || endptr == prog_name)) {
 
 				for (unsigned int i = 0; i < progs.nr_of_progs; i++) {
