@@ -268,6 +268,13 @@ int do_load(const void *cfg, const char *pin_root_path)
 	}
 	features |= opt->policy_mode;
 
+	err = get_pinned_program(&opt->iface, pin_root_path, NULL, &p);
+	if (!err) {
+		pr_warn("xdp-filter is already loaded on %s\n", opt->iface.ifname);
+		xdp_program__close(p);
+		return EXIT_FAILURE;
+	}
+
 	print_flags(featbuf, sizeof(featbuf), print_features, features);
 	pr_debug("Looking for eBPF program with features %s\n", featbuf);
 
