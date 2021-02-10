@@ -76,13 +76,18 @@ metadata* section below). Because the loading process involves modifying the
 attach type of the program, the attach functions only work with =struct
 xdp_program= objects that have not yet been loaded into the kernel.
 
-Due to limitations in the kernel support, it is currently not possible to attach
-another program to an already-attached list of programs. As such, the only way
-to actually run multiple programs on a single interface is to attach them all at
-the same time with =xdp_program__attach_multi()=. It is expected that this
-restriction will be lifted in an upcoming kernel version, after which
-=xdp_program__attach()= will simply add the program being loaded into the
-existing chain of programs running on the interface.
+When using the attach functions to attach to an interface that already has an
+XDP program loaded, libxdp will attempt to add the program to the list of loaded
+programs. However, this may fail, either due to missing kernel support, or
+because the already-attached program was not loaded using a dispatcher
+compatible with libxdp. If the kernel support for incremental attach (merged in
+kernel 5.10) is missing, the only way to actually run multiple programs on a
+single interface is to attach them all at the same time with
+=xdp_program__attach_multi()=. If the existing program is not an XDP dispatcher,
+that program will have to be detached from the interface before libxdp can
+attach a new one. This can be done by calling =xdp_program__detach()= with a
+reference to the loaded program; but note that this will of course break any
+application relying on that other XDP program to be present.
 
 * Program metadata
 
