@@ -609,9 +609,13 @@ test_multi_prog()
     PROG_ID_1=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 1p | tr -d ' ')
     PROG_ID_4=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 4p | tr -d ' ')
 
-    PID=$(start_background "$XDPDUMP -i $NS -p xdp_dispatcher,xdp_pass@$PROG_ID_4")
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_dispatcher,xdp_pass@$PROG_ID_4 -vv")
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
+    if [[ $RESULT == *"Unrecognized arg#0 type PTR"* ]]; then
+	$XDP_LOADER unload "$NS" --all
+	return $SKIPPED_TEST
+    fi
     if ! [[ $RESULT =~ $ENTRY_REGEX ]]; then
         print_result "Not received all fentry packets"
         return 1
