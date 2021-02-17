@@ -328,13 +328,17 @@ get_python()
         local -a possible=(python3 python)
         local -a available
 
-        available=($(which --skip-alias --skip-functions "${possible[@]}" 2> /dev/null))
-        # Return value of "which" is the number of failed arguments.
-        if [[ $? -ge "${#possible[@]}" ]]; then
-            # Could not find any Python executable.
-            return 1
+        local found=0
+        for i in "${possible[@]}"; do
+                PYTHON=$(which $i)
+                if [[ $? -eq 0 ]]; then
+                        found=1
+                        break
+                fi
+        done
+        if [[ found -eq 0 ]]; then
+                return 1
         fi
-        PYTHON="${available[0]}"
     fi
 
     $PYTHON -c "import xdp_test_harness" &> /dev/null
