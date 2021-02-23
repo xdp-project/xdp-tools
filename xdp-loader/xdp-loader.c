@@ -146,9 +146,16 @@ retry:
 		if (err == -EPERM && !double_rlimit())
 			goto retry;
 
-		libbpf_strerror(err, errmsg, sizeof(errmsg));
-		pr_warn("Couldn't attach XDP program on iface '%s': %s(%d)\n",
-			opt->iface.ifname, errmsg, err);
+		if (err == -EOPNOTSUPP &&
+		    (opt->mode == XDP_MODE_NATIVE || opt->mode == XDP_MODE_HW)) {
+			pr_warn("Attaching XDP program in %s mode not supported - try %s mode.\n",
+				opt->mode == XDP_MODE_NATIVE ? "native" : "HW",
+				opt->mode == XDP_MODE_NATIVE ? "SKB" : "native or SKB");
+		} else {
+			libbpf_strerror(err, errmsg, sizeof(errmsg));
+			pr_warn("Couldn't attach XDP program on iface '%s': %s(%d)\n",
+				opt->iface.ifname, errmsg, err);
+		}
 		goto out;
 	}
 
