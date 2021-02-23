@@ -326,17 +326,16 @@ again:
 			setopts = NULL;
 			goto again;
 		}
-		pr_warn("Error attaching XDP program to ifindex %d: %s\n",
+		pr_info("Error attaching XDP program to ifindex %d: %s\n",
 			ifindex, strerror(-err));
 
 		switch (-err) {
 		case EBUSY:
 		case EEXIST:
-			pr_debug("XDP already loaded on device\n");
+			pr_info("XDP already loaded on device\n");
 			break;
 		case EOPNOTSUPP:
-			pr_debug(
-				"XDP mode not supported; try using SKB mode\n");
+			pr_info("XDP mode not supported; try using SKB mode\n");
 			break;
 		default:
 			break;
@@ -1338,8 +1337,8 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 
 	err = xdp_multiprog__attach(old_mp, mp, mode);
 	if (err) {
-		pr_warn("Failed to attach dispatcher on ifindex %d: %s\n",
-			ifindex, strerror(-err));
+		pr_debug("Failed to attach dispatcher on ifindex %d: %s\n",
+			 ifindex, strerror(-err));
 		xdp_multiprog__unpin(mp);
 		goto out_close;
 	}
@@ -1481,8 +1480,8 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 
 		err = xdp_multiprog__attach(mp, new_mp, mode);
 		if (err) {
-			pr_warn("Failed to attach dispatcher on ifindex %d: %s\n",
-				ifindex, strerror(-err));
+			pr_debug("Failed to attach dispatcher on ifindex %d: %s\n",
+				 ifindex, strerror(-err));
 			xdp_multiprog__unpin(new_mp);
 			goto out;
 		}
