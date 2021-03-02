@@ -66,8 +66,12 @@ install: all
 	do $(MAKE) -C $$i install; done
 
 test: all
-	@for i in $(UTILS); \
-	do echo; echo test $$i; $(MAKE) -C $$i test; done
+	@for i in $(UTILS); do \
+		echo; echo test $$i; $(MAKE) -C $$i test; \
+		if [ $$? -ne 0 ]; then failed="y"; fi; \
+	done; \
+	if [ ! -z $$failed ]; then exit 1; fi
+
 
 archive: xdp-tools-$(TOOLS_VERSION).tar.gz
 
