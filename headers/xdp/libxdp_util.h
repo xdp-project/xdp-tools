@@ -40,6 +40,8 @@ extern "C" {
 # define libxdp_smp_rwmb() __sync_synchronize()
 #endif
 
+#define XDP_ALWAYS_INLINE inline __attribute__((__always_inline__))
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

@@ -100,6 +100,30 @@ struct xdp_mmap_offsets_v1 {
 	struct xdp_ring_offset_v1 cr;
 };
 
+/* Export all inline helpers as symbols for use by language bindings. */
+extern inline __u64 *xsk_ring_prod__fill_addr(struct xsk_ring_prod *fill,
+					      __u32 idx);
+extern inline const __u64 *
+xsk_ring_cons__comp_addr(const struct xsk_ring_cons *comp, __u32 idx);
+extern inline struct xdp_desc *xsk_ring_prod__tx_desc(struct xsk_ring_prod *tx,
+						      __u32 idx);
+extern inline const struct xdp_desc *
+xsk_ring_cons__rx_desc(const struct xsk_ring_cons *rx, __u32 idx);
+extern inline int xsk_ring_prod__needs_wakeup(const struct xsk_ring_prod *r);
+extern inline __u32 xsk_prod_nb_free(struct xsk_ring_prod *r, __u32 nb);
+extern inline __u32 xsk_cons_nb_avail(struct xsk_ring_cons *r, __u32 nb);
+extern inline __u32 xsk_ring_prod__reserve(struct xsk_ring_prod *prod, __u32 nb,
+					   __u32 *idx);
+extern inline void xsk_ring_prod__submit(struct xsk_ring_prod *prod, __u32 nb);
+extern inline __u32 xsk_ring_cons__peek(struct xsk_ring_cons *cons, __u32 nb,
+					__u32 *idx);
+extern inline void xsk_ring_cons__cancel(struct xsk_ring_cons *cons, __u32 nb);
+extern inline void xsk_ring_cons__release(struct xsk_ring_cons *cons, __u32 nb);
+extern inline void *xsk_umem__get_data(void *umem_area, __u64 addr);
+extern inline __u64 xsk_umem__extract_addr(__u64 addr);
+extern inline __u64 xsk_umem__extract_offset(__u64 addr);
+extern inline __u64 xsk_umem__add_offset_to_addr(__u64 addr);
+
 int xsk_umem__fd(const struct xsk_umem *umem)
 {
 	return umem ? umem->fd : -EINVAL;
