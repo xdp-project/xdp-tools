@@ -33,6 +33,7 @@ check_toolchain()
     : ${LLC=llc}
     : ${M4=m4}
     : ${EMACS=emacs}
+    : ${ARCH_INCLUDES=}
 
     for TOOL in $PKG_CONFIG $CC $CLANG $LLC $M4; do
         if [ ! $(command -v ${TOOL} 2>/dev/null) ]; then
@@ -59,12 +60,21 @@ check_toolchain()
         exit 1
     fi
 
+    if [ -z "$ARCH_INCLUDES" ]; then
+        for dir in $(echo | $CC -Wp,-v -E - 2>&1 | grep '^ '); do
+            local idir
+            idir="${dir}/$(uname -m)-linux-gnu/"
+            [ -d "$idir" ] && ARCH_INCLUDES="-I${idir} $ARCH_INCLUDES"
+        done
+    fi
+
     echo "PKG_CONFIG:=${PKG_CONFIG}" >>$CONFIG
     echo "CC:=${CC}" >>$CONFIG
     echo "CLANG:=${CLANG}" >>$CONFIG
     echo "LLC:=${LLC}" >>$CONFIG
     echo "M4:=${M4}" >>$CONFIG
     echo "EMACS:=${EMACS}" >>$CONFIG
+    echo "ARCH_INCLUDES:=$ARCH_INCLUDES" >> $CONFIG
 }
 
 check_elf()

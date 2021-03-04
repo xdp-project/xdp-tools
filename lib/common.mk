@@ -53,8 +53,8 @@ LIBXDP_DISPATCHER_OBJ := $(LIBXDP_DIR)/$(DISPATCHER_OBJ)
 # BPF-prog kern and userspace shares struct via header file:
 KERN_USER_H ?= $(wildcard common_kern_user.h)
 
-CFLAGS += -I$(HEADER_DIR) -I$(LIB_DIR)/util
-BPF_CFLAGS += -I$(HEADER_DIR)
+CFLAGS += -I$(HEADER_DIR) -I$(LIB_DIR)/util $(ARCH_INCLUDES)
+BPF_CFLAGS += -I$(HEADER_DIR) $(ARCH_INCLUDES)
 
 BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(wildcard $(HEADER_DIR)/xdp/*.h)
 
