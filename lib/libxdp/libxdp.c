@@ -1168,7 +1168,15 @@ static int xdp_program__load(struct xdp_program *prog)
 	pr_debug("Loaded XDP program %s, got fd %d\n",
 		 xdp_program__name(prog), bpf_program__fd(prog->bpf_prog));
 
-	return xdp_program__fill_from_fd(prog, bpf_program__fd(prog->bpf_prog));
+	/* Duplicate the descriptor, as xdp_program__fill_from_fd takes ownership */
+	int prog_fd = fcntl(bpf_program__fd(prog->bpf_prog), F_DUPFD_CLOEXEC, 1);
+	if (prog_fd < 0) {
+		err = -errno;
+		pr_debug("Error on fcntl: %s", strerror(-err));
+		return err;
+	}
+
+	return xdp_program__fill_from_fd(prog, prog_fd);
 }
 
 static struct xdp_program *xdp_program__clone(struct xdp_program *prog)
@@ -1177,7 +1185,7 @@ static struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 	int new_fd, err;
 
 	/* Clone a loaded program struct by duplicating the fd and creating a
-	 * new structure from th ekernel state.
+	 * new structure from the kernel state.
 	 */
 	if (!prog || prog->prog_fd < 0)
 		return ERR_PTR(-EINVAL);
