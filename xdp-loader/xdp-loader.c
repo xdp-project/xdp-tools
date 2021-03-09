@@ -285,6 +285,26 @@ int do_status(const void *cfg, __unused const char *pin_root_path)
 	return iface_print_status(opt->iface.ifindex ? &opt->iface : NULL);
 }
 
+static const struct cleanopt {
+	struct iface iface;
+} defaults_clean = {};
+
+static struct prog_option clean_options[] = {
+	DEFINE_OPTION("dev", OPT_IFNAME, struct cleanopt, iface,
+		      .positional = true, .metavar = "[ifname]",
+		      .help = "Clean up detached program links for [ifname] (default all interfaces)"),
+	END_OPTIONS
+};
+
+int do_clean(const void *cfg, __unused const char *pin_root_path)
+{
+	const struct cleanopt *opt = cfg;
+
+	printf("Cleaning up detached XDP program links for %s\n", opt->iface.ifindex ?
+	       opt->iface.ifname : "all interfaces");
+	return libxdp_clean_references(opt->iface.ifindex);
+}
+
 int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 {
 	fprintf(stderr,
@@ -294,6 +314,7 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 		"       load        - load an XDP program on an interface\n"
 		"       unload      - unload an XDP program from an interface\n"
 		"       status      - show current XDP program status\n"
+		"       clean       - clean up detached program links in XDP bpffs directory\n"
 		"       help        - show this help message\n"
 		"\n"
 		"Use 'xdp-loader COMMAND --help' to see options for each command\n");
@@ -303,6 +324,7 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 static const struct prog_command cmds[] = {
 	DEFINE_COMMAND(load, "Load an XDP program on an interface"),
 	DEFINE_COMMAND(unload, "Unload an XDP program from an interface"),
+	DEFINE_COMMAND(clean, "Clean up detached program links in XDP bpffs directory"),
 	DEFINE_COMMAND(status, "Show XDP program status"),
 	{ .name = "help", .func = do_help, .no_cfg = true },
 	END_COMMANDS
