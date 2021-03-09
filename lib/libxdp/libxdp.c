@@ -28,6 +28,7 @@
 #include <xdp/libxdp.h>
 #include <xdp/prog_dispatcher.h>
 
+#include "async_close.h"
 #include "compat.h"
 
 #define XDP_RUN_CONFIG_SEC ".xdp_run_config"
@@ -801,7 +802,7 @@ void xdp_program__close(struct xdp_program *xdp_prog)
 		return;
 
 	if (xdp_prog->link_fd >= 0)
-		close(xdp_prog->link_fd);
+		async_close(xdp_prog->link_fd);
 	if (xdp_prog->prog_fd >= 0)
 		close(xdp_prog->prog_fd);
 
@@ -1971,7 +1972,7 @@ static int xdp_multiprog__check_compat(struct xdp_multiprog *mp)
 			 strerror(-err));
 		goto out;
 	}
-	close(lfd);
+	async_close(lfd);
 	mp->checked_compat = true;
 out:
 	xdp_program__close(test_prog);
