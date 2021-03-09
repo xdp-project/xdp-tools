@@ -16,7 +16,9 @@
 #include <sys/mman.h>
 #include <sys/file.h>
 #include <sys/vfs.h>
+#include <sys/types.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <dirent.h>
 
 #include <linux/err.h> /* ERR_PTR */
@@ -2569,4 +2571,127 @@ struct xdp_program *xdp_multiprog__main_prog(const struct xdp_multiprog *mp)
 bool xdp_multiprog__is_legacy(const struct xdp_multiprog *mp)
 {
 	return !!(mp && mp->is_legacy);
+}
+
+static __u32 xdp_get_ifindex_prog_id(int ifindex)
+{
+	struct xdp_link_info xinfo = {};
+	__u32 prog_id = 0;
+
+	if (!bpf_get_link_xdp_info(ifindex, &xinfo, sizeof(xinfo), 0)) {
+		switch (xinfo.attach_mode) {
+		case XDP_ATTACHED_SKB:
+			prog_id = xinfo.skb_prog_id;
+			break;
+		case XDP_ATTACHED_DRV:
+			prog_id = xinfo.drv_prog_id;
+			break;
+		case XDP_ATTACHED_MULTI:
+			prog_id = xinfo.drv_prog_id ?: xinfo.skb_prog_id;
+			break;
+		case XDP_ATTACHED_NONE:
+		case XDP_ATTACHED_HW:
+		default:;
+		}
+	}
+	return prog_id;
+}
+
+static int remove_pin_dir(const char *subdir)
+{
+	char prog_path[PATH_MAX], pin_path[PATH_MAX];
+	int err;
+	DIR *d;
+
+	const char *dir = get_bpffs_dir();
+	if (IS_ERR(dir))
+		return PTR_ERR(dir);
+
+	err = try_snprintf(pin_path, sizeof(pin_path), "%s/%s", dir, subdir);
+	if (err)
+		return err;
+
+	d = opendir(pin_path);
+	if (!d) {
+		err = -errno;
+		pr_warn("Failed to open pin directory: %s\n", strerror(-err));
+		return err;
+	}
+
+	for (struct dirent *dent = readdir(d); dent; dent = readdir(d)) {
+		/* skip . and .. */
+		if (dent->d_type == DT_DIR)
+			continue;
+
+		err = try_snprintf(prog_path, sizeof(prog_path), "%s/%s",
+				   pin_path, dent->d_name);
+		if (err)
+			goto err;
+
+		err = unlink(prog_path);
+		if (err) {
+			err = -errno;
+			pr_warn("Couldn't unlink file %s/%s: %s\n", subdir,
+				dent->d_name, strerror(-err));
+			goto err;
+		}
+	}
+	err = rmdir(pin_path);
+	if (err) {
+		err = -errno;
+		pr_warn("Failed to remove pin directory %s: %s\n", pin_path,
+			strerror(-err));
+	}
+err:
+	closedir(d);
+	return err;
+}
+
+int libxdp_clean_references(int ifindex)
+{
+	int err, lock_fd, path_ifindex;
+	__u32 dir_prog_id, prog_id;
+	DIR *d;
+
+	const char *dir = get_bpffs_dir();
+	if (IS_ERR(dir))
+		return PTR_ERR(dir);
+
+	lock_fd = xdp_lock_acquire();
+	if (lock_fd < 0)
+		return lock_fd;
+
+	d = opendir(dir);
+	if (!d) {
+		err = -errno;
+		pr_debug("Failed to open bpffs directory: %s\n",
+			 strerror(-err));
+		goto err;
+	}
+
+	for (struct dirent *dent = readdir(d); dent; dent = readdir(d)) {
+		if (dent->d_type != DT_DIR)
+			continue;
+
+		if (sscanf(dent->d_name, "dispatch-%d-%"PRIu32"",
+			   &path_ifindex, &dir_prog_id) != 2)
+			continue;
+
+		/* If ifindex is set, skip this dir if it doesn't match */
+		if (ifindex && path_ifindex != ifindex)
+			continue;
+
+		prog_id = xdp_get_ifindex_prog_id(path_ifindex);
+		if (!prog_id || prog_id != dir_prog_id) {
+			pr_info("Prog id %"PRIu32" no longer attached on ifindex %d, removing pin directory %s\n",
+				dir_prog_id, path_ifindex, dent->d_name);
+			err = remove_pin_dir(dent->d_name);
+			if (err)
+				goto err;
+		}
+	}
+err:
+	closedir(d);
+	xdp_lock_release(lock_fd);
+	return err;
 }

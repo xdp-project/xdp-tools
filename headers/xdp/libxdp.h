@@ -41,6 +41,7 @@ struct xdp_multiprog;
 
 long libxdp_get_error(const void *ptr);
 int libxdp_strerror(int err, char *buf, size_t size);
+int libxdp_clean_references(int ifindex);
 
 
 struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,

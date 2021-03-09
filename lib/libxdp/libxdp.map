@@ -38,5 +38,6 @@ LIBXDP_1.0.0 {
 		xdp_program__tag;
 };
 
-LIBXDP_1.1.0 {
+LIBXDP_1.2.0 {
+		libxdp_clean_references;
 } LIBXDP_1.0.0;
