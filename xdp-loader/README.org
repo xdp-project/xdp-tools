@@ -25,6 +25,7 @@ Where COMMAND can be one of:
        load        - load an XDP program on an interface
        unload      - unload an XDP program from an interface
        status      - show current XDP program status
+       clean       - clean up detached program links in XDP bpffs directory
        help        - show the list of available commands
 #+end_src
 
@@ -114,6 +115,27 @@ Enable debug logging. Specify twice for even more verbosity.
 ** -h, --help
 Display a summary of the available options
 
+* The CLEAN command
+
+The syntax for the =clean= command is:
+
+=xdp-loader clean [options] [ifname]=
+
+The =clean= command cleans up any detached program links in the XDP bpffs
+directory.  When a network interface disappears, any programs loaded in software
+mode (e.g. skb, native) remain pinned in the bpffs directory, but become
+detached from the interface. These need to be unlinked from the filesystem. The
+=clean= command takes an optional interface parameter to only unlink detached
+programs corresponding to the interface.  By default, all detached programs for
+all interfaces are unlinked.
+
+The supported options are:
+
+** -v, --verbose
+Enable debug logging. Specify twice for even more verbosity.
+
+** -h, --help
+Display a summary of the available options
 
 * Examples
 
