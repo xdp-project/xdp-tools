@@ -3,7 +3,8 @@
 #
 # shellcheck disable=2039
 #
-ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_term test_exitentry test_snap test_multi_pkt test_perf_wakeup test_promiscuous test_none_xdp test_pname_parse test_multi_prog test_xdp_load"
+ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_term test_exitentry test_snap test_multi_pkt test_perf_wakeup test_promiscuous_selfload test_promiscuous_preload test_none_xdp test_pname_parse test_multi_prog test_xdp_load"
+
 XDPDUMP=${XDPDUMP:-./xdpdump}
 XDP_LOADER=${XDP_LOADER:-../xdp-loader/xdp-loader}
 
@@ -66,7 +67,11 @@ END
 test_interfaces()
 {
     local NO_PROG_REGEX="($NS +<No XDP program loaded!>)"
-    local PROG_REGEX="($NS[[:space:]]+xdp_dispatcher.+xdp_drop)"
+    if is_multiprog_supported; then
+        local PROG_REGEX="($NS[[:space:]]+xdp_dispatcher.+xdp_drop)"
+    else
+        local PROG_REGEX="($NS[[:space:]]+xdp_drop)"
+    fi
 
     RESULT=$($XDPDUMP -D)
     if ! [[ $RESULT =~ $NO_PROG_REGEX ]]; then
@@ -93,6 +98,8 @@ test_interfaces()
 
 test_capt_pcap()
 {
+    skip_if_missing_kernel_symbol bpf_xdp_output_proto
+
     local PASS_PKT="IP6 $INSIDE_IP6 > $OUTSIDE_IP6: ICMP6, echo reply(, id [0-9]+)?, seq 1, length 64"
 
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
@@ -117,6 +124,8 @@ version_greater_or_equal()
 
 test_capt_pcapng()
 {
+    skip_if_missing_kernel_symbol bpf_xdp_output_proto
+
     local PCAP_FILE="/tmp/${NS}_PID_$$_$RANDOM.pcap"
     local PASS_PKT="IP6 $INSIDE_IP6 > $OUTSIDE_IP6: ICMP6, echo reply(, id [0-9]+)?, seq 1, length 64"
     local HW=$(uname -m | sed -e 's/[]\/$*+.^|[]/\\&/g')
@@ -190,6 +199,8 @@ test_capt_pcapng()
 
 test_capt_term()
 {
+    skip_if_missing_kernel_symbol bpf_xdp_output_proto
+
     local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PASS_X_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PASS_X_OPT="0x0020:  00 00 00 00 00 02 fc 42 de ad ca fe 00 01 00 00"
@@ -228,6 +239,8 @@ test_capt_term()
 
 test_exitentry()
 {
+    skip_if_missing_kernel_symbol bpf_xdp_output_proto
+
     local PASS_ENTRY_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PASS_EXIT_REGEX="(xdp_dispatcher\(\)@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PASS_EXIT_D_REGEX="(xdp_dispatcher\(\)@exit\[DROP\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
@@ -285,6 +298,8 @@ test_exitentry()
 
 test_snap()
 {
+    skip_if_missing_kernel_symbol bpf_xdp_output_proto
+
     local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 16 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PASS_II_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 21 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
 
@@ -313,6 +328,8 @@ test_snap()
 
 test_multi_pkt()
 {
+    skip_if_missing_kernel_symbol bpf_xdp_output_proto
+
     local PASS_ENTRY_REGEX="(xdp_dispatcher\(\)@entry: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
     local PASS_EXIT_REGEX="(xdp_dispatcher\(\)@exit\[PASS\]: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
     local PKT_SIZES=(56 512 1500)
@@ -340,6 +357,8 @@ test_multi_pkt()
 
 test_perf_wakeup()
 {
+    skip_if_missing_kernel_symbol bpf_xdp_output_proto
+
     $XDPDUMP --help | grep -q "\-\-perf-wakeup"
     if [ $? -eq 1 ]; then
         # No support for perf_wakeup, so return SKIP
@@ -397,7 +416,7 @@ test_none_xdp()
     fi
 }
 
-test_promiscuous()
+test_promiscuous_selfload()
 {
     local PASS_PKT="packet size 118 bytes on if_name \"$NS\""
     local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
@@ -422,6 +441,13 @@ test_promiscuous()
         print_result "Failed disabling promiscuous mode on legacy interface"
         return 1
     fi
+}
+
+test_promiscuous_preload()
+{
+    skip_if_missing_kernel_symbol bpf_xdp_output
+
+    local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
     dmesg -C
@@ -447,6 +473,8 @@ test_promiscuous()
 
 test_pname_parse()
 {
+    skip_if_legacy_fallback
+
     local PIN_DIR="/sys/fs/bpf/${NS}_PID_$$_$RANDOM"
     local PASS_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PROG_ID_1=0
@@ -597,6 +625,8 @@ test_pname_parse()
 
 test_multi_prog()
 {
+    skip_if_legacy_fallback
+
     local ENTRY_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+).*(xdp_pass\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local EXIT_REGEX="(xdp_pass\(\)@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+).*(xdp_dispatcher\(\)@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PROG_ID_1=0

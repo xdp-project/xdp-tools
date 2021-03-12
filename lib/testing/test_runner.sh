@@ -69,6 +69,39 @@ OUTSIDE_MAC=
 ENABLE_IPV4=0
 ENABLE_VLAN=0
 
+is_multiprog_supported()
+{
+    if [[ -z "${MULTIPROG_SUPPORT:-}" ]]; then
+        RESULT=$($XDP_LOADER load "$NS" "$TEST_PROG_DIR/xdp_pass.o" 2>&1)
+        if [[ "$RESULT" == *"Compatibility check for dispatcher program failed"* ]]; then
+            MULTIPROG_SUPPORT="false"
+        else
+            MULTIPROG_SUPPORT="true"
+        fi
+        $XDP_LOADER unload "$NS" --all
+    fi
+
+    if [[ "$MULTIPROG_SUPPORT" == "true" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+skip_if_missing_kernel_symbol()
+{
+    if ! grep -q "$1" /proc/kallsyms; then
+        exit "$SKIPPED_TEST"
+    fi
+}
+
+skip_if_legacy_fallback()
+{
+    if ! is_multiprog_supported; then
+        exit "$SKIPPED_TEST"
+    fi
+}
+
 die()
 {
     echo "$1" >&2
