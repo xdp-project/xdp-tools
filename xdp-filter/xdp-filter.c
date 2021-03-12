@@ -454,6 +454,7 @@ static struct prog_option unload_options[] = {
 int do_unload(const void *cfg, const char *pin_root_path)
 {
 	const struct unloadopt *opt = cfg;
+	enum xdp_attach_mode mode;
 	struct xdp_program *prog;
 	int err = EXIT_SUCCESS;
 	char buf[100];
@@ -477,14 +478,14 @@ int do_unload(const void *cfg, const char *pin_root_path)
 		goto out;
 	}
 
-	err = get_pinned_program(&opt->iface, pin_root_path, NULL, &prog);
+	err = get_pinned_program(&opt->iface, pin_root_path, &mode, &prog);
 	if (err) {
 		pr_warn("xdp-filter is not loaded on %s\n", opt->iface.ifname);
 		err = EXIT_FAILURE;
 		goto out;
 	}
 
-	err = remove_iface_program(&opt->iface, prog, XDP_MODE_UNSPEC,
+	err = remove_iface_program(&opt->iface, prog, mode,
 				   (void *)pin_root_path);
 	if (err)
 		goto out;
