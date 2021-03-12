@@ -40,6 +40,16 @@ int format(`prog%d', i)(struct xdp_md *ctx) {
 }
 ')
 
+__attribute__ ((noinline))
+int compat_test(struct xdp_md *ctx) {
+        volatile int ret = XDP_DISPATCHER_RETVAL;
+
+        if (!ctx)
+          return XDP_ABORTED;
+        return ret;
+}
+
+
 SEC("xdp/dispatcher")
 int xdp_dispatcher(struct xdp_md *ctx)
 {
@@ -53,6 +63,12 @@ forloop(`i', `0', NUM_PROGS,
         if (!((1U << ret) & conf.chain_call_actions[i]))
                 return ret;
 ')
+        /* keep a reference to the compat_test() function so we can use it
+         * as an freplace target in xdp_multiprog__check_compat() in libxdp
+         */
+        if (num_progs_enabled < incr(NUM_PROGS))
+                goto out;
+        ret = compat_test(ctx);
 out:
         return XDP_PASS;
 }
