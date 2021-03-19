@@ -18,4 +18,7 @@ LIBXDP_HIDE_SYMBOL __printf(2, 3) void libxdp_print(enum libxdp_print_level leve
 #define pr_info(fmt, ...) __pr(LIBXDP_INFO, fmt, ##__VA_ARGS__)
 #define pr_debug(fmt, ...) __pr(LIBXDP_DEBUG, fmt, ##__VA_ARGS__)
 
+LIBXDP_HIDE_SYMBOL int check_xdp_prog_version(const struct btf *btf, const char *name,
+					      __u32 *version);
+
 #endif /* __LIBXDP_LIBXDP_INTERNAL_H */

@@ -1566,11 +1566,9 @@ out:
 	return err;
 }
 
-static int check_dispatcher_version(struct btf *btf)
+int check_xdp_prog_version(const struct btf *btf, const char *name, __u32 *version)
 {
-	const char *name = "dispatcher_version";
 	const struct btf_type *sec, *def;
-	__u32 version;
 
 	sec = btf_get_datasec(btf, XDP_METADATA_SECTION);
 	if (!sec)
@@ -1580,8 +1578,21 @@ static int check_dispatcher_version(struct btf *btf)
 	if (IS_ERR(def))
 		return PTR_ERR(def);
 
-	if (!get_field_int(btf, name, def, &version))
+	if (!get_field_int(btf, name, def, version))
 		return -ENOENT;
+
+	return 0;
+}
+
+static int check_dispatcher_version(struct btf *btf)
+{
+	const char *name = "dispatcher_version";
+	__u32 version;
+	int err;
+
+	err = check_xdp_prog_version(btf, name, &version);
+	if (err)
+		return err;
 
 	if (version > XDP_DISPATCHER_VERSION) {
 		pr_warn("XDP dispatcher version %d higher than supported %d\n",
