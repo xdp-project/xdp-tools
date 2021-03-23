@@ -1170,7 +1170,7 @@ static int xdp_program__load(struct xdp_program *prog)
 	return xdp_program__fill_from_fd(prog, prog_fd);
 }
 
-static struct xdp_program *xdp_program__clone(struct xdp_program *prog)
+struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 {
 	struct xdp_program *new_prog;
 	int new_fd, err;
