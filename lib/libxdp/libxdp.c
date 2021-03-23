@@ -1934,7 +1934,10 @@ struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex)
 static int xdp_multiprog__check_compat(struct xdp_multiprog *mp)
 {
 	struct xdp_program *test_prog;
-	int err, lfd;
+	const char *bpffs_dir;
+	char buf[PATH_MAX];
+	int lock_fd;
+	int err;
 
 	if (mp->checked_compat)
 		return 0;
@@ -1949,7 +1952,7 @@ static int xdp_multiprog__check_compat(struct xdp_multiprog *mp)
 
 	err = bpf_program__set_attach_target(test_prog->bpf_prog,
 					     mp->main_prog->prog_fd,
-					     "prog0");
+					     "compat_test");
 	if (err) {
 		pr_debug("Failed to set attach target: %s\n", strerror(-err));
 		goto out;
@@ -1966,15 +1969,46 @@ static int xdp_multiprog__check_compat(struct xdp_multiprog *mp)
 		goto out;
 	}
 
-	lfd = bpf_raw_tracepoint_open(NULL, test_prog->prog_fd);
-	if (lfd < 0) {
+	test_prog->link_fd = bpf_raw_tracepoint_open(NULL, test_prog->prog_fd);
+	if (test_prog->link_fd < 0) {
 		err = -errno;
 		pr_debug("Failed to attach test program to dispatcher: %s\n",
 			 strerror(-err));
 		goto out;
 	}
-	close(lfd);
+
+	bpffs_dir = get_bpffs_dir();
+	if (IS_ERR(bpffs_dir)) {
+		err = PTR_ERR(bpffs_dir);
+		goto out;
+	}
+
+	err = try_snprintf(buf, sizeof(buf), "%s/prog-test-link-%i-%i",
+			   bpffs_dir, mp->ifindex, test_prog->prog_id);
+	if (err)
+		goto out;
+
+	lock_fd = xdp_lock_acquire();
+	if (lock_fd < 0) {
+		err = lock_fd;
+		goto out;
+	}
+
+	err = bpf_obj_pin(test_prog->link_fd, buf);
+	if (err) {
+		pr_warn("Couldn't pin link FD at %s: %s\n", buf, strerror(-err));
+		goto out_locked;
+	}
+	err = unlink(buf);
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't unlink file %s: %s\n", buf, strerror(-err));
+		goto out_locked;
+	}
+
 	mp->checked_compat = true;
+out_locked:
+	xdp_lock_release(lock_fd);
 out:
 	xdp_program__close(test_prog);
 

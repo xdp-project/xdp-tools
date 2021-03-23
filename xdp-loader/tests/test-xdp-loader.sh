@@ -28,6 +28,8 @@ check_progs_loaded()
 
 test_load_multi()
 {
+    skip_if_legacy_fallback
+
     check_run $XDP_LOADER load $NS $TEST_PROG_DIR/xdp_drop.o $TEST_PROG_DIR/xdp_pass.o -vv
     check_progs_loaded $NS 2
     check_run $XDP_LOADER unload $NS --all -vv
@@ -35,6 +37,8 @@ test_load_multi()
 
 test_load_incremental()
 {
+    skip_if_legacy_fallback
+
     local output
     local ret
     local id
@@ -43,7 +47,7 @@ test_load_incremental()
 
     check_progs_loaded $NS 1
 
-    output=$($XDP_LOADER load $NS $TEST_PROG_DIR/xdp_pass.o -vv)
+    output=$($XDP_LOADER load $NS $TEST_PROG_DIR/xdp_pass.o -vv 2>&1)
     ret=$?
 
     if [ "$ret" -ne "0" ] && echo $output | grep -q "Falling back to loading single prog"; then
