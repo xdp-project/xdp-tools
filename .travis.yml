@@ -56,6 +56,11 @@ jobs:
         - KERNEL_VERSION=5.11.0
         - KERNEL_PATCH_VERSION=156.fc34
       <<: *selftest_template
+    - name: Selftests using 5.6.19 kernel
+      env:
+        - KERNEL_VERSION=5.6.19
+        - KERNEL_PATCH_VERSION=300.fc32
+      <<: *selftest_template
 
 env:
   global:
