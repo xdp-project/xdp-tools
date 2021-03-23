@@ -107,6 +107,7 @@ test_capt_pcap()
 
     PID=$(start_background "$XDPDUMP -i $NS --use-pcap -w - 2> /dev/null | tcpdump -r - -n")
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
+    sleep 1
     RESULT=$(stop_background "$PID")
 
     $XDP_LOADER unload "$NS" --all || return 1
