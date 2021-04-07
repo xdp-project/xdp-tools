@@ -105,7 +105,7 @@ test_capt_pcap()
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
 
-    PID=$(start_background "$XDPDUMP -i $NS --use-pcap -w - 2> /dev/null | tcpdump -r - -n")
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name --use-pcap -w - 2> /dev/null | tcpdump -r - -n")
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     sleep 1
     RESULT=$(stop_background "$PID")
@@ -145,13 +145,13 @@ test_capt_pcapng()
     INFOS_REGEX+="Capture application: xdpdump v[0-9]+\.[0-9]+\.[0-9]+.*"
     INFOS_REGEX+="Capture comment:     Capture was taken on interface xdptest, with the following XDP programs loaded:   xdp_dispatcher\(\)     xdp_test_prog_w.*"
     INFOS_REGEX+="Interface #0 info:.*"
-    INFOS_REGEX+="Name = ${NS}:xdp_dispatcher\(\)@fentry.*"
+    INFOS_REGEX+="Name = ${NS}:xdp_test_prog_with_a_long_name\(\)@fentry.*"
     if [ $OLD_CAPINFOS -eq 0 ]; then
         INFOS_REGEX+="Hardware = driver: \"veth\", version: \"1\.0\", fw-version: \"\", rom-version: \"\", bus-info: \"\".*"
     fi
     INFOS_REGEX+="Time precision = nanoseconds \(9\).*"
     INFOS_REGEX+="Interface #1 info:.*"
-    INFOS_REGEX+="Name = ${NS}:xdp_dispatcher\(\)@fexit.*"
+    INFOS_REGEX+="Name = ${NS}:xdp_test_prog_with_a_long_name\(\)@fexit.*"
     if [ $OLD_CAPINFOS -eq 0 ]; then
         INFOS_REGEX+="Hardware = driver: \"veth\", version: \"1\.0\", fw-version: \"\", rom-version: \"\", bus-info: \"\".*"
     fi
@@ -160,7 +160,7 @@ test_capt_pcapng()
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
 
-    PID=$(start_background "$XDPDUMP -i $NS -w - 2> /dev/null | tcpdump -r - -n")
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name -w - 2> /dev/null | tcpdump -r - -n")
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
 
@@ -169,7 +169,7 @@ test_capt_pcapng()
         return 1
     fi
 
-    PID=$(start_background "$XDPDUMP -i $NS -w $PCAP_FILE --rx-capture=entry,exit")
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name -w $PCAP_FILE --rx-capture=entry,exit")
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID") || (print_result "xdpdump failed"; return 1)
 
@@ -181,7 +181,7 @@ test_capt_pcapng()
     fi
 
     if version_greater_or_equal "$TSHARK_VERSION" 3.4.0; then
-	local ATTRIB_REGEX="^xdptest:xdp_dispatcher\(\)@fentry	0	1	$.*^xdptest:xdp_dispatcher\(\)@fexit	0	1	2$.*"
+	local ATTRIB_REGEX="^xdptest:xdp_test_prog_with_a_long_name\(\)@fentry	0	1	$.*^xdptest:xdp_test_prog_with_a_long_name\(\)@fexit	0	1	2$.*"
 	RESULT=$(tshark -r "$PCAP_FILE" -T fields \
 			-e frame.interface_name \
 			-e frame.interface_queue \
@@ -202,15 +202,15 @@ test_capt_term()
 {
     skip_if_missing_kernel_symbol bpf_xdp_output_proto
 
-    local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local PASS_X_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_X_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PASS_X_OPT="0x0020:  00 00 00 00 00 02 fc 42 de ad ca fe 00 01 00 00"
 
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
 
-    PID=$(start_background "$XDPDUMP -i $NS")
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name")
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
 
@@ -219,7 +219,7 @@ test_capt_term()
         return 1
     fi
 
-    PID=$(start_background "$XDPDUMP -i $NS -x")
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name -x")
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
 
@@ -242,15 +242,16 @@ test_exitentry()
 {
     skip_if_missing_kernel_symbol bpf_xdp_output_proto
 
-    local PASS_ENTRY_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local PASS_EXIT_REGEX="(xdp_dispatcher\(\)@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local PASS_EXIT_D_REGEX="(xdp_dispatcher\(\)@exit\[DROP\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local ID_ENTRY_REGEX="xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id ([0-9]+)"
-    local ID_EXIT_REGEX="xdp_dispatcher\(\)@exit\[DROP\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id ([0-9]+)"
+    local PASS_ENTRY_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_EXIT_REGEX="(xdp_test_prog_with_a_long_name\(\)@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_ENTRY_D_REGEX="(xdp_drop\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_EXIT_D_REGEX="(xdp_drop\(\)@exit\[DROP\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local ID_ENTRY_REGEX="xdp_drop\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id ([0-9]+)"
+    local ID_EXIT_REGEX="xdp_drop\(\)@exit\[DROP\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id ([0-9]+)"
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
 
-    PID=$(start_background "$XDPDUMP -i $NS --rx-capture=entry")
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name --rx-capture=entry")
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
     if ! [[ $RESULT =~ $PASS_ENTRY_REGEX ]]; then
@@ -258,7 +259,7 @@ test_exitentry()
         return 1
     fi
 
-    PID=$(start_background "$XDPDUMP -i $NS --rx-capture=exit")
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name --rx-capture=exit")
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
     if ! [[ $RESULT =~ $PASS_EXIT_REGEX ]]; then
@@ -280,7 +281,7 @@ test_exitentry()
     PID=$(start_background "$XDPDUMP -i $NS --rx-capture=exit,entry")
     $PING6 -W 1 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
     RESULT=$(stop_background "$PID")
-    if ! [[ $RESULT =~ $PASS_EXIT_D_REGEX && $RESULT =~ $PASS_ENTRY_REGEX ]]; then
+    if ! [[ $RESULT =~ $PASS_EXIT_D_REGEX && $RESULT =~ $PASS_ENTRY_D_REGEX ]]; then
         print_result "IPv6 drop entry/exit packet not received"
         return 1
     fi
@@ -301,12 +302,12 @@ test_snap()
 {
     skip_if_missing_kernel_symbol bpf_xdp_output_proto
 
-    local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 16 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local PASS_II_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 21 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes, captured 16 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_II_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes, captured 21 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
 
-    PID=$(start_background "$XDPDUMP -i $NS -x --snapshot-length=16")
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name -x --snapshot-length=16")
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
 
@@ -315,7 +316,7 @@ test_snap()
         return 1
     fi
 
-    PID=$(start_background "$XDPDUMP -i $NS -x -s 21")
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name -x -s 21")
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
 
@@ -331,15 +332,15 @@ test_multi_pkt()
 {
     skip_if_missing_kernel_symbol bpf_xdp_output_proto
 
-    local PASS_ENTRY_REGEX="(xdp_dispatcher\(\)@entry: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
-    local PASS_EXIT_REGEX="(xdp_dispatcher\(\)@exit\[PASS\]: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
+    local PASS_ENTRY_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
+    local PASS_EXIT_REGEX="(xdp_test_prog_with_a_long_name\(\)@exit\[PASS\]: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
     local PKT_SIZES=(56 512 1500)
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
 
     for PKT_SIZE in "${PKT_SIZES[@]}" ; do
 
-        PID=$(start_background_no_stderr "$XDPDUMP -i $NS --rx-capture=entry,exit")
+        PID=$(start_background_no_stderr "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name --rx-capture=entry,exit")
         timeout 4 $PING6 -W 2 -s "$PKT_SIZE" -c 20000 -f "$INSIDE_IP6" || return 1
         RESULT=$(stop_background "$PID")
         if ! [[ $RESULT =~ $PASS_ENTRY_REGEX ]]; then
@@ -366,8 +367,8 @@ test_perf_wakeup()
         return "$SKIPPED_TEST"
     fi
 
-    local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+)"
-    local PASS_10K_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id 10000)"
+    local PASS_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+)"
+    local PASS_10K_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id 10000)"
     local WAKEUPS=(0 1 32 128)
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
@@ -375,7 +376,7 @@ test_perf_wakeup()
     for WAKEUP in "${WAKEUPS[@]}" ; do
 
         # We send a single packet to make sure flushing of the buffer works!
-        PID=$(start_background_no_stderr "$XDPDUMP -i $NS --perf-wakeup=$WAKEUP")
+        PID=$(start_background_no_stderr "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name --perf-wakeup=$WAKEUP")
         $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
         RESULT=$(stop_background "$PID")
 
@@ -385,7 +386,7 @@ test_perf_wakeup()
         fi
 
         # We sent 10k packets and see if the all arrive
-        PID=$(start_background_no_stderr "$XDPDUMP -i $NS --perf-wakeup=$WAKEUP")
+        PID=$(start_background_no_stderr "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name --perf-wakeup=$WAKEUP")
         timeout 2 "$PING6" -W 2 -c 10000 -f  "$INSIDE_IP6" || return 1
         RESULT=$(stop_background "$PID")
         if ! [[ $RESULT =~ $PASS_10K_REGEX ]]; then
@@ -420,7 +421,7 @@ test_none_xdp()
 test_promiscuous_selfload()
 {
     local PASS_PKT="packet size 118 bytes on if_name \"$NS\""
-    local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
 
     $XDP_LOADER unload "$NS" --all
     dmesg -C
@@ -448,12 +449,12 @@ test_promiscuous_preload()
 {
     skip_if_missing_kernel_symbol bpf_xdp_output
 
-    local PASS_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
+    local PASS_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
 
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
     dmesg -C
 
-    PID=$(start_background "$XDPDUMP -i $NS -x --promiscuous-mode")
+    PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name -x --promiscuous-mode")
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     RESULT=$(stop_background "$PID")
     if ! [[ $RESULT =~ $PASS_REGEX ]]; then

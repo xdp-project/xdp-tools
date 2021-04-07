@@ -951,6 +951,13 @@ static int find_target(struct dumpopt *cfg, struct xdp_multiprog *mp,
 
 	/* First take care of the default case, i.e. no function supplied */
 	if (!program_names) {
+		/* The libxdp code optimization where it skips the dispatcher
+		 * if only one program is loaded. If this is the case, we need
+		 * to attach to the actual first program, not the dispatcher.
+		 */
+		if (xdp_multiprog__program_count(mp) == 1)
+			prog = xdp_multiprog__next_prog(NULL, mp);
+
 		matches = find_func_matches(xdp_program__btf(prog),
 					    xdp_program__name(prog),
 					    &func, false, -1, false);
@@ -970,7 +977,6 @@ static int find_target(struct dumpopt *cfg, struct xdp_multiprog *mp,
 		pr_warn("ERROR: Can't identify the full XDP main function!\n"
 			"The following is a list of candidates:\n");
 
-		prog = xdp_multiprog__main_prog(mp);
 		find_func_matches(xdp_program__btf(prog),
 				  xdp_program__name(prog),
 				  &func, true, -1, false);
