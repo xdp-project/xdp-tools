@@ -40,4 +40,5 @@ LIBXDP_1.0.0 {
 
 LIBXDP_1.2.0 {
 		libxdp_clean_references;
+		xdp_multiprog__program_count;
 } LIBXDP_1.0.0;

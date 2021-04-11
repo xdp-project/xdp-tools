@@ -2614,6 +2614,14 @@ bool xdp_multiprog__is_legacy(const struct xdp_multiprog *mp)
 	return !!(mp && mp->is_legacy);
 }
 
+int xdp_multiprog__program_count(const struct xdp_multiprog *mp)
+{
+	if (!mp)
+		return -EINVAL;
+
+	return mp->num_links;
+}
+
 static __u32 xdp_get_ifindex_prog_id(int ifindex)
 {
 	struct xdp_link_info xinfo = {};
