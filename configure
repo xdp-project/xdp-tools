@@ -26,6 +26,7 @@ check_opts()
 check_toolchain()
 {
     local emacs_version
+    local clang_version
 
     : ${PKG_CONFIG:=pkg-config}
     : ${CC=gcc}
@@ -41,6 +42,14 @@ check_toolchain()
             exit 1;
         fi;
     done
+
+    clang_version=$($CLANG --version |awk '{if (/clang version/) {sub("\\..*$", "", $3); print $3}}')
+    if [ "$clang_version" -lt "10" ]; then
+        echo "*** ERROR: Need LLVM version 10+, '$CLANG' is version $clang_version"
+        exit 1
+    else
+        echo "using LLVM version: $clang_version ($CLANG)"
+    fi
 
     if ! command -v $EMACS >/dev/null 2>&1; then
         EMACS=""
