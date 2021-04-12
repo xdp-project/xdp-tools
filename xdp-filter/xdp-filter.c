@@ -300,7 +300,8 @@ retry:
 		if (err == -EPERM && !double_rlimit())
 			goto retry;
 
-		pr_warn("Couldn't load BPF program: %s\n", strerror(-err));
+		libxdp_strerror(err, errmsg, sizeof(errmsg));
+		pr_warn("Couldn't load BPF program: %s(%d)\n", errmsg, err);
 		p = NULL;
 		goto out;
 	}
@@ -405,8 +406,8 @@ static int remove_iface_program(const struct iface *iface,
 				struct xdp_program *prog,
 				enum xdp_attach_mode mode, void *arg)
 {
+	char errmsg[STRERR_BUFSIZE], buf[100];
 	char *pin_root_path = arg;
-	char buf[100];
 	__u32 feats;
 	int err;
 
@@ -423,8 +424,9 @@ static int remove_iface_program(const struct iface *iface,
 
 	err = detach_xdp_program(prog, iface, mode, pin_root_path);
 	if (err) {
+		libxdp_strerror(err, errmsg, sizeof(errmsg));
 		pr_warn("Removing XDP program on iface %s failed (%d): %s\n",
-			iface->ifname, -err, strerror(-err));
+			iface->ifname, -err, errmsg);
 	}
 
 	return err;
