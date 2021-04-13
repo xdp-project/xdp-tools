@@ -2062,6 +2062,7 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 	bool was_loaded = false;
 	char buf[PATH_MAX];
 	int err, lfd = -1;
+	char *attach_func;
 	__s32 btf_id;
 
 	if (!mp || !prog || !mp->is_loaded ||
@@ -2085,17 +2086,23 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 	if (err)
 		goto err;
 
-	btf_id = find_prog_btf_id(buf, mp->main_prog->prog_fd);
+
+	if (mp->config.num_progs_enabled == 1)
+		attach_func = "xdp_dispatcher";
+	else
+		attach_func = buf;
+
+	btf_id = find_prog_btf_id(attach_func, mp->main_prog->prog_fd);
 	if (btf_id <= 0) {
 		err = btf_id;
-		pr_debug("Couldn't find BTF ID for %s: %d\n", buf, err);
+		pr_debug("Couldn't find BTF ID for %s: %d\n", attach_func, err);
 		goto err;
 	}
 
 	if (prog->prog_fd < 0) {
 		err = bpf_program__set_attach_target(prog->bpf_prog,
 						     mp->main_prog->prog_fd,
-						     buf);
+						     attach_func);
 		if (err) {
 			pr_debug("Failed to set attach target: %s\n", strerror(-err));
 			goto err;
@@ -2605,6 +2612,14 @@ struct xdp_program *xdp_multiprog__main_prog(const struct xdp_multiprog *mp)
 bool xdp_multiprog__is_legacy(const struct xdp_multiprog *mp)
 {
 	return !!(mp && mp->is_legacy);
+}
+
+int xdp_multiprog__program_count(const struct xdp_multiprog *mp)
+{
+	if (!mp)
+		return -EINVAL;
+
+	return mp->num_links;
 }
 
 static __u32 xdp_get_ifindex_prog_id(int ifindex)
