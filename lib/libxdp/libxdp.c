@@ -2698,7 +2698,7 @@ err:
 
 int libxdp_clean_references(int ifindex)
 {
-	int err, lock_fd, path_ifindex;
+	int err = 0, lock_fd, path_ifindex;
 	__u32 dir_prog_id, prog_id;
 	DIR *d;
 
