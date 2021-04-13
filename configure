@@ -43,12 +43,11 @@ check_toolchain()
         fi;
     done
 
-    clang_version=$($CLANG --version |awk '{if (/clang version/) {sub("\\..*$", "", $3); print $3}}')
+    clang_version=$($CLANG --version | grep -Po '(?<=clang version )[[:digit:]]+')
+    echo "Found clang binary '$CLANG' with version $clang_version (from '$($CLANG --version | head -n 1)')"
     if [ "$clang_version" -lt "10" ]; then
         echo "*** ERROR: Need LLVM version 10+, '$CLANG' is version $clang_version"
-        exit 1
-    else
-        echo "using LLVM version: $clang_version ($CLANG)"
+        [ -n "$RELAXED_LLVM_VERSION" ] || exit 1
     fi
 
     if ! command -v $EMACS >/dev/null 2>&1; then
