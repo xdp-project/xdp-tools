@@ -72,9 +72,10 @@ static int handle_u32(char *optarg, void *tgt, __unused void *typearg)
 	__u32 *opt_set = tgt;
 	unsigned long val;
 
+	errno = 0;
 	val = strtoul(optarg, NULL, 10);
 	if (errno || val > 0xffffffff)
-		return -1;
+		return -EINVAL;
 
 	*opt_set = val;
 	return 0;
@@ -85,6 +86,7 @@ static int handle_u16(char *optarg, void *tgt, __unused void *typearg)
 	__u16 *opt_set = tgt;
 	unsigned long val;
 
+	errno = 0;
 	val = strtoul(optarg, NULL, 10);
 	if (errno || val > 0xffff)
 		return -EINVAL;
