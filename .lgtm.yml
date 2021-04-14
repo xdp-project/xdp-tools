@@ -1,3 +1,7 @@
+extraction:
+  cpp:
+    after_prepare:
+      - export RELAXED_LLVM_VERSION=1
 path_classifiers:
   library:
     - lib/libbpf/*/*
