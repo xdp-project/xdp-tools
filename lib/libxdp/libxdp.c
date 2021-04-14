@@ -1744,12 +1744,23 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 			err = -EINVAL;
 			goto out;
 		}
-		map_id = (void *)info_linear->data;
+		/* We can't use info_linear->data pointer as we may have a
+		 * different notion of that than what libbpf was compiled with.
+		 * Instead, we need to get the size of info_linear->info as
+		 * communicated by libbpf, and compute the start of the data
+		 * using that.
+		 */
+		map_id = (void *)&info_linear->info + info_linear->info_len;
+		if (!*map_id) {
+			pr_warn("Couldn't get map ID for dispatcher program\n");
+			err = -EINVAL;
+			goto out;
+		}
 
 		map_fd = bpf_map_get_fd_by_id(*map_id);
 		if (map_fd < 0) {
 			err = map_fd;
-			pr_warn("Could not get config map fd: %s\n", strerror(-err));
+			pr_warn("Could not get config map fd for id %u: %s\n", *map_id, strerror(-err));
 			goto out;
 		}
 		err = bpf_obj_get_info_by_fd(map_fd, &map_info, &map_info_len);
