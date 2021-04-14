@@ -1805,16 +1805,7 @@ legacy:
 			mp->main_prog->prog_id, mp->num_links);
 	}
 
-	if (prog_fd > 0 && hw_fd > 0)
-		free(info_linear);
-
 	if (hw_fd > 0) {
-		info_linear = bpf_program__get_prog_info_linear(hw_fd, arrays);
-		if (IS_ERR_OR_NULL(info_linear)) {
-			pr_warn("couldn't get program info for fd: %d", hw_fd);
-			return -EINVAL;
-		}
-
 		prog = xdp_program__from_fd(hw_fd);
 		if (IS_ERR(prog)) {
 			err = PTR_ERR(prog);
@@ -2034,34 +2025,29 @@ out:
 
 static int find_prog_btf_id(const char *name, __u32 attach_prog_fd)
 {
-	struct bpf_prog_info_linear *info_linear;
-	struct bpf_prog_info *info;
+	struct bpf_prog_info info = {};
+	__u32 info_size = sizeof(info);
 	struct btf *btf = NULL;
 	int err = -EINVAL;
 
-	info_linear = bpf_program__get_prog_info_linear(attach_prog_fd, 0);
-	if (IS_ERR_OR_NULL(info_linear)) {
-		pr_warn("failed get_prog_info_linear for FD %d\n",
-			attach_prog_fd);
+	err = bpf_obj_get_info_by_fd(attach_prog_fd, &info, &info_size);
+	if (err) {
+		pr_warn("failed get_prog_info for FD %d\n", attach_prog_fd);
+		return err;
+	}
+	if (!info.btf_id) {
+		pr_warn("The target program doesn't have BTF\n");
 		return -EINVAL;
 	}
-	info = &info_linear->info;
-	if (!info->btf_id) {
-		pr_warn("The target program doesn't have BTF\n");
-		goto out;
-	}
-	if (btf__get_from_id(info->btf_id, &btf)) {
+	if (btf__get_from_id(info.btf_id, &btf)) {
 		pr_warn("Failed to get BTF of the program\n");
-		goto out;
+		return -EINVAL;
 	}
 	err = btf__find_by_name_kind(btf, name, BTF_KIND_FUNC);
 	btf__free(btf);
-	if (err <= 0) {
+	if (err <= 0)
 		pr_warn("%s is not found in prog's BTF\n", name);
-		goto out;
-	}
-out:
-	free(info_linear);
+
 	return err;
 }
 
