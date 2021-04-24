@@ -88,7 +88,7 @@ static inline void trace_to_perf_buffer(struct xdp_buff *xdp, bool fexit,
 }
 
 /*****************************************************************************
- * Tracx_on_entry()
+ * trace_on_entry()
  *****************************************************************************/
 SEC("fentry/func")
 int BPF_PROG(trace_on_entry, struct xdp_buff *xdp)
