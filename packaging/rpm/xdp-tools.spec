@@ -91,7 +91,7 @@ make install V=1
 %{_libdir}/bpf/xdpfilt_*.o
 %{_libdir}/bpf/xdpdump_*.o
 %{_datadir}/xdp-tools/
-%license LICENSE
+%license LICENSES/*
 
 %files -n libxdp
 %{_libdir}/libxdp.so.1
