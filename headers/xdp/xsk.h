@@ -16,11 +16,12 @@
 #include <stdint.h>
 #include <bpf/libbpf.h>
 #include <linux/if_xdp.h>
-#include <xdp/libxdp_util.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define XDP_ALWAYS_INLINE inline __attribute__((__always_inline__))
 
 /* Do not access these members directly. Use the functions below. */
 #define DEFINE_XSK_RING(name) \
@@ -96,7 +97,7 @@ XDP_ALWAYS_INLINE __u32 xsk_prod_nb_free(struct xsk_ring_prod *r, __u32 nb)
 	 * this function. Without this optimization it whould have been
 	 * free_entries = r->cached_prod - r->cached_cons + r->size.
 	 */
-	r->cached_cons = libbpf_smp_load_acquire(r->consumer);
+	r->cached_cons = __atomic_load_n(r->consumer, __ATOMIC_ACQUIRE);
 	r->cached_cons += r->size;
 
 	return r->cached_cons - r->cached_prod;
@@ -107,7 +108,7 @@ XDP_ALWAYS_INLINE __u32 xsk_cons_nb_avail(struct xsk_ring_cons *r, __u32 nb)
 	__u32 entries = r->cached_prod - r->cached_cons;
 
 	if (entries == 0) {
-		r->cached_prod = libbpf_smp_load_acquire(r->producer);
+		r->cached_prod = __atomic_load_n(r->producer, __ATOMIC_ACQUIRE);
 		entries = r->cached_prod - r->cached_cons;
 	}
 
@@ -130,7 +131,7 @@ XDP_ALWAYS_INLINE void xsk_ring_prod__submit(struct xsk_ring_prod *prod, __u32 n
 	/* Make sure everything has been written to the ring before indicating
 	 * this to the kernel by writing the producer pointer.
 	 */
-	libbpf_smp_store_release(prod->producer, *prod->producer + nb);
+	__atomic_store_n(prod->producer, *prod->producer + nb, __ATOMIC_RELEASE);
 }
 
 XDP_ALWAYS_INLINE __u32 xsk_ring_cons__peek(struct xsk_ring_cons *cons, __u32 nb, __u32 *idx)
@@ -155,7 +156,7 @@ XDP_ALWAYS_INLINE void xsk_ring_cons__release(struct xsk_ring_cons *cons, __u32 
 	/* Make sure data has been read before indicating we are done
 	 * with the entries by updating the consumer pointer.
 	 */
-	libbpf_smp_store_release(cons->consumer, *cons->consumer + nb);
+	__atomic_store_n(cons->consumer, *cons->consumer + nb, __ATOMIC_RELEASE);
 }
 
 XDP_ALWAYS_INLINE void *xsk_umem__get_data(void *umem_area, __u64 addr)
