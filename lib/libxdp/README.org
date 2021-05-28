@@ -8,17 +8,21 @@
 # To export the man page, simply use the org-mode exporter; (require 'ox-man) if
 # it's not available. There's also a Makefile rule to export it.
 
-* libxdp - library for attaching XDP programs
+* libxdp - library for attaching XDP programs and using AF_XDP sockets
 
-This directory contains the files for the =libxdp= library for attaching XDP
-programs to network interfaces. The library is fairly lightweight and relies on
-=libbpf= to do the heavy lifting for processing eBPF object files etc.
+This directory contains the files for the =libxdp= library for
+attaching XDP programs to network interfaces and using AF_XDP
+sockets. The library is fairly lightweight and relies on =libbpf= to
+do the heavy lifting for processing eBPF object files etc.
 
-The primary feature that =libxdp= provides on top of =libbpf= is the ability to
-load multiple XDP programs in sequence on a single network device (which is not
-natively supported by the kernel). This support relies on the =freplace=
-functionality in the kernel, which makes it possible to attach an eBPF program
-as a replacement for a global function in another (already loaded) eBPF program.
+=Libxdp= provides two primary features on top of =libbpf=The first is
+the ability to load multiple XDP programs in sequence on a single
+network device (which is not natively supported by the kernel). This
+support relies on the =freplace= functionality in the kernel, which
+makes it possible to attach an eBPF program as a replacement for a
+global function in another (already loaded) eBPF program. The second
+main feature is helper functions for configuring AF_XDP sockets as
+well as reading and writing packets from these sockets.
 
 ** Using libxdp from an application
 
@@ -217,9 +221,169 @@ follows:
 If set, the =LIBXDP_BPFFS= environment variable will override the location of
 =bpffs=, but the =xdp= subdirectory is always used.
 
+* Using AF_XDP sockets
+
+Libxdp implements helper functions for configuring AF_XDP sockets as
+well as reading and writing packets from these sockets. AF_XDP sockets
+can be used to redirect packets to user-space at high rates from an
+XDP program. Note that this functionality used to reside in libbpf,
+but has now been moved over to libxdp as it is a better fit for this
+library. As of the 1.0 release of libbpf, the AF_XDP socket support
+will be removed and all future development will be performed
+in libxdp instead.
+
+For an overview of AF_XDP sockets, please refer to this Linux Plumbers
+paper
+(http://vger.kernel.org/lpc_net2018_talks/lpc18_pres_af_xdp_perf-v3.pdf)
+and the documentation in the Linux kernel
+(Documentation/networking/af_xdp.rst or
+https://www.kernel.org/doc/Documentation/networking/af_xdp.rst).
+
+For an example on how to use the interface, take a look at the sample
+application in the Linux kernel source tree at samples/bpf/xdpsock_user.c.
+
+** Control path
+
+Libxdp provides helper functions for creating and destroying umems and
+sockets as shown below. The first thing that a user generally wants to
+do is to create a umem area. This is the area that will contain all
+packets received and the ones that are going to be sent. After that,
+AF_XDP sockets can be created tied to this umem. These can either be
+sockets that have exclusive ownership of that umem through
+xsk_socket__create() or shared with other sockets using
+xsk_socket__create_shared. There is one option called
+XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD that can be set in the
+libxdp_flags field (also called libbpf_flags for compatibility
+reasons). This will make libxdp not load any XDP program or set and
+BPF maps which is a must if users want to add their own XDP program.
+
+#+begin_src C
+int xsk_umem__create(struct xsk_umem **umem,
+		     void *umem_area, __u64 size,
+		     struct xsk_ring_prod *fill,
+		     struct xsk_ring_cons *comp,
+		     const struct xsk_umem_config *config);
+int xsk_socket__create(struct xsk_socket **xsk,
+		       const char *ifname, __u32 queue_id,
+		       struct xsk_umem *umem,
+		       struct xsk_ring_cons *rx,
+		       struct xsk_ring_prod *tx,
+		       const struct xsk_socket_config *config);
+int xsk_socket__create_shared(struct xsk_socket **xsk_ptr,
+			      const char *ifname,
+			      __u32 queue_id, struct xsk_umem *umem,
+			      struct xsk_ring_cons *rx,
+			      struct xsk_ring_prod *tx,
+			      struct xsk_ring_prod *fill,
+			      struct xsk_ring_cons *comp,
+			      const struct xsk_socket_config *config);
+int xsk_umem__delete(struct xsk_umem *umem);
+void xsk_socket__delete(struct xsk_socket *xsk);
+#+end_src
+
+There are also two helper function to get the file descriptor of a
+umem or a socket. These are needed when using standard Linux syscalls
+such as poll(), recvmsg(), sendto(), etc.
+
+#+begin_src C
+int xsk_umem__fd(const struct xsk_umem *umem);
+int xsk_socket__fd(const struct xsk_socket *xsk);
+#+end_src
+
+The control path also provides two APIs for setting up AF_XDP sockets
+when the process that is going to use the AF_XDP socket is
+non-privileged. These two functions perform the operations that
+require privileges and can be executed from some form of control
+process that has the necessary privileges. The xsk_socket__create
+executed on the non-privileged process will then skip these two
+steps. For an example on how to use these, please take a look at
+samples/bpf/xdpsock_user.c and samples/bpf/xdpsock_ctrl_proc.c in the
+Linux kernel source tree.
+
+#+begin_src C
+int xsk_setup_xdp_prog(int ifindex, int *xsks_map_fd);
+int xsk_socket__update_xskmap(struct xsk_socket *xsk, int xsks_map_fd);
+#+end_src
+
+** Data path
+
+For performance reasons, all the data path functions are static inline
+functions found in the xsk.h header file so they can be optimized into
+the target application binary for best possible performance. There are
+four FIFO rings of two main types: producer rings (fill and Tx) and
+consumer rings (Rx and completion). The producer rings use
+xsk_ring_prod functions and consumer rings use xsk_ring_cons
+functions. For producer rings, you start with =reserving= one or more
+slots in a producer ring and then when they have been filled out, you
+=submit= them so that the kernel will act on them. For a consumer
+ring, you =peek= if there are any new packets in the ring and if so
+you can read them from the ring. Once you are done reading them, you
+=release= them back to the kernel so it can use them for new
+packets. There is also a =cancel= operation for consumer rings if the
+application does not want to consume all packets received with the
+peek operation.
+
+#+begin_src C
+__u32 xsk_ring_prod__reserve(struct xsk_ring_prod *prod, __u32 nb, __u32 *idx);
+void xsk_ring_prod__submit(struct xsk_ring_prod *prod, __u32 nb);
+__u32 xsk_ring_cons__peek(struct xsk_ring_cons *cons, __u32 nb, __u32 *idx);
+void xsk_ring_cons__cancel(struct xsk_ring_cons *cons, __u32 nb);
+void xsk_ring_cons__release(struct xsk_ring_cons *cons, __u32 nb);
+#+end_src
+
+The functions below are used for reading and writing the descriptors
+of the rings. xsk_ring_prod__fill_addr() and xsk_ring_prod__tx_desc()
+writes entries in the fill and Tx rings respectively, while
+xsk_ring_cons__comp_addr and xsk_ring_cons__rx_desc reads entries from
+the completion and Rx rings respectively. The idx is the paramter
+returned in the xsk_ring_prod__reserve or xsk_ring_cons__peek
+calls. To advance to the next entry, simply do idx++.
+
+#+begin_src C
+__u64 *xsk_ring_prod__fill_addr(struct xsk_ring_prod *fill, __u32 idx);
+struct xdp_desc *xsk_ring_prod__tx_desc(struct xsk_ring_prod *tx, __u32 idx);
+const __u64 *xsk_ring_cons__comp_addr(const struct xsk_ring_cons *comp, __u32 idx);
+const struct xdp_desc *xsk_ring_cons__rx_desc(const struct xsk_ring_cons *rx, __u32 idx);
+#+end_src
+
+The xsk_umem functions are used to get a pointer to the packet data
+itself, always located inside the umem. In the default aligned mode,
+you can get the addr variable straight from the Rx descriptor. But in
+unaligned mode, you need to use the three last function below as the
+offset used is carried in the upper 16 bits of the addr. Therefore,
+you cannot use the addr straight from the descriptor in the unaligned
+case.
+
+#+begin_src C
+void *xsk_umem__get_data(void *umem_area, __u64 addr);
+__u64 xsk_umem__extract_addr(__u64 addr);
+__u64 xsk_umem__extract_offset(__u64 addr);
+__u64 xsk_umem__add_offset_to_addr(__u64 addr);
+#+end_src
+
+There is one more function in the data path and that checks if the
+need_wakeup flag is set. Use of this flag is highly encouraged and
+should be enabled by setting XDP_USE_NEED_WAKEUP bit in the
+xdp_bind_flags field that is provided to the
+xsk_socket_create_[shared]() calls. If this function returns true,
+then you need to call recvmsg(), sendto(), or poll() depending on the
+situation. recvmsg() if you are receiving, or sendto() if you are
+sending. poll() can be used for both cases and provide the ability to
+sleep too, as with any other socket. But note that poll is a slower
+operation than the other two.
+
+#+begin_src C
+int xsk_ring_prod__needs_wakeup(const struct xsk_ring_prod *r);
+#+end_src
+
+For an example on how to use all these APIs, take a look at the sample
+applications in the Linux kernel source tree at
+samples/bpf/xdpsock_user.c and samples/bpf/xsk_fwd.c.
+
 * BUGS
 Please report any bugs on Github: https://github.com/xdp-project/xdp-tools/issues
 
-* AUTHOR
-libxdp and this man page were written by Toke Høiland-Jørgensen
-
+* AUTHORS
+libxdp and this man page were written by Toke
+Høiland-Jørgensen. AF_XDP support and documentation was contributed by
+Magnus Karlsson.

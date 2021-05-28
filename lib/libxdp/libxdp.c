@@ -31,6 +31,7 @@
 #include <xdp/prog_dispatcher.h>
 
 #include "compat.h"
+#include "libxdp_internal.h"
 
 #define XDP_RUN_CONFIG_SEC ".xdp_run_config"
 
@@ -102,10 +103,7 @@ libxdp_print_fn_t libxdp_set_print(libxdp_print_fn_t fn)
 	return old_print_fn;
 }
 
-#define __printf(a, b) __attribute__((format(printf, a, b)))
-
-__printf(2, 3) static void libxdp_print(enum libxdp_print_level level,
-					const char *format, ...)
+__printf(2, 3) void libxdp_print(enum libxdp_print_level level, const char *format, ...)
 {
 	va_list args;
 
@@ -116,15 +114,6 @@ __printf(2, 3) static void libxdp_print(enum libxdp_print_level level,
 	__libxdp_pr(level, format, args);
 	va_end(args);
 }
-
-#define __pr(level, fmt, ...)                                       \
-	do {                                                        \
-		libxdp_print(level, "libxdp: " fmt, ##__VA_ARGS__); \
-	} while (0)
-
-#define pr_warn(fmt, ...) __pr(LIBXDP_WARN, fmt, ##__VA_ARGS__)
-#define pr_info(fmt, ...) __pr(LIBXDP_INFO, fmt, ##__VA_ARGS__)
-#define pr_debug(fmt, ...) __pr(LIBXDP_DEBUG, fmt, ##__VA_ARGS__)
 
 static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 				 struct xdp_multiprog *mp,
@@ -1181,7 +1170,7 @@ static int xdp_program__load(struct xdp_program *prog)
 	return xdp_program__fill_from_fd(prog, prog_fd);
 }
 
-static struct xdp_program *xdp_program__clone(struct xdp_program *prog)
+struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 {
 	struct xdp_program *new_prog;
 	int new_fd, err;
@@ -1577,11 +1566,9 @@ out:
 	return err;
 }
 
-static int check_dispatcher_version(struct btf *btf)
+int check_xdp_prog_version(const struct btf *btf, const char *name, __u32 *version)
 {
-	const char *name = "dispatcher_version";
 	const struct btf_type *sec, *def;
-	__u32 version;
 
 	sec = btf_get_datasec(btf, XDP_METADATA_SECTION);
 	if (!sec)
@@ -1591,8 +1578,21 @@ static int check_dispatcher_version(struct btf *btf)
 	if (IS_ERR(def))
 		return PTR_ERR(def);
 
-	if (!get_field_int(btf, name, def, &version))
+	if (!get_field_int(btf, name, def, version))
 		return -ENOENT;
+
+	return 0;
+}
+
+static int check_dispatcher_version(struct btf *btf)
+{
+	const char *name = "dispatcher_version";
+	__u32 version;
+	int err;
+
+	err = check_xdp_prog_version(btf, name, &version);
+	if (err)
+		return err;
 
 	if (version > XDP_DISPATCHER_VERSION) {
 		pr_warn("XDP dispatcher version %d higher than supported %d\n",
