@@ -477,9 +477,10 @@ static int prog_options_to_options(struct prog_option *poptions,
 		if (!opt->positional)
 			num++;
 
-	new_options = malloc(sizeof(struct option) * num);
+	new_options = malloc(sizeof(struct option) * (num + 1));
 	if (!new_options)
-		return -1;
+		return -ENOMEM;
+
 	memcpy(new_options, &common_opts, sizeof(struct option) * num_cmn);
 	nopt = new_options + num_cmn;
 
@@ -514,12 +515,15 @@ static int prog_options_to_options(struct prog_option *poptions,
 	if (!*optstring)
 		goto err;
 
+	/* Make sure we clear the last option, or else we crash. */
+	memset(new_options + num, 0, sizeof(struct option));
+
 	*options = new_options;
 	return 0;
 
 err:
 	free(new_options);
-	return -1;
+	return -EINVAL;
 }
 
 static struct prog_option *find_opt(struct prog_option *all_opts, int optchar)
