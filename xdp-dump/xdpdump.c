@@ -924,6 +924,20 @@ static int match_target_function(struct dumpopt *cfg,
 	return -EAGAIN;
 }
 
+
+/*****************************************************************************
+ * check_btf()
+ *****************************************************************************/
+static bool check_btf(struct xdp_program *prog)
+{
+	if (xdp_program__btf(prog))
+		return true;
+
+	pr_warn("ERROR: xdpdump requires BTF information, but that is missing "
+		"from the loaded XDP program!\n");
+	return false;
+}
+
 /*****************************************************************************
  * find_target()
  *
@@ -948,6 +962,8 @@ static int find_target(struct dumpopt *cfg, struct xdp_multiprog *mp,
 	char                    *program_names = cfg->program_names;
 
 	prog = xdp_multiprog__main_prog(mp);
+	if (!check_btf(prog))
+		return -EINVAL;
 
 	/* First take care of the default case, i.e. no function supplied */
 	if (!program_names) {
@@ -955,8 +971,12 @@ static int find_target(struct dumpopt *cfg, struct xdp_multiprog *mp,
 		 * if only one program is loaded. If this is the case, we need
 		 * to attach to the actual first program, not the dispatcher.
 		 */
-		if (xdp_multiprog__program_count(mp) == 1)
+		if (xdp_multiprog__program_count(mp) == 1) {
 			prog = xdp_multiprog__next_prog(NULL, mp);
+
+			if (!check_btf(prog))
+				return -EINVAL;
+		}
 
 		matches = find_func_matches(xdp_program__btf(prog),
 					    xdp_program__name(prog),
