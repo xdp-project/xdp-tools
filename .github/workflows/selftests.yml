@@ -1,0 +1,47 @@
+name: Selftests
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+         - KERNEL_VERSION: 5.11.0
+           KERNEL_PATCH_VERSION: 156.fc34
+         - KERNEL_VERSION: 5.6.19
+           KERNEL_PATCH_VERSION: 300.fc32
+      fail-fast: false
+
+    env:
+      KERNEL_VERSION: ${{ matrix.KERNEL_VERSION }}
+      KERNEL_PATCH_VERSION: ${{ matrix.KERNEL_PATCH_VERSION }}
+      CLANG: clang-10
+      LLC: llc-10
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v2
+      - name: Prepare packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install zstd binutils-dev elfutils libpcap-dev libelf-dev gcc-multilib pkg-config wireshark tshark bpfcc-tools python3 python3-pip python3-setuptools qemu-kvm rpm2cpio libdw-dev libdwarf-dev
+      - name: Prepare Clang
+        run: |
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-10 main" | sudo tee -a /etc/apt/sources.list
+          sudo apt-get -qq update
+          sudo apt-get -qq -y install clang-10 lld-10 llvm-10
+      - name: Compile
+        run: make
+      - name: Prepare test tools
+        run: .github/scripts/prepare_test_tools.sh
+      - name: Prepare test kernel
+        run: .github/scripts/prepare_test_kernel.sh
+      - name: Run tests
+        run: .github/scripts/run_tests_in_vm.sh
