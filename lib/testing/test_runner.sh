@@ -113,7 +113,7 @@ start_background()
     local TMP_FILE="${STATEDIR}/tmp_proc_$$_$RANDOM"
     setsid bash -c "$*" &> ${TMP_FILE} &
     local PID=$!
-    sleep 1 # Wait to make sure the command is executed in the background
+    sleep 2 # Wait to make sure the command is executed in the background
 
     mv "$TMP_FILE" "${STATEDIR}/proc/${PID}" >& /dev/null
 
@@ -125,7 +125,7 @@ start_background_no_stderr()
     local TMP_FILE="${STATEDIR}/tmp_proc_$$_$RANDOM"
     setsid bash -c "$*" 1> ${TMP_FILE} 2>/dev/null &
     local PID=$!
-    sleep 1 # Wait to make sure the command is executed in the background
+    sleep 2 # Wait to make sure the command is executed in the background
 
     mv "$TMP_FILE" "${STATEDIR}/proc/${PID}" >& /dev/null
 
@@ -138,7 +138,7 @@ stop_background()
 
     local OUTPUT_FILE="${STATEDIR}/proc/${PID}"
     kill -SIGINT "-$PID"
-    sleep 1 # Wait to make sure the buffer is flushed after the shutdown
+    sleep 2 # Wait to make sure the buffer is flushed after the shutdown
     kill -SIGTERM "-$PID" && sleep 1 # just in case SIGINT was not enough
     cat "$OUTPUT_FILE"
     rm "$OUTPUT_FILE" >& /dev/null
