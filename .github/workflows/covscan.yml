@@ -34,6 +34,9 @@ jobs:
 
       - name: Configure
         run: ./configure
+        env:
+          CLANG: clang-10
+          LLC: llc-10
 
       - name: Build with cov-build
         run: |
