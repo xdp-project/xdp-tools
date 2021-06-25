@@ -1,0 +1,53 @@
+name: coverity-scan
+on:
+  push:
+    branches: [ master ]
+  schedule:
+    - cron: '0 18 * * *' # Daily at 18:00 UTC
+
+jobs:
+  latest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v2
+
+      - name: Prepare packages
+        run: sudo apt-get install zstd binutils-dev elfutils libpcap-dev libelf-dev gcc-multilib pkg-config wireshark tshark bpfcc-tools python3 python3-pip python3-setuptools qemu-kvm rpm2cpio libdw-dev libdwarf-dev
+
+      - name: Prepare Clang
+        run: |
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-10 main" | sudo tee -a /etc/apt/sources.list
+          sudo apt-get -qq update
+          sudo apt-get -qq -y install clang-10 lld-10 llvm-10
+
+      - name: Download Coverity Build Tool
+        run: |
+          wget -q https://scan.coverity.com/download/cxx/linux64 --post-data "token=$TOKEN&project=xdp-project%2Fxdp-tools" -O cov-analysis-linux64.tar.gz
+          mkdir cov-analysis-linux64
+          tar xzf cov-analysis-linux64.tar.gz --strip 1 -C cov-analysis-linux64
+        env:
+          TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
+
+      - name: Configure
+        run: ./configure
+
+      - name: Build with cov-build
+        run: |
+          export PATH=`pwd`/cov-analysis-linux64/bin:$PATH
+          cov-build --dir cov-int make
+
+      - name: Submit the result to Coverity Scan
+        run: |
+          tar czvf xdp-tools.tgz cov-int
+          curl \
+            --form project=xdp-project/xdp-tools \
+            --form token=$TOKEN \
+            --form email=toke@redhat.com \
+            --form file=@xdp-tools.tgz \
+            --form version=trunk \
+            --form description="xdp-tools" \
+            https://scan.coverity.com/builds?project=xdp-project%2Fxdp-tools
+        env:
+          TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
