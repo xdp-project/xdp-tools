@@ -1611,7 +1611,7 @@ static void unload_xdp_trace_program(struct dumpopt *cfg,
  *****************************************************************************/
 static bool capture_on_interface(struct dumpopt *cfg)
 {
-	int                          err;
+	int                          err, cnt;
 	bool                         rc = false;
 	bool                         load_xdp = false;
 	bool                         promiscuous = false;
@@ -1801,12 +1801,18 @@ static bool capture_on_interface(struct dumpopt *cfg)
 					PERF_MMAP_PAGE_COUNT,
 					&perf_opts);
 
+	if (perf_buf == NULL) {
+		pr_warn("ERROR: Failed to allocate raw perf buffer: %s(%d)",
+			strerror(errno), errno);
+		goto error_exit;
+	}
+
 	/* Loop trough the dumper */
 	while (!exit_xdpdump) {
-		err = perf_buffer__poll(perf_buf, 1000);
-		if (err < 0 && err != -EINTR) {
+		cnt = perf_buffer__poll(perf_buf, 1000);
+		if (cnt < 0 && errno != EINTR) {
 			pr_warn("ERROR: Perf buffer polling failed: %s(%d)",
-				strerror(-err), err);
+				strerror(errno), errno);
 			goto error_exit;
 		}
 	}
