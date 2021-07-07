@@ -90,6 +90,7 @@ make install V=1
 %{_mandir}/man8/*
 %{_libdir}/bpf/xdpfilt_*.o
 %{_libdir}/bpf/xdpdump_*.o
+%{_libdir}/bpf/xsk_def_xdp_prog*.o
 %{_datadir}/xdp-tools/
 %license LICENSES/*
 
