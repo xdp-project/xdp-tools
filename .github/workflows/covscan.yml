@@ -1,7 +1,9 @@
 name: coverity-scan
 on:
   schedule:
-    - cron: '0 18 * * *' # Daily at 18:00 UTC
+    - cron: '0 18 * * 0' # Sundays at 18:00 UTC
+  push:
+    branches: [ "coverity_scan" ]
 
 jobs:
   latest:
