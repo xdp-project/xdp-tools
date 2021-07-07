@@ -76,10 +76,13 @@ To release a new version of xdp-tools, follow these steps:
    =cd $FEDORA_DISTGIT_DIR && fedpkg scratch-build --srpm ~/rpmbuild/SRPMS/xdp-tools-$VERSION.fcXX.src.rpm=
 
 7. Sync the xdp-tools.spec file to dist-git (but don't commit anything yet):
-   - For Fedora, just copy over the new version
-   - For RHEL, copy over the new version, then manually inspect the git diff and
-     revert any changes specific to RHEL. This is mainly the changelog and the
-     =__brp_strip= defines.
+   - For both RHEL and Fedora, copy over the new version, then manually inspect
+     the git diff and revert any changes that undo previous modifications in
+     that distro. For Fedora, this is mainly changelog entries by rebuild bots,
+     and for RHEL it's mainly the changelog, the =__brp_strip= defines and the
+     symlinks to earlier .so versions for libxdp.
+   - For RHEL also manually create a new symlink entry to the previous .so-version
+     and add it to the file list.
 
    Make sure to be on the right branch in each dist-git.
 
