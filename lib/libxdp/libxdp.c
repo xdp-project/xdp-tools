@@ -2712,7 +2712,7 @@ int libxdp_clean_references(int ifindex)
 		err = -errno;
 		pr_debug("Failed to open bpffs directory: %s\n",
 			 strerror(-err));
-		goto err;
+		goto out;
 	}
 
 	for (struct dirent *dent = readdir(d); dent; dent = readdir(d)) {
@@ -2733,11 +2733,11 @@ int libxdp_clean_references(int ifindex)
 				dir_prog_id, path_ifindex, dent->d_name);
 			err = remove_pin_dir(dent->d_name);
 			if (err)
-				goto err;
+				break;
 		}
 	}
-err:
 	closedir(d);
+out:
 	xdp_lock_release(lock_fd);
 	return err;
 }
