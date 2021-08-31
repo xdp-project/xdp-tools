@@ -44,12 +44,13 @@ struct xdp_buff {
 /*****************************************************************************
  * Local definitions and global variables
  *****************************************************************************/
-struct bpf_map_def SEC("maps") xdpdump_perf_map = {
-	.type = BPF_MAP_TYPE_PERF_EVENT_ARRAY,
-	.key_size = sizeof(int),
-	.value_size = sizeof(__u32),
-	.max_entries = MAX_CPUS,
-};
+struct {
+	__uint(type, BPF_MAP_TYPE_PERF_EVENT_ARRAY);
+	__uint(max_entries, MAX_CPUS);
+	__type(key, int);
+	__type(value, __u32);
+} xdpdump_perf_map SEC(".maps");
+
 
 /*****************************************************************************
  * .data section value storing the capture configuration
