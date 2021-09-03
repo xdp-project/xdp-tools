@@ -1770,7 +1770,7 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 		}
 
 		if (map_info.key_size != sizeof(map_key) ||
-		map_info.value_size != sizeof(mp->config)) {
+		    map_info.value_size != sizeof(mp->config)) {
 			pr_warn("Map key or value size mismatch\n");
 			err = -EINVAL;
 			goto out;
