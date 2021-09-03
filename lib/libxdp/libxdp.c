@@ -1759,12 +1759,13 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 
 		map_fd = bpf_map_get_fd_by_id(*map_id);
 		if (map_fd < 0) {
-			err = map_fd;
+			err = -errno;
 			pr_warn("Could not get config map fd for id %u: %s\n", *map_id, strerror(-err));
 			goto out;
 		}
 		err = bpf_obj_get_info_by_fd(map_fd, &map_info, &map_info_len);
 		if (err) {
+			err = -errno;
 			pr_warn("Couldn't get map info: %s\n", strerror(-err));
 			goto out;
 		}
@@ -1778,6 +1779,7 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 
 		err = bpf_map_lookup_elem(map_fd, &map_key, &mp->config);
 		if (err) {
+			err = -errno;
 			pr_warn("Could not lookup map value: %s\n", strerror(-err));
 			goto out;
 		}
@@ -1998,6 +2000,7 @@ static int xdp_multiprog__check_compat(struct xdp_multiprog *mp)
 
 	err = bpf_obj_pin(test_prog->link_fd, buf);
 	if (err) {
+		err = -errno;
 		pr_warn("Couldn't pin link FD at %s: %s\n", buf, strerror(-err));
 		goto out_locked;
 	}
@@ -2032,6 +2035,7 @@ static int find_prog_btf_id(const char *name, __u32 attach_prog_fd)
 
 	err = bpf_obj_get_info_by_fd(attach_prog_fd, &info, &info_size);
 	if (err) {
+		err = -errno;
 		pr_warn("failed get_prog_info for FD %d\n", attach_prog_fd);
 		return err;
 	}
@@ -2396,6 +2400,7 @@ static int xdp_multiprog__pin(struct xdp_multiprog *mp)
 
 		err = bpf_obj_pin(prog->link_fd, buf);
 		if (err) {
+			err = -errno;
 			pr_warn("Couldn't pin link FD at %s: %s\n", buf, strerror(-err));
 			goto err_unpin;
 		}
@@ -2409,6 +2414,7 @@ static int xdp_multiprog__pin(struct xdp_multiprog *mp)
 
 		err = bpf_obj_pin(prog->prog_fd, buf);
 		if (err) {
+			err = -errno;
 			pr_warn("Couldn't pin prog FD at %s: %s\n", buf, strerror(-err));
 			goto err_unpin;
 		}
