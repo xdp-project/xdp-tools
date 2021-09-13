@@ -15,6 +15,7 @@
 #include <arpa/inet.h>
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
+#include <dirent.h>
 #include <linux/err.h>
 #include <linux/ethtool.h>
 #include <linux/filter.h>
@@ -398,6 +399,36 @@ static enum xdp_attach_mode xsk_convert_xdp_flags(__u32 xdp_flags)
 	return XDP_MODE_NATIVE;
 }
 
+#define MAX_DEV_QUEUE_PATH_LEN 64
+
+static void xsk_get_queues_from_sysfs(const char* ifname, __u32 *rx, __u32 *tx) {
+	char buf[MAX_DEV_QUEUE_PATH_LEN];
+	struct dirent *entry;
+	DIR *dir;
+	int err;
+
+	*rx = *tx = 0;
+
+	err = try_snprintf(buf, MAX_DEV_QUEUE_PATH_LEN,
+			"/sys/class/net/%s/queues/", ifname);
+	if (err)
+		return;
+
+	dir = opendir(buf);
+	if(dir == NULL)
+		return;
+
+	while((entry = readdir(dir))) {
+		if (0 == strncmp(entry->d_name, "rx", 2))
+			++*rx;
+
+		if (0 == strncmp(entry->d_name, "tx", 2))
+			++*tx;
+	}
+
+	closedir(dir);
+}
+
 static int xsk_get_max_queues(char *ifname)
 {
 	struct ethtool_channels channels = { .cmd = ETHTOOL_GCHANNELS };
@@ -418,10 +449,13 @@ static int xsk_get_max_queues(char *ifname)
 	}
 
 	if (err) {
-		/* If the device says it has no channels, then all traffic
+		/* If the device says it has no channels, 
+		 * try to get rx tx from sysfs, otherwise all traffic
 		 * is sent to a single stream, so max queues = 1.
 		 */
-		ret = 1;
+		__u32 rx, tx;
+		xsk_get_queues_from_sysfs(ifr.ifr_name, &rx, &tx);
+		ret = max(max(rx, tx), 1);
 	} else {
 		/* Take the max of rx, tx, combined. Drivers return
 		 * the number of channels in different ways.
