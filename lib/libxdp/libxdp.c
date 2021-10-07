@@ -37,6 +37,14 @@
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
 
+/* When cloning BPF fds, we want to make sure they don't end up as any of the
+ * standard stdin, stderr, stdout descriptors: fd 0 can confuse the kernel, and
+ * there are orchestration systems that will force-close the others if they
+ * don't point to the "right" things. So just to be safe, use 3 as the minimum
+ * fd number.
+ */
+#define MIN_FD 3
+
 static const char *dispatcher_feature_err =
 	"This means that the kernel does not support the features needed\n"
 	"by the multiprog dispatcher, either because it is too old entirely,\n"
@@ -1160,7 +1168,7 @@ static int xdp_program__load(struct xdp_program *prog)
 		 xdp_program__name(prog), bpf_program__fd(prog->bpf_prog));
 
 	/* Duplicate the descriptor, as xdp_program__fill_from_fd takes ownership */
-	int prog_fd = fcntl(bpf_program__fd(prog->bpf_prog), F_DUPFD_CLOEXEC, 1);
+	int prog_fd = fcntl(bpf_program__fd(prog->bpf_prog), F_DUPFD_CLOEXEC, MIN_FD);
 	if (prog_fd < 0) {
 		err = -errno;
 		pr_debug("Error on fcntl: %s", strerror(-err));
@@ -1181,7 +1189,7 @@ struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 	if (!prog || prog->prog_fd < 0)
 		return ERR_PTR(-EINVAL);
 
-	new_fd = fcntl(prog->prog_fd, F_DUPFD_CLOEXEC, 1);
+	new_fd = fcntl(prog->prog_fd, F_DUPFD_CLOEXEC, MIN_FD);
 	if (new_fd < 0) {
 		err = -errno;
 		pr_debug("Error on fcntl: %s\n", strerror(-err));
