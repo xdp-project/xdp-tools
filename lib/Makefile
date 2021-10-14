@@ -6,10 +6,10 @@ include defines.mk
 
 SUBDIRS=util libxdp testing
 
-all: $(OBJECT_LIBBPF)
-	@set -e; \
-	for i in $(SUBDIRS); \
-	do echo; echo "  $$i"; $(MAKE) -C $$i; done
+all: $(SUBDIRS)
+
+$(SUBDIRS): $(OBJECT_LIBBPF)
+	@echo; echo "  $@"; $(MAKE) -C $@
 
 .PHONY: clean
 clean: libbpf_clean
