@@ -27,6 +27,9 @@ lib: config.mk check_submodule
 libxdp: config.mk check_submodule
 	@echo; echo lib; $(MAKE) -C lib $@
 
+libxdp_install: libxdp
+	@$(MAKE) -C lib $@
+
 $(UTILS): lib
 	@echo; echo $@; $(MAKE) -C $@
 

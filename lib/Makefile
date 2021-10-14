@@ -16,10 +16,14 @@ clean: libbpf_clean
 	@for i in $(SUBDIRS); \
 	do $(MAKE) -C $$i clean; done
 
-install:
+.PHONY: install
+install: libxdp_install
+	$(MAKE) -C testing install
+
+.PHONY: libxdp_install
+libxdp_install: libxdp
 	install -m 0755 -d $(DESTDIR)$(HDRDIR)
 	$(MAKE) -C libxdp install
-	$(MAKE) -C testing install
 
 libbpf: $(OBJECT_LIBBPF)
 
