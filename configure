@@ -184,17 +184,11 @@ check_libbpf()
 {
     local libbpf_err
 
-    if [ "${FORCE_SUBDIR_LIBBPF:-0}" -ne "1" ] && ${PKG_CONFIG} libbpf --exists || [ -n "$LIBBPF_DIR" ]; then
+    if [ "${FORCE_SUBDIR_LIBBPF:-0}" -ne "1" ] && ${PKG_CONFIG} libbpf --exists && [ -z "$LIBBPF_DIR" ]; then
 
-        if [ -n "$LIBBPF_DIR" ]; then
-            LIBBPF_CFLAGS="-I${LIBBPF_DIR}/include -L${LIBBPF_DIR}/lib"
-            LIBBPF_LDLIBS="-lbpf"
-            LIBBPF_VERSION=$(get_libbpf_version "$LIBBPF_DIR")
-        else
-            LIBBPF_CFLAGS=$(${PKG_CONFIG} libbpf --cflags)
-            LIBBPF_LDLIBS=$(${PKG_CONFIG} libbpf --libs)
-            LIBBPF_VERSION=$(${PKG_CONFIG} libbpf --modversion)
-        fi
+        LIBBPF_CFLAGS=$(${PKG_CONFIG} libbpf --cflags)
+        LIBBPF_LDLIBS=$(${PKG_CONFIG} libbpf --libs)
+        LIBBPF_VERSION=$(${PKG_CONFIG} libbpf --modversion)
 
         cat >$TMPDIR/libbpftest.c <<EOF
 #include <bpf/libbpf.h>
@@ -236,15 +230,27 @@ EOF
         exit 1
     fi
 
-    LIBBPF_VERSION=$(get_libbpf_version "lib/libbpf/src")
-    echo "submodule v$LIBBPF_VERSION"
+    if [ -n "$LIBBPF_DIR" ]; then
+        [ -z "$LIBBPF_INCLUDE_DIR" ] && LIBBPF_INCLUDE_DIR="$(readlink -m ${LIBBPF_DIR}/include)"
+        [ -z "$LIBBPF_LIB_DIR" ] && LIBBPF_LIB_DIR="$(readlink -m ${LIBBPF_DIR}/src)"
+        LIBBPF_VERSION=$(get_libbpf_version "$LIBBPF_DIR/src")
+        OBJECT_LIBBPF=
+        echo "custom v$LIBBPF_VERSION"
+    else
+        LIBBPF_VERSION=$(get_libbpf_version "lib/libbpf/src")
+        LIBBPF_INCLUDE_DIR='$(LIB_DIR)/libbpf/src/root/usr/include'
+        LIBBPF_LIB_DIR='$(LIB_DIR)/libbpf/src'
+        OBJECT_LIBBPF="${LIBBPF_LIB_DIR}/libbpf.a"
+        echo "submodule v$LIBBPF_VERSION"
+    fi
+
     echo "SYSTEM_LIBBPF:=n" >> $CONFIG
     echo "LIBBPF_VERSION=$LIBBPF_VERSION" >>$CONFIG
-    echo 'CFLAGS += -I$(LIB_DIR)/libbpf/src/root/usr/include' >>$CONFIG
-    echo 'BPF_CFLAGS += -I$(LIB_DIR)/libbpf/src/root/usr/include' >>$CONFIG
-    echo 'LDFLAGS += -L$(LIB_DIR)/libbpf/src' >>$CONFIG
+    echo "CFLAGS += -I${LIBBPF_INCLUDE_DIR}" >>$CONFIG
+    echo "BPF_CFLAGS += -I${LIBBPF_INCLUDE_DIR}" >>$CONFIG
+    echo "LDFLAGS += -L${LIBBPF_LIB_DIR}" >>$CONFIG
     echo 'LDLIBS += -l:libbpf.a' >>$CONFIG
-    echo 'OBJECT_LIBBPF = $(LIB_DIR)/libbpf/src/libbpf.a' >>$CONFIG
+    echo "OBJECT_LIBBPF = ${OBJECT_LIBBPF}" >>$CONFIG
     if ! [ -d "lib/libbpf/src" ] && [ -f ".gitmodules" ] && [ -e ".git" ]; then
         git submodule init && git submodule update
     fi
