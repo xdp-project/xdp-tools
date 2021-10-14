@@ -17,12 +17,15 @@ include version.mk
 
 UTILS := xdp-filter xdp-loader xdp-dump
 SUBDIRS := lib $(UTILS)
-.PHONY: check_submodule help clobber distclean clean install test $(SUBDIRS)
+.PHONY: check_submodule help clobber distclean clean install test libxdp $(SUBDIRS)
 
 all: $(SUBDIRS)
 
 lib: config.mk check_submodule
 	@echo; echo $@; $(MAKE) -C $@
+
+libxdp: config.mk check_submodule
+	@echo; echo lib; $(MAKE) -C lib $@
 
 $(UTILS): lib
 	@echo; echo $@; $(MAKE) -C $@
