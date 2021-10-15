@@ -237,7 +237,7 @@ paper
 (http://vger.kernel.org/lpc_net2018_talks/lpc18_pres_af_xdp_perf-v3.pdf)
 and the documentation in the Linux kernel
 (Documentation/networking/af_xdp.rst or
-https://www.kernel.org/doc/Documentation/networking/af_xdp.rst).
+https://www.kernel.org/doc/html/latest/networking/af_xdp.html).
 
 For an example on how to use the interface, take a look at the sample
 application in the Linux kernel source tree at samples/bpf/xdpsock_user.c.
