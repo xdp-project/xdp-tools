@@ -5,6 +5,7 @@ LIB_DIR = .
 include defines.mk
 
 SUBDIRS=util libxdp testing
+.PHONY: $(SUBDIRS)
 
 all: $(SUBDIRS)
 
