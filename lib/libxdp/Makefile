@@ -33,9 +33,7 @@ SHARED_LIBS := $(OBJDIR)/libxdp.so \
 	       $(OBJDIR)/libxdp.so.$(LIBXDP_MAJOR_VERSION) \
 	       $(OBJDIR)/libxdp.so.$(LIBXDP_VERSION)
 VERSION_SCRIPT := libxdp.map
-check: check_abi
-else
-check:
+CHECK_RULES := check_abi
 endif
 
 all: $(STATIC_LIBS) $(SHARED_LIBS) $(XDP_OBJS) $(PC_FILE) check man
@@ -100,6 +98,7 @@ GLOBAL_SYM_COUNT = $(shell readelf -s --wide $(XDP_IN_SHARED) | \
 VERSIONED_SYM_COUNT = $(shell readelf --dyn-syms --wide $(OBJDIR)/libxdp.so | \
 			      grep -Eo '[^ ]+@LIBXDP_' | cut -d@ -f1 | sort -u | wc -l)
 
+check: $(CHECK_RULES)
 
 check_abi: $(OBJDIR)/libxdp.so
 	@if [ "$(GLOBAL_SYM_COUNT)" != "$(VERSIONED_SYM_COUNT)" ]; then	 \
