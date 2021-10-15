@@ -58,7 +58,7 @@ install: all
 	$(if $(MAN_FILES),$(Q)install -m 0644 $(MAN_FILES) $(DESTDIR)$(MANDIR)/man3)
 
 
-$(OBJDIR)/libxdp.a: $(STATIC_OBJS)
+$(OBJDIR)/libxdp.a: $(STATIC_OBJS) $(XDP_OBJS)
 	$(QUIET_LINK)$(AR) rcs $@ $^
 
 $(OBJDIR)/libxdp.so: $(OBJDIR)/libxdp.so.$(LIBXDP_MAJOR_VERSION)
@@ -67,7 +67,7 @@ $(OBJDIR)/libxdp.so: $(OBJDIR)/libxdp.so.$(LIBXDP_MAJOR_VERSION)
 $(OBJDIR)/libxdp.so.$(LIBXDP_MAJOR_VERSION): $(OBJDIR)/libxdp.so.$(LIBXDP_VERSION)
 	$(Q)ln -sf $(^F) $@
 
-$(OBJDIR)/libxdp.so.$(LIBXDP_VERSION): $(SHARED_OBJS)
+$(OBJDIR)/libxdp.so.$(LIBXDP_VERSION): $(SHARED_OBJS) $(XDP_OBJS)
 	$(QUIET_LINK)$(CC) -shared -Wl,-soname,libxdp.so.$(LIBXDP_MAJOR_VERSION) \
 		      -Wl,--version-script=$(VERSION_SCRIPT) \
 		      $^ $(LDFLAGS) $(LDLIBS) -o $@
