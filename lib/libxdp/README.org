@@ -15,7 +15,7 @@ attaching XDP programs to network interfaces and using AF_XDP
 sockets. The library is fairly lightweight and relies on =libbpf= to
 do the heavy lifting for processing eBPF object files etc.
 
-=Libxdp= provides two primary features on top of =libbpf=The first is
+=Libxdp= provides two primary features on top of =libbpf=. The first is
 the ability to load multiple XDP programs in sequence on a single
 network device (which is not natively supported by the kernel). This
 support relies on the =freplace= functionality in the kernel, which
