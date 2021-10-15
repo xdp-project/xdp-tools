@@ -335,7 +335,7 @@ The functions below are used for reading and writing the descriptors
 of the rings. xsk_ring_prod__fill_addr() and xsk_ring_prod__tx_desc()
 writes entries in the fill and Tx rings respectively, while
 xsk_ring_cons__comp_addr and xsk_ring_cons__rx_desc reads entries from
-the completion and Rx rings respectively. The idx is the paramter
+the completion and Rx rings respectively. The idx is the parameter
 returned in the xsk_ring_prod__reserve or xsk_ring_cons__peek
 calls. To advance to the next entry, simply do idx++.
 
