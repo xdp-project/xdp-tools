@@ -297,7 +297,8 @@ require privileges and can be executed from some form of control
 process that has the necessary privileges. The xsk_socket__create
 executed on the non-privileged process will then skip these two
 steps. For an example on how to use these, please take a look at
-samples/bpf/xdpsock_user.c and samples/bpf/xdpsock_ctrl_proc.c in the
+[[https://github.com/torvalds/linux/blob/master/samples/bpf/xdpsock_user.c][samples/bpf/xdpsock_user.c]]
+and [[https://github.com/torvalds/linux/blob/master/samples/bpf/xdpsock_ctrl_proc.c][samples/bpf/xdpsock_ctrl_proc.c]] in the
 Linux kernel source tree.
 
 #+begin_src C
@@ -378,7 +379,8 @@ int xsk_ring_prod__needs_wakeup(const struct xsk_ring_prod *r);
 
 For an example on how to use all these APIs, take a look at the sample
 applications in the Linux kernel source tree at
-samples/bpf/xdpsock_user.c and samples/bpf/xsk_fwd.c.
+[[https://github.com/torvalds/linux/blob/master/samples/bpf/xdpsock_user.c][samples/bpf/xdpsock_user.c]] and
+[[https://github.com/torvalds/linux/blob/master/samples/bpf/xsk_fwd.c][samples/bpf/xsk_fwd.c]].
 
 * BUGS
 Please report any bugs on Github: https://github.com/xdp-project/xdp-tools/issues
