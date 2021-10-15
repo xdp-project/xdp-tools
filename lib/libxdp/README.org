@@ -334,11 +334,11 @@ void xsk_ring_cons__release(struct xsk_ring_cons *cons, __u32 nb);
 
 The functions below are used for reading and writing the descriptors
 of the rings. xsk_ring_prod__fill_addr() and xsk_ring_prod__tx_desc()
-writes entries in the fill and Tx rings respectively, while
-xsk_ring_cons__comp_addr and xsk_ring_cons__rx_desc reads entries from
-the completion and Rx rings respectively. The idx is the parameter
+*writes* entries in the fill and Tx rings respectively, while
+xsk_ring_cons__comp_addr and xsk_ring_cons__rx_desc *reads* entries from
+the completion and Rx rings respectively. The =idx= is the parameter
 returned in the xsk_ring_prod__reserve or xsk_ring_cons__peek
-calls. To advance to the next entry, simply do idx++.
+calls. To advance to the next entry, simply do =idx++=.
 
 #+begin_src C
 __u64 *xsk_ring_prod__fill_addr(struct xsk_ring_prod *fill, __u32 idx);
@@ -364,12 +364,12 @@ __u64 xsk_umem__add_offset_to_addr(__u64 addr);
 
 There is one more function in the data path and that checks if the
 need_wakeup flag is set. Use of this flag is highly encouraged and
-should be enabled by setting XDP_USE_NEED_WAKEUP bit in the
-xdp_bind_flags field that is provided to the
+should be enabled by setting =XDP_USE_NEED_WAKEUP= bit in the
+=xdp_bind_flags= field that is provided to the
 xsk_socket_create_[shared]() calls. If this function returns true,
-then you need to call recvmsg(), sendto(), or poll() depending on the
-situation. recvmsg() if you are receiving, or sendto() if you are
-sending. poll() can be used for both cases and provide the ability to
+then you need to call =recvmsg()=, =sendto()=, or =poll()= depending on the
+situation. =recvmsg()= if you are *receiving*, or =sendto()= if you are
+*sending*. =poll()= can be used for both cases and provide the ability to
 sleep too, as with any other socket. But note that poll is a slower
 operation than the other two.
 
