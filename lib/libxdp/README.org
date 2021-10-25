@@ -15,7 +15,7 @@ attaching XDP programs to network interfaces and using AF_XDP
 sockets. The library is fairly lightweight and relies on =libbpf= to
 do the heavy lifting for processing eBPF object files etc.
 
-=Libxdp= provides two primary features on top of =libbpf=The first is
+=Libxdp= provides two primary features on top of =libbpf=. The first is
 the ability to load multiple XDP programs in sequence on a single
 network device (which is not natively supported by the kernel). This
 support relies on the =freplace= functionality in the kernel, which
@@ -237,7 +237,7 @@ paper
 (http://vger.kernel.org/lpc_net2018_talks/lpc18_pres_af_xdp_perf-v3.pdf)
 and the documentation in the Linux kernel
 (Documentation/networking/af_xdp.rst or
-https://www.kernel.org/doc/Documentation/networking/af_xdp.rst).
+https://www.kernel.org/doc/html/latest/networking/af_xdp.html).
 
 For an example on how to use the interface, take a look at the sample
 application in the Linux kernel source tree at samples/bpf/xdpsock_user.c.
@@ -297,7 +297,8 @@ require privileges and can be executed from some form of control
 process that has the necessary privileges. The xsk_socket__create
 executed on the non-privileged process will then skip these two
 steps. For an example on how to use these, please take a look at
-samples/bpf/xdpsock_user.c and samples/bpf/xdpsock_ctrl_proc.c in the
+[[https://github.com/torvalds/linux/blob/master/samples/bpf/xdpsock_user.c][samples/bpf/xdpsock_user.c]]
+and [[https://github.com/torvalds/linux/blob/master/samples/bpf/xdpsock_ctrl_proc.c][samples/bpf/xdpsock_ctrl_proc.c]] in the
 Linux kernel source tree.
 
 #+begin_src C
@@ -333,11 +334,11 @@ void xsk_ring_cons__release(struct xsk_ring_cons *cons, __u32 nb);
 
 The functions below are used for reading and writing the descriptors
 of the rings. xsk_ring_prod__fill_addr() and xsk_ring_prod__tx_desc()
-writes entries in the fill and Tx rings respectively, while
-xsk_ring_cons__comp_addr and xsk_ring_cons__rx_desc reads entries from
-the completion and Rx rings respectively. The idx is the paramter
+*writes* entries in the fill and Tx rings respectively, while
+xsk_ring_cons__comp_addr and xsk_ring_cons__rx_desc *reads* entries from
+the completion and Rx rings respectively. The =idx= is the parameter
 returned in the xsk_ring_prod__reserve or xsk_ring_cons__peek
-calls. To advance to the next entry, simply do idx++.
+calls. To advance to the next entry, simply do =idx++=.
 
 #+begin_src C
 __u64 *xsk_ring_prod__fill_addr(struct xsk_ring_prod *fill, __u32 idx);
@@ -363,12 +364,12 @@ __u64 xsk_umem__add_offset_to_addr(__u64 addr);
 
 There is one more function in the data path and that checks if the
 need_wakeup flag is set. Use of this flag is highly encouraged and
-should be enabled by setting XDP_USE_NEED_WAKEUP bit in the
-xdp_bind_flags field that is provided to the
+should be enabled by setting =XDP_USE_NEED_WAKEUP= bit in the
+=xdp_bind_flags= field that is provided to the
 xsk_socket_create_[shared]() calls. If this function returns true,
-then you need to call recvmsg(), sendto(), or poll() depending on the
-situation. recvmsg() if you are receiving, or sendto() if you are
-sending. poll() can be used for both cases and provide the ability to
+then you need to call =recvmsg()=, =sendto()=, or =poll()= depending on the
+situation. =recvmsg()= if you are *receiving*, or =sendto()= if you are
+*sending*. =poll()= can be used for both cases and provide the ability to
 sleep too, as with any other socket. But note that poll is a slower
 operation than the other two.
 
@@ -378,7 +379,8 @@ int xsk_ring_prod__needs_wakeup(const struct xsk_ring_prod *r);
 
 For an example on how to use all these APIs, take a look at the sample
 applications in the Linux kernel source tree at
-samples/bpf/xdpsock_user.c and samples/bpf/xsk_fwd.c.
+[[https://github.com/torvalds/linux/blob/master/samples/bpf/xdpsock_user.c][samples/bpf/xdpsock_user.c]] and
+[[https://github.com/torvalds/linux/blob/master/samples/bpf/xsk_fwd.c][samples/bpf/xsk_fwd.c]].
 
 * BUGS
 Please report any bugs on Github: https://github.com/xdp-project/xdp-tools/issues
