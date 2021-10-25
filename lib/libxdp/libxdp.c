@@ -1697,38 +1697,37 @@ err:
 static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 				       int prog_fd, int hw_fd)
 {
-	__u32 *map_id, map_key = 0, map_info_len = sizeof(struct bpf_map_info);
-	struct bpf_prog_info_linear *info_linear = NULL;
+	__u32 map_key = 0, map_info_len = sizeof(struct bpf_map_info);
 	struct bpf_map_info map_info = {};
-	struct bpf_prog_info *info;
+	struct bpf_prog_info info = {};
+	__u32 info_len, map_id = 0;
 	struct xdp_program *prog;
 	struct btf *btf = NULL;
-	__u64 arrays;
 	int err = 0;
 	int map_fd;
 
 	if (!mp)
 		return -EINVAL;
 
-	arrays = (1UL << BPF_PROG_INFO_MAP_IDS);
-
 	if (prog_fd > 0) {
-		info_linear = bpf_program__get_prog_info_linear(prog_fd, arrays);
-		if (IS_ERR_OR_NULL(info_linear)) {
+		info.nr_map_ids = 1;
+		info.map_ids = (__u64)&map_id;
+		info_len = sizeof(info);
+		err = bpf_obj_get_info_by_fd(prog_fd, &info, &info_len);
+		if (err) {
 			pr_warn("couldn't get program info for fd: %d", prog_fd);
 			return -EINVAL;
 		}
 
-		info = &info_linear->info;
-		if (!info->btf_id) {
-			pr_debug("No BTF for prog ID %u\n", info->id);
+		if (!info.btf_id) {
+			pr_debug("No BTF for prog ID %u\n", info.id);
 			mp->is_legacy = true;
 			goto legacy;
 		}
 
-		err = btf__get_from_id(info->btf_id, &btf);
+		err = btf__get_from_id(info.btf_id, &btf);
 		if (err) {
-			pr_warn("Couldn't get BTF for ID %ul\n", info->btf_id);
+			pr_warn("Couldn't get BTF for ID %ul\n", info.btf_id);
 			goto out;
 		}
 
@@ -1736,7 +1735,7 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 		if (err) {
 			if (err != -ENOENT) {
 				pr_warn("Dispatcher version check failed for ID %d\n",
-					info->id);
+					info.id);
 				goto out;
 			} else {
 				/* no dispatcher, mark as legacy prog */
@@ -1746,29 +1745,17 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 			}
 		}
 
-		if (info->nr_map_ids != 1) {
+		if (info.nr_map_ids != 1) {
 			pr_warn("Expected a single map for dispatcher, found %d\n",
-				info->nr_map_ids);
-			err = -EINVAL;
-			goto out;
-		}
-		/* We can't use info_linear->data pointer as we may have a
-		 * different notion of that than what libbpf was compiled with.
-		 * Instead, we need to get the size of info_linear->info as
-		 * communicated by libbpf, and compute the start of the data
-		 * using that.
-		 */
-		map_id = (void *)&info_linear->info + info_linear->info_len;
-		if (!*map_id) {
-			pr_warn("Couldn't get map ID for dispatcher program\n");
+				info.nr_map_ids);
 			err = -EINVAL;
 			goto out;
 		}
 
-		map_fd = bpf_map_get_fd_by_id(*map_id);
+		map_fd = bpf_map_get_fd_by_id(map_id);
 		if (map_fd < 0) {
 			err = -errno;
-			pr_warn("Could not get config map fd for id %u: %s\n", *map_id, strerror(-err));
+			pr_warn("Could not get config map fd for id %u: %s\n", map_id, strerror(-err));
 			goto out;
 		}
 		err = bpf_obj_get_info_by_fd(map_fd, &map_info, &map_info_len);
@@ -1833,7 +1820,6 @@ legacy:
 	mp->is_loaded = true;
 
 out:
-	free(info_linear);
 	return err;
 }
 
