@@ -1747,11 +1747,8 @@ static bool capture_on_interface(struct dumpopt *cfg)
 
 	/* Determine the perf wakeup_events value to use */
 #ifdef HAVE_LIBBPF_PERF_BUFFER__CONSUME
-	if (cfg->perf_wakeup) {
-		perf_attr.wakeup_events = cfg->perf_wakeup;
-	} else {
-		if (cfg->pcap_file &&
-		    cfg->pcap_file[0] == '-' && cfg->pcap_file[1] == 0) {
+	if (cfg->pcap_file) {
+		if (cfg->pcap_file[0] == '-' && cfg->pcap_file[1] == 0) {
 			/* If we pipe trough stdio we do not want to buffer
 			 * any packets in the perf ring.
 			 */
@@ -1769,7 +1766,13 @@ static bool capture_on_interface(struct dumpopt *cfg)
 				perf_attr.wakeup_events = min(PERF_MAX_WAKEUP_EVENTS,
 							      events);
 		}
+	} else {
+		/* Only buffer in perf ring when using pcap_file */
+		perf_attr.wakeup_events = 1;
 	}
+	/* Cmdline option --perf-wakeup can override buffering levels */
+	if (cfg->perf_wakeup)
+		perf_attr.wakeup_events = cfg->perf_wakeup;
 #endif
 	pr_debug("perf-wakeup value uses is %u\n", perf_attr.wakeup_events);
 
