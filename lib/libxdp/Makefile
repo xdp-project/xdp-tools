@@ -16,6 +16,10 @@ STATIC_OBJS := $(addprefix $(STATIC_OBJDIR)/,$(OBJS))
 STATIC_LIBS := $(OBJDIR)/libxdp.a
 MAN_PAGE := libxdp.3
 MAN_OBJ := ${MAN_PAGE:.3=.man}
+TEST_DIR := tests
+TEST_FILE := $(TEST_DIR)/test-libxdp.sh
+TEST_CFLAGS := $(CFLAGS) -I$(realpath $(HEADER_DIR)) -L$(realpath $(OBJDIR)) -Wall -Werror $(LDFLAGS)
+TEST_LDLIBS := $(LDLIBS)
 
 SHARED_CFLAGS += -fPIC -DSHARED
 LIB_HEADERS := $(wildcard $(HEADER_DIR)/xdp/*.h)
@@ -153,3 +157,7 @@ $(MAN_PAGE): $(MAN_OBJ)
 	$(QUIET_GEN)sed -e "1 s/DATE/$(shell date '+%B %_d, %Y')/" -e "1 s/VERSION/v$(TOOLS_VERSION)/" $< > $@
 
 endif
+
+.PHONY: test
+test: all
+	$(Q)env CC="$(CC)" CFLAGS="$(TEST_CFLAGS)" LDLIBS="$(TEST_LDLIBS)" V=$(V) $(TEST_DIR)/test_runner.sh $(TEST_FILE)
