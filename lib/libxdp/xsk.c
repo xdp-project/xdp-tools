@@ -33,7 +33,6 @@
 #include <xdp/xsk.h>
 
 #include "libxdp_internal.h"
-#include "util.h"
 #include "xsk_def_xdp_prog.h"
 #include "bpf_instr.h"
 
@@ -638,8 +637,6 @@ static int __xsk_setup_xdp_prog(struct xsk_socket *xsk, int *xsks_map_fd)
 	struct xdp_program *prog;
 	const char *file_name;
 	int err;
-
-	silence_libbpf_logging();
 
 	prog = xsk_lookup_program(ctx->ifindex);
 	if (IS_ERR(prog))

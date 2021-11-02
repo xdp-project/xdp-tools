@@ -4,7 +4,6 @@ LIB_DIR = ..
 
 include libxdp.mk
 include $(LIB_DIR)/defines.mk
-include $(LIB_DIR)/util/util.mk
 
 OBJDIR ?= .
 SHARED_OBJDIR := $(OBJDIR)/sharedobjs
@@ -28,7 +27,7 @@ EXTRA_LIB_DEPS := $(OBJECT_LIBBPF) $(LIBMK) $(LIB_OBJS) $(LIB_HEADERS) compat.h 
 PC_FILE := $(OBJDIR)/libxdp.pc
 TEMPLATED_SOURCES := xdp-dispatcher.c
 
-CFLAGS += -I$(HEADER_DIR) -I$(LIB_DIR)/util
+CFLAGS += -I$(HEADER_DIR)
 BPF_CFLAGS += -I$(HEADER_DIR)
 
 
