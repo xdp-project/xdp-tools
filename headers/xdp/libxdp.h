@@ -11,6 +11,7 @@
 
 #include <stdio.h>
 #include <linux/bpf.h>
+#include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 #include "xdp_helpers.h"
 
