@@ -72,7 +72,7 @@ install: all
 	do $(MAKE) -C $$i install; done
 
 test: all
-	@for i in $(UTILS); do \
+	@for i in lib/libxdp $(UTILS); do \
 		echo; echo test $$i; $(MAKE) -C $$i test; \
 		if [ $$? -ne 0 ]; then failed="y"; fi; \
 	done; \

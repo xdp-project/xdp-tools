@@ -152,23 +152,6 @@ static char *libxdp_strerror_r(int err, char *dst, size_t size)
 	return dst;
 }
 
-static int try_snprintf(char *buf, size_t buf_len, const char *format, ...)
-{
-	va_list args;
-	int len;
-
-	va_start(args, format);
-	len = vsnprintf(buf, buf_len, format, args);
-	va_end(args);
-
-	if (len < 0)
-		return -EINVAL;
-	else if ((size_t)len >= buf_len)
-		return -ENAMETOOLONG;
-
-	return 0;
-}
-
 static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
 {
 	struct statfs st_fs;
