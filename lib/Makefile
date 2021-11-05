@@ -4,17 +4,20 @@ LIBBPF_CFLAGS:=$(if $(CFLAGS),$(CFLAGS),-g -O2 -Werror -Wall) -fPIC
 LIB_DIR = .
 include defines.mk
 
-SUBDIRS=util libxdp testing
+SUBDIRS=util testing
 .PHONY: $(SUBDIRS)
 
-all: $(SUBDIRS)
+all: $(SUBDIRS) libxdp
 
-$(SUBDIRS): $(OBJECT_LIBBPF)
+$(SUBDIRS): libxdp
+	@echo; echo "  $@"; $(MAKE) -C $@
+
+libxdp: $(OBJECT_LIBBPF)
 	@echo; echo "  $@"; $(MAKE) -C $@
 
 .PHONY: clean
 clean: libbpf_clean
-	@for i in $(SUBDIRS); \
+	@for i in $(SUBDIRS) libxdp; \
 	do $(MAKE) -C $$i clean; done
 
 .PHONY: install
