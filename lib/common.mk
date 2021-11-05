@@ -15,6 +15,7 @@ XDP_OBJ = ${XDP_C:.c=.o}
 USER_C := ${USER_TARGETS:=.c}
 USER_OBJ := ${USER_C:.c=.o}
 XDP_OBJ_INSTALL ?= $(XDP_OBJ)
+MAN_FILES := $(MAN_PAGE)
 
 # Expect this is defined by including Makefile, but define if not
 LIB_DIR ?= ../lib
@@ -62,7 +63,7 @@ all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) $(DISPATCHER_OBJ) man
 
 .PHONY: clean
 clean::
-	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(USER_GEN) $(MAN_PAGE) *.ll
+	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(USER_GEN) *.ll
 
 .PHONY: install
 install: all install_local
@@ -121,11 +122,9 @@ $(XDP_OBJ): %.o: %.c $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEADERS) $(LIBMK)
 
 .PHONY: man
 ifeq ($(EMACS),)
-man:
-MAN_FILES :=
+man: ;
 else
 man: $(MAN_PAGE)
-MAN_FILES := $(MAN_PAGE)
 $(MAN_PAGE): README.org $(LIBMK) $(LIB_DIR)/export-man.el
 	$(QUIET_GEN)$(EMACS) -Q --batch --load "$(LIB_DIR)/export-man.el" \
 		--eval "(export-man-page \"$@\" \"$<\" \"$(HAVE_FEATURES)\" \"v$(TOOLS_VERSION)\")"

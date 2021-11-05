@@ -1,0 +1,229 @@
+.TH "xdp-loader" "8" "NOVEMBER  5, 2021" "V1.2.0" "XDP program loader" 
+
+.SH "XDP-loader - an XDP program loader"
+.PP
+XDP-loader is a simple loader for XDP programs with support for attaching
+multiple programs to the same interface. To achieve this it exposes the same
+load and unload semantics exposed by the libxdp library.
+
+
+.SS "Running xdp-loader"
+.PP
+The syntax for running xdp-loader is:
+
+.RS
+.nf
+\fCxdp-loader COMMAND [options]
+
+Where COMMAND can be one of:
+       load        - load an XDP program on an interface
+       unload      - unload an XDP program from an interface
+       status      - show current XDP program status
+       clean       - clean up detached program links in XDP bpffs directory
+       help        - show the list of available commands
+\fP
+.fi
+.RE
+
+.PP
+Each command, and its options are explained below. Or use \fIxdp\-loader COMMAND
+\-\-help\fP to see the options for each command.
+
+.SH "The LOAD command"
+.PP
+The \fIload\fP command loads one or more XDP programs onto an interface.
+
+.PP
+The syntax for the \fIload\fP command is:
+
+.PP
+\fIxdp\-loader load [options] <ifname> <programs>\fP
+
+.PP
+Where \fI<ifname>\fP is the name of the interface to load the programs onto, and the
+\fI<programs>\fP is one or more file names containing XDP programs. The programs
+will be loaded onto the interface in the order of their preference, as
+specified by the program metadata (see \fBlibxdp(3)\fP).
+
+.PP
+The supported options are:
+
+.SS "-m, --mode <mode>"
+.PP
+Specifies which mode to load the XDP program to be loaded in. The valid values
+are 'native', which is the default in-driver XDP mode, 'skb', which causes the
+so-called \fIskb mode\fP (also known as \fIgeneric XDP\fP) to be used, 'hw' which causes
+the program to be offloaded to the hardware, or 'unspecified' which leaves it up
+to the kernel to pick a mode (which it will do by picking native mode if the
+driver supports it, or generic mode otherwise). Note that using 'unspecified'
+can make it difficult to predict what mode a program will end up being loaded
+in. For this reason, the default is 'native'.
+
+.SS "-p, --pin-path <path>"
+.PP
+This specifies a root path under which to pin any maps that define the 'pinning'
+attribute in their definitions. This path must be located on a \fIbpffs\fP file
+system. If not set, maps will not be pinned, even if they specify pinning in
+their definitions. When pinning maps, if the pinned location for a map already
+exist, the map pinned there will be reused if it is compatible with the type of
+the map being loaded.
+
+.SS "-s, --section <section>"
+.PP
+Specify which ELF section to load the XDP program(s) from in each file. The
+default is to use the first program in each file. If this option is set, it
+applies to all programs being loaded.
+
+.SS "-v, --verbose"
+.PP
+Enable debug logging. Specify twice for even more verbosity.
+
+.SS "-h, --help"
+.PP
+Display a summary of the available options
+
+.SH "The UNLOAD command"
+.PP
+The \fIunload\fP command is used for unloading programs from an interface.
+
+.PP
+The syntax for the \fIunload\fP command is:
+
+.PP
+\fIxdp\-loader unload [options] <ifname>\fP
+
+.PP
+Where \fI<ifname>\fP is the name of the interface to load the programs onto. Either
+the \fI\-\-all\fP or \fI\-\-id\fP options must be used to specify which program(s) to unload.
+
+.PP
+The supported options are:
+
+.SS "-i, --id <id>"
+.PP
+Unload a single program from the interface by ID. Use \fIxdp\-loader status\fP to
+obtain the ID of the program being unloaded. If this program is the last program
+loaded on the interface, the dispatcher program will also be removed, which
+makes the operation equivalent to specifying \fI\-\-all\fP.
+
+.SS "-a, --all"
+.PP
+Unload all XDP programs on the interface, as well as the multi-program
+dispatcher.
+
+.SS "-v, --verbose"
+.PP
+Enable debug logging. Specify twice for even more verbosity.
+
+.SS "-h, --help"
+.PP
+Display a summary of the available options
+
+.SH "The STATUS command"
+.PP
+The \fIstatus\fP command displays a list of interfaces in the system, and the XDP
+program(s) loaded on each interface. For each interface, a list of programs are
+shown, with the run priority and "chain actions" for each program. See the
+section on program metadata for the meaning of this metadata.
+
+.SS "-v, --verbose"
+.PP
+Enable debug logging. Specify twice for even more verbosity.
+
+.SS "-h, --help"
+.PP
+Display a summary of the available options
+
+.SH "The CLEAN command"
+.PP
+The syntax for the \fIclean\fP command is:
+
+.PP
+\fIxdp\-loader clean [options] [ifname]\fP
+
+.PP
+The \fIclean\fP command cleans up any detached program links in the XDP bpffs
+directory.  When a network interface disappears, any programs loaded in software
+mode (e.g. skb, native) remain pinned in the bpffs directory, but become
+detached from the interface. These need to be unlinked from the filesystem. The
+\fIclean\fP command takes an optional interface parameter to only unlink detached
+programs corresponding to the interface.  By default, all detached programs for
+all interfaces are unlinked.
+
+.PP
+The supported options are:
+
+.SS "-v, --verbose"
+.PP
+Enable debug logging. Specify twice for even more verbosity.
+
+.SS "-h, --help"
+.PP
+Display a summary of the available options
+
+.SH "Examples"
+.PP
+To load an XDP program on the eth0 interface simply do:
+
+.RS
+.nf
+\fC# xdp-loader load eth0 xdp_drop.o
+# xdp-loader status
+
+CURRENT XDP PROGRAM STATUS:
+
+Interface        Prio  Program name     Mode     ID   Tag               Chain actions
+-------------------------------------------------------------------------------------
+lo               <no XDP program>
+eth0                   xdp_dispatcher   native   50   d51e469e988d81da
+ =>              50    xdp_drop                  55   57cd311f2e27366b  XDP_PASS
+
+\fP
+.fi
+.RE
+
+.PP
+Which shows that a dispatcher program was loaded on the interface, and the
+xdp_drop program was installed as the first (and only) component program after
+it. In this instance, the program does not specify any of the metadata above, so
+the defaults (priority 50 and XDP_PASS as its chain call action) was used.
+
+.PP
+To use the automatic map pinning, include the \fIpinning\fP attribute into the map
+definition in the program, something like:
+
+.RS
+.nf
+\fCstruct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(max_entries, 10);
+	__type(key, __u32);
+	__type(value, __u64);
+	__uint(pinning, LIBBPF_PIN_BY_NAME);
+} my_map SEC(".maps");
+\fP
+.fi
+.RE
+
+.PP
+And load it with the \fI\-\-pin\-path\fP attribute:
+
+.RS
+.nf
+\fC# xdp-loader load eth0 my_prog.o --pin-path /sys/fs/bpf/my-prog
+\fP
+.fi
+.RE
+
+.PP
+This will pin the map at \fI/sys/fs/bpf/my\-prog/my_map\fP. If this already exists,
+the pinned map will be reused instead of creating a new one, which allows
+different BPF programs to share the map.
+
+.SH "BUGS"
+.PP
+Please report any bugs on Github: \fIhttps://github.com/xdp-project/xdp-tools/issues\fP
+
+.SH "AUTHOR"
+.PP
+xdp-loader and this man page were written by Toke Høiland-Jørgensen.

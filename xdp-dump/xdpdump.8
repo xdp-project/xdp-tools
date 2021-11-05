@@ -1,0 +1,252 @@
+.TH "xdpdump" "8" "NOVEMBER  5, 2021" "V1.2.0" "a simple tcpdump like tool for capturing packets at the XDP layer" 
+
+.SH "xdpdump - a simple tcpdump like tool for capturing packets at the XDP layer"
+.PP
+\fIxdpdump\fP is a simple XDP packet capture tool that tries to behave similar to
+\fItcpdump\fP, however, it has no packet filter or decode capabilities.
+
+.PP
+This can be used for debugging XDP programs that are already loaded on an
+interface.  Packets can be dumped/inspected before on \fBentry\fP to XDP program,
+or after at \fBexit\fP from an XDP program.  Furthermore, at \fBexit\fP the XDP
+action is also captured.  This means that even packets that are dropped at the
+XDP layer can be captured via this tool.
+
+.PP
+\fIxdpdump\fP works by attaching a bpf trace program to the XDP entry and/or exit
+function which stores the raw packet in a perf trace buffer. If no XDP program
+is loaded this approach can not be used and the tool will use a libpcap
+live-capture to be backward compatible.
+
+.SS "Running xdpdump"
+.PP
+The syntax for running \fIxdpdump\fP is:
+
+.RS
+.nf
+\fCUsage: xdpdump [options]
+
+ XDPDump tool to dump network traffic
+
+Options:
+     --rx-capture <mode>    Capture point for the rx direction (valid values: entry,exit)
+ -D, --list-interfaces      Print the list of available interfaces
+ -i, --interface <ifname>   Name of interface to capture on
+     --perf-wakeup <events>  Wake up xdpdump every <events> packets
+ -p, --program-names <prog>  Specific program to attach to
+ -s, --snapshot-length <snaplen>  Minimum bytes of packet to capture
+     --use-pcap             Use legacy pcap format for XDP traces
+ -w, --write <file>         Write raw packets to pcap file
+ -x, --hex                  Print the full packet in hex
+ -v, --verbose              Enable verbose logging (-vv: more verbose)
+     --v1.2.0              Display v1.2.0 information
+ -h, --help                 Show this help
+\fP
+.fi
+.RE
+
+.SH "The options explained"
+.PP
+The \fIxdpdump\fP tool tries to mimic the basic \fItcpdump\fP options, but just in case
+below each of the available options is explained:
+
+.SS "--rx-capture <mode>"
+.PP
+Specify where the ingress packet gets captured. Either at the entry of the XDP
+program and/or exit of the XDP program. Valid options are \fBentry\fP, \fBexit\fP,
+or both \fBentry,exit\fP. The packet at \fBexit\fP can be modified by the XDP
+program. If you are interested to see both the original and modified packet,
+use the \fBentry,exit\fP option. With this, each packet is captured twice. The
+default value for this is \fBentry\fP.
+.SS "-D, --list-interfaces"
+.PP
+Display a list of available interfaces and any XDP program loaded
+.SS "--load-xdp-mode"
+.PP
+Specifies which loader mode to use with the \fI\-\-load\-xdp\-program\fP option. The
+valid values are ‘native’, which is the default in-driver XDP mode, ‘skb’, which
+causes the so-called skb mode (also known as generic XDP) to be used, ‘hw’ which
+causes the program to be offloaded to the hardware, or ‘unspecified’ which
+leaves it up to the kernel to pick a mode (which it will do by picking native
+mode if the driver supports it, or generic mode otherwise). Note that using
+‘unspecified’ can make it difficult to predict what mode a program will end up
+being loaded in. For this reason, the default is ‘native’.
+.SS "--load-xdp-program"
+.PP
+If no XDP program is loaded on the interface, by default, xdpdump will fallback
+to libpcap's live capture mode to capture the packets. Alternatively, with this
+option, you can ask xdpdump to load an XDP program to capture the packets
+directly.
+.SS "-i, --interface <ifname>"
+.PP
+Listen on interface \fIifname\fP. Note that if no XDP program is loaded on the
+interface it will use libpcap's live capture mode to capture the packets.
+.SS "--perf-wakeup <events>"
+.PP
+Let the Kernel wake up \fIxdpdump\fP once for every \fI<events>\fP being posted in the
+perf ring buffer. The higher the number the less the impact is on the actual
+XDP program. The default value is 0, which automatically calculates the
+value based on the available CPUs/buffers. Use -v to see the actual used value.
+.SS "-p, --program-names [<prog>|all]"
+.PP
+This option allows you to capture packets for a specific, set of, or all XDP
+programs loaded on the interface. You can either specify the actual program
+names or program IDs separated by commas. In the case where multiple programs
+are attached with the same name, you should use the program ID. Use the -D
+option to see the loaded programs and their IDs.
+
+
+.PP
+In addition, the Linux API does not provide the full name of the attached eBPF
+entry function if it's longer than 15 characters. xdpdump will try to guess the
+correct function name from the available BTF debug information. However, if
+multiple functions exist with the same leading name, it can not pick the correct
+one. It will dump the available functions, and you can choose the correct one,
+and supply it with this option. If you have programs with duplicate long names,
+you also need to specify the program ID with the full name. This can be done by
+adding the id to the name with the \fI@<id>\fP suffix.
+.SS "-P, --promiscuous-mode"
+.PP
+This option puts the interface into promiscuous mode.
+.SS "-s, --snapshot-length <snaplen>"
+.PP
+Capture \fBsnaplen\fP bytes of a packet rather than the default 262144 bytes.
+.SS "--use-pcap"
+.PP
+Use legacy pcap format for XDP traces. By default, it will use the PcapNG format
+so that it can store various metadata.
+.SS "-w, --write <file>"
+.PP
+Write the raw packets to a pcap file rather than printing them out hexadecimal. Standard output is used if \fBfile\fP is \fI\-\fP.
+.SS "-x, --hex"
+.PP
+When dumping packets on the console also print the full packet content in hex.
+.SS "-v, --verbose"
+.PP
+Enable debug logging. Specify twice for even more verbosity.
+.SS "--v1.2.0"
+.PP
+Display \fIxpdump\fP v1.2.0 information and exit.
+.SS "-h, --help"
+.PP
+Display a summary of the available options
+
+.SH "Examples"
+.PP
+The below will load the \fIxdp\-filter\fP program on eth0, but it does not do any
+actual filtering:
+
+.RS
+.nf
+\fC# xdp-filter load --mode skb eth0
+#
+# xdpdump -D
+Interface        Prio  Program name      Mode     ID   Tag               Chain actions
+--------------------------------------------------------------------------------------
+lo                     <No XDP program loaded!>
+eth0                   xdp_dispatcher    skb      10651 d51e469e988d81da 
+ =>              10     xdpfilt_alw_all           10669 0b394f43ab24501c  XDP_PASS
+\fP
+.fi
+.RE
+
+.PP
+Now we can try \fIxdpdump\fP:
+
+.RS
+.nf
+\fC# xdpdump -i eth0 -x
+listening on eth0, ingress XDP program ID 10651 func xdp_dispatcher, capture mode entry, capture size 262144 bytes
+1584373839.460733895: xdp_dispatcher()@entry: packet size 102 bytes, captured 102 bytes on if_index 2, rx queue 0, id 1
+  0x0000:  52 54 00 db 44 b6 52 54 00 34 38 da 08 00 45 48  RT..D.RT.48...EH
+  0x0010:  00 58 d7 dd 40 00 40 06 ec c3 c0 a8 7a 01 c0 a8  .X..@.@.....z...
+  0x0020:  7a 64 9c de 00 16 0d d5 c6 bc 46 c9 bb 11 80 18  zd........F.....
+  0x0030:  01 f5 7b b4 00 00 01 01 08 0a 77 0a 8c b8 40 12  ..{.......w...@.
+  0x0040:  cc a6 00 00 00 10 54 ce 6e 20 c3 e7 da 6c 08 42  ......T.n ...l.B
+  0x0050:  d6 d9 ee 42 42 f0 82 c9 4f 12 ed 7b 19 ab 22 0d  ...BB...O..{..".
+  0x0060:  09 29 a9 ee df 89                                .)....
+
+1584373839.462340808: xdp_dispatcher()@entry: packet size 66 bytes, captured 66 bytes on if_index 2, rx queue 0, id 2
+  0x0000:  52 54 00 db 44 b6 52 54 00 34 38 da 08 00 45 48  RT..D.RT.48...EH
+  0x0010:  00 34 d7 de 40 00 40 06 ec e6 c0 a8 7a 01 c0 a8  .4..@.@.....z...
+  0x0020:  7a 64 9c de 00 16 0d d5 c6 e0 46 c9 bc 85 80 10  zd........F.....
+  0x0030:  01 f5 74 0c 00 00 01 01 08 0a 77 0a 8c ba 40 12  ..t.......w...@.
+  0x0040:  d2 34                                            .4
+^C
+2 packets captured
+0 packets dropped by perf ring
+\fP
+.fi
+.RE
+
+.PP
+Below are two more examples redirecting the capture file to \fItcpdump\fP or
+\fItshark\fP:
+
+.RS
+.nf
+\fC# xdpdump -i eth0 -w - | tcpdump -r - -n
+listening on eth0, ingress XDP program ID 10651 func xdp_dispatcher, capture mode entry, capture size 262144 bytes
+reading from file -, link-type EN10MB (Ethernet)
+15:55:09.075887 IP 192.168.122.1.40928 > 192.168.122.100.ssh: Flags [P.], seq 3857553815:3857553851, ack 3306438882, win 501, options [nop,nop,TS val 1997449167 ecr 1075234328], length 36
+15:55:09.077756 IP 192.168.122.1.40928 > 192.168.122.100.ssh: Flags [.], ack 37, win 501, options [nop,nop,TS val 1997449169 ecr 1075244363], length 0
+15:55:09.750230 IP 192.168.122.1.40928 > 192.168.122.100.ssh: Flags [P.], seq 36:72, ack 37, win 501, options [nop,nop,TS val 1997449842 ecr 1075244363], length 36
+\fP
+.fi
+.RE
+
+.RS
+.nf
+\fC# xdpdump -i eth0 -w - | tshark -r - -n
+listening on eth0, ingress XDP program ID 10651 func xdp_dispatcher, capture mode entry, capture size 262144 bytes
+    1   0.000000 192.168.122.1 → 192.168.122.100 SSH 102 Client: Encrypted packet (len=36)
+    2   0.000646 192.168.122.1 → 192.168.122.100 TCP 66 40158 → 22 [ACK] Seq=37 Ack=37 Win=1467 Len=0 TSval=1997621571 TSecr=1075416765
+    3  12.218164 192.168.122.1 → 192.168.122.100 SSH 102 Client: Encrypted packet (len=36)
+\fP
+.fi
+.RE
+
+.PP
+One final example capturing specific XDP programs loaded on the interface:
+
+.RS
+.nf
+\fC# xdpdump -D
+Interface        Prio  Program name      Mode     ID   Tag               Chain actions
+--------------------------------------------------------------------------------------
+lo                     <No XDP program loaded!>
+eth0                   xdp_dispatcher    skb      10558 d51e469e988d81da 
+ =>              5      xdp_test_prog_w           10576 b5a46c6e9935298c  XDP_PASS
+ =>              10     xdp_pass                  10582 3b185187f1855c4c  XDP_PASS
+ =>              10     xdp_pass                  10587 3b185187f1855c4c  XDP_PASS
+\fP
+.fi
+.RE
+
+.PP
+We would like to see the packets on the \fIxdp_dispatcher()\fP and the 2nd \fIxdp_pass()\fP program:
+
+.RS
+.nf
+\fC# xdpdump -i eth0 --rx-capture=entry,exit -p xdp_dispatcher,xdp_pass@10587
+  or
+# xdpdump -i eth0 --rx-capture=entry,exit -p 10558,10587
+listening on eth0, ingress XDP program ID 10558 func xdp_dispatcher, ID 10587 func xdp_pass, capture mode entry/exit, capture size 262144 bytes
+1607694215.501287259: xdp_dispatcher()@entry: packet size 102 bytes on if_index 2, rx queue 0, id 1
+1607694215.501371504: xdp_pass()@entry: packet size 102 bytes on if_index 2, rx queue 0, id 1
+1607694215.501383099: xdp_pass()@exit[PASS]: packet size 102 bytes on if_index 2, rx queue 0, id 1
+1607694215.501394709: xdp_dispatcher()@exit[PASS]: packet size 102 bytes on if_index 2, rx queue 0, id 1
+^C
+4 packets captured
+0 packets dropped by perf ring
+\fP
+.fi
+.RE
+
+.SH "BUGS"
+.PP
+Please report any bugs on Github: \fIhttps://github.com/xdp-project/xdp-tools/issues\fP
+
+.SH "AUTHOR"
+.PP
+\fIxdpdump\fP was written by Eelco Chaudron
