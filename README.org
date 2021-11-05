@@ -1,16 +1,15 @@
-* xdp-tools - Utilities and example programs for use with XDP
+* xdp-tools - Library and utilities for use with XDP
 
-This repository contains a collection of utilities and example code to be used
-with the eXpress Data Path facility of the Linux kernel.
-
-For a general introduction to XDP, please see the [[https://github.com/xdp-project/xdp-tutorial][XDP tutorial]]. Some of the
-example code in this repository is derived from the tutorial, but packaged to be
-easier to re-use.
+This repository contains the =libxdp= library for working with the eXpress Data
+Path facility of the Linux kernel, and a collection of utilities and example
+code that uses the library.
 
 The repository contains the following:
 
+- [[lib/libxdp/][lib/libxdp/]] - the =libxdp= library itself - can be built standalone using =make libxdp=
+- [[xdp-loader/][xdp-loader/]] - a command-line utility for loading XDP programs using =libxdp=
 - [[xdp-filter/][xdp-filter/]] - a simple packet filtering utility powered by XDP
-- [[xdp-dump/][xdp-dump/]] - a simple tcpdump like tool for capturing packets at the XDP layer
+- [[xdp-dump/][xdp-dump/]] - a tcpdump-like tool for capturing packets at the XDP layer
 - [[headers/xdp/][headers/xdp/]] - reusable eBPF code snippets for XDP (installed in /usr/include/xdp by =make install=).
 - [[lib/util/][lib/util/]] - common code shared between the different utilities
 - [[packaging/][packaging/]] - files used for distro packaging
@@ -20,3 +19,7 @@ To compile, first run =./configure=, then simply type =make=. Make sure you
 either have a sufficiently recent libbpf installed on your system, or that you
 pulled down the libbpf git submodule (=git submodule init && git submodule
 update=).
+
+For a general introduction to XDP, please see the [[https://github.com/xdp-project/xdp-tutorial][XDP tutorial]], and for more BPF
+and XDP examples, see the [[https://github.com/xdp-project/bpf-examples][bpf-examples repository]].
+
