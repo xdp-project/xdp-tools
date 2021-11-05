@@ -54,10 +54,12 @@ dkms.conf
 config.mk
 xdp-dispatcher.c
 
-*.8
 *.man
+*.rpm
 
 /xdp-tools-*.tar.gz
 
 .ccls-cache
+.clangd
+.cache
 compile_commands.json

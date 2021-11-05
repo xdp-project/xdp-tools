@@ -15,6 +15,7 @@ STATIC_OBJS := $(addprefix $(STATIC_OBJDIR)/,$(OBJS))
 STATIC_LIBS := $(OBJDIR)/libxdp.a
 MAN_PAGE := libxdp.3
 MAN_OBJ := ${MAN_PAGE:.3=.man}
+MAN_FILES := $(MAN_PAGE)
 TEST_DIR := tests
 TEST_FILE := $(TEST_DIR)/test-libxdp.sh
 TEST_CFLAGS := $(CFLAGS) -I$(realpath $(HEADER_DIR)) -L$(realpath $(OBJDIR)) -Wall -Werror $(LDFLAGS)
@@ -42,7 +43,7 @@ endif
 all: $(STATIC_LIBS) $(SHARED_LIBS) $(XDP_OBJS) $(PC_FILE) check man
 
 clean:
-	$(Q)rm -f $(STATIC_LIBS) $(STATIC_OBJS) $(SHARED_LIBS) $(SHARED_OBJS) $(XDP_OBJS) $(PC_FILE) $(MAN_OBJ) $(MAN_PAGE) $(TEMPLATED_SOURCES)
+	$(Q)rm -f $(STATIC_LIBS) $(STATIC_OBJS) $(SHARED_LIBS) $(SHARED_OBJS) $(XDP_OBJS) $(PC_FILE) $(MAN_OBJ) $(TEMPLATED_SOURCES)
 	$(Q)for d in $(SHARED_OBJDIR) $(STATIC_OBJDIR); do \
 		[ -d "$$d" ] && rmdir "$$d"; done || true
 
@@ -144,13 +145,12 @@ $(XDP_OBJS): %.o: %.c $(BPF_HEADERS) $(LIBMK)
 
 .PHONY: man
 ifeq ($(EMACS),)
-man:
-MAN_FILES :=
+man: ;
 else
 man: $(MAN_PAGE)
-MAN_FILES := $(MAN_PAGE)
 $(MAN_OBJ): README.org $(LIBMK)
 	$(Q)$(EMACS) -Q --batch --find-file $< --eval "(progn (require 'ox-man)(org-man-export-to-man))"
+	$(Q)touch -r $< $@
 
 $(MAN_PAGE): $(MAN_OBJ)
 	$(QUIET_GEN)sed -e "1 s/DATE/$(shell date '+%B %_d, %Y')/" -e "1 s/VERSION/v$(TOOLS_VERSION)/" $< > $@

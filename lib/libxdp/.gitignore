@@ -1,7 +1,5 @@
 *.so.*
 *.a
 *.pc
-libxdp.man
-libxdp.3
 sharedobjs/
 staticobjs/
