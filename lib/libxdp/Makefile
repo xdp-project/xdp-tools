@@ -87,7 +87,7 @@ $(SHARED_OBJDIR):
 	$(Q)mkdir -p $(SHARED_OBJDIR)
 
 $(STATIC_OBJDIR)/%.o: %.c $(EXTRA_LIB_DEPS) | $(STATIC_OBJDIR)
-	$(QUIET_CC)$(CC) $(CFLAGS) $(LDFLAGS)  -Wall -I../../headers -c $< -o $@
+	$(QUIET_CC)$(CC) $(CFLAGS)  -Wall -I../../headers -c $< -o $@
 
 $(SHARED_OBJDIR)/%.o: %.c $(EXTRA_LIB_DEPS) | $(SHARED_OBJDIR)
 	$(QUIET_CC)$(CC) $(CFLAGS) $(SHARED_CFLAGS) -Wall -I../../headers -c $< -o $@
