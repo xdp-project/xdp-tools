@@ -1694,7 +1694,7 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 
 	if (prog_fd > 0) {
 		info.nr_map_ids = 1;
-		info.map_ids = (__u64)&map_id;
+		info.map_ids = (uintptr_t)&map_id;
 		info_len = sizeof(info);
 		err = bpf_obj_get_info_by_fd(prog_fd, &info, &info_len);
 		if (err) {
