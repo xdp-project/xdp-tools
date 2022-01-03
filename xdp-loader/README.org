@@ -12,8 +12,8 @@
 
 XDP-loader is a simple loader for XDP programs with support for attaching
 multiple programs to the same interface. To achieve this it exposes the same
-load and unload semantics exposed by the libxdp library.
-
+load and unload semantics exposed by the libxdp library. See the =libxdp(3)= man
+page for details of how this works, and what kernel features it relies on.
 
 ** Running xdp-loader
 The syntax for running xdp-loader is:
@@ -182,6 +182,10 @@ And load it with the =--pin-path= attribute:
 This will pin the map at =/sys/fs/bpf/my-prog/my_map=. If this already exists,
 the pinned map will be reused instead of creating a new one, which allows
 different BPF programs to share the map.
+
+* SEE ALSO
+=libxdp(3)= for details on the XDP loading semantics and kernel compatibility
+requirements.
 
 * BUGS
 
