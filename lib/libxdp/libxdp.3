@@ -1,4 +1,4 @@
-.TH "libxdp" "3" "November  5, 2021" "v1.2.0" "libxdp - library for loading XDP programs" 
+.TH "libxdp" "3" "January  4, 2022" "v1.2.0" "libxdp - library for loading XDP programs" 
 
 .SH "libxdp - library for attaching XDP programs and using AF_XDP sockets"
 .PP
@@ -16,6 +16,10 @@ makes it possible to attach an eBPF program as a replacement for a
 global function in another (already loaded) eBPF program. The second
 main feature is helper functions for configuring AF_XDP sockets as
 well as reading and writing packets from these sockets.
+
+.PP
+Some of the functionality provided by libxdp depends on particular kernel
+features; see the "Kernel feature compatibility" section below for details.
 
 .SS "Using libxdp from an application"
 .PP
@@ -438,6 +442,45 @@ For an example on how to use all these APIs, take a look at the sample
 applications in the Linux kernel source tree at
 https://github.com/torvalds/linux/blob/master/samples/bpf/xdpsock_user.c \fBat\fP \fIsamples/bpf/xdpsock_user.c\fP and
 https://github.com/torvalds/linux/blob/master/samples/bpf/xsk_fwd.c \fBat\fP \fIsamples/bpf/xsk_fwd.c\fP.
+
+.SH "Kernel and BPF program feature compatibility"
+.PP
+The features exposed by libxdp relies on certain kernel versions and BPF
+features to work. To get the full benefit of all features, libxdp needs to be
+used with kernel 5.10 or newer, unless the commits mentioned below have been
+backported. However, libxdp will probe the kernel and transparently fall back to
+legacy loading procedures, so it is possible to use the library with older
+versions, although some features will be unavailable, as detailed below.
+
+.PP
+The ability to attach multiple BPF programs to a single interface relies on the
+kernel "BPF program extension" feature which was introduced by commit
+be8704ff07d2 ("bpf: Introduce dynamic program extensions") in the upstream
+kernel and first appeared in kernel release 5.6. To \fBincrementally\fP attach
+multiple programs, a further refinement added by commit 4a1e7c0c63e0 ("bpf:
+Support attaching freplace programs to multiple attach points") is needed; this
+first appeared in the upstream kernel version 5.10. In other words, kernels
+before 5.6 can only attach a single XDP program to each interface, kernels 5.6+
+can attach multiple programs if they are all attached at the same time, and
+kernels 5.10 have full support for XDP multiprog.
+
+.PP
+To load AF_XDP programs, kernel support for AF_XDP sockets needs to be included
+and enabled in the kernel build. This was introduced in a series of commits that
+first appeared in the upstream kernel version 4.18. When using AF_XDP sockets,
+an XDP program is also loaded on the interface; for this to co-exist with other
+programs, the same constraints for multiprog applies as outlined above.
+
+.PP
+Note that some Linux distributions backport features to earlier kernel versions,
+especially in enterprise kernels; for instance, Red Hat Enterprise Linux kernels
+include everything needed for libxdp to function since RHEL 8.5.
+
+.PP
+Finally, XDP programs loaded using the multiprog facility must include type
+information (using the BPF Type Format, BTF). To get this, compile the programs
+with a recent version of Clang/LLVM (version 10+), and enable debug information
+when compiling (using the \fI\-g\fP option).
 
 .SH "BUGS"
 .PP
