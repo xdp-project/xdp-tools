@@ -1,4 +1,4 @@
-.TH "libxdp" "3" "January  4, 2022" "v1.2.0" "libxdp - library for loading XDP programs" 
+.TH "libxdp" "3" "January  5, 2022" "v1.2.0" "libxdp - library for loading XDP programs" 
 
 .SH "libxdp - library for attaching XDP programs and using AF_XDP sockets"
 .PP
@@ -459,10 +459,13 @@ be8704ff07d2 ("bpf: Introduce dynamic program extensions") in the upstream
 kernel and first appeared in kernel release 5.6. To \fBincrementally\fP attach
 multiple programs, a further refinement added by commit 4a1e7c0c63e0 ("bpf:
 Support attaching freplace programs to multiple attach points") is needed; this
-first appeared in the upstream kernel version 5.10. In other words, kernels
-before 5.6 can only attach a single XDP program to each interface, kernels 5.6+
-can attach multiple programs if they are all attached at the same time, and
-kernels 5.10 have full support for XDP multiprog.
+first appeared in the upstream kernel version 5.10. The functionality relies on
+the "BPF trampolines" feature which is unfortunately only available on the
+x86_64 architecture. In other words, kernels before 5.6 can only attach a single
+XDP program to each interface, kernels 5.6+ can attach multiple programs if they
+are all attached at the same time, and kernels 5.10 have full support for XDP
+multiprog on x86_64. On other architectures, only a single program can be
+attached to each interface.
 
 .PP
 To load AF_XDP programs, kernel support for AF_XDP sockets needs to be included
