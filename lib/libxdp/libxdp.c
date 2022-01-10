@@ -866,15 +866,16 @@ void xdp_program__close(struct xdp_program *xdp_prog)
 	free(xdp_prog);
 }
 
-static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
-				      struct bpf_object *obj,
-				      const char *section_name, bool external)
+static struct xdp_program *xdp_program__create_from_obj(struct bpf_object *obj,
+							const char *section_name,
+							bool external)
 {
+	struct xdp_program *xdp_prog;
 	struct bpf_program *bpf_prog;
 	int err;
 
-	if (!xdp_prog || !obj)
-		return -EINVAL;
+	if (!obj)
+		return ERR_PTR(-EINVAL);
 
 	if (section_name)
 		bpf_prog = bpf_program_by_section_name(obj, section_name);
@@ -884,12 +885,18 @@ static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 	if (!bpf_prog) {
 		pr_warn("Couldn't find xdp program in bpf object%s%s\n",
 			section_name ? " section " : "", section_name ?: "");
-		return -ENOENT;
+		return ERR_PTR(-ENOENT);
 	}
 
+	xdp_prog = xdp_program__new();
+	if (IS_ERR(xdp_prog))
+		return xdp_prog;
+
 	xdp_prog->prog_name = strdup(bpf_program__name(bpf_prog));
-	if (!xdp_prog->prog_name)
-		return -ENOMEM;
+	if (!xdp_prog->prog_name) {
+		err = -ENOMEM;
+		goto err;
+	}
 
 	xdp_prog->bpf_prog = bpf_prog;
 	xdp_prog->bpf_obj = obj;
@@ -898,32 +905,18 @@ static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 
 	err = xdp_program__parse_btf(xdp_prog);
 	if (err && err != -ENOENT)
-		return err;
-
-	return 0;
-}
-
-struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
-					      const char *section_name)
-{
-	struct xdp_program *xdp_prog;
-	int err;
-
-	if (!obj)
-		return ERR_PTR(-EINVAL);
-
-	xdp_prog = xdp_program__new();
-	if (IS_ERR(xdp_prog))
-		return xdp_prog;
-
-	err = xdp_program__fill_from_obj(xdp_prog, obj, section_name, true);
-	if (err)
 		goto err;
 
 	return xdp_prog;
 err:
 	xdp_program__close(xdp_prog);
 	return ERR_PTR(err);
+}
+
+struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
+					      const char *section_name)
+{
+	return xdp_program__create_from_obj(obj, section_name, true);
 }
 
 static struct bpf_object *open_bpf_obj(const char *filename,
@@ -960,27 +953,14 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 	obj = open_bpf_obj(filename, opts);
 	if (IS_ERR(obj)) {
 		err = PTR_ERR(obj);
-		goto err;
+		return ERR_PTR(err);
 	}
 
-	xdp_prog = xdp_program__new();
-	if (IS_ERR(xdp_prog)) {
-		err = PTR_ERR(obj);
-		goto err_close_obj;
-	}
-
-	err = xdp_program__fill_from_obj(xdp_prog, obj, section_name, false);
-	if (err)
-		goto err_close_prog;
+	xdp_prog = xdp_program__create_from_obj(obj, section_name, false);
+	if (IS_ERR(xdp_prog))
+		bpf_object__close(obj);
 
 	return xdp_prog;
-
-err_close_prog:
-	xdp_program__close(xdp_prog);
-err_close_obj:
-	bpf_object__close(obj);
-err:
-	return ERR_PTR(err);
 }
 
 static bool try_bpf_file(char *buf, size_t buf_size, char *path,
