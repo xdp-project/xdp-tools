@@ -48,8 +48,6 @@ ifeq ($(SYSTEM_LIBBPF),n)
 endif
 
 LIBXDP_SOURCES := $(wildcard $(LIBXDP_DIR)/*.[ch] $(LIBXDP_DIR)/*.in)
-DISPATCHER_OBJ := xdp-dispatcher.o
-LIBXDP_DISPATCHER_OBJ := $(LIBXDP_DIR)/$(DISPATCHER_OBJ)
 
 # BPF-prog kern and userspace shares struct via header file:
 KERN_USER_H ?= $(wildcard common_kern_user.h)
@@ -59,7 +57,7 @@ BPF_CFLAGS += -I$(HEADER_DIR) $(ARCH_INCLUDES)
 
 BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(wildcard $(HEADER_DIR)/xdp/*.h)
 
-all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) $(DISPATCHER_OBJ) man
+all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) man
 
 .PHONY: clean
 clean::
@@ -87,11 +85,6 @@ $(OBJECT_LIBBPF): $(LIBBPF_SOURCES)
 
 $(OBJECT_LIBXDP): $(LIBXDP_SOURCES)
 	$(Q)$(MAKE) -C $(LIBXDP_DIR)
-
-$(DISPATCHER_OBJ): $(LIBXDP_DISPATCHER_OBJ) $(OBJECT_LIBXDP) $(LIBXDP_SOURCES)
-	$(QUIET_LINK)cp $(LIBXDP_DISPATCHER_OBJ) $(DISPATCHER_OBJ)
-
-$(LIBXDP_DISPATCHER_OBJ): $(OBJECT_LIBXDP) ;
 
 $(CONFIGMK):
 	$(Q)$(MAKE) -C $(LIB_DIR)/.. config.mk
