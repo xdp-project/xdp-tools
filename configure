@@ -30,13 +30,15 @@ check_toolchain()
 
     : ${PKG_CONFIG:=pkg-config}
     : ${CC=gcc}
+    : ${LD=ld}
+    : ${OBJCOPY=objcopy}
     : ${CLANG=clang}
     : ${LLC=llc}
     : ${M4=m4}
     : ${EMACS=emacs}
     : ${ARCH_INCLUDES=}
 
-    for TOOL in $PKG_CONFIG $CC $CLANG $LLC $M4; do
+    for TOOL in $PKG_CONFIG $CC $LD $OBJCOPY $CLANG $LLC $M4; do
         if [ ! $(command -v ${TOOL} 2>/dev/null) ]; then
             echo "*** ERROR: Cannot find tool ${TOOL}" ;
             exit 1;
@@ -78,6 +80,8 @@ check_toolchain()
 
     echo "PKG_CONFIG:=${PKG_CONFIG}" >>$CONFIG
     echo "CC:=${CC}" >>$CONFIG
+    echo "LD:=${LD}" >>$CONFIG
+    echo "OBJCOPY:=${OBJCOPY}" >>$CONFIG
     echo "CLANG:=${CLANG}" >>$CONFIG
     echo "LLC:=${LLC}" >>$CONFIG
     echo "M4:=${M4}" >>$CONFIG

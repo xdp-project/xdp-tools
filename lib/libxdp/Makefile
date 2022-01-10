@@ -10,8 +10,9 @@ SHARED_OBJDIR := $(OBJDIR)/sharedobjs
 STATIC_OBJDIR := $(OBJDIR)/staticobjs
 OBJS := libxdp.o xsk.o
 XDP_OBJS := xdp-dispatcher.o xsk_def_xdp_prog.o xsk_def_xdp_prog_5.3.o
+EMBEDDED_XDP_OBJS := $(addsuffix .embed.o,$(basename $(XDP_OBJS)))
 SHARED_OBJS := $(addprefix $(SHARED_OBJDIR)/,$(OBJS))
-STATIC_OBJS := $(addprefix $(STATIC_OBJDIR)/,$(OBJS))
+STATIC_OBJS := $(addprefix $(STATIC_OBJDIR)/,$(OBJS)) $(EMBEDDED_XDP_OBJS)
 STATIC_LIBS := $(OBJDIR)/libxdp.a
 MAN_PAGE := libxdp.3
 MAN_OBJ := ${MAN_PAGE:.3=.man}
@@ -87,7 +88,7 @@ $(SHARED_OBJDIR):
 	$(Q)mkdir -p $(SHARED_OBJDIR)
 
 $(STATIC_OBJDIR)/%.o: %.c $(EXTRA_LIB_DEPS) | $(STATIC_OBJDIR)
-	$(QUIET_CC)$(CC) $(CFLAGS)  -Wall -I../../headers -c $< -o $@
+	$(QUIET_CC)$(CC) $(CFLAGS) -D LIBXDP_STATIC=1 -Wall -I../../headers -c $< -o $@
 
 $(SHARED_OBJDIR)/%.o: %.c $(EXTRA_LIB_DEPS) | $(SHARED_OBJDIR)
 	$(QUIET_CC)$(CC) $(CFLAGS) $(SHARED_CFLAGS) -Wall -I../../headers -c $< -o $@
@@ -129,6 +130,10 @@ check_abi: $(OBJDIR)/libxdp.so
 
 $(TEMPLATED_SOURCES): %.c: %.c.in Makefile
 	$(QUIET_M4)$(M4) $(DEFINES) $< > $@ || ( ret=$$?; rm -f $@; exit $$ret )
+
+$(EMBEDDED_XDP_OBJS): %.embed.o: %.o
+	$(QUIET_GEN)$(LD) -r -b binary -o $@ -z noexecstack --format=binary $<
+	$(Q)$(OBJCOPY)  --rename-section .data=.rodata,alloc,load,readonly,data,contents $@
 
 $(XDP_OBJS): %.o: %.c $(BPF_HEADERS) $(LIBMK)
 	$(QUIET_CLANG)$(CLANG) -S \
