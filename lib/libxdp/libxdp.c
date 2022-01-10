@@ -36,6 +36,7 @@
 #define XDP_RUN_CONFIG_SEC ".xdp_run_config"
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
+#define __unused __attribute__((unused))
 
 /* When cloning BPF fds, we want to make sure they don't end up as any of the
  * standard stdin, stderr, stdout descriptors: fd 0 can confuse the kernel, and
@@ -91,6 +92,76 @@ static const char *xdp_action_names[] = {
 	[XDP_TX] = "XDP_TX",
 	[XDP_REDIRECT] = "XDP_REDIRECT",
 };
+
+static struct xdp_program *xdp_program__create_from_obj(struct bpf_object *obj,
+							const char *section_name,
+							bool external);
+
+#ifdef LIBXDP_STATIC
+struct xdp_embedded_obj {
+	const char *filename;
+	const void *data_start;
+	const void *data_end;
+};
+
+extern const char _binary_xdp_dispatcher_o_start;
+extern const char _binary_xdp_dispatcher_o_end;
+extern const char _binary_xsk_def_xdp_prog_o_start;
+extern const char _binary_xsk_def_xdp_prog_o_end;
+extern const char _binary_xsk_def_xdp_prog_5_3_o_start;
+extern const char _binary_xsk_def_xdp_prog_5_3_o_end;
+
+static struct xdp_embedded_obj embedded_objs[] = {
+	{"xdp-dispatcher.o", &_binary_xdp_dispatcher_o_start, &_binary_xdp_dispatcher_o_end},
+	{"xsk_def_xdp_prog.o", &_binary_xsk_def_xdp_prog_o_start, &_binary_xsk_def_xdp_prog_o_end},
+	{"xsk_def_xdp_prog_5.3.o", &_binary_xsk_def_xdp_prog_5_3_o_start, &_binary_xsk_def_xdp_prog_5_3_o_end},
+	{},
+};
+static struct xdp_program *xdp_program__find_embedded(const char *filename,
+						      const char *section_name,
+						      struct bpf_object_open_opts *opts)
+{
+	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, default_opts,
+		.object_name = filename,
+	);
+	struct xdp_embedded_obj *eobj;
+	struct bpf_object *obj;
+	size_t size;
+	int err;
+
+	for (eobj = &embedded_objs[0]; eobj->filename; eobj++) {
+		if (strcmp(filename, eobj->filename))
+			continue;
+
+		size = eobj->data_end - eobj->data_start;
+
+		/* set the object name to the same as if we opened the file from
+		 * the filesystem
+		 */
+		if (!opts)
+			opts = &default_opts;
+		else if (!opts->object_name)
+			opts->object_name = filename;
+
+		pr_debug("Loading XDP program '%s' from embedded object file\n", filename);
+
+		obj = bpf_object__open_mem(eobj->data_start, size, opts);
+		err = libbpf_get_error(obj);
+		if (err)
+			return ERR_PTR(err);
+		return xdp_program__create_from_obj(obj, section_name, false);
+	}
+
+	return NULL;
+}
+#else
+static inline struct xdp_program *xdp_program__find_embedded(__unused const char *filename,
+							     __unused const char *section_name,
+							     __unused struct bpf_object_open_opts *opts)
+{
+	return NULL;
+}
+#endif
 
 static int __base_pr(enum libxdp_print_level level, const char *format,
 		     va_list args)
@@ -1006,8 +1077,13 @@ struct xdp_program *xdp_program__find_file(const char *filename,
 					   const char *section_name,
 					   struct bpf_object_open_opts *opts)
 {
+	struct xdp_program *prog;
 	char buf[PATH_MAX];
 	int err;
+
+	prog = xdp_program__find_embedded(filename, section_name, opts);
+	if (prog)
+		return prog;
 
 	err = find_bpf_file(buf, sizeof(buf), filename);
 	if (err)
