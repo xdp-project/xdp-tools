@@ -146,23 +146,60 @@ check_zlib()
     fi
 }
 
-check_perf_consume()
+
+check_libbpf_function()
 {
+    local FUNCTION_NAME
+    local FUNCTION_ARGS
+    local LIBBPF_CFLAGS
+    local LIBBPF_LDLIBS
+    local config_var
+    FUNCTION_NAME="$1"
+    FUNCTION_ARGS="$2"
+    LIBBPF_CFLAGS="$3"
+    LIBBPF_LDLIBS="$4"
+
+    config_var="LIBBPF_$(echo $FUNCTION_NAME | tr 'a-z' 'A-Z')"
+
+    echo -n "  $FUNCTION_NAME support: "
+
+    # If LIBBPF_LDLIBS is empty that means we're using the submodule version of
+    # libbpf. We know it does support all the APIs we're testing for, so we hard
+    # code it as supported. We can't actually run the check as the embedded
+    # libbpf.a has not been built at configure time.
+    if [ -z "$LIBBPF_LDLIBS" ]; then
+        echo "HAVE_FEATURES+=${config_var}" >>"$CONFIG"
+        echo "yes (submodule)"
+        return 0;
+    fi
+
     cat >$TMPDIR/libbpftest.c <<EOF
 #include <bpf/libbpf.h>
+#include <bpf/bpf.h>
+#include <bpf/btf.h>
 int main(int argc, char **argv) {
-    perf_buffer__consume(NULL);
+    ${FUNCTION_NAME}${FUNCTION_ARGS};
     return 0;
 }
 EOF
-    libbpf_err=$($CC -o $TMPDIR/libbpftest $TMPDIR/libbpftest.c $LIBBPF_CFLAGS $LIBBPF_LDLIBS 2>&1)
+    libbpf_err=$($CC -o $TMPDIR/libbpftest $TMPDIR/libbpftest.c -Werror $LIBBPF_CFLAGS $LIBBPF_LDLIBS 2>&1)
     if [ "$?" -eq "0" ]; then
-        echo "HAVE_LIBBPF_PERF_BUFFER__CONSUME:=y" >>"$CONFIG"
+        echo "HAVE_FEATURES+=${config_var}" >>"$CONFIG"
         echo "yes"
     else
-        echo "HAVE_LIBBPF_PERF_BUFFER__CONSUME:=n" >>"$CONFIG"
+        echo $libbpf_err
         echo "no"
     fi
+}
+
+check_libbpf_functions()
+{
+    local LIBBPF_CFLAGS
+    local LIBBPF_LDLIBS
+    LIBBPF_CFLAGS="$1"
+    LIBBPF_LDLIBS="$2"
+
+    check_libbpf_function "perf_buffer__consume" "(NULL)" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
 }
 
 get_libbpf_version()
@@ -207,7 +244,7 @@ int main(int argc, char **argv) {
 }
 EOF
 
-        libbpf_err=$($CC -o $TMPDIR/libbpftest $TMPDIR/libbpftest.c -Werror $LIBBPF_CFLAGS -lbpf 2>&1)
+        libbpf_err=$($CC -o $TMPDIR/libbpftest $TMPDIR/libbpftest.c -Werror $LIBBPF_CFLAGS $LIBBPF_LDLIBS 2>&1)
         if [ "$?" -eq "0" ]; then
             echo "SYSTEM_LIBBPF:=y" >>$CONFIG
             echo "LIBBPF_VERSION=$LIBBPF_VERSION" >>$CONFIG
@@ -216,8 +253,7 @@ EOF
             echo 'OBJECT_LIBBPF = ' >>$CONFIG
             echo "system v$LIBBPF_VERSION"
 
-            echo -n "perf_buffer__consume support: "
-            check_perf_consume
+            check_libbpf_functions "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
             return 0
         fi
     else
@@ -248,6 +284,7 @@ EOF
         OBJECT_LIBBPF="${LIBBPF_LIB_DIR}/libbpf.a"
         echo "submodule v$LIBBPF_VERSION"
     fi
+    check_libbpf_functions "" ""
 
     echo "SYSTEM_LIBBPF:=n" >> $CONFIG
     echo "LIBBPF_VERSION=$LIBBPF_VERSION" >>$CONFIG
@@ -266,10 +303,6 @@ EOF
     echo -n "zlib support: "
     check_zlib || exit 1
 
-    # For the build submodule library we know it does support this API, so we
-    # hard code it. Also due to the fact it's hard to build a test app as
-    # libbpf.a has not been build at configure time.
-    echo "HAVE_LIBBPF_PERF_BUFFER__CONSUME:=y" >>"$CONFIG"
 }
 
 check_secure_getenv()
@@ -284,10 +317,9 @@ int main(int argc, char **argv) {
 EOF
     secure_getenv_err=$($CC -o $TMPDIR/secure_getenv $TMPDIR/secure_getenv.c 2>&1)
     if [ "$?" -eq "0" ]; then
-        echo "HAVE_SECURE_GETENV:=y" >>"$CONFIG"
+        echo "HAVE_FEATURES += SECURE_GETENV" >>"$CONFIG"
         echo "yes"
     else
-        echo "HAVE_SECURE_GETENV:=n" >>"$CONFIG"
         echo "no"
     fi
 }
