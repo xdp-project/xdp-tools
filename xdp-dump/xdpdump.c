@@ -1351,15 +1351,15 @@ rlimit_loop:
 	}
 
 	/* Locate the fentry and fexit functions */
-	trace_prog_fentry = bpf_object__find_program_by_title(trace_obj,
-							      "fentry/func");
+	trace_prog_fentry = bpf_object__find_program_by_name(trace_obj,
+							     "trace_on_entry");
 	if (!trace_prog_fentry) {
 		pr_warn("ERROR: Can't find XDP trace fentry function!\n");
 		goto error_exit;
 	}
 
-	trace_prog_fexit = bpf_object__find_program_by_title(trace_obj,
-							     "fexit/func");
+	trace_prog_fexit = bpf_object__find_program_by_name(trace_obj,
+							    "trace_on_exit");
 	if (!trace_prog_fexit) {
 		pr_warn("ERROR: Can't find XDP trace fexit function!\n");
 		goto error_exit;
