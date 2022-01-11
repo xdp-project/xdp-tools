@@ -181,6 +181,14 @@ static struct bpf_map *bpf_object__next_map(const struct bpf_object *obj,
 }
 #endif
 
+#ifndef HAVE_LIBBPF_BPF_OBJECT__NEXT_PROGRAM
+static struct bpf_program *bpf_object__next_program(const struct bpf_object *obj,
+						    struct bpf_program *prog)
+{
+	return bpf_program__next(prog, obj);
+}
+#endif
+
 static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
 {
 	struct statfs st_fs;
@@ -842,7 +850,7 @@ static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 	if (section_name)
 		bpf_prog = bpf_object__find_program_by_title(obj, section_name);
 	else
-		bpf_prog = bpf_program__next(NULL, obj);
+		bpf_prog = bpf_object__next_program(obj, NULL);
 
 	if (!bpf_prog) {
 		pr_warn("Couldn't find xdp program in bpf object%s%s\n",
