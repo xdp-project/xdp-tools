@@ -517,7 +517,7 @@ test_pname_parse()
     # Here we specify the wrong correct function name so we should not get the packet
     PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name_too")
     RESULT=$(stop_background "$PID")
-    if [[ $RESULT != *"ERROR: Can't load eBPF object: Kernel verifier blocks program loading"* ]]; then
+    if [[ $RESULT != *"ERROR: Can't load eBPF object:"* ]]; then
         print_result "xdpdump should fail being unable to attach!"
         rm -rf "$PIN_DIR"
         return 1
