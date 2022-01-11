@@ -189,6 +189,17 @@ static struct bpf_program *bpf_object__next_program(const struct bpf_object *obj
 }
 #endif
 
+#ifndef HAVE_LIBBPF_BPF_PROGRAM__INSN_CNT
+#define BPF_INSN_SZ (sizeof(struct bpf_insn))
+static size_t bpf_program__insn_cnt(const struct bpf_program *prog)
+{
+	size_t sz;
+
+	sz = bpf_program__size(prog);
+	return sz / BPF_INSN_SZ;
+}
+#endif
+
 static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
 {
 	struct statfs st_fs;
@@ -1142,8 +1153,8 @@ static int cmp_xdp_programs(const void *_a, const void *_b)
 	if (a->bpf_prog && b->bpf_prog) {
 		size_t size_a, size_b;
 
-		size_a = bpf_program__size(a->bpf_prog);
-		size_b = bpf_program__size(b->bpf_prog);
+		size_a = bpf_program__insn_cnt(a->bpf_prog);
+		size_b = bpf_program__insn_cnt(b->bpf_prog);
 		if (size_a != size_b)
 			return size_a < size_b ? -1 : 1;
 	}

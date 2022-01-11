@@ -204,6 +204,7 @@ check_libbpf_functions()
     check_libbpf_function "btf__type_cnt" "(0)" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
     check_libbpf_function "bpf_object__next_map" "(NULL, NULL)" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
     check_libbpf_function "bpf_object__next_program" "(NULL, NULL)" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
+    check_libbpf_function "bpf_program__insn_cnt" "(NULL)" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
 }
 
 get_libbpf_version()
