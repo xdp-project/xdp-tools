@@ -610,6 +610,11 @@ static struct xdp_program *xsk_lookup_program(int ifindex)
 	if (IS_ERR(multi_prog))
 		return NULL;
 
+	if (xdp_multiprog__is_legacy(multi_prog)) {
+		prog = xdp_multiprog__main_prog(multi_prog);
+		goto out;
+	}
+
 	while ((prog = xdp_multiprog__next_prog(prog, multi_prog)))
 		if (!strcmp(xdp_program__name(prog), prog_name))
 			break;
@@ -617,6 +622,7 @@ static struct xdp_program *xsk_lookup_program(int ifindex)
 	if (!prog)
 		return NULL;
 
+out:
 	err = check_xdp_prog_version(xdp_program__btf(prog), version_name, &version);
 	if (err)
 		return ERR_PTR(err);
