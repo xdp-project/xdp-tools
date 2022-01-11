@@ -1,4 +1,4 @@
 #!/bin/bash
 
-make test >> TEST_OUTPUT 2>&1
+make test V=1 >> TEST_OUTPUT 2>&1
 echo $? > TEST_RESULT
