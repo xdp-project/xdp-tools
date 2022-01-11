@@ -206,6 +206,7 @@ check_libbpf_functions()
     check_libbpf_function "bpf_object__next_program" "(NULL, NULL)" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
     check_libbpf_function "bpf_program__insn_cnt" "(NULL)" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
     check_libbpf_function "bpf_map_create" "(0, NULL, 0, 0, 0, NULL)" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
+    check_libbpf_function "perf_buffer__new_raw" "(0, 0, NULL, NULL, NULL, NULL)" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
 }
 
 get_libbpf_version()

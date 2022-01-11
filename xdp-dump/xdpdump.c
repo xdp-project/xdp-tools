@@ -1620,7 +1620,6 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	pcap_dumper_t               *pcap_dumper = NULL;
 	struct xpcapng_dumper       *pcapng_dumper = NULL;
 	struct perf_buffer          *perf_buf = NULL;
-	struct perf_buffer_raw_opts  perf_opts = {};
 	struct perf_event_attr       perf_attr = {
 		.sample_type = PERF_SAMPLE_RAW | PERF_SAMPLE_TIME,
 		.type = PERF_TYPE_SOFTWARE,
@@ -1797,6 +1796,15 @@ static bool capture_on_interface(struct dumpopt *cfg)
 #endif
 	pr_debug("perf-wakeup value uses is %u\n", perf_attr.wakeup_events);
 
+#ifdef HAVE_LIBBPF_PERF_BUFFER__NEW_RAW
+	/* the configure check looks for the 6-argument variant of the function */
+	perf_buf = perf_buffer__new_raw(tgt_progs.progs[0].perf_map_fd,
+					PERF_MMAP_PAGE_COUNT,
+					&perf_attr, handle_perf_event,
+					&perf_ctx, NULL);
+#else
+	struct perf_buffer_raw_opts  perf_opts = {};
+
 	/* Setup perf ring buffers */
 	perf_opts.attr = &perf_attr;
 	perf_opts.event_cb = handle_perf_event;
@@ -1804,6 +1812,7 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	perf_buf = perf_buffer__new_raw(tgt_progs.progs[0].perf_map_fd,
 					PERF_MMAP_PAGE_COUNT,
 					&perf_opts);
+#endif
 
 	if (perf_buf == NULL) {
 		pr_warn("ERROR: Failed to allocate raw perf buffer: %s(%d)",
