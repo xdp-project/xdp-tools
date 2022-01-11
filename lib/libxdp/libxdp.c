@@ -200,6 +200,24 @@ static size_t bpf_program__insn_cnt(const struct bpf_program *prog)
 }
 #endif
 
+/* This function has been deprecated in libbpf, but we expose an API that uses
+ * section names, so we reimplement it to keep compatibility
+ */
+static struct bpf_program *
+bpf_program_by_section_name(const struct bpf_object *obj,
+			    const char *section_name)
+{
+	struct bpf_program *pos;
+	const char *sname;
+
+	bpf_object__for_each_program(pos, obj) {
+		sname = bpf_program__section_name(pos);
+		if (sname && !strcmp(sname, section_name))
+			return pos;
+	}
+	return NULL;
+}
+
 static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
 {
 	struct statfs st_fs;
@@ -859,7 +877,7 @@ static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 		return -EINVAL;
 
 	if (section_name)
-		bpf_prog = bpf_object__find_program_by_title(obj, section_name);
+		bpf_prog = bpf_program_by_section_name(obj, section_name);
 	else
 		bpf_prog = bpf_object__next_program(obj, NULL);
 
