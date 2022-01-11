@@ -165,6 +165,14 @@ static struct btf *btf__load_from_kernel_by_id(__u32 id)
 }
 #endif
 
+#ifndef HAVE_LIBBPF_BTF__TYPE_CNT
+static __u32 btf__type_cnt(const struct btf *btf)
+{
+	/* old function didn't include 'void' type in count */
+	return btf__get_nr_types(btf) + 1;
+}
+#endif
+
 static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
 {
 	struct statfs st_fs;
@@ -580,8 +588,8 @@ static const struct btf_type *btf_get_function(const struct btf *btf,
 
 	len = strlen(func_name);
 
-	nr_types = btf__get_nr_types(btf);
-	for (i = 1; i <= nr_types; i++) {
+	nr_types = btf__type_cnt(btf);
+	for (i = 1; i < nr_types; i++) {
 		t = btf__type_by_id(btf, i);
 		if (!btf_is_func(t))
 			continue;
@@ -620,8 +628,8 @@ static const struct btf_type *btf_get_datasec(const struct btf *btf,
 		return NULL;
 	}
 
-	nr_types = btf__get_nr_types(btf);
-	for (i = 1; i <= nr_types; i++) {
+	nr_types = btf__type_cnt(btf);
+	for (i = 1; i < nr_types; i++) {
 		t = btf__type_by_id(btf, i);
 		if (!btf_is_datasec(t))
 			continue;
