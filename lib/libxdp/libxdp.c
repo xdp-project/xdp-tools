@@ -173,6 +173,14 @@ static __u32 btf__type_cnt(const struct btf *btf)
 }
 #endif
 
+#ifndef HAVE_LIBBPF_BPF_OBJECT__NEXT_MAP
+static struct bpf_map *bpf_object__next_map(const struct bpf_object *obj,
+					    const struct bpf_map *map)
+{
+	return bpf_map__next(map, obj);
+}
+#endif
+
 static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
 {
 	struct statfs st_fs;
@@ -2311,7 +2319,7 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 
 	mp->main_prog = dispatcher;
 
-	map = bpf_map__next(NULL, mp->main_prog->bpf_obj);
+	map = bpf_object__next_map(mp->main_prog->bpf_obj, NULL);
 	if (!map) {
 		pr_warn("Couldn't find rodata map in object file 'xdp-dispatcher.o'\n");
 		err = -ENOENT;

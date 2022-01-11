@@ -202,6 +202,7 @@ check_libbpf_functions()
     check_libbpf_function "perf_buffer__consume" "(NULL)" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
     check_libbpf_function "btf__load_from_kernel_by_id" "(0)" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
     check_libbpf_function "btf__type_cnt" "(0)" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
+    check_libbpf_function "bpf_object__next_map" "(NULL, NULL)" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
 }
 
 get_libbpf_version()
