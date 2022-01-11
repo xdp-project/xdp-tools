@@ -152,6 +152,19 @@ static char *libxdp_strerror_r(int err, char *dst, size_t size)
 	return dst;
 }
 
+#ifndef HAVE_LIBBPF_BTF__LOAD_FROM_KERNEL_BY_ID
+static struct btf *btf__load_from_kernel_by_id(__u32 id)
+{
+	struct btf *btf;
+	int err;
+
+	err = btf__get_from_id(id, &btf);
+	if (err)
+		return NULL;
+	return btf;
+}
+#endif
+
 static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
 {
 	struct statfs st_fs;
@@ -998,8 +1011,8 @@ static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
 	}
 
 	if (info.btf_id && !xdp_prog->btf) {
-		err = btf__get_from_id(info.btf_id, &btf);
-		if (err) {
+		btf = btf__load_from_kernel_by_id(info.btf_id);
+		if (!btf) {
 			pr_warn("Couldn't get BTF for ID %ul\n", info.btf_id);
 			goto err;
 		}
@@ -1708,8 +1721,8 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 			goto legacy;
 		}
 
-		err = btf__get_from_id(info.btf_id, &btf);
-		if (err) {
+		btf = btf__load_from_kernel_by_id(info.btf_id);
+		if (!btf) {
 			pr_warn("Couldn't get BTF for ID %ul\n", info.btf_id);
 			goto out;
 		}
@@ -2008,8 +2021,8 @@ static int find_prog_btf_id(const char *name, __u32 attach_prog_fd)
 {
 	struct bpf_prog_info info = {};
 	__u32 info_size = sizeof(info);
-	struct btf *btf = NULL;
 	int err = -EINVAL;
+	struct btf *btf;
 
 	err = bpf_obj_get_info_by_fd(attach_prog_fd, &info, &info_size);
 	if (err) {
@@ -2021,7 +2034,8 @@ static int find_prog_btf_id(const char *name, __u32 attach_prog_fd)
 		pr_warn("The target program doesn't have BTF\n");
 		return -EINVAL;
 	}
-	if (btf__get_from_id(info.btf_id, &btf)) {
+	btf = btf__load_from_kernel_by_id(info.btf_id);
+	if (!btf) {
 		pr_warn("Failed to get BTF of the program\n");
 		return -EINVAL;
 	}

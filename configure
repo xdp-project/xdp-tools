@@ -200,6 +200,7 @@ check_libbpf_functions()
     LIBBPF_LDLIBS="$2"
 
     check_libbpf_function "perf_buffer__consume" "(NULL)" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
+    check_libbpf_function "btf__load_from_kernel_by_id" "(0)" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
 }
 
 get_libbpf_version()
