@@ -483,13 +483,16 @@ test_pname_parse()
     local PROG_ID_2=0
     local PROG_ID_3=0
     local PROG_ID_4=0
+    local BPFTOOL_ARGS=
 
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
 
+    bpftool help 2>&1 | grep -q -- '--legacy' && BPFTOOL_ARGS="--legacy"
+
     # Here we load the programs without the xdp-tools loader to make sure
     # they are not loaded as a multi-program.
-    bpftool prog loadall "$TEST_PROG_DIR/test_long_func_name.o" "$PIN_DIR"
-    bpftool net attach xdpgeneric pinned "$PIN_DIR/xdp_test_prog_long" dev "$NS"
+    bpftool $BPFTOOL_ARGS prog loadall "$TEST_PROG_DIR/test_long_func_name.o" "$PIN_DIR"
+    bpftool $BPFTOOL_ARGS net attach xdpgeneric pinned "$PIN_DIR/xdp_test_prog_long" dev "$NS"
 
     # We need to specify the function name or else it should fail
     PID=$(start_background "$XDPDUMP -i $NS")
