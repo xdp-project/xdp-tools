@@ -1803,6 +1803,7 @@ legacy:
 	mp->is_loaded = true;
 
 out:
+	btf__free(btf);
 	return err;
 }
 
