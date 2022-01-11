@@ -193,6 +193,7 @@ check_libbpf()
         cat >$TMPDIR/libbpftest.c <<EOF
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
+#include <bpf/btf.h>
 int main(int argc, char **argv) {
     void *ptr;
     DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts, .pin_root_path = "/path");
@@ -201,12 +202,12 @@ int main(int argc, char **argv) {
     (void) bpf_object__open_file("file", &opts);
     (void) bpf_program__name(ptr);
     (void) bpf_map__set_initial_value(ptr, ptr, 0);
-    (void) bpf_set_link_xdp_fd_opts(0, 0, 0, &lopts);
+    (void) bpf_set_link_xdp_fd_opts(0, 0, 0, &xlopts);
     return 0;
 }
 EOF
 
-        libbpf_err=$($CC -o $TMPDIR/libbpftest $TMPDIR/libbpftest.c  $LIBBPF_CFLAGS -lbpf 2>&1)
+        libbpf_err=$($CC -o $TMPDIR/libbpftest $TMPDIR/libbpftest.c -Werror $LIBBPF_CFLAGS -lbpf 2>&1)
         if [ "$?" -eq "0" ]; then
             echo "SYSTEM_LIBBPF:=y" >>$CONFIG
             echo "LIBBPF_VERSION=$LIBBPF_VERSION" >>$CONFIG
@@ -237,6 +238,10 @@ EOF
         OBJECT_LIBBPF=
         echo "custom v$LIBBPF_VERSION"
     else
+        if ! [ -d "lib/libbpf/src" ] && [ -f ".gitmodules" ] && [ -e ".git" ]; then
+            git submodule init && git submodule update
+        fi
+
         LIBBPF_VERSION=$(get_libbpf_version "lib/libbpf/src")
         LIBBPF_INCLUDE_DIR='$(LIB_DIR)/libbpf/src/root/usr/include'
         LIBBPF_LIB_DIR='$(LIB_DIR)/libbpf/src'
@@ -251,9 +256,6 @@ EOF
     echo "LDFLAGS += -L${LIBBPF_LIB_DIR}" >>$CONFIG
     echo 'LDLIBS += -l:libbpf.a' >>$CONFIG
     echo "OBJECT_LIBBPF = ${OBJECT_LIBBPF}" >>$CONFIG
-    if ! [ -d "lib/libbpf/src" ] && [ -f ".gitmodules" ] && [ -e ".git" ]; then
-        git submodule init && git submodule update
-    fi
 
     echo -n "ELF support: "
     check_elf || exit 1

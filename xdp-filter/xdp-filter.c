@@ -916,8 +916,8 @@ int print_iface_status(const struct iface *iface, struct xdp_program *prog,
 int do_status(__unused const void *cfg, const char *pin_root_path)
 {
 	int err = EXIT_SUCCESS, map_fd = -1;
+	struct bpf_map_info info = {};
 	struct stats_record rec = {};
-	struct bpf_map_info info;
 
 	map_fd = get_pinned_map_fd(pin_root_path, textify(XDP_STATS_MAP_NAME), &info);
 	if (map_fd < 0) {
