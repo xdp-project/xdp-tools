@@ -549,10 +549,52 @@ static int xsk_lookup_bpf_map(int prog_fd)
 	return xsks_map_fd;
 }
 
-static bool xsk_check_redirect_flags(void)
+#ifdef HAVE_LIBBPF_BPF_MAP_CREATE
+/* bpf_map_create() and the new bpf_prog_create() were added at the same time -
+ * however there's a naming conflict with another bpf_prog_load() function in
+ * older versions of libbpf; to avoid hitting that we create our own wrapper
+ * function for this one even with new libbpf versions.
+ */
+static int xsk_check_create_prog(struct bpf_insn *insns, size_t insns_cnt)
+{
+	return bpf_prog_load(BPF_PROG_TYPE_XDP, "testprog",
+			     "GPL", insns, insns_cnt, NULL);
+}
+#else
+static int bpf_map_create(enum bpf_map_type map_type,
+			  __unused const char *map_name,
+			  __u32 key_size,
+			  __u32 value_size,
+			  __u32 max_entries,
+			  __unused void *opts)
+{
+	struct bpf_create_map_attr map_attr;
+
+	memset(&map_attr, 0, sizeof(map_attr));
+	map_attr.map_type = map_type;
+	map_attr.key_size = key_size;
+	map_attr.value_size = value_size;
+	map_attr.max_entries = max_entries;
+
+	return bpf_create_map_xattr(&map_attr);
+}
+
+static int xsk_check_create_prog(struct bpf_insn *insns, size_t insns_cnt)
 {
 	struct bpf_load_program_attr prog_attr;
-	struct bpf_create_map_attr map_attr;
+
+	memset(&prog_attr, 0, sizeof(prog_attr));
+	prog_attr.prog_type = BPF_PROG_TYPE_XDP;
+	prog_attr.insns = insns;
+	prog_attr.insns_cnt = insns_cnt;
+	prog_attr.license = "GPL";
+
+	return bpf_load_program_xattr(&prog_attr, NULL, 0);
+}
+#endif
+
+static bool xsk_check_redirect_flags(void)
+{
 	__u32 size_out, retval, duration;
 	char data_in = 0, data_out;
 	struct bpf_insn insns[] = {
@@ -565,25 +607,14 @@ static bool xsk_check_redirect_flags(void)
 	int prog_fd, map_fd, ret;
 	bool detected = false;
 
-	memset(&map_attr, 0, sizeof(map_attr));
-	map_attr.map_type = BPF_MAP_TYPE_XSKMAP;
-	map_attr.key_size = sizeof(int);
-	map_attr.value_size = sizeof(int);
-	map_attr.max_entries = 1;
-
-	map_fd = bpf_create_map_xattr(&map_attr);
+	map_fd = bpf_map_create(BPF_MAP_TYPE_XSKMAP, "xskmap",
+				sizeof(int), sizeof(int), 1, NULL);
 	if (map_fd < 0)
 		return detected;
 
 	insns[0].imm = map_fd;
 
-	memset(&prog_attr, 0, sizeof(prog_attr));
-	prog_attr.prog_type = BPF_PROG_TYPE_XDP;
-	prog_attr.insns = insns;
-	prog_attr.insns_cnt = ARRAY_SIZE(insns);
-	prog_attr.license = "GPL";
-
-	prog_fd = bpf_load_program_xattr(&prog_attr, NULL, 0);
+	prog_fd = xsk_check_create_prog(insns, ARRAY_SIZE(insns));
 	if (prog_fd < 0) {
 		close(map_fd);
 		return detected;

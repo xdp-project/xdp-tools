@@ -152,6 +152,72 @@ static char *libxdp_strerror_r(int err, char *dst, size_t size)
 	return dst;
 }
 
+#ifndef HAVE_LIBBPF_BTF__LOAD_FROM_KERNEL_BY_ID
+static struct btf *btf__load_from_kernel_by_id(__u32 id)
+{
+	struct btf *btf;
+	int err;
+
+	err = btf__get_from_id(id, &btf);
+	if (err)
+		return NULL;
+	return btf;
+}
+#endif
+
+#ifndef HAVE_LIBBPF_BTF__TYPE_CNT
+static __u32 btf__type_cnt(const struct btf *btf)
+{
+	/* old function didn't include 'void' type in count */
+	return btf__get_nr_types(btf) + 1;
+}
+#endif
+
+#ifndef HAVE_LIBBPF_BPF_OBJECT__NEXT_MAP
+static struct bpf_map *bpf_object__next_map(const struct bpf_object *obj,
+					    const struct bpf_map *map)
+{
+	return bpf_map__next(map, obj);
+}
+#endif
+
+#ifndef HAVE_LIBBPF_BPF_OBJECT__NEXT_PROGRAM
+static struct bpf_program *bpf_object__next_program(const struct bpf_object *obj,
+						    struct bpf_program *prog)
+{
+	return bpf_program__next(prog, obj);
+}
+#endif
+
+#ifndef HAVE_LIBBPF_BPF_PROGRAM__INSN_CNT
+#define BPF_INSN_SZ (sizeof(struct bpf_insn))
+static size_t bpf_program__insn_cnt(const struct bpf_program *prog)
+{
+	size_t sz;
+
+	sz = bpf_program__size(prog);
+	return sz / BPF_INSN_SZ;
+}
+#endif
+
+/* This function has been deprecated in libbpf, but we expose an API that uses
+ * section names, so we reimplement it to keep compatibility
+ */
+static struct bpf_program *
+bpf_program_by_section_name(const struct bpf_object *obj,
+			    const char *section_name)
+{
+	struct bpf_program *pos;
+	const char *sname;
+
+	bpf_object__for_each_program(pos, obj) {
+		sname = bpf_program__section_name(pos);
+		if (sname && !strcmp(sname, section_name))
+			return pos;
+	}
+	return NULL;
+}
+
 static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
 {
 	struct statfs st_fs;
@@ -567,8 +633,8 @@ static const struct btf_type *btf_get_function(const struct btf *btf,
 
 	len = strlen(func_name);
 
-	nr_types = btf__get_nr_types(btf);
-	for (i = 1; i <= nr_types; i++) {
+	nr_types = btf__type_cnt(btf);
+	for (i = 1; i < nr_types; i++) {
 		t = btf__type_by_id(btf, i);
 		if (!btf_is_func(t))
 			continue;
@@ -607,8 +673,8 @@ static const struct btf_type *btf_get_datasec(const struct btf *btf,
 		return NULL;
 	}
 
-	nr_types = btf__get_nr_types(btf);
-	for (i = 1; i <= nr_types; i++) {
+	nr_types = btf__type_cnt(btf);
+	for (i = 1; i < nr_types; i++) {
 		t = btf__type_by_id(btf, i);
 		if (!btf_is_datasec(t))
 			continue;
@@ -811,9 +877,9 @@ static int xdp_program__fill_from_obj(struct xdp_program *xdp_prog,
 		return -EINVAL;
 
 	if (section_name)
-		bpf_prog = bpf_object__find_program_by_title(obj, section_name);
+		bpf_prog = bpf_program_by_section_name(obj, section_name);
 	else
-		bpf_prog = bpf_program__next(NULL, obj);
+		bpf_prog = bpf_object__next_program(obj, NULL);
 
 	if (!bpf_prog) {
 		pr_warn("Couldn't find xdp program in bpf object%s%s\n",
@@ -998,8 +1064,8 @@ static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
 	}
 
 	if (info.btf_id && !xdp_prog->btf) {
-		err = btf__get_from_id(info.btf_id, &btf);
-		if (err) {
+		btf = btf__load_from_kernel_by_id(info.btf_id);
+		if (!btf) {
 			pr_warn("Couldn't get BTF for ID %ul\n", info.btf_id);
 			goto err;
 		}
@@ -1105,8 +1171,8 @@ static int cmp_xdp_programs(const void *_a, const void *_b)
 	if (a->bpf_prog && b->bpf_prog) {
 		size_t size_a, size_b;
 
-		size_a = bpf_program__size(a->bpf_prog);
-		size_b = bpf_program__size(b->bpf_prog);
+		size_a = bpf_program__insn_cnt(a->bpf_prog);
+		size_b = bpf_program__insn_cnt(b->bpf_prog);
 		if (size_a != size_b)
 			return size_a < size_b ? -1 : 1;
 	}
@@ -1708,8 +1774,8 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 			goto legacy;
 		}
 
-		err = btf__get_from_id(info.btf_id, &btf);
-		if (err) {
+		btf = btf__load_from_kernel_by_id(info.btf_id);
+		if (!btf) {
 			pr_warn("Couldn't get BTF for ID %ul\n", info.btf_id);
 			goto out;
 		}
@@ -1803,6 +1869,7 @@ legacy:
 	mp->is_loaded = true;
 
 out:
+	btf__free(btf);
 	return err;
 }
 
@@ -2007,8 +2074,8 @@ static int find_prog_btf_id(const char *name, __u32 attach_prog_fd)
 {
 	struct bpf_prog_info info = {};
 	__u32 info_size = sizeof(info);
-	struct btf *btf = NULL;
 	int err = -EINVAL;
+	struct btf *btf;
 
 	err = bpf_obj_get_info_by_fd(attach_prog_fd, &info, &info_size);
 	if (err) {
@@ -2020,7 +2087,8 @@ static int find_prog_btf_id(const char *name, __u32 attach_prog_fd)
 		pr_warn("The target program doesn't have BTF\n");
 		return -EINVAL;
 	}
-	if (btf__get_from_id(info.btf_id, &btf)) {
+	btf = btf__load_from_kernel_by_id(info.btf_id);
+	if (!btf) {
 		pr_warn("Failed to get BTF of the program\n");
 		return -EINVAL;
 	}
@@ -2288,7 +2356,7 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 
 	mp->main_prog = dispatcher;
 
-	map = bpf_map__next(NULL, mp->main_prog->bpf_obj);
+	map = bpf_object__next_map(mp->main_prog->bpf_obj, NULL);
 	if (!map) {
 		pr_warn("Couldn't find rodata map in object file 'xdp-dispatcher.o'\n");
 		err = -ENOENT;

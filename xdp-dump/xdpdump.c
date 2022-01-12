@@ -42,6 +42,7 @@
 #include "util.h"
 #include "xdpdump.h"
 #include "xpcapng.h"
+#include "compat.h"
 
 /*****************************************************************************
  * Local definitions and global variables
@@ -779,8 +780,8 @@ static size_t find_func_matches(const struct btf *btf,
 
 	len = strlen(func_name);
 
-	nr_types = btf__get_nr_types(btf);
-	for (i = 1; i <= nr_types; i++) {
+	nr_types = btf__type_cnt(btf);
+	for (i = 1; i < nr_types; i++) {
 		t = btf__type_by_id(btf, i);
 		if (!btf_is_func(t))
 			continue;
@@ -1350,15 +1351,15 @@ rlimit_loop:
 	}
 
 	/* Locate the fentry and fexit functions */
-	trace_prog_fentry = bpf_object__find_program_by_title(trace_obj,
-							      "fentry/func");
+	trace_prog_fentry = bpf_object__find_program_by_name(trace_obj,
+							     "trace_on_entry");
 	if (!trace_prog_fentry) {
 		pr_warn("ERROR: Can't find XDP trace fentry function!\n");
 		goto error_exit;
 	}
 
-	trace_prog_fexit = bpf_object__find_program_by_title(trace_obj,
-							     "fexit/func");
+	trace_prog_fexit = bpf_object__find_program_by_name(trace_obj,
+							    "trace_on_exit");
 	if (!trace_prog_fexit) {
 		pr_warn("ERROR: Can't find XDP trace fexit function!\n");
 		goto error_exit;
@@ -1619,7 +1620,6 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	pcap_dumper_t               *pcap_dumper = NULL;
 	struct xpcapng_dumper       *pcapng_dumper = NULL;
 	struct perf_buffer          *perf_buf = NULL;
-	struct perf_buffer_raw_opts  perf_opts = {};
 	struct perf_event_attr       perf_attr = {
 		.sample_type = PERF_SAMPLE_RAW | PERF_SAMPLE_TIME,
 		.type = PERF_TYPE_SOFTWARE,
@@ -1796,6 +1796,15 @@ static bool capture_on_interface(struct dumpopt *cfg)
 #endif
 	pr_debug("perf-wakeup value uses is %u\n", perf_attr.wakeup_events);
 
+#ifdef HAVE_LIBBPF_PERF_BUFFER__NEW_RAW
+	/* the configure check looks for the 6-argument variant of the function */
+	perf_buf = perf_buffer__new_raw(tgt_progs.progs[0].perf_map_fd,
+					PERF_MMAP_PAGE_COUNT,
+					&perf_attr, handle_perf_event,
+					&perf_ctx, NULL);
+#else
+	struct perf_buffer_raw_opts  perf_opts = {};
+
 	/* Setup perf ring buffers */
 	perf_opts.attr = &perf_attr;
 	perf_opts.event_cb = handle_perf_event;
@@ -1803,6 +1812,7 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	perf_buf = perf_buffer__new_raw(tgt_progs.progs[0].perf_map_fd,
 					PERF_MMAP_PAGE_COUNT,
 					&perf_opts);
+#endif
 
 	if (perf_buf == NULL) {
 		pr_warn("ERROR: Failed to allocate raw perf buffer: %s(%d)",

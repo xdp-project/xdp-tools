@@ -9,6 +9,7 @@
 #include <xdp/libxdp.h>
 
 #define LIBXDP_HIDE_SYMBOL __attribute__((visibility("hidden")))
+#define __unused __attribute__((unused))
 
 #define __printf(a, b) __attribute__((format(printf, a, b)))
 
