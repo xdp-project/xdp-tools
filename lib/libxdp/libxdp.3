@@ -1,4 +1,4 @@
-.TH "libxdp" "3" "January  5, 2022" "v1.2.0" "libxdp - library for loading XDP programs" 
+.TH "libxdp" "3" "January 12, 2022" "v1.2.0" "libxdp - library for loading XDP programs" 
 
 .SH "libxdp - library for attaching XDP programs and using AF_XDP sockets"
 .PP
@@ -469,10 +469,13 @@ attached to each interface.
 
 .PP
 To load AF_XDP programs, kernel support for AF_XDP sockets needs to be included
-and enabled in the kernel build. This was introduced in a series of commits that
-first appeared in the upstream kernel version 4.18. When using AF_XDP sockets,
-an XDP program is also loaded on the interface; for this to co-exist with other
-programs, the same constraints for multiprog applies as outlined above.
+and enabled in the kernel build. In addition, when using AF_XDP sockets, an XDP
+program is also loaded on the interface. The XDP program used for this by libxdp
+requires the ability to do map lookups into XSK maps, which was introduced with
+commit fada7fdc83c0 ("bpf: Allow bpf_map_lookup_elem() on an xskmap") in kernel
+5.3. This means that the minimum required kernel version for using AF_XDP is
+kernel 5.3; however, for the AF_XDP XDP program to co-exist with other programs,
+the same constraints for multiprog applies as outlined above.
 
 .PP
 Note that some Linux distributions backport features to earlier kernel versions,
