@@ -152,8 +152,10 @@ $(MAN_OBJ): README.org $(LIBMK)
 	$(Q)$(EMACS) -Q --batch --find-file $< --eval "(progn (require 'ox-man)(org-man-export-to-man))"
 	$(Q)touch -r $< $@
 
-$(MAN_PAGE): $(MAN_OBJ)
-	$(QUIET_GEN)sed -e "1 s/DATE/$(shell date '+%B %_d, %Y')/" -e "1 s/VERSION/v$(TOOLS_VERSION)/" $< > $@
+$(MAN_PAGE): $(MAN_OBJ) $(LIBMK)
+	$(QUIET_GEN)MODDATE=$$(git log -1 --pretty="format:%cI" README.org 2>/dev/null); \
+		[ "$$?" -eq "0" ] && DATE=$$(date '+%B %_d, %Y' -d "$$MODDATE") || DATE=$$(date '+%B %_d, %Y'); \
+		sed -e "1 s/DATE/$$DATE/" -e "1 s/VERSION/v$(TOOLS_VERSION)/" $< > $@
 
 endif
 

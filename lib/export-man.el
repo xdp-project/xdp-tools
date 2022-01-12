@@ -37,10 +37,17 @@
       (find-file filename)
     (error "File not found: %s" filename)))
 
-(defun filter-post-export (file feat-list version)
+(defun get-file-mod-time (filename)
+  (let ((file-modtime (file-attribute-modification-time (file-attributes filename)))
+        (git-modtime (shell-command-to-string (format "git log -1 --pretty='format:%%cI' -- %s" filename))))
+    (if git-modtime
+        (encode-time (parse-time-string git-modtime))
+      file-modtime)))
+
+(defun filter-post-export (file feat-list version modtime)
   "Post-process exported FILE based on features in FEAT-LIST and VERSION."
   (let ((exclude-regexes (get-feature-values feat-list feature-exclude-regexes))
-        (date (format-time-string "%B %_d, %Y"))
+        (date (format-time-string "%B %_d, %Y" modtime))
         (make-backup-files nil))
     (with-current-buffer (open-file file)
       (mapc #'(lambda (r) (delete-matching-lines r)) exclude-regexes)
@@ -51,10 +58,11 @@
 (defun export-man-page (outfile infile enabled-features version)
   "Export man page from INFILE into OUTFILE with ENABLED-FEATURES and VERSION."
   (let* ((feat-list (split-string enabled-features))
-         (org-export-exclude-tags (get-feature-values feat-list feature-exclude-tags)))
+         (org-export-exclude-tags (get-feature-values feat-list feature-exclude-tags))
+         (modtime (get-file-mod-time infile)))
     (with-current-buffer (open-file infile)
       (org-export-to-file 'man outfile)
-      (filter-post-export outfile feat-list version))))
+      (filter-post-export outfile feat-list version modtime))))
 
 (provide 'export-man)
 ;;; export-man.el ends here
