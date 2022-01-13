@@ -10,6 +10,8 @@
 ;;; Code:
 
 (require 'ox-man)
+(require 'parse-time)
+
 (defvar feature-exclude-tags
   '(("LIBBPF_PERF_BUFFER__CONSUME" . "feat_perfbuf"))
   "Mapping of feature strings to exclude tags for man page export.")
@@ -39,11 +41,10 @@
     (error "File not found: %s" filename)))
 
 (defun get-file-mod-time (filename)
-  (let ((file-modtime (file-attribute-modification-time (file-attributes filename)))
-        (git-modtime (shell-command-to-string (format "git log -1 --pretty='format:%%cI' -- %s" filename))))
-    (if git-modtime
-        (encode-time (parse-time-string git-modtime))
-      file-modtime)))
+  (let* ((file-modtime (file-attribute-modification-time (file-attributes filename)))
+         (git-logtime (shell-command-to-string (format "git log -1 --pretty='format:%%cI' -- %s" filename)))
+         (git-modtime (ignore-errors (parse-iso8601-time-string git-logtime))))
+    (or git-modtime file-modtime)))
 
 (defun filter-post-export (file feat-list version modtime)
   "Post-process exported FILE based on features in FEAT-LIST and VERSION."
