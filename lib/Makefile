@@ -12,6 +12,7 @@ all: $(SUBDIRS) libxdp
 $(SUBDIRS): libxdp
 	@echo; echo "  $@"; $(MAKE) -C $@
 
+.PHONY: libxdp
 libxdp: $(OBJECT_LIBBPF)
 	@echo; echo "  $@"; $(MAKE) -C $@
 
