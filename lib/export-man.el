@@ -27,9 +27,10 @@
 
 (defun replace-regexp-in-buffer (regexp replace)
   "Replace REGEXP with REPLACE in buffer."
-  (goto-char 0)
-  (while (re-search-forward regexp nil t)
-    (replace-match replace)))
+  (let ((case-fold-search nil))
+    (goto-char 0)
+    (while (re-search-forward regexp nil t)
+      (replace-match replace))))
 
 (defun open-file (filename)
   "Find file FILENAME but complain if it doesn't exist."
