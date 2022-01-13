@@ -191,7 +191,6 @@ EOF
         echo "HAVE_FEATURES+=${config_var}" >>"$CONFIG"
         echo "yes"
     else
-        echo $libbpf_err
         echo "no"
     fi
 }
