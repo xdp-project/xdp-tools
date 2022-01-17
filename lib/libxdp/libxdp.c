@@ -826,13 +826,16 @@ static const struct btf_type *btf_get_section_var(const struct btf *btf,
  * survive loading into the kernel, and so it can be retrieved for
  * already-loaded programs as well.
  */
-static int xdp_program__parse_btf(struct xdp_program *xdp_prog)
+static int xdp_program__parse_btf(struct xdp_program *xdp_prog,
+				  const struct btf *btf)
 {
-	const struct btf *btf = xdp_program__btf(xdp_prog);
 	const struct btf_type *def, *sec;
 	const struct btf_member *m;
 	char struct_name[100];
 	int err, i, mlen;
+
+	if (!btf)
+		btf = xdp_program__btf(xdp_prog);
 
 	/* If the program name is the maximum allowed object name in the kernel,
 	 * it may have been truncated, in which case we try to expand it by
@@ -969,14 +972,14 @@ static struct xdp_program *xdp_program__create_from_obj(struct bpf_object *obj,
 		goto err;
 	}
 
+	err = xdp_program__parse_btf(xdp_prog, bpf_object__btf(obj));
+	if (err && err != -ENOENT)
+		goto err;
+
 	xdp_prog->bpf_prog = bpf_prog;
 	xdp_prog->bpf_obj = obj;
 	xdp_prog->btf = bpf_object__btf(obj);
 	xdp_prog->from_external_obj = external;
-
-	err = xdp_program__parse_btf(xdp_prog);
-	if (err && err != -ENOENT)
-		goto err;
 
 	return xdp_prog;
 err:
@@ -1152,7 +1155,7 @@ struct xdp_program *xdp_program__from_fd(int fd)
 	if (err)
 		goto err;
 
-	err = xdp_program__parse_btf(xdp_prog);
+	err = xdp_program__parse_btf(xdp_prog, NULL);
 	if (err && err != -ENOENT)
 		goto err;
 
