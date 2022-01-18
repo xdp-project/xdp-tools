@@ -283,6 +283,7 @@ EOF
         LIBBPF_VERSION=$(get_libbpf_version "$LIBBPF_DIR/src")
         OBJECT_LIBBPF=
         echo "custom v$LIBBPF_VERSION"
+        check_libbpf_functions "-I${LIBBPF_INCLUDE_DIR}" "-L${LIBBPF_LIB_DIR} -l:libbpf.a"
     else
         if ! [ -d "lib/libbpf/src" ] && [ -f ".gitmodules" ] && [ -e ".git" ]; then
             git submodule init && git submodule update
@@ -293,8 +294,8 @@ EOF
         LIBBPF_LIB_DIR='$(LIB_DIR)/libbpf/src'
         OBJECT_LIBBPF="${LIBBPF_LIB_DIR}/libbpf.a"
         echo "submodule v$LIBBPF_VERSION"
+        check_libbpf_functions "" ""
     fi
-    check_libbpf_functions "" ""
 
     echo "SYSTEM_LIBBPF:=n" >> $CONFIG
     echo "LIBBPF_VERSION=$LIBBPF_VERSION" >>$CONFIG
