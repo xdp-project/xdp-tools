@@ -78,7 +78,7 @@ $(OBJDIR)/libxdp.so.$(LIBXDP_VERSION): $(SHARED_OBJS)
 $(OBJDIR)/libxdp.pc:
 	$(Q)sed -e "s|@PREFIX@|$(PREFIX)|" \
 			-e "s|@LIBDIR@|$(LIBDIR)|" \
-			-e "s|@VERSION@|$(LIBXDP_VERSION)|" \
+			-e "s|@VERSION@|$(TOOLS_VERSION)|" \
 			< libxdp.pc.template > $@
 
 $(STATIC_OBJDIR):
