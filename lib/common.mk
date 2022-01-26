@@ -14,6 +14,8 @@ XDP_C = ${XDP_TARGETS:=.c}
 XDP_OBJ = ${XDP_C:.c=.o}
 USER_C := ${USER_TARGETS:=.c}
 USER_OBJ := ${USER_C:.c=.o}
+TEST_C := ${TEST_TARGETS:=.c}
+TEST_OBJ := ${TEST_C:.c=.o}
 XDP_OBJ_INSTALL ?= $(XDP_OBJ)
 MAN_FILES := $(MAN_PAGE)
 
@@ -57,11 +59,11 @@ BPF_CFLAGS += -I$(HEADER_DIR) $(ARCH_INCLUDES)
 
 BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(wildcard $(HEADER_DIR)/xdp/*.h)
 
-all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) man
+all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) $(TEST_TARGETS) man
 
 .PHONY: clean
 clean::
-	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(USER_GEN) *.ll
+	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(TEST_OBJ) $(USER_GEN) *.ll
 
 .PHONY: install
 install: all install_local
@@ -76,6 +78,7 @@ install: all install_local
 	$(if $(TEST_FILE),install -m 0755 -d $(DESTDIR)$(SCRIPTSDIR)/tests/$(TOOL_NAME))
 	$(if $(TEST_FILE),install -m 0644 $(TEST_FILE) $(DESTDIR)$(SCRIPTSDIR)/tests/$(TOOL_NAME))
 	$(if $(TEST_FILE_DEPS),install -m 0644 $(TEST_FILE_DEPS) $(DESTDIR)$(SCRIPTSDIR)/tests/$(TOOL_NAME))
+	$(if $(TEST_TARGETS),install -m 0755 $(TEST_TARGETS) $(DESTDIR)$(SCRIPTSDIR))
 
 .PHONY: install_local
 install_local::
@@ -96,7 +99,8 @@ LIB_H := ${LIB_OBJS:.o=.h}
 $(LIB_OBJS): %.o: %.c %.h $(LIB_H)
 	$(Q)$(MAKE) -C $(dir $@) $(notdir $@)
 
-$(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) $(OBJECT_LIBXDP) $(LIBMK) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
+ALL_EXEC_TARGETS=$(USER_TARGETS) $(TEST_TARGETS)
+$(ALL_EXEC_TARGETS): %: %.c  $(OBJECT_LIBBPF) $(OBJECT_LIBXDP) $(LIBMK) $(LIB_OBJS) $(KERN_USER_H) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
 	$(QUIET_CC)$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $(LIB_OBJS) \
 	 $< $(LDLIBS)
 
