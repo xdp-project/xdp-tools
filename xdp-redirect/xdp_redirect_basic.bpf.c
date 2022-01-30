@@ -40,11 +40,4 @@ int xdp_redirect_basic_prog(struct xdp_md *ctx)
 	return bpf_redirect(ifindex_out, 0);
 }
 
-/* Redirect require an XDP bpf_prog loaded on the TX device */
-SEC("xdp")
-int xdp_redirect_basic_dummy_prog(struct xdp_md *ctx)
-{
-	return XDP_PASS;
-}
-
 char _license[] SEC("license") = "GPL";

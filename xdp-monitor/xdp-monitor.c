@@ -96,7 +96,7 @@ int main(int argc, char **argv)
 		goto end_destroy;
 	}
 
-	ret = sample_init(skel, mask);
+	ret = sample_init(skel, mask, 0, 0);
 	if (ret < 0) {
 		fprintf(stderr, "Failed to initialize sample: %s\n", strerror(-ret));
 		ret = EXIT_FAIL_BPF;

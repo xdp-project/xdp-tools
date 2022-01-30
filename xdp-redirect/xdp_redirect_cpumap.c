@@ -31,6 +31,7 @@ static const char *__doc__ =
 #include <linux/limits.h>
 #include <sys/resource.h>
 #include <linux/if_link.h>
+#include <xdp/libxdp.h>
 
 #include "xdp_sample.h"
 #include "xdp_redirect_cpumap.skel.h"
@@ -306,6 +307,9 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 {
 	const char *redir_interface = NULL, *redir_map = NULL;
 	const char *mprog_filename = NULL, *mprog_name = NULL;
+	enum xdp_attach_mode xdp_mode = XDP_MODE_NATIVE;
+	DECLARE_LIBBPF_OPTS(xdp_program_opts, opts);
+	struct xdp_program *xdp_prog = NULL;
 	struct xdp_redirect_cpumap *skel;
 	struct bpf_map_info info = {};
 	struct bpf_cpumap_val value;
@@ -315,7 +319,6 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 	bool stress_mode = false;
 	struct bpf_program *prog;
 	const char *prog_name;
-	bool generic = false;
 	int added_cpus = 0;
 	bool error = true;
 	int longindex = 0;
@@ -407,7 +410,7 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 			interval = strtoul(optarg, NULL, 0);
 			break;
 		case 'S':
-			generic = true;
+			xdp_mode = XDP_MODE_SKB;
 			break;
 		case 'x':
 			stress_mode = true;
@@ -489,10 +492,20 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 	if (redir_interface)
 		skel->rodata->to_match[0] = if_nametoindex(redir_interface);
 
-	ret = xdp_redirect_cpumap__load(skel);
+	opts.obj = skel->obj;
+	opts.prog_name = bpf_program__name(prog);
+	xdp_prog = xdp_program__create(&opts);
+	if (!xdp_prog) {
+		ret = -errno;
+		fprintf(stderr, "Couldn't open XDP program: %s\n",
+			strerror(-ret));
+		goto end_cpu;
+	}
+
+	ret = xdp_program__attach(xdp_prog, ifindex, xdp_mode, 0);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to xdp_redirect_cpumap__load: %s\n",
-			strerror(errno));
+		fprintf(stderr, "Failed to attach XDP program: %s\n",
+			strerror(-ret));
 		goto end_cpu;
 	}
 
@@ -500,7 +513,7 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 	if (ret < 0) {
 		fprintf(stderr, "Failed bpf_obj_get_info_by_fd for cpumap: %s\n",
 			strerror(errno));
-		goto end_cpu;
+		goto end_detach;
 	}
 
 	skel->bss->cpumap_map_id = info.id;
@@ -512,14 +525,14 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 	ret = mark_cpus_unavailable();
 	if (ret < 0) {
 		fprintf(stderr, "Unable to mark CPUs as unavailable\n");
-		goto end_cpu;
+		goto end_detach;
 	}
 
-	ret = sample_init(skel, mask);
+	ret = sample_init(skel, mask, ifindex, 0);
 	if (ret < 0) {
 		fprintf(stderr, "Failed to initialize sample: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
-		goto end_cpu;
+		goto end_detach;
 	}
 
 	value.bpf_prog.fd = set_cpumap_prog(skel, redir_interface, redir_map,
@@ -529,7 +542,7 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 			strerror(-value.bpf_prog.fd));
 		usage(argv, long_options, __doc__, mask, true, skel->obj);
 		ret = EXIT_FAIL_BPF;
-		goto end_cpu;
+		goto end_detach;
 	}
 	value.qsize = qsize;
 
@@ -537,24 +550,23 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 		if (create_cpu_entry(cpu[i], &value, i, true) < 0) {
 			fprintf(stderr, "Cannot proceed, exiting\n");
 			usage(argv, long_options, __doc__, mask, true, skel->obj);
-			goto end_cpu;
+			goto end_detach;
 		}
 	}
-
-	ret = EXIT_FAIL_XDP;
-	if (sample_install_xdp(prog, ifindex, generic, false) < 0)
-		goto end_cpu;
 
 	ret = sample_run(interval, stress_mode ? stress_cpumap : NULL, &value);
 	if (ret < 0) {
 		fprintf(stderr, "Failed during sample run: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
-		goto end_cpu;
+		goto end_detach;
 	}
 	ret = EXIT_OK;
+end_detach:
+	xdp_program__detach(xdp_prog, ifindex, xdp_mode, 0);
 end_cpu:
 	free(cpu);
 end_destroy:
+	xdp_program__close(xdp_prog);
 	xdp_redirect_cpumap__destroy(skel);
 end:
 	sample_exit(ret);

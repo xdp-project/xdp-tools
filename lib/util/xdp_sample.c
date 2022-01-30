@@ -68,17 +68,6 @@
 #define XDP_ACTION_MAX (XDP_UNKNOWN + 1)
 #define XDP_REDIRECT_ERR_MAX 7
 
-/* temporary stubs to make things compile, to be removed later */
-static inline int bpf_set_link_xdp_fd(__unused int ifindex, __unused int id, __unused int flags)
-{
-	return 0;
-}
-
-static inline int bpf_get_link_xdp_id(__unused int ifindex, __unused __u32 *id, __unused int flags)
-{
-	return 0;
-}
-
 enum map_type {
 	MAP_RX,
 	MAP_REDIRECT_ERR,
@@ -150,12 +139,6 @@ struct sample_output {
 	} xmit_cnt;
 };
 
-struct xdp_desc {
-	int ifindex;
-	__u32 prog_id;
-	int flags;
-} sample_xdp_progs[32];
-
 struct datarec *sample_mmap[NUM_MAP];
 struct bpf_map *sample_map[NUM_MAP];
 size_t sample_map_count[NUM_MAP];
@@ -167,6 +150,7 @@ int sample_xdp_cnt;
 int sample_n_cpus;
 int sample_sig_fd;
 int sample_mask;
+int ifindex[2];
 
 static const char *xdp_redirect_err_names[XDP_REDIRECT_ERR_MAX] = {
 	/* Key=1 keeps unknown errors */
@@ -1177,7 +1161,7 @@ static int sample_setup_maps_mappings(void)
 	return 0;
 }
 
-int __sample_init(int mask)
+int __sample_init(int mask, int ifindex_from, int ifindex_to)
 {
 	sigset_t st;
 
@@ -1194,72 +1178,10 @@ int __sample_init(int mask)
 		return -errno;
 
 	sample_mask = mask;
+	ifindex[0] = ifindex_from;
+	ifindex[1] = ifindex_to;
 
 	return sample_setup_maps_mappings();
-}
-
-static int __sample_remove_xdp(int ifindex, __u32 prog_id, int xdp_flags)
-{
-	__u32 cur_prog_id = 0;
-	int ret;
-
-	if (prog_id) {
-		ret = bpf_get_link_xdp_id(ifindex, &cur_prog_id, xdp_flags);
-		if (ret < 0)
-			return -errno;
-
-		if (prog_id != cur_prog_id) {
-			print_always(
-				"Program on ifindex %d does not match installed "
-				"program, skipping unload\n",
-				ifindex);
-			return -ENOENT;
-		}
-	}
-
-	return bpf_set_link_xdp_fd(ifindex, -1, xdp_flags);
-}
-
-int sample_install_xdp(struct bpf_program *xdp_prog, int ifindex, bool generic,
-		       bool force)
-{
-	int ret, xdp_flags = 0;
-	__u32 prog_id = 0;
-
-	if (sample_xdp_cnt == 32) {
-		fprintf(stderr,
-			"Total limit for installed XDP programs in a sample reached\n");
-		return -ENOTSUP;
-	}
-
-	xdp_flags |= !force ? XDP_FLAGS_UPDATE_IF_NOEXIST : 0;
-	xdp_flags |= generic ? XDP_FLAGS_SKB_MODE : XDP_FLAGS_DRV_MODE;
-	ret = bpf_set_link_xdp_fd(ifindex, bpf_program__fd(xdp_prog),
-				  xdp_flags);
-	if (ret < 0) {
-		ret = -errno;
-		fprintf(stderr,
-			"Failed to install program \"%s\" on ifindex %d, mode = %s, "
-			"force = %s: %s\n",
-			bpf_program__name(xdp_prog), ifindex,
-			generic ? "skb" : "native", force ? "true" : "false",
-			strerror(-ret));
-		return ret;
-	}
-
-	ret = bpf_get_link_xdp_id(ifindex, &prog_id, xdp_flags);
-	if (ret < 0) {
-		ret = -errno;
-		fprintf(stderr,
-			"Failed to get XDP program id for ifindex %d, removing program: %s\n",
-			ifindex, strerror(errno));
-		__sample_remove_xdp(ifindex, 0, xdp_flags);
-		return ret;
-	}
-	sample_xdp_progs[sample_xdp_cnt++] =
-		(struct xdp_desc){ ifindex, prog_id, xdp_flags };
-
-	return 0;
 }
 
 static void sample_summary_print(void)
@@ -1309,19 +1231,10 @@ void sample_exit(int status)
 		size = sample_map_count[i] * sizeof(**sample_mmap);
 		munmap(sample_mmap[i], size);
 	}
-	while (sample_xdp_cnt--) {
-		int i = sample_xdp_cnt, ifindex, xdp_flags;
-		__u32 prog_id;
-
-		prog_id = sample_xdp_progs[i].prog_id;
-		ifindex = sample_xdp_progs[i].ifindex;
-		xdp_flags = sample_xdp_progs[i].flags;
-
-		__sample_remove_xdp(ifindex, prog_id, xdp_flags);
-	}
 	sample_summary_print();
 	close(sample_sig_fd);
-	exit(status);
+	if (status >= 0)
+		exit(status);
 }
 
 static int sample_stats_collect(struct stats_record *rec)
@@ -1450,15 +1363,15 @@ static int sample_timer_cb(int timerfd, struct stats_record **rec,
 	if (ret < 0)
 		return ret;
 
-	if (sample_xdp_cnt == 2 && !(sample_mask & SAMPLE_SKIP_HEADING)) {
+	if (ifindex[0] && !(sample_mask & SAMPLE_SKIP_HEADING)) {
 		char fi[IFNAMSIZ];
 		char to[IFNAMSIZ];
 		const char *f, *t;
 
 		f = t = NULL;
-		if (if_indextoname(sample_xdp_progs[0].ifindex, fi))
+		if (if_indextoname(ifindex[0], fi))
 			f = fi;
-		if (if_indextoname(sample_xdp_progs[1].ifindex, to))
+		if (if_indextoname(ifindex[1], to))
 			t = to;
 
 		snprintf(line, sizeof(line), "%s->%s", f ?: "?", t ?: "?");

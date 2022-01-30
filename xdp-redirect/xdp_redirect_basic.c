@@ -21,6 +21,7 @@ static const char *__doc__ =
 #include <bpf/libbpf.h>
 #include <sys/resource.h>
 #include <linux/if_link.h>
+#include <xdp/libxdp.h>
 
 #include "xdp_sample.h"
 #include "xdp_redirect_basic.skel.h"
@@ -41,21 +42,23 @@ static const struct option long_options[] = {
 
 int xdp_redirect_basic_main(int argc, char **argv)
 {
+	struct xdp_program *xdp_prog = NULL, *dummy_prog = NULL;
+	enum xdp_attach_mode xdp_mode = XDP_MODE_NATIVE;
+	DECLARE_LIBBPF_OPTS(xdp_program_opts, opts);
 	int ifindex_in, ifindex_out, opt;
+	struct xdp_redirect_basic *skel;
 	char str[2 * IF_NAMESIZE + 1];
 	char ifname_out[IF_NAMESIZE];
 	char ifname_in[IF_NAMESIZE];
 	int ret = EXIT_FAIL_OPTION;
 	unsigned long interval = 2;
-	struct xdp_redirect_basic *skel;
-	bool generic = false;
 	bool error = true;
 
 	while ((opt = getopt_long(argc, argv, "hSi:vs",
 				  long_options, NULL)) != -1) {
 		switch (opt) {
 		case 'S':
-			generic = true;
+			xdp_mode = XDP_MODE_SKB;
 			mask &= ~(SAMPLE_DEVMAP_XMIT_CNT |
 				  SAMPLE_DEVMAP_XMIT_CNT_MULTI);
 			break;
@@ -114,40 +117,58 @@ int xdp_redirect_basic_main(int argc, char **argv)
 	skel->rodata->to_match[0] = ifindex_out;
 	skel->rodata->ifindex_out = ifindex_out;
 
-	ret = xdp_redirect_basic__load(skel);
+	opts.obj = skel->obj;
+	opts.prog_name = bpf_program__name(skel->progs.xdp_redirect_basic_prog);
+	xdp_prog = xdp_program__create(&opts);
+	if (!xdp_prog) {
+		ret = -errno;
+		fprintf(stderr, "Couldn't open XDP program: %s\n",
+			strerror(-ret));
+		goto end_destroy;
+	}
+
+	ret = xdp_program__attach(xdp_prog, ifindex_in, xdp_mode, 0);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to xdp_redirect_basic__load: %s\n", strerror(errno));
+		fprintf(stderr, "Failed to attach XDP program: %s\n", strerror(-ret));
 		ret = EXIT_FAIL_BPF;
 		goto end_destroy;
 	}
 
-	ret = sample_init(skel, mask);
+	ret = sample_init(skel, mask, ifindex_in, ifindex_out);
 	if (ret < 0) {
 		fprintf(stderr, "Failed to initialize sample: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
-		goto end_destroy;
+		goto end_detach;
 	}
 
-	ret = EXIT_FAIL_XDP;
-	if (sample_install_xdp(skel->progs.xdp_redirect_basic_prog, ifindex_in,
-			       generic, false) < 0)
-		goto end_destroy;
+	opts.obj = NULL;
+	opts.prog_name = "xdp_pass";
+	opts.find_filename = "xdp-dispatcher.o";
+	dummy_prog = xdp_program__create(&opts);
+	if (!dummy_prog) {
+		fprintf(stderr, "Failed to load dummy program: %s\n", strerror(errno));
+		ret = EXIT_FAIL_BPF;
+		goto end_detach;
+	}
 
-	/* Loading dummy XDP prog on out-device */
-	sample_install_xdp(skel->progs.xdp_redirect_basic_dummy_prog, ifindex_out,
-			   generic, false);
+	ret = xdp_program__attach(dummy_prog, ifindex_out, xdp_mode, 0);
+	if (ret < 0) {
+		fprintf(stderr, "Failed to attach dummy program: %s\n", strerror(-ret));
+		ret = EXIT_FAIL_BPF;
+		goto end_detach;
+	}
 
 	ret = EXIT_FAIL;
 	if (!if_indextoname(ifindex_in, ifname_in)) {
 		fprintf(stderr, "Failed to if_indextoname for %d: %s\n", ifindex_in,
 			strerror(errno));
-		goto end_destroy;
+		goto end_detach;
 	}
 
 	if (!if_indextoname(ifindex_out, ifname_out)) {
 		fprintf(stderr, "Failed to if_indextoname for %d: %s\n", ifindex_out,
 			strerror(errno));
-		goto end_destroy;
+		goto end_detach;
 	}
 
 	safe_strncpy(str, get_driver_name(ifindex_in), sizeof(str));
@@ -159,9 +180,13 @@ int xdp_redirect_basic_main(int argc, char **argv)
 	if (ret < 0) {
 		fprintf(stderr, "Failed during sample run: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
-		goto end_destroy;
+		goto end_detach;
 	}
 	ret = EXIT_OK;
+end_detach:
+	if (dummy_prog)
+		xdp_program__detach(dummy_prog, ifindex_out, xdp_mode, 0);
+	xdp_program__detach(xdp_prog, ifindex_in, xdp_mode, 0);
 end_destroy:
 	xdp_redirect_basic__destroy(skel);
 end:

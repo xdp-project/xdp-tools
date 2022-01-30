@@ -84,11 +84,4 @@ int xdp_redirect_devmap_egress(struct xdp_md *ctx)
 	return XDP_PASS;
 }
 
-/* Redirect require an XDP bpf_prog loaded on the TX device */
-SEC("xdp")
-int xdp_redirect_dummy_prog(struct xdp_md *ctx)
-{
-	return XDP_PASS;
-}
-
 char _license[] SEC("license") = "GPL";

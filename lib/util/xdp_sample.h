@@ -31,13 +31,11 @@ enum stats_mask {
 #define EXIT_FAIL_MEM		5
 
 int sample_setup_maps(struct bpf_map **maps);
-int __sample_init(int mask);
+int __sample_init(int mask, int ifindex_from, int ifindex_to);
 void sample_exit(int status);
 int sample_run(int interval, void (*post_cb)(void *), void *ctx);
 
 void sample_switch_mode(void);
-int sample_install_xdp(struct bpf_program *xdp_prog, int ifindex, bool generic,
-		       bool force);
 void sample_usage(char *argv[], const struct option *long_options,
 		  const char *doc, int mask, bool error);
 
@@ -80,10 +78,12 @@ static inline char *safe_strncpy(char *dst, const char *src, size_t size)
 	})
 
 #define DEFINE_SAMPLE_INIT(name)                                   \
-	static int sample_init(struct name *skel, int sample_mask) \
+	static int sample_init(struct name *skel, int sample_mask, \
+			       int ifindex_from, int ifindex_to)   \
 	{                                                          \
 		int ret;                                           \
-		ret = __sample_init(sample_mask);                  \
+		ret = __sample_init(sample_mask, ifindex_from,     \
+				    ifindex_to);                   \
 		if (ret < 0)                                       \
 			return ret;                                \
 		if (sample_mask & SAMPLE_REDIRECT_MAP_CNT)         \

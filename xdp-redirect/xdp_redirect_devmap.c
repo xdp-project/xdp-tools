@@ -19,6 +19,7 @@ static const char *__doc__ =
 #include <stdbool.h>
 #include <linux/bpf.h>
 #include <bpf/libbpf.h>
+#include <xdp/libxdp.h>
 #include <linux/if_link.h>
 
 #include "xdp_sample.h"
@@ -41,18 +42,20 @@ static const struct option long_options[] = {
 
 int xdp_redirect_devmap_main(int argc, char **argv)
 {
+	struct xdp_program *xdp_prog = NULL, *dummy_prog = NULL;
+	enum xdp_attach_mode xdp_mode = XDP_MODE_NATIVE;
+	DECLARE_LIBBPF_OPTS(xdp_program_opts, opts);
 	struct bpf_devmap_val devmap_val = {};
+	struct bpf_map *tx_port_map = NULL;
 	bool xdp_devmap_attached = false;
 	struct xdp_redirect_devmap *skel;
+	struct bpf_program *prog = NULL;
 	char str[2 * IF_NAMESIZE + 1];
 	char ifname_out[IF_NAMESIZE];
-	struct bpf_map *tx_port_map;
 	char ifname_in[IF_NAMESIZE];
 	int ifindex_in, ifindex_out;
 	unsigned long interval = 2;
 	int ret = EXIT_FAIL_OPTION;
-	struct bpf_program *prog;
-	bool generic = false;
 	bool tried = false;
 	bool error = true;
 	int opt, key = 0;
@@ -61,7 +64,7 @@ int xdp_redirect_devmap_main(int argc, char **argv)
 				  long_options, NULL)) != -1) {
 		switch (opt) {
 		case 'S':
-			generic = true;
+			xdp_mode = XDP_MODE_SKB;
 			/* devmap_xmit tracepoint not available */
 			mask &= ~(SAMPLE_DEVMAP_XMIT_CNT |
 				  SAMPLE_DEVMAP_XMIT_CNT_MULTI);
@@ -105,7 +108,7 @@ int xdp_redirect_devmap_main(int argc, char **argv)
 		sample_usage(argv, long_options, __doc__, mask, true);
 		goto end;
 	}
-
+restart:
 	skel = xdp_redirect_devmap__open();
 	if (!skel) {
 		fprintf(stderr, "Failed to xdp_redirect_devmap__open: %s\n",
@@ -113,6 +116,13 @@ int xdp_redirect_devmap_main(int argc, char **argv)
 		ret = EXIT_FAIL_BPF;
 		goto end;
 	}
+
+	/* Set to NULL when not restarting */
+	if (!prog)
+		prog = skel->progs.xdp_redirect_devmap_native;
+	/* Set to NULL when not restarting */
+	if (!tx_port_map)
+		tx_port_map = skel->maps.tx_port_native;
 
 	ret = sample_init_pre_load(skel);
 	if (ret < 0) {
@@ -135,42 +145,62 @@ int xdp_redirect_devmap_main(int argc, char **argv)
 	skel->rodata->from_match[0] = ifindex_in;
 	skel->rodata->to_match[0] = ifindex_out;
 
-	ret = xdp_redirect_devmap__load(skel);
-	if (ret < 0) {
-		fprintf(stderr, "Failed to xdp_redirect_devmap__load: %s\n",
-			strerror(errno));
-		ret = EXIT_FAIL_BPF;
+	opts.obj = skel->obj;
+	opts.prog_name = bpf_program__name(prog);
+	xdp_prog = xdp_program__create(&opts);
+	if (!xdp_prog) {
+		ret = -errno;
+		fprintf(stderr, "Couldn't open XDP program: %s\n",
+			strerror(-ret));
 		goto end_destroy;
 	}
 
-	ret = sample_init(skel, mask);
+	ret = xdp_program__attach(xdp_prog, ifindex_in, xdp_mode, 0);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to initialize sample: %s\n", strerror(-ret));
-		ret = EXIT_FAIL;
-		goto end_destroy;
-	}
-
-	prog = skel->progs.xdp_redirect_devmap_native;
-	tx_port_map = skel->maps.tx_port_native;
-restart:
-	if (sample_install_xdp(prog, ifindex_in, generic, false) < 0) {
 		/* First try with struct bpf_devmap_val as value for generic
 		 * mode, then fallback to sizeof(int) for older kernels.
 		 */
 		fprintf(stderr,
 			"Trying fallback to sizeof(int) as value_size for devmap in generic mode\n");
-		if (generic && !tried) {
+		if (xdp_mode == XDP_MODE_SKB && !tried) {
 			prog = skel->progs.xdp_redirect_devmap_general;
 			tx_port_map = skel->maps.tx_port_general;
 			tried = true;
+			xdp_program__close(xdp_prog);
+			xdp_redirect_devmap__destroy(skel);
+			/* Free resources, but skip exit */
+			sample_exit(-1);
 			goto restart;
 		}
+		fprintf(stderr, "Failed to attach XDP program: %s\n",
+			strerror(-ret));
 		ret = EXIT_FAIL_XDP;
 		goto end_destroy;
 	}
 
-	/* Loading dummy XDP prog on out-device */
-	sample_install_xdp(skel->progs.xdp_redirect_dummy_prog, ifindex_out, generic, false);
+	ret = sample_init(skel, mask, ifindex_in, ifindex_out);
+	if (ret < 0) {
+		fprintf(stderr, "Failed to initialize sample: %s\n", strerror(-ret));
+		ret = EXIT_FAIL;
+		goto end_detach;
+	}
+
+	opts.obj = NULL;
+	opts.prog_name = "xdp_pass";
+	opts.find_filename = "xdp-dispatcher.o";
+	dummy_prog = xdp_program__create(&opts);
+	if (!dummy_prog) {
+		fprintf(stderr, "Failed to load dummy program: %s\n", strerror(errno));
+		ret = EXIT_FAIL_BPF;
+		goto end_detach;
+	}
+
+	ret = xdp_program__attach(dummy_prog, ifindex_out, xdp_mode, 0);
+	if (ret < 0) {
+		fprintf(stderr, "Failed to attach dummy program: %s\n", strerror(-ret));
+		ret = EXIT_FAIL_BPF;
+		goto end_detach;
+	}
 
 	devmap_val.ifindex = ifindex_out;
 	if (xdp_devmap_attached)
@@ -180,20 +210,20 @@ restart:
 		fprintf(stderr, "Failed to update devmap value: %s\n",
 			strerror(errno));
 		ret = EXIT_FAIL_BPF;
-		goto end_destroy;
+		goto end_detach;
 	}
 
 	ret = EXIT_FAIL;
 	if (!if_indextoname(ifindex_in, ifname_in)) {
 		fprintf(stderr, "Failed to if_indextoname for %d: %s\n", ifindex_in,
 			strerror(errno));
-		goto end_destroy;
+		goto end_detach;
 	}
 
 	if (!if_indextoname(ifindex_out, ifname_out)) {
 		fprintf(stderr, "Failed to if_indextoname for %d: %s\n", ifindex_out,
 			strerror(errno));
-		goto end_destroy;
+		goto end_detach;
 	}
 
 	safe_strncpy(str, get_driver_name(ifindex_in), sizeof(str));
@@ -208,7 +238,13 @@ restart:
 		goto end_destroy;
 	}
 	ret = EXIT_OK;
+end_detach:
+	if (dummy_prog)
+		xdp_program__detach(dummy_prog, ifindex_out, xdp_mode, 0);
+	xdp_program__detach(xdp_prog, ifindex_in, xdp_mode, 0);
 end_destroy:
+	xdp_program__close(xdp_prog);
+	xdp_program__close(dummy_prog);
 	xdp_redirect_devmap__destroy(skel);
 end:
 	sample_exit(ret);
