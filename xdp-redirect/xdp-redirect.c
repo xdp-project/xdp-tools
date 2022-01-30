@@ -1,4 +1,6 @@
+#define _GNU_SOURCE
 #include <stdio.h>
+#include <errno.h>
 #include <string.h>
 
 #include "xdp_redirect.h"
@@ -20,6 +22,7 @@ int main(int argc, char *argv[])
 		return xdp_redirect_devmap_multi_main(argc - 1, argv + 1);
 end:
 	fprintf(stderr, "Usage: xdp-redirect [command] <options>\n"
-		"\t[command] must be one of basic, cpumap, devmap, devmap_multi\n");
+		"\t[command] must be one of basic, cpumap, devmap, devmap_multi\n"
+		"Please see %s(8) for more details.\n", program_invocation_short_name);
 	return 1;
 }

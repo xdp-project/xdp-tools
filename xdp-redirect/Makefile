@@ -5,6 +5,7 @@ XDP_TARGETS := xdp_redirect_basic.bpf xdp_redirect_cpumap.bpf xdp_redirect_devma
 BPF_SKEL_TARGETS := $(XDP_TARGETS)
 
 TOOL_NAME := xdp-redirect
+MAN_PAGE := xdp-redirect.8
 USER_TARGETS := xdp-redirect
 USER_LIBS     = -lm
 USER_EXTRA_C := xdp_redirect_basic.c xdp_redirect_cpumap.c xdp_redirect_devmap.c \

@@ -1,0 +1,389 @@
+.TH "xdp-redirect" "8" "DECEMBER  6, 2022" "V1.2.2" "A simple XDP-powered packet redirect tool" 
+
+.SH "NAME"
+XDP-redirect \- a simple XDP-powered packet redirect tool
+.SH "SYNOPSIS"
+.PP
+XDP-redirect is a packet redirecting utility powered by XDP. It is intended to
+be a simple program demonstrating the various in kernel packet redirection
+facilities and their various practical applications. The tools support basic
+packet redirection using the (now obsolete) \fIbpf_redirect\fP helper,
+\fIbpf_redirect_map\fP helper using a cpumap as its target, \fIbpf_redirect_map\fP using
+a devmap as its target, and the devmap's broadcast mode which allows redirecting
+to multiple devices.
+
+.PP
+There is more information on the meaning of the output in both default (terse)
+and verbose output mode, in the \fIOutput Format Description\fP section.
+
+.SS "Running xdp-redirect"
+.PP
+The syntax for running xdp-redirect is:
+
+.RS
+.nf
+\fCxdp-redirect COMMAND [options]
+
+Where COMMAND can be one of:
+       basic		- Use bpf_redirect helper for redirection
+       cpumap		- Use bpf_redirect_map with a cpumap as target
+       devmap		- Use bpf_redirect_map with a devmap as target
+       devmap_multi	- Use bpf_redirect_map with a devmap as target, in broadcast mode
+\fP
+.fi
+.RE
+
+.PP
+Each command, and its options are explained below. Or use \fIxdp\-redirect COMMAND
+\-\-help\fP to see the options for each command.
+
+.SH "The BASIC command"
+.PP
+In this mode, \fIxdp\-redirect\fP sets up packet redirection between the two
+interfaces supplied on the command line using the \fIbpf_redirect\fP BPF helper
+triggered on packet reception on the ingress interface.
+
+.PP
+The syntax for the \fIbasic\fP command is:
+
+.PP
+\fIxdp\-redirect basic [options] <ifname|ifindex>_in <ifname|ifindex>_out\fP
+
+.PP
+Where \fI<ifname|ifindex>_in\fP is the name of the input interface from where
+packets will be redirect to the output interface \fI<ifname|ifindex>_out\fP.
+The supported options are:
+
+.SS "-S, --skb-mode"
+.PP
+Load the XDP program in generic XDP mode. Note that native XDP mode is the
+default, and loading the redirect program in this manner is neither performant,
+nor recommended. However, this option is useful if the interface driver lacks
+native XDP support, or when simply testing the tool.
+
+.SS "-s, --stats"
+.PP
+Enable statistics for successful redirection. This option comes with a per
+packet tracing overhead, for recording all successful redirections.
+
+.SS "-i, --interval"
+.PP
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
+
+.SS "-v, --verbose"
+.PP
+Enable verbose output.
+
+.SS "-h, --help"
+.PP
+Display a summary of the available options
+
+.SH "The CPUMAP command"
+.PP
+In this mode, \fIxdp\-redirect\fP sets up packet redirection between the two
+interfaces supplied on the command line using the bpf\d\s-2redirect\s+2\u\d\s-2map\s+2\u BPF helper
+triggered on packet reception on the ingress interface, using a cpumap as its
+target. Hence, this tool can be used to redirect packets on an interface from
+one CPU to another. In addition to this, the tool then supports redirecting the
+packet to another output device when it is processed on the target CPU.
+
+.PP
+The syntax for the \fIcpumap\fP command is:
+
+.PP
+\fIxdp\-redirect cpumap [options] \-d <ifname|ifindex> \-c 0 ... \-c N\fP
+
+.PP
+Where \fI<ifname|ifindex>\fP is the name of the input interface from where
+packets will be redirect to the target CPU list specified using \fI\-c\fP.
+The supported options are:
+
+.SS "-d, --dev"
+.PP
+Specify the interface from which packets will be redirected to other CPUs.
+This option is mandatory.
+
+.SS "-c, --cpu <CPU>"
+.PP
+Specify a possible target CPU. This option can be passed multiple times to
+specify a list of CPUs. This option is mandatory.
+
+.SS "-q, --qsize <QSIZE>"
+.PP
+Set the queue size for the per-CPU cpumap ring buffer used for redirecting
+packets from multiple CPUs to one CPU.
+
+.SS "-x, --stress-mode"
+.PP
+Stress the cpumap implementation by deallocating and reallocating the cpumap
+ring buffer on each polling interval.
+
+.SS "-p, --progname <PROG>"
+.PP
+Specify a program that embeds a predefined policy deciding how packets are
+redirected to different CPUs. The following options are available:
+
+.RS
+.nf
+\fCxdp_prognum0_no_touch			- Redirect without touching packet data
+xdp_prognum1_touch_data			- Read packet data before redirecting
+xdp_prognum2_round_robin			- Cycle between target CPUs in round-robin fashion
+xdp_prognum3_proto_separate		- Choose a CPU based on the protocol of packet
+xdp_prognum4_ddos_filter_pktgen	- A DDoS filter for pktgen packet load
+xdp_prognum5_lb_hash_ip_pairs		- Use source and destination IP hashing to pick target CPU
+\fP
+.fi
+.RE
+
+.SS "-e, --mprog-name <NAME>"
+.PP
+Specify the verdict for the packet when it is received on the target CPU. \fINAME\fP
+must be one of \fIpass\fP or \fIdrop\fP.
+
+.SS "-r, --redirect-device <ifname|ifindex>"
+.PP
+Specify the device to redirect the packet to when it is received on the target CPU.
+Note that this option can only be specified with \fI\-\-mprog\-name\fP and/or
+\fI\-\-mprog\-filename\fP when \fI\-\-redirect\-map\fP is also present.
+
+.SS "-f, --mprog-filename <filename>"
+.PP
+Use a custom program to be invoked when the packet is received on the target CPU. This
+option must be specified in combination with \fI\-\-mprog\-name\fP that specifies the name
+of the XDP program in the BPF object file \fI<filename>\fP.
+
+.SS "-m, --redirect-map <map\d\s-2name\s+2\u>"
+.PP
+When specifying \fI\-\-mprog\-filename\fP and \fI\-\-mprog\-name\fP, the user may use this
+option along with \fI\-\-redirect\-device\fP to specify the name of a devmap BPF map
+and configure it at index 0 with the device specified using \fI\-\-redirect\-device\fP.
+
+.SS "-S, --skb-mode"
+.PP
+Load the XDP program in generic XDP mode. Note that native XDP mode is the
+default, and loading the redirect program in this manner is neither performant,
+nor recommended. However, this option is useful if the interface driver lacks
+native XDP support, or when simply testing the tool.
+
+.SS "-s, --stats"
+.PP
+Enable statistics for successful redirection. This option comes with a per
+packet tracing overhead, for recording all successful redirections.
+
+.SS "-i, --interval"
+.PP
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
+
+.SS "-v, --verbose"
+.PP
+Enable verbose output.
+
+.SS "-h, --help"
+.PP
+Display a summary of the available options
+
+.SH "The DEVMAP command"
+.PP
+In this mode, \fIxdp\-redirect\fP sets up packet redirection between the two
+interfaces supplied on the command line using the \fIbpf_redirect_map\fP BPF helper
+triggered on packet reception on the ingress interface, using a devmap as its
+target.
+
+.PP
+The syntax for the \fIdevmap\fP command is:
+
+.PP
+\fIxdp\-redirect devmap [options] <ifname|ifindex>_in <ifname|ifindex>_out\fP
+
+.PP
+Where \fI<ifname|ifindex>_in\fP is the name of the input interface from where
+packets will be redirect to the output interface \fI<ifname|ifindex>_out\fP.
+The supported options are:
+
+.SS "-X, --load-egress"
+.PP
+Load a program in the devmap entry used for redirection, so that it is invoked
+after the packet is redirected to the target device, before it is transmitted
+out of the output interface.
+
+.SS "-S, --skb-mode"
+.PP
+Load the XDP program in generic XDP mode. Note that native XDP mode is the
+default, and loading the redirect program in this manner is neither performant,
+nor recommended. However, this option is useful if the interface driver lacks
+native XDP support, or when simply testing the tool.
+
+.SS "-s, --stats"
+.PP
+Enable statistics for successful redirection. This option comes with a per
+packet tracing overhead, for recording all successful redirections.
+
+.SS "-i, --interval"
+.PP
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
+
+.SS "-v, --verbose"
+.PP
+Enable verbose output.
+
+.SS "-h, --help"
+.PP
+Display a summary of the available options
+
+.SH "The DEVMAP_MULTI command"
+.PP
+In this mode, \fIxdp\-redirect\fP sets up one-to-many packet redirection between
+interfaces supplied on the command line using the \fIbpf_redirect_map\fP BPF helper
+triggered on packet reception on the ingress interface, using a devmap as its
+target. The packet is broadcasted to all output interfaces specified on the
+command line, using devmap's packet broadcast feature.
+
+.PP
+The syntax for the \fIdevmap\fP command is:
+
+.PP
+\fIxdp\-redirect devmap_multi [options] <ifname|ifindex>_in <ifname|ifindex>_out1 ... <ifname|ifindex>_outN\fP
+
+.PP
+Where \fI<ifname|ifindex>_in\fP is the name of the input interface from where
+packets will be redirect to one or many output interface(s).
+The supported options are:
+
+.SS "-X, --load-egress"
+.PP
+Load a program in the devmap entry used for redirection, so that it is invoked
+after the packet is redirected to the target device(s), before it is transmitted
+out of the output interface(s).
+
+.SS "-S, --skb-mode"
+.PP
+Load the XDP program in generic XDP mode. Note that native XDP mode is the
+default, and loading the redirect program in this manner is neither performant,
+nor recommended. However, this option is useful if the interface driver lacks
+native XDP support, or when simply testing the tool.
+
+.SS "-s, --stats"
+.PP
+Enable statistics for successful redirection. This option comes with a per
+packet tracing overhead, for recording all successful redirections.
+
+.SS "-i, --interval"
+.PP
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
+
+.SS "-v, --verbose"
+.PP
+Enable verbose output.
+
+.SS "-h, --help"
+.PP
+Display a summary of the available options
+
+.SH "Output Format Description"
+.PP
+By default, redirect success statistics are disabled, use \fI\-\-stats\fP to enable.
+The terse output mode is default, verbose mode can be activated using \fI\-\-verbose\fP.
+
+.PP
+SIGQUIT (Ctrl + \\) can be used to switch the mode dynamically at runtime.
+
+.PP
+Terse mode displays at most the following fields:
+.RS
+.nf
+\fCrx/s		Number of packets received per second
+redir/s	Number of packets successfully redirected per second
+err,drop/s	Aggregated count of errors per second (including dropped packets)
+xmit/s	Number of packets transmitted on the output device per second
+\fP
+.fi
+.RE
+
+.PP
+Verbose output mode displays at most the following fields:
+.RS
+.nf
+\fCFIELD		  DESCRIPTION
+receive	       Displays the number of packets received and errors encountered
+
+		       Whenever an error or packet drop occurs, details of per CPU error
+		       and drop statistics will be expanded inline in terse mode.
+				       pkt/s		- Packets received per second
+				       drop/s		- Packets dropped per second
+				       error/s		- Errors encountered per second
+				       redirect	- Displays the number of packets successfully redirected
+		       Errors encountered are expanded under redirect_err field
+		       Note that passing -s to enable it has a per packet overhead
+				       redir/s		- Packets redirected successfully per second
+
+
+redirect_err	  Displays the number of packets that failed redirection
+
+		       The errno is expanded under this field with per CPU count
+		       The recognized errors are:
+				       EINVAL:		Invalid redirection
+				       ENETDOWN:	Device being redirected to is down
+				       EMSGSIZE:	Packet length too large for device
+				       EOPNOTSUPP:	Operation not supported
+				       ENOSPC:		No space in ptr_ring of cpumap kthread
+
+				       error/s		- Packets that failed redirection per second
+
+
+enqueue to cpu N Displays the number of packets enqueued to bulk queue of CPU N
+		       Expands to cpu:FROM->N to display enqueue stats for each CPU enqueuing to CPU N
+		       Received packets can be associated with the CPU redirect program is enqueuing
+		       packets to.
+				       pkt/s		- Packets enqueued per second from other CPU to CPU N
+				       drop/s		- Packets dropped when trying to enqueue to CPU N
+				       bulk-avg	- Average number of packets processed for each event
+
+
+kthread	       Displays the number of packets processed in CPUMAP kthread for each CPU
+		       Packets consumed from ptr_ring in kthread, and its xdp_stats (after calling
+		       CPUMAP bpf prog) are expanded below this. xdp_stats are expanded as a total and
+		       then per-CPU to associate it to each CPU's pinned CPUMAP kthread.
+				       pkt/s		- Packets consumed per second from ptr_ring
+				       drop/s		- Packets dropped per second in kthread
+				       sched		- Number of times kthread called schedule()
+
+		       xdp_stats (also expands to per-CPU counts)
+				       pass/s		- XDP_PASS count for CPUMAP program execution
+				       drop/s		- XDP_DROP count for CPUMAP program execution
+				       redir/s		- XDP_REDIRECT count for CPUMAP program execution
+
+
+xdp_exception	  Displays xdp_exception tracepoint events
+
+		       This can occur due to internal driver errors, unrecognized
+		       XDP actions and due to explicit user trigger by use of XDP_ABORTED
+		       Each action is expanded below this field with its count
+				       hit/s		- Number of times the tracepoint was hit per second
+
+
+devmap_xmit      Displays devmap_xmit tracepoint events
+
+		       This tracepoint is invoked for successful transmissions on output
+		       device but these statistics are not available for generic XDP mode,
+		       hence they will be omitted from the output when using SKB mode
+				       xmit/s		- Number of packets that were transmitted per second
+				       drop/s		- Number of packets that failed transmissions per second
+				       drv_err/s	- Number of internal driver errors per second
+				       bulk-avg	- Average number of packets processed for each event
+\fP
+.fi
+.RE
+
+.SH "BUGS"
+.PP
+Please report any bugs on Github: \fIhttps://github.com/xdp-project/xdp-tools/issues\fP
+
+.SH "AUTHOR"
+.PP
+Earlier xdp-redirect tools were written by Jesper Dangaard Brouer, John
+Fastabend. They were then rewritten to support more features by Kumar Kartikeya Dwivedi.
+This man page was written by Kumar Kartikeya Dwivedi.

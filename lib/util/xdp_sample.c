@@ -179,16 +179,6 @@ static const char *xdp_redirect_err_names[XDP_REDIRECT_ERR_MAX] = {
 	"ENOSPC",
 };
 
-/* Keyed from Unknown */
-static const char *xdp_redirect_err_help[XDP_REDIRECT_ERR_MAX - 1] = {
-	"Unknown error",
-	"Invalid redirection",
-	"Device being redirected to is down",
-	"Packet length too large for device",
-	"Operation not supported",
-	"No space in ptr_ring of cpumap kthread",
-};
-
 static const char *xdp_action_names[XDP_ACTION_MAX] = {
 	[XDP_ABORTED]  = "XDP_ABORTED",
 	[XDP_DROP]     = "XDP_DROP",
@@ -220,84 +210,22 @@ static const char *xdp_action2str(int action)
 
 static void sample_print_help(int mask)
 {
-	printf("Output format description\n\n"
-	       "By default, redirect success statistics are disabled, use -s to enable.\n"
-	       "The terse output mode is default, verbose mode can be activated using -v\n"
-	       "Use SIGQUIT (Ctrl + \\) to switch the mode dynamically at runtime\n\n"
-	       "Terse mode displays at most the following fields:\n"
-	       "  rx/s        Number of packets received per second\n"
-	       "  redir/s     Number of packets successfully redirected per second\n"
-	       "  err,drop/s  Aggregated count of errors per second (including dropped packets)\n"
-	       "  xmit/s      Number of packets transmitted on the output device per second\n\n"
-	       "Output description for verbose mode:\n"
-	       "  FIELD                 DESCRIPTION\n");
-
-	if (mask & SAMPLE_RX_CNT) {
-		printf("  receive\t\tDisplays the number of packets received & errors encountered\n"
-		       " \t\t\tWhenever an error or packet drop occurs, details of per CPU error\n"
-		       " \t\t\tand drop statistics will be expanded inline in terse mode.\n"
-		       " \t\t\t\tpkt/s     - Packets received per second\n"
-		       " \t\t\t\tdrop/s    - Packets dropped per second\n"
-		       " \t\t\t\terror/s   - Errors encountered per second\n\n");
-	}
-	if (mask & (SAMPLE_REDIRECT_CNT | SAMPLE_REDIRECT_ERR_CNT)) {
-		printf("  redirect\t\tDisplays the number of packets successfully redirected\n"
-		       "  \t\t\tErrors encountered are expanded under redirect_err field\n"
-		       "  \t\t\tNote that passing -s to enable it has a per packet overhead\n"
-		       "  \t\t\t\tredir/s   - Packets redirected successfully per second\n\n"
-		       "  redirect_err\t\tDisplays the number of packets that failed redirection\n"
-		       "  \t\t\tThe errno is expanded under this field with per CPU count\n"
-		       "  \t\t\tThe recognized errors are:\n");
-
-		for (int i = 2; i < XDP_REDIRECT_ERR_MAX; i++)
-			printf("\t\t\t  %s: %s\n", xdp_redirect_err_names[i],
-			       xdp_redirect_err_help[i - 1]);
-
-		printf("  \n\t\t\t\terror/s   - Packets that failed redirection per second\n\n");
-	}
-
-	if (mask & SAMPLE_CPUMAP_ENQUEUE_CNT) {
-		printf("  enqueue to cpu N\tDisplays the number of packets enqueued to bulk queue of CPU N\n"
-		       "  \t\t\tExpands to cpu:FROM->N to display enqueue stats for each CPU enqueuing to CPU N\n"
-		       "  \t\t\tReceived packets can be associated with the CPU redirect program is enqueuing \n"
-		       "  \t\t\tpackets to.\n"
-		       "  \t\t\t\tpkt/s    - Packets enqueued per second from other CPU to CPU N\n"
-		       "  \t\t\t\tdrop/s   - Packets dropped when trying to enqueue to CPU N\n"
-		       "  \t\t\t\tbulk-avg - Average number of packets processed for each event\n\n");
-	}
-
-	if (mask & SAMPLE_CPUMAP_KTHREAD_CNT) {
-		printf("  kthread\t\tDisplays the number of packets processed in CPUMAP kthread for each CPU\n"
-		       "  \t\t\tPackets consumed from ptr_ring in kthread, and its xdp_stats (after calling \n"
-		       "  \t\t\tCPUMAP bpf prog) are expanded below this. xdp_stats are expanded as a total and\n"
-		       "  \t\t\tthen per-CPU to associate it to each CPU's pinned CPUMAP kthread.\n"
-		       "  \t\t\t\tpkt/s    - Packets consumed per second from ptr_ring\n"
-		       "  \t\t\t\tdrop/s   - Packets dropped per second in kthread\n"
-		       "  \t\t\t\tsched    - Number of times kthread called schedule()\n\n"
-		       "  \t\t\txdp_stats (also expands to per-CPU counts)\n"
-		       "  \t\t\t\tpass/s  - XDP_PASS count for CPUMAP program execution\n"
-		       "  \t\t\t\tdrop/s  - XDP_DROP count for CPUMAP program execution\n"
-		       "  \t\t\t\tredir/s - XDP_REDIRECT count for CPUMAP program execution\n\n");
-	}
-
-	if (mask & SAMPLE_EXCEPTION_CNT) {
-		printf("  xdp_exception\t\tDisplays xdp_exception tracepoint events\n"
-		       "  \t\t\tThis can occur due to internal driver errors, unrecognized\n"
-		       "  \t\t\tXDP actions and due to explicit user trigger by use of XDP_ABORTED\n"
-		       "  \t\t\tEach action is expanded below this field with its count\n"
-		       "  \t\t\t\thit/s     - Number of times the tracepoint was hit per second\n\n");
-	}
-
-	if (mask & SAMPLE_DEVMAP_XMIT_CNT) {
-		printf("  devmap_xmit\t\tDisplays devmap_xmit tracepoint events\n"
-		       "  \t\t\tThis tracepoint is invoked for successful transmissions on output\n"
-		       "  \t\t\tdevice but these statistics are not available for generic XDP mode,\n"
-		       "  \t\t\thence they will be omitted from the output when using SKB mode\n"
-		       "  \t\t\t\txmit/s    - Number of packets that were transmitted per second\n"
-		       "  \t\t\t\tdrop/s    - Number of packets that failed transmissions per second\n"
-		       "  \t\t\t\tdrv_err/s - Number of internal driver errors per second\n"
-		       "  \t\t\t\tbulk-avg  - Average number of packets processed for each event\n\n");
-	}
+	printf("Please see %s(8) for more details.\n\n", program_invocation_short_name);
+	printf("Supported output features:\n");
+	if (mask & SAMPLE_RX_CNT)
+		puts(" - rx_cnt");
+	if (mask & SAMPLE_REDIRECT_CNT)
+		puts(" - redirect_cnt");
+	if (mask & SAMPLE_REDIRECT_ERR_CNT)
+		puts(" - redirect_err_cnt");
+	if (mask & SAMPLE_CPUMAP_ENQUEUE_CNT)
+		puts(" - enqueue_cnt");
+	if (mask & SAMPLE_CPUMAP_KTHREAD_CNT)
+		puts(" - kthread_cnt");
+	if (mask & SAMPLE_DEVMAP_XMIT_CNT)
+		puts(" - devmap_xmit");
+	if (mask & SAMPLE_DEVMAP_XMIT_CNT_MULTI)
+		puts(" - devmap_xmit_cnt_multi");
 }
 
 void sample_usage(char *argv[], const struct option *long_options,

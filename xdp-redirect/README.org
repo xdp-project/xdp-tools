@@ -1,0 +1,329 @@
+#+EXPORT_FILE_NAME: xdp-redirect
+#+TITLE: xdp-redirect
+#+MAN_CLASS_OPTIONS: :section-id "8\" \"DATE\" \"VERSION\" \"A simple XDP-powered packet redirect tool"
+# This file serves both as a README on github, and as the source for the man
+# page; the latter through the org-mode man page export support.
+# .
+# To export the man page, simply use the org-mode exporter; (require 'ox-man) if
+# it's not available. There's also a Makefile rule to export it.
+
+* XDP-redirect - a simple XDP-powered packet redirect tool
+
+XDP-redirect is a packet redirecting utility powered by XDP. It is intended to
+be a simple program demonstrating the various in kernel packet redirection
+facilities and their various practical applications. The tools support basic
+packet redirection using the (now obsolete) =bpf_redirect= helper,
+=bpf_redirect_map= helper using a cpumap as its target, =bpf_redirect_map= using
+a devmap as its target, and the devmap's broadcast mode which allows redirecting
+to multiple devices.
+
+There is more information on the meaning of the output in both default (terse)
+and verbose output mode, in the =Output Format Description= section.
+
+** Running xdp-redirect
+The syntax for running xdp-redirect is:
+
+#+begin_src sh
+xdp-redirect COMMAND [options]
+
+Where COMMAND can be one of:
+       basic		- Use bpf_redirect helper for redirection
+       cpumap		- Use bpf_redirect_map with a cpumap as target
+       devmap		- Use bpf_redirect_map with a devmap as target
+       devmap_multi	- Use bpf_redirect_map with a devmap as target, in broadcast mode
+#+end_src
+
+Each command, and its options are explained below. Or use =xdp-redirect COMMAND
+--help= to see the options for each command.
+
+* The BASIC command
+In this mode, =xdp-redirect= sets up packet redirection between the two
+interfaces supplied on the command line using the =bpf_redirect= BPF helper
+triggered on packet reception on the ingress interface.
+
+The syntax for the =basic= command is:
+
+=xdp-redirect basic [options] <ifname|ifindex>_in <ifname|ifindex>_out=
+
+Where =<ifname|ifindex>_in= is the name of the input interface from where
+packets will be redirect to the output interface =<ifname|ifindex>_out=.
+The supported options are:
+
+** -S, --skb-mode
+Load the XDP program in generic XDP mode. Note that native XDP mode is the
+default, and loading the redirect program in this manner is neither performant,
+nor recommended. However, this option is useful if the interface driver lacks
+native XDP support, or when simply testing the tool.
+
+** -s, --stats
+Enable statistics for successful redirection. This option comes with a per
+packet tracing overhead, for recording all successful redirections.
+
+** -i, --interval
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
+
+** -v, --verbose
+Enable verbose output.
+
+** -h, --help
+Display a summary of the available options
+
+* The CPUMAP command
+In this mode, =xdp-redirect= sets up packet redirection between the two
+interfaces supplied on the command line using the bpf_redirect_map BPF helper
+triggered on packet reception on the ingress interface, using a cpumap as its
+target. Hence, this tool can be used to redirect packets on an interface from
+one CPU to another. In addition to this, the tool then supports redirecting the
+packet to another output device when it is processed on the target CPU.
+
+The syntax for the =cpumap= command is:
+
+=xdp-redirect cpumap [options] -d <ifname|ifindex> -c 0 ... -c N=
+
+Where =<ifname|ifindex>= is the name of the input interface from where
+packets will be redirect to the target CPU list specified using =-c=.
+The supported options are:
+
+** -d, --dev
+Specify the interface from which packets will be redirected to other CPUs.
+This option is mandatory.
+
+** -c, --cpu <CPU>
+Specify a possible target CPU. This option can be passed multiple times to
+specify a list of CPUs. This option is mandatory.
+
+** -q, --qsize <QSIZE>
+Set the queue size for the per-CPU cpumap ring buffer used for redirecting
+packets from multiple CPUs to one CPU.
+
+** -x, --stress-mode
+Stress the cpumap implementation by deallocating and reallocating the cpumap
+ring buffer on each polling interval.
+
+** -p, --progname <PROG>
+Specify a program that embeds a predefined policy deciding how packets are
+redirected to different CPUs. The following options are available:
+
+#+begin_src sh
+ xdp_prognum0_no_touch			- Redirect without touching packet data
+ xdp_prognum1_touch_data			- Read packet data before redirecting
+ xdp_prognum2_round_robin			- Cycle between target CPUs in round-robin fashion
+ xdp_prognum3_proto_separate		- Choose a CPU based on the protocol of packet
+ xdp_prognum4_ddos_filter_pktgen	- A DDoS filter for pktgen packet load
+ xdp_prognum5_lb_hash_ip_pairs		- Use source and destination IP hashing to pick target CPU
+#+end_src
+
+** -e, --mprog-name <NAME>
+Specify the verdict for the packet when it is received on the target CPU. =NAME=
+must be one of =pass= or =drop=.
+
+** -r, --redirect-device <ifname|ifindex>
+Specify the device to redirect the packet to when it is received on the target CPU.
+Note that this option can only be specified with =--mprog-name= and/or
+=--mprog-filename= when =--redirect-map= is also present.
+
+** -f, --mprog-filename <filename>
+Use a custom program to be invoked when the packet is received on the target CPU. This
+option must be specified in combination with =--mprog-name= that specifies the name
+of the XDP program in the BPF object file =<filename>=.
+
+** -m, --redirect-map <map_name>
+When specifying =--mprog-filename= and =--mprog-name=, the user may use this
+option along with =--redirect-device= to specify the name of a devmap BPF map
+and configure it at index 0 with the device specified using =--redirect-device=.
+
+** -S, --skb-mode
+Load the XDP program in generic XDP mode. Note that native XDP mode is the
+default, and loading the redirect program in this manner is neither performant,
+nor recommended. However, this option is useful if the interface driver lacks
+native XDP support, or when simply testing the tool.
+
+** -s, --stats
+Enable statistics for successful redirection. This option comes with a per
+packet tracing overhead, for recording all successful redirections.
+
+** -i, --interval
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
+
+** -v, --verbose
+Enable verbose output.
+
+** -h, --help
+Display a summary of the available options
+
+* The DEVMAP command
+In this mode, =xdp-redirect= sets up packet redirection between the two
+interfaces supplied on the command line using the =bpf_redirect_map= BPF helper
+triggered on packet reception on the ingress interface, using a devmap as its
+target.
+
+The syntax for the =devmap= command is:
+
+=xdp-redirect devmap [options] <ifname|ifindex>_in <ifname|ifindex>_out=
+
+Where =<ifname|ifindex>_in= is the name of the input interface from where
+packets will be redirect to the output interface =<ifname|ifindex>_out=.
+The supported options are:
+
+** -X, --load-egress
+Load a program in the devmap entry used for redirection, so that it is invoked
+after the packet is redirected to the target device, before it is transmitted
+out of the output interface.
+
+** -S, --skb-mode
+Load the XDP program in generic XDP mode. Note that native XDP mode is the
+default, and loading the redirect program in this manner is neither performant,
+nor recommended. However, this option is useful if the interface driver lacks
+native XDP support, or when simply testing the tool.
+
+** -s, --stats
+Enable statistics for successful redirection. This option comes with a per
+packet tracing overhead, for recording all successful redirections.
+
+** -i, --interval
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
+
+** -v, --verbose
+Enable verbose output.
+
+** -h, --help
+Display a summary of the available options
+
+* The DEVMAP\under{}MULTI command
+In this mode, =xdp-redirect= sets up one-to-many packet redirection between
+interfaces supplied on the command line using the =bpf_redirect_map= BPF helper
+triggered on packet reception on the ingress interface, using a devmap as its
+target. The packet is broadcasted to all output interfaces specified on the
+command line, using devmap's packet broadcast feature.
+
+The syntax for the =devmap= command is:
+
+=xdp-redirect devmap_multi [options] <ifname|ifindex>_in <ifname|ifindex>_out1 ... <ifname|ifindex>_outN=
+
+Where =<ifname|ifindex>_in= is the name of the input interface from where
+packets will be redirect to one or many output interface(s).
+The supported options are:
+
+** -X, --load-egress
+Load a program in the devmap entry used for redirection, so that it is invoked
+after the packet is redirected to the target device(s), before it is transmitted
+out of the output interface(s).
+
+** -S, --skb-mode
+Load the XDP program in generic XDP mode. Note that native XDP mode is the
+default, and loading the redirect program in this manner is neither performant,
+nor recommended. However, this option is useful if the interface driver lacks
+native XDP support, or when simply testing the tool.
+
+** -s, --stats
+Enable statistics for successful redirection. This option comes with a per
+packet tracing overhead, for recording all successful redirections.
+
+** -i, --interval
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
+
+** -v, --verbose
+Enable verbose output.
+
+** -h, --help
+Display a summary of the available options
+
+* Output Format Description
+
+By default, redirect success statistics are disabled, use =--stats= to enable.
+The terse output mode is default, verbose mode can be activated using =--verbose=.
+
+SIGQUIT (Ctrl + \\) can be used to switch the mode dynamically at runtime.
+
+Terse mode displays at most the following fields:
+#+begin_src sh
+  rx/s		Number of packets received per second
+  redir/s	Number of packets successfully redirected per second
+  err,drop/s	Aggregated count of errors per second (including dropped packets)
+  xmit/s	Number of packets transmitted on the output device per second
+#+end_src
+
+Verbose output mode displays at most the following fields:
+#+begin_src sh
+ FIELD		  DESCRIPTION
+ receive	       Displays the number of packets received and errors encountered
+
+			Whenever an error or packet drop occurs, details of per CPU error
+			and drop statistics will be expanded inline in terse mode.
+					pkt/s		- Packets received per second
+					drop/s		- Packets dropped per second
+					error/s		- Errors encountered per second
+					redirect	- Displays the number of packets successfully redirected
+                        Errors encountered are expanded under redirect_err field
+                        Note that passing -s to enable it has a per packet overhead
+					redir/s		- Packets redirected successfully per second
+
+
+ redirect_err	  Displays the number of packets that failed redirection
+
+			The errno is expanded under this field with per CPU count
+                        The recognized errors are:
+					EINVAL:		Invalid redirection
+					ENETDOWN:	Device being redirected to is down
+					EMSGSIZE:	Packet length too large for device
+					EOPNOTSUPP:	Operation not supported
+					ENOSPC:		No space in ptr_ring of cpumap kthread
+
+					error/s		- Packets that failed redirection per second
+
+
+ enqueue to cpu N Displays the number of packets enqueued to bulk queue of CPU N
+                        Expands to cpu:FROM->N to display enqueue stats for each CPU enqueuing to CPU N
+                        Received packets can be associated with the CPU redirect program is enqueuing
+                        packets to.
+					pkt/s		- Packets enqueued per second from other CPU to CPU N
+					drop/s		- Packets dropped when trying to enqueue to CPU N
+					bulk-avg	- Average number of packets processed for each event
+
+
+ kthread	       Displays the number of packets processed in CPUMAP kthread for each CPU
+                        Packets consumed from ptr_ring in kthread, and its xdp_stats (after calling
+                        CPUMAP bpf prog) are expanded below this. xdp_stats are expanded as a total and
+                        then per-CPU to associate it to each CPU's pinned CPUMAP kthread.
+					pkt/s		- Packets consumed per second from ptr_ring
+					drop/s		- Packets dropped per second in kthread
+					sched		- Number of times kthread called schedule()
+
+                        xdp_stats (also expands to per-CPU counts)
+					pass/s		- XDP_PASS count for CPUMAP program execution
+					drop/s		- XDP_DROP count for CPUMAP program execution
+					redir/s		- XDP_REDIRECT count for CPUMAP program execution
+
+
+ xdp_exception	  Displays xdp_exception tracepoint events
+
+			This can occur due to internal driver errors, unrecognized
+                        XDP actions and due to explicit user trigger by use of XDP_ABORTED
+                        Each action is expanded below this field with its count
+					hit/s		- Number of times the tracepoint was hit per second
+
+
+ devmap_xmit      Displays devmap_xmit tracepoint events
+
+			This tracepoint is invoked for successful transmissions on output
+                        device but these statistics are not available for generic XDP mode,
+                        hence they will be omitted from the output when using SKB mode
+					xmit/s		- Number of packets that were transmitted per second
+					drop/s		- Number of packets that failed transmissions per second
+					drv_err/s	- Number of internal driver errors per second
+					bulk-avg	- Average number of packets processed for each event
+#+end_src
+
+* BUGS
+
+Please report any bugs on Github: https://github.com/xdp-project/xdp-tools/issues
+
+* AUTHOR
+
+Earlier xdp-redirect tools were written by Jesper Dangaard Brouer, John
+Fastabend. They were then rewritten to support more features by Kumar Kartikeya Dwivedi.
+This man page was written by Kumar Kartikeya Dwivedi.
