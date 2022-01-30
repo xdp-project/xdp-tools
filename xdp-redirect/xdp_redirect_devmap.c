@@ -32,7 +32,6 @@ DEFINE_SAMPLE_INIT(xdp_redirect_devmap);
 static const struct option long_options[] = {
 	{ "help", no_argument, NULL, 'h' },
 	{ "skb-mode", no_argument, NULL, 'S' },
-	{ "force", no_argument, NULL, 'F' },
 	{ "load-egress", no_argument, NULL, 'X' },
 	{ "stats", no_argument, NULL, 's' },
 	{ "interval", required_argument, NULL, 'i' },
@@ -54,12 +53,11 @@ int xdp_redirect_devmap_main(int argc, char **argv)
 	int ret = EXIT_FAIL_OPTION;
 	struct bpf_program *prog;
 	bool generic = false;
-	bool force = false;
 	bool tried = false;
 	bool error = true;
 	int opt, key = 0;
 
-	while ((opt = getopt_long(argc, argv, "hSFXi:vs",
+	while ((opt = getopt_long(argc, argv, "hSXi:vs",
 				  long_options, NULL)) != -1) {
 		switch (opt) {
 		case 'S':
@@ -67,9 +65,6 @@ int xdp_redirect_devmap_main(int argc, char **argv)
 			/* devmap_xmit tracepoint not available */
 			mask &= ~(SAMPLE_DEVMAP_XMIT_CNT |
 				  SAMPLE_DEVMAP_XMIT_CNT_MULTI);
-			break;
-		case 'F':
-			force = true;
 			break;
 		case 'X':
 			xdp_devmap_attached = true;
@@ -158,7 +153,7 @@ int xdp_redirect_devmap_main(int argc, char **argv)
 	prog = skel->progs.xdp_redirect_devmap_native;
 	tx_port_map = skel->maps.tx_port_native;
 restart:
-	if (sample_install_xdp(prog, ifindex_in, generic, force) < 0) {
+	if (sample_install_xdp(prog, ifindex_in, generic, false) < 0) {
 		/* First try with struct bpf_devmap_val as value for generic
 		 * mode, then fallback to sizeof(int) for older kernels.
 		 */
@@ -175,7 +170,7 @@ restart:
 	}
 
 	/* Loading dummy XDP prog on out-device */
-	sample_install_xdp(skel->progs.xdp_redirect_dummy_prog, ifindex_out, generic, force);
+	sample_install_xdp(skel->progs.xdp_redirect_dummy_prog, ifindex_out, generic, false);
 
 	devmap_val.ifindex = ifindex_out;
 	if (xdp_devmap_attached)

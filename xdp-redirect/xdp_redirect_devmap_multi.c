@@ -39,7 +39,6 @@ DEFINE_SAMPLE_INIT(xdp_redirect_devmap_multi);
 static const struct option long_options[] = {
 	{ "help", no_argument, NULL, 'h' },
 	{ "skb-mode", no_argument, NULL, 'S' },
-	{ "force", no_argument, NULL, 'F' },
 	{ "load-egress", no_argument, NULL, 'X' },
 	{ "stats", no_argument, NULL, 's' },
 	{ "interval", required_argument, NULL, 'i' },
@@ -87,12 +86,11 @@ int xdp_redirect_devmap_multi_main(int argc, char **argv)
 	char ifname[IF_NAMESIZE];
 	unsigned int ifindex;
 	bool generic = false;
-	bool force = false;
 	bool tried = false;
 	bool error = true;
 	int i, opt;
 
-	while ((opt = getopt_long(argc, argv, "hSFXi:vs",
+	while ((opt = getopt_long(argc, argv, "hSXi:vs",
 				  long_options, NULL)) != -1) {
 		switch (opt) {
 		case 'S':
@@ -100,9 +98,6 @@ int xdp_redirect_devmap_multi_main(int argc, char **argv)
 			/* devmap_xmit tracepoint not available */
 			mask &= ~(SAMPLE_DEVMAP_XMIT_CNT |
 				  SAMPLE_DEVMAP_XMIT_CNT_MULTI);
-			break;
-		case 'F':
-			force = true;
 			break;
 		case 'X':
 			xdp_devmap_attached = true;
@@ -193,7 +188,7 @@ int xdp_redirect_devmap_multi_main(int argc, char **argv)
 		ret = EXIT_FAIL_XDP;
 restart:
 		/* bind prog_fd to each interface */
-		if (sample_install_xdp(ingress_prog, ifindex, generic, force) < 0) {
+		if (sample_install_xdp(ingress_prog, ifindex, generic, false) < 0) {
 			if (generic && !tried) {
 				fprintf(stderr,
 					"Trying fallback to sizeof(int) as value_size for devmap in generic mode\n");

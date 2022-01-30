@@ -53,7 +53,6 @@ static const struct option long_options[] = {
 	{ "qsize", required_argument, NULL, 'q' },
 	{ "cpu", required_argument, NULL, 'c' },
 	{ "stress-mode", no_argument, NULL, 'x' },
-	{ "force", no_argument, NULL, 'F' },
 	{ "interval", required_argument, NULL, 'i' },
 	{ "verbose", no_argument, NULL, 'v' },
 	{ "stats", no_argument, NULL, 's' },
@@ -317,7 +316,6 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 	struct bpf_program *prog;
 	const char *prog_name;
 	bool generic = false;
-	bool force = false;
 	int added_cpus = 0;
 	bool error = true;
 	int longindex = 0;
@@ -383,7 +381,7 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 	}
 
 	prog = skel->progs.xdp_prognum5_lb_hash_ip_pairs;
-	while ((opt = getopt_long(argc, argv, "d:si:Sxp:f:e:r:m:c:q:Fvh",
+	while ((opt = getopt_long(argc, argv, "d:si:Sxp:f:e:r:m:c:q:vh",
 				  long_options, &longindex)) != -1) {
 		switch (opt) {
 		case 'd':
@@ -460,9 +458,6 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 				usage(argv, long_options, __doc__, mask, true, skel->obj);
 				goto end_cpu;
 			}
-			break;
-		case 'F':
-			force = true;
 			break;
 		case 'v':
 			sample_switch_mode();
@@ -547,7 +542,7 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 	}
 
 	ret = EXIT_FAIL_XDP;
-	if (sample_install_xdp(prog, ifindex, generic, force) < 0)
+	if (sample_install_xdp(prog, ifindex, generic, false) < 0)
 		goto end_cpu;
 
 	ret = sample_run(interval, stress_mode ? stress_cpumap : NULL, &value);
