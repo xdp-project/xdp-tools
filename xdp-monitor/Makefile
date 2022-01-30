@@ -4,6 +4,7 @@ XDP_TARGETS := xdp_monitor.bpf
 BPF_SKEL_TARGETS := $(XDP_TARGETS)
 
 TOOL_NAME := xdp-monitor
+MAN_PAGE := xdp-monitor.8
 USER_TARGETS := xdp-monitor
 LIB_DIR       = ../lib
 USER_LIBS     = -lm
