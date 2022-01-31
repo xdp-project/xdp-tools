@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v2
+        with:
+          submodules: recursive
 
       - name: Prepare packages
         run: |
