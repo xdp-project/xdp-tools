@@ -2119,7 +2119,7 @@ static int xdp_multiprog__check_compat(struct xdp_multiprog *mp)
 		return 0;
 
 	pr_debug("Checking dispatcher compatibility\n");
-	test_prog = xdp_program__find_file("xdp-dispatcher.o", "xdp/pass", NULL);
+	test_prog = __xdp_program__find_file("xdp-dispatcher.o", NULL, "xdp_pass", NULL);
 	if (IS_ERR(test_prog)) {
 		err = PTR_ERR(test_prog);
 		pr_warn("Couldn't open BPF file xdp-dispatcher.o\n");
@@ -2467,8 +2467,8 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	if (num_new_progs > 1)
 		qsort(new_progs, num_new_progs, sizeof(*new_progs), cmp_xdp_programs);
 
-	dispatcher = xdp_program__find_file("xdp-dispatcher.o",
-					    "xdp/dispatcher", NULL);
+	dispatcher = __xdp_program__find_file("xdp-dispatcher.o",
+					      NULL, "xdp_dispatcher", NULL);
 	if (IS_ERR(dispatcher)) {
 		err = PTR_ERR(dispatcher);
 		pr_warn("Couldn't open BPF file 'xdp-dispatcher.o'\n");
