@@ -194,7 +194,7 @@ struct {
 	__uint(XDP_PASS, 1);
 } XDP_RUN_CONFIG(FUNCNAME);
 
-SEC("xdp_filter")
+SEC("xdp")
 int FUNCNAME(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
