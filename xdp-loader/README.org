@@ -69,6 +69,12 @@ Specify which ELF section to load the XDP program(s) from in each file. The
 default is to use the first program in each file. If this option is set, it
 applies to all programs being loaded.
 
+** -n, --prog-name <prog_name>
+Specify which BPF program with the name to load the XDP program(s) from in each
+file. The default is to use the first program in each file. Only one of
+--section and --prog-name may be specified. If this option is set, it applies to
+all programs being loaded.
+
 ** -v, --verbose
 Enable debug logging. Specify twice for even more verbosity.
 
