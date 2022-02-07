@@ -477,22 +477,17 @@ test_pname_parse()
 {
     skip_if_legacy_fallback
 
-    local PIN_DIR="/sys/fs/bpf/${NS}_PID_$$_$RANDOM"
     local PASS_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PROG_ID_1=0
     local PROG_ID_2=0
     local PROG_ID_3=0
     local PROG_ID_4=0
-    local BPFTOOL_ARGS=
 
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
 
-    bpftool help 2>&1 | grep -q -- '--legacy' && BPFTOOL_ARGS="--legacy"
-
     # Here we load the programs without the xdp-tools loader to make sure
     # they are not loaded as a multi-program.
-    bpftool $BPFTOOL_ARGS prog loadall "$TEST_PROG_DIR/test_long_func_name.o" "$PIN_DIR"
-    bpftool $BPFTOOL_ARGS net attach xdpgeneric pinned "$PIN_DIR/xdp_test_prog_long" dev "$NS"
+    $TEST_PROG_DIR/test-tool load -m skb "$NS" "$TEST_PROG_DIR/test_long_func_name.o"
 
     # We need to specify the function name or else it should fail
     PID=$(start_background "$XDPDUMP -i $NS")
@@ -500,7 +495,6 @@ test_pname_parse()
     RESULT=$(stop_background "$PID")
     if [[ $RESULT != *"ERROR: Can't identify the full XDP main function!"* ]]; then
         print_result "xdpdump should fail with duplicate function!"
-        rm -rf "$PIN_DIR"
         return 1
     fi
 
@@ -510,7 +504,6 @@ test_pname_parse()
     RESULT=$(stop_background "$PID")
     if ! [[ $RESULT =~ $PASS_REGEX ]]; then
         print_result "IPv6 packet not received"
-        rm -rf "$PIN_DIR"
         return 1
     fi
 
@@ -519,7 +512,6 @@ test_pname_parse()
     RESULT=$(stop_background "$PID")
     if [[ $RESULT != *"ERROR: Can't load eBPF object:"* ]]; then
         print_result "xdpdump should fail being unable to attach!"
-        rm -rf "$PIN_DIR"
         return 1
     fi
 
@@ -528,7 +520,6 @@ test_pname_parse()
     RESULT=$(stop_background "$PID")
     if [[ $RESULT != *"ERROR: Can't find function 'xdp_test_prog_with_a_long_non_existing_name' on interface!"* ]]; then
         print_result "xdpdump should fail with unknown function!"
-        rm -rf "$PIN_DIR"
         return 1
     fi
 
@@ -537,7 +528,6 @@ test_pname_parse()
     RESULT=$(stop_background "$PID")
     if [[ $RESULT != *"ERROR: Can't extract valid program id from \"hallo@3e\"!"* ]]; then
         print_result "xdpdump should fail with id value error!"
-        rm -rf "$PIN_DIR"
         return 1
     fi
 
@@ -545,12 +535,10 @@ test_pname_parse()
     RESULT=$(stop_background "$PID")
     if [[ $RESULT != *"ERROR: Invalid program id supplied, \"hallo@128\"!"* ]]; then
         print_result "xdpdump should fail with invalid id!"
-        rm -rf "$PIN_DIR"
         return 1
     fi
 
-    # Remove pinned programs
-    rm -rf "$PIN_DIR"
+    # Remove loaded program
     ip link set dev "$NS" xdpgeneric off
 
     # Now test actual multi-program parsing (negative test cases)
