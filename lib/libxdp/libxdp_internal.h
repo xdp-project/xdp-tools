@@ -52,6 +52,10 @@ LIBXDP_HIDE_SYMBOL struct xdp_program *xdp_program__clone(struct xdp_program *pr
 #define offsetof(type, member) ((size_t) & ((type *)0)->member)
 #endif
 
+#ifndef offsetofend
+#define offsetofend(TYPE, FIELD) (offsetof(TYPE, FIELD) + sizeof(((TYPE *)0)->FIELD))
+#endif
+
 #ifndef container_of
 #define container_of(ptr, type, member)                            \
 	({                                                         \
@@ -61,5 +65,55 @@ LIBXDP_HIDE_SYMBOL struct xdp_program *xdp_program__clone(struct xdp_program *pr
 #endif
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
+
+/* OPTS macros, from libbpf_internal.h */
+
+static inline bool libxdp_is_mem_zeroed(const char *p, ssize_t len)
+{
+	while (len > 0) {
+		if (*p)
+			return false;
+		p++;
+		len--;
+	}
+	return true;
+}
+
+static inline bool libxdp_validate_opts(const char *opts,
+					size_t opts_sz, size_t user_sz,
+					const char *type_name)
+{
+	if (user_sz < sizeof(size_t)) {
+		pr_warn("%s size (%zu) is too small\n", type_name, user_sz);
+		return false;
+	}
+	if (!libxdp_is_mem_zeroed(opts + opts_sz, (ssize_t)user_sz - opts_sz)) {
+		pr_warn("%s has non-zero extra bytes\n", type_name);
+		return false;
+	}
+	return true;
+}
+
+#define OPTS_VALID(opts, type)						      \
+	(!(opts) || libxdp_validate_opts((const char *)opts,		      \
+					 offsetofend(struct type,	      \
+						     type##__last_field),     \
+					 (opts)->sz, #type))
+#define OPTS_HAS(opts, field) \
+	((opts) && opts->sz >= offsetofend(typeof(*(opts)), field))
+#define OPTS_GET(opts, field, fallback_value) \
+	(OPTS_HAS(opts, field) ? (opts)->field : fallback_value)
+#define OPTS_SET(opts, field, value)		\
+	do {					\
+		if (OPTS_HAS(opts, field))	\
+			(opts)->field = value;	\
+	} while (0)
+
+#define OPTS_ZEROED(opts, last_nonzero_field)				      \
+({									      \
+	ssize_t __off = offsetofend(typeof(*(opts)), last_nonzero_field);     \
+	!(opts) || libxdp_is_mem_zeroed((const void *)opts + __off,	      \
+					(opts)->sz - __off);		      \
+})
 
 #endif /* __LIBXDP_LIBXDP_INTERNAL_H */

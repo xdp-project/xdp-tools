@@ -95,6 +95,7 @@ static const char *xdp_action_names[] = {
 
 static struct xdp_program *xdp_program__create_from_obj(struct bpf_object *obj,
 							const char *section_name,
+							const char *prog_name,
 							bool external);
 
 #ifdef LIBXDP_STATIC
@@ -149,7 +150,7 @@ static struct xdp_program *xdp_program__find_embedded(const char *filename,
 		err = libbpf_get_error(obj);
 		if (err)
 			return ERR_PTR(err);
-		return xdp_program__create_from_obj(obj, section_name, false);
+		return xdp_program__create_from_obj(obj, section_name, NULL, false);
 	}
 
 	return NULL;
@@ -942,17 +943,20 @@ void xdp_program__close(struct xdp_program *xdp_prog)
 
 static struct xdp_program *xdp_program__create_from_obj(struct bpf_object *obj,
 							const char *section_name,
+							const char *prog_name,
 							bool external)
 {
 	struct xdp_program *xdp_prog;
 	struct bpf_program *bpf_prog;
 	int err;
 
-	if (!obj)
+	if (!obj || (section_name && prog_name))
 		return ERR_PTR(-EINVAL);
 
 	if (section_name)
 		bpf_prog = bpf_program_by_section_name(obj, section_name);
+	else if (prog_name)
+		bpf_prog = bpf_object__find_program_by_name(obj, prog_name);
 	else
 		bpf_prog = bpf_object__next_program(obj, NULL);
 
@@ -990,7 +994,7 @@ err:
 struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
 					      const char *section_name)
 {
-	return xdp_program__create_from_obj(obj, section_name, true);
+	return xdp_program__create_from_obj(obj, section_name, NULL, true);
 }
 
 static struct bpf_object *open_bpf_obj(const char *filename,
@@ -1013,9 +1017,10 @@ static struct bpf_object *open_bpf_obj(const char *filename,
 	return obj;
 }
 
-struct xdp_program *xdp_program__open_file(const char *filename,
-					   const char *section_name,
-					   struct bpf_object_open_opts *opts)
+static struct xdp_program *__xdp_program__open_file(const char *filename,
+						    const char *section_name,
+						    const char *prog_name,
+						    struct bpf_object_open_opts *opts)
 {
 	struct xdp_program *xdp_prog;
 	struct bpf_object *obj;
@@ -1030,11 +1035,18 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 		return ERR_PTR(err);
 	}
 
-	xdp_prog = xdp_program__create_from_obj(obj, section_name, false);
+	xdp_prog = xdp_program__create_from_obj(obj, section_name, prog_name, false);
 	if (IS_ERR(xdp_prog))
 		bpf_object__close(obj);
 
 	return xdp_prog;
+}
+
+struct xdp_program *xdp_program__open_file(const char *filename,
+					   const char *section_name,
+					   struct bpf_object_open_opts *opts)
+{
+	return __xdp_program__open_file(filename, section_name, NULL, opts);
 }
 
 static bool try_bpf_file(char *buf, size_t buf_size, char *path,
@@ -1076,9 +1088,10 @@ static int find_bpf_file(char *buf, size_t buf_size, const char *progname)
 	return -ENOENT;
 }
 
-struct xdp_program *xdp_program__find_file(const char *filename,
-					   const char *section_name,
-					   struct bpf_object_open_opts *opts)
+static struct xdp_program *__xdp_program__find_file(const char *filename,
+					            const char *section_name,
+						    const char *prog_name,
+						    struct bpf_object_open_opts *opts)
 {
 	struct xdp_program *prog;
 	char buf[PATH_MAX];
@@ -1092,8 +1105,16 @@ struct xdp_program *xdp_program__find_file(const char *filename,
 	if (err)
 		return ERR_PTR(err);
 
-	pr_debug("Loading XDP program from '%s' section '%s'\n", buf, section_name);
-	return xdp_program__open_file(buf, section_name, opts);
+	pr_debug("Loading XDP program from '%s' section '%s'\n", buf,
+		 section_name ?: (prog_name ?: "(unknown)"));
+	return __xdp_program__open_file(buf, section_name, prog_name, opts);
+}
+
+struct xdp_program *xdp_program__find_file(const char *filename,
+					   const char *section_name,
+					   struct bpf_object_open_opts *opts)
+{
+	return __xdp_program__find_file(filename, section_name, NULL, opts);
 }
 
 static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
@@ -1200,6 +1221,54 @@ struct xdp_program *xdp_program__from_pin(const char *pin_path)
 	if (IS_ERR(prog))
 		close(fd);
 	return prog;
+}
+
+struct xdp_program *xdp_program__create(struct xdp_program_opts *opts)
+{
+	const char *pin_path, *prog_name, *find_filename, *open_filename;
+	struct bpf_object_open_opts *obj_opts;
+	struct bpf_object *obj;
+	__u32 id;
+	int fd;
+
+	if (!opts || !OPTS_VALID(opts, xdp_program_opts))
+		return ERR_PTR(-EINVAL);
+
+	obj           = OPTS_GET(opts, obj, NULL);
+	obj_opts      = OPTS_GET(opts, opts, NULL);
+	prog_name     = OPTS_GET(opts, prog_name, NULL);
+	find_filename = OPTS_GET(opts, find_filename, NULL);
+	open_filename = OPTS_GET(opts, open_filename, NULL);
+	pin_path      = OPTS_GET(opts, pin_path, NULL);
+	id            = OPTS_GET(opts, id, 0);
+	fd            = OPTS_GET(opts, fd, 0);
+
+	if (obj) { /* prog_name is optional */
+		if (obj_opts || find_filename || open_filename || pin_path || id || fd)
+			return ERR_PTR(-EINVAL);
+		return xdp_program__create_from_obj(obj, NULL, prog_name, true);
+	} else if (find_filename) { /* prog_name, obj_opts is optional */
+		if (obj || open_filename || pin_path || id || fd)
+			return ERR_PTR(-EINVAL);
+		return __xdp_program__find_file(find_filename, NULL, prog_name, obj_opts);
+	} else if (open_filename) { /* prog_name, obj_opts is optional */
+		if (obj || find_filename || pin_path || id || fd)
+			return ERR_PTR(-EINVAL);
+		return __xdp_program__open_file(open_filename, NULL, prog_name, obj_opts);
+	} else if (pin_path) {
+		if (obj || obj_opts || prog_name || find_filename || open_filename || id || fd)
+			return ERR_PTR(-EINVAL);
+		return xdp_program__from_pin(pin_path);
+	} else if (id) {
+		if (obj || obj_opts || prog_name || find_filename || open_filename || pin_path || fd)
+			return ERR_PTR(-EINVAL);
+		return xdp_program__from_id(id);
+	} else if (fd) {
+		if (obj || obj_opts || prog_name || find_filename || open_filename || pin_path || id)
+			return ERR_PTR(-EINVAL);
+		return xdp_program__from_fd(fd);
+	}
+	return ERR_PTR(-EINVAL);
 }
 
 static int cmp_xdp_programs(const void *_a, const void *_b)
