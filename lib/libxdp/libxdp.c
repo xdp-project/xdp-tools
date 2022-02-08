@@ -206,14 +206,29 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 static int xdp_multiprog__pin(struct xdp_multiprog *mp);
 static int xdp_multiprog__unpin(struct xdp_multiprog *mp);
 
+
+/* On NULL, libxdp always sets errno to 0 for old APIs, so that their
+ * compatibility is maintained wrt old libxdp_get_error that called the older
+ * version of libbpf_get_error which did PTR_ERR_OR_ZERO, but newer versions
+ * unconditionally return -errno on seeing NULL, as the libbpf practice changed
+ * to returning NULL or errors.
+ *
+ * The new APIs (like xdp_program__create) which indicate error using NULL set
+ * their errno when returning NULL.
+ */
 long libxdp_get_error(const void *ptr)
 {
-	return libbpf_get_error(ptr);
+	if (!IS_ERR_OR_NULL(ptr))
+		return 0;
+
+	if (IS_ERR(ptr))
+		errno = -PTR_ERR(ptr);
+	return -errno;
 }
 
 int libxdp_strerror(int err, char *buf, size_t size)
 {
-	return libbpf_strerror(err, buf, size);
+	return libxdp_err(libbpf_strerror(err, buf, size));
 }
 
 static char *libxdp_strerror_r(int err, char *dst, size_t size)
@@ -467,7 +482,7 @@ again:
 const struct btf *xdp_program__btf(struct xdp_program *xdp_prog)
 {
 	if (!xdp_prog)
-		return NULL;
+		return libxdp_err_ptr(0, true);
 
 	return xdp_prog->btf;
 }
@@ -515,7 +530,7 @@ int xdp_program__set_chain_call_enabled(struct xdp_program *prog,
 					unsigned int action, bool enabled)
 {
 	if (!prog || prog->prog_fd || action >= XDP_DISPATCHER_RETVAL)
-		return -EINVAL;
+		return libxdp_err(-EINVAL);
 
 	if (enabled)
 		prog->chain_call_actions |= (1U << action);
@@ -545,7 +560,7 @@ unsigned int xdp_program__run_prio(const struct xdp_program *prog)
 int xdp_program__set_run_prio(struct xdp_program *prog, unsigned int run_prio)
 {
 	if (!prog || prog->prog_fd)
-		return -EINVAL;
+		return libxdp_err(-EINVAL);
 
 	prog->run_prio = run_prio;
 	return 0;
@@ -554,7 +569,7 @@ int xdp_program__set_run_prio(struct xdp_program *prog, unsigned int run_prio)
 const char *xdp_program__name(const struct xdp_program *prog)
 {
 	if (!prog)
-		return NULL;
+		return libxdp_err_ptr(0, true);
 
 	return prog->prog_name;
 }
@@ -562,7 +577,7 @@ const char *xdp_program__name(const struct xdp_program *prog)
 struct bpf_object *xdp_program__bpf_obj(struct xdp_program *prog)
 {
 	if (!prog)
-		return NULL;
+		return libxdp_err_ptr(0, true);
 
 	return prog->bpf_obj;
 }
@@ -570,7 +585,7 @@ struct bpf_object *xdp_program__bpf_obj(struct xdp_program *prog)
 const unsigned char *xdp_program__tag(const struct xdp_program *prog)
 {
 	if (!prog)
-		return NULL;
+		return libxdp_err_ptr(0, true);
 
 	return prog->prog_tag;
 }
@@ -586,7 +601,7 @@ uint32_t xdp_program__id(const struct xdp_program *xdp_prog)
 int xdp_program__fd(const struct xdp_program *xdp_prog)
 {
 	if (!xdp_prog)
-		return -1;
+		return errno = ENOENT, -1;
 
 	return xdp_prog->prog_fd;
 }
@@ -599,7 +614,7 @@ int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 	int i, len = 0;
 
 	if (!prog || !buf || !buf_len)
-		return -EINVAL;
+		return libxdp_err(-EINVAL);
 
 	for (i = 0; i <= XDP_REDIRECT; i++) {
 		if (xdp_program__chain_call_enabled(prog, i)) {
@@ -621,7 +636,7 @@ int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 	return 0;
 err_len:
 	*pos = '\0';
-	return -ENOSPC;
+	return libxdp_err(-ENOSPC);
 }
 
 static const struct btf_type *skip_mods_and_typedefs(const struct btf *btf,
@@ -994,7 +1009,13 @@ err:
 struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
 					      const char *section_name)
 {
-	return xdp_program__create_from_obj(obj, section_name, NULL, true);
+	struct xdp_program *prog;
+
+	prog = xdp_program__create_from_obj(obj, section_name, NULL, true);
+	/* xdp_program__create_from_obj does not return NULL */
+	if (!IS_ERR(prog))
+		return prog;
+	return libxdp_err_ptr(PTR_ERR(prog), false);
 }
 
 static struct bpf_object *open_bpf_obj(const char *filename,
@@ -1046,7 +1067,13 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 					   const char *section_name,
 					   struct bpf_object_open_opts *opts)
 {
-	return __xdp_program__open_file(filename, section_name, NULL, opts);
+	struct xdp_program *prog;
+
+	prog = __xdp_program__open_file(filename, section_name, NULL, opts);
+	/* __xdp_program__open_file does not return NULL */
+	if (!IS_ERR(prog))
+		return prog;
+	return libxdp_err_ptr(PTR_ERR(prog), false);
 }
 
 static bool try_bpf_file(char *buf, size_t buf_size, char *path,
@@ -1114,7 +1141,13 @@ struct xdp_program *xdp_program__find_file(const char *filename,
 					   const char *section_name,
 					   struct bpf_object_open_opts *opts)
 {
-	return __xdp_program__find_file(filename, section_name, NULL, opts);
+	struct xdp_program *prog;
+
+	prog = __xdp_program__find_file(filename, section_name, NULL, opts);
+	/* __xdp_program__find_file does not return NULL */
+	if (!IS_ERR(prog))
+		return prog;
+	return libxdp_err_ptr(PTR_ERR(prog), false);
 }
 
 static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
@@ -1170,7 +1203,7 @@ struct xdp_program *xdp_program__from_fd(int fd)
 
 	xdp_prog = xdp_program__new();
 	if (IS_ERR(xdp_prog))
-		return xdp_prog;
+		return libxdp_err_ptr(PTR_ERR(xdp_prog), false);
 
 	err = xdp_program__fill_from_fd(xdp_prog, fd);
 	if (err)
@@ -1183,7 +1216,7 @@ struct xdp_program *xdp_program__from_fd(int fd)
 	return xdp_prog;
 err:
 	free(xdp_prog);
-	return ERR_PTR(err);
+	return libxdp_err_ptr(err, false);
 }
 
 struct xdp_program *xdp_program__from_id(__u32 id)
@@ -1195,12 +1228,15 @@ struct xdp_program *xdp_program__from_id(__u32 id)
 	if (fd < 0) {
 		err = -errno;
 		pr_warn("couldn't get program fd: %s", strerror(-err));
-		return ERR_PTR(err);
+		return libxdp_err_ptr(err, false);
 	}
 
 	prog = xdp_program__from_fd(fd);
-	if (IS_ERR(prog))
+	if (IS_ERR(prog)) {
+		err = errno;
 		close(fd);
+		errno = err;
+	}
 	return prog;
 }
 
@@ -1214,12 +1250,15 @@ struct xdp_program *xdp_program__from_pin(const char *pin_path)
 		err = -errno;
 		pr_warn("couldn't get program fd from %s: %s",
 			pin_path, strerror(-err));
-		return ERR_PTR(err);
+		return libxdp_err_ptr(err, false);
 	}
 
 	prog = xdp_program__from_fd(fd);
-	if (IS_ERR(prog))
+	if (IS_ERR(prog)) {
+		err = errno;
 		close(fd);
+		errno = err;
+	}
 	return prog;
 }
 
@@ -1227,12 +1266,13 @@ struct xdp_program *xdp_program__create(struct xdp_program_opts *opts)
 {
 	const char *pin_path, *prog_name, *find_filename, *open_filename;
 	struct bpf_object_open_opts *obj_opts;
+	struct xdp_program *prog;
 	struct bpf_object *obj;
 	__u32 id;
 	int fd;
 
 	if (!opts || !OPTS_VALID(opts, xdp_program_opts))
-		return ERR_PTR(-EINVAL);
+		goto err;
 
 	obj           = OPTS_GET(opts, obj, NULL);
 	obj_opts      = OPTS_GET(opts, opts, NULL);
@@ -1245,30 +1285,36 @@ struct xdp_program *xdp_program__create(struct xdp_program_opts *opts)
 
 	if (obj) { /* prog_name is optional */
 		if (obj_opts || find_filename || open_filename || pin_path || id || fd)
-			return ERR_PTR(-EINVAL);
-		return xdp_program__create_from_obj(obj, NULL, prog_name, true);
+			goto err;
+		prog = xdp_program__create_from_obj(obj, NULL, prog_name, true);
 	} else if (find_filename) { /* prog_name, obj_opts is optional */
 		if (obj || open_filename || pin_path || id || fd)
-			return ERR_PTR(-EINVAL);
-		return __xdp_program__find_file(find_filename, NULL, prog_name, obj_opts);
+			goto err;
+		prog = __xdp_program__find_file(find_filename, NULL, prog_name, obj_opts);
 	} else if (open_filename) { /* prog_name, obj_opts is optional */
 		if (obj || find_filename || pin_path || id || fd)
-			return ERR_PTR(-EINVAL);
-		return __xdp_program__open_file(open_filename, NULL, prog_name, obj_opts);
+			goto err;
+		prog = __xdp_program__open_file(open_filename, NULL, prog_name, obj_opts);
 	} else if (pin_path) {
 		if (obj || obj_opts || prog_name || find_filename || open_filename || id || fd)
-			return ERR_PTR(-EINVAL);
-		return xdp_program__from_pin(pin_path);
+			goto err;
+		prog = xdp_program__from_pin(pin_path);
 	} else if (id) {
 		if (obj || obj_opts || prog_name || find_filename || open_filename || pin_path || fd)
-			return ERR_PTR(-EINVAL);
-		return xdp_program__from_id(id);
+			goto err;
+		prog = xdp_program__from_id(id);
 	} else if (fd) {
 		if (obj || obj_opts || prog_name || find_filename || open_filename || pin_path || id)
-			return ERR_PTR(-EINVAL);
-		return xdp_program__from_fd(fd);
+			goto err;
+		prog = xdp_program__from_fd(fd);
+	} else {
+		goto err;
 	}
-	return ERR_PTR(-EINVAL);
+	if (IS_ERR(prog))
+		return libxdp_err_ptr(PTR_ERR(prog), true);
+	return prog;
+err:
+	return libxdp_err_ptr(-EINVAL, true);
 }
 
 static int cmp_xdp_programs(const void *_a, const void *_b)
@@ -1319,9 +1365,9 @@ static int cmp_xdp_programs(const void *_a, const void *_b)
 int xdp_program__pin(struct xdp_program *prog, const char *pin_path)
 {
 	if (!prog || prog->prog_fd < 0)
-		return -EINVAL;
+		return libxdp_err(-EINVAL);
 
-	return bpf_program__pin(prog->bpf_prog, pin_path);
+	return libxdp_err(bpf_program__pin(prog->bpf_prog, pin_path));
 }
 
 static int xdp_program__load(struct xdp_program *prog)
@@ -1364,18 +1410,21 @@ struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 	 * new structure from the kernel state.
 	 */
 	if (!prog || prog->prog_fd < 0)
-		return ERR_PTR(-EINVAL);
+		return libxdp_err_ptr(-EINVAL, false);
 
 	new_fd = fcntl(prog->prog_fd, F_DUPFD_CLOEXEC, MIN_FD);
 	if (new_fd < 0) {
 		err = -errno;
 		pr_debug("Error on fcntl: %s\n", strerror(-err));
-		return ERR_PTR(err);
+		libxdp_err_ptr(err, false);
 	}
 
 	new_prog = xdp_program__from_fd(new_fd);
-	if (IS_ERR(new_prog))
+	if (IS_ERR(new_prog)) {
+		err = errno;
 		close(new_fd);
+		errno = err;
+	}
 	return new_prog;
 }
 
@@ -1473,7 +1522,7 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 	int err = 0;
 
 	if (!progs || !num_progs || flags)
-		return -EINVAL;
+		return libxdp_err(-EINVAL);
 
 	old_mp = xdp_multiprog__get_from_ifindex(ifindex);
 	if (IS_ERR_OR_NULL(old_mp))
@@ -1487,13 +1536,13 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 		if (old_hw_prog) {
 			pr_warn("XDP program already loaded in HW mode on ifindex %d; "
 				"replacing HW mode programs not supported\n", ifindex);
-			return -EEXIST;
+			return libxdp_err(-EEXIST);
 		}
 
 		if (num_progs > 1)
-			return -EINVAL;
+			return libxdp_err(-EINVAL);
 
-		return xdp_program__attach_hw(progs[0], ifindex);
+		return libxdp_err(xdp_program__attach_hw(progs[0], ifindex));
 	}
 
 	mp = xdp_multiprog__generate(progs, num_progs, ifindex, old_mp, false);
@@ -1504,7 +1553,7 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 			if (num_progs == 1) {
 				pr_warn("Falling back to loading single prog "
 					"without dispatcher\n");
-				return xdp_program__attach_single(progs[0], ifindex, mode);
+				return libxdp_err(xdp_program__attach_single(progs[0], ifindex, mode));
 			} else {
 				pr_warn("Can't fall back to legacy load with %zu "
 					"programs\n%s\n", num_progs, dispatcher_feature_err);
@@ -1541,7 +1590,7 @@ out_close:
 out:
 	if (old_mp)
 		xdp_multiprog__close(old_mp);
-	return err;
+	return libxdp_err(err);
 }
 
 int xdp_program__attach(struct xdp_program *prog, int ifindex,
@@ -1549,9 +1598,9 @@ int xdp_program__attach(struct xdp_program *prog, int ifindex,
 			unsigned int flags)
 {
 	if (!prog || IS_ERR(prog))
-		return -EINVAL;
+		return libxdp_err(-EINVAL);
 
-	return xdp_program__attach_multi(&prog, 1, ifindex, mode, flags);
+	return libxdp_err(xdp_program__attach_multi(&prog, 1, ifindex, mode, flags));
 }
 
 int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
@@ -1563,12 +1612,12 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 	size_t i;
 
 	if (flags || !num_progs || !progs)
-		return -EINVAL;
+		return libxdp_err(-EINVAL);
 
 	mp = xdp_multiprog__get_from_ifindex(ifindex);
 	if (IS_ERR_OR_NULL(mp)) {
 		pr_warn("No XDP dispatcher found on ifindex %d\n", ifindex);
-		return -ENOENT;
+		return libxdp_err(-ENOENT);
 	}
 
 	if (mode == XDP_MODE_HW || xdp_multiprog__is_legacy(mp)) {
@@ -1681,7 +1730,7 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 out:
 	xdp_multiprog__close(mp);
 	xdp_multiprog__close(new_mp);
-	return err;
+	return libxdp_err(err);
 }
 
 int xdp_program__detach(struct xdp_program *prog, int ifindex,
@@ -1691,7 +1740,7 @@ int xdp_program__detach(struct xdp_program *prog, int ifindex,
 	if (!prog || IS_ERR(prog))
 		return -EINVAL;
 
-	return xdp_program__detach_multi(&prog, 1, ifindex, mode, flags);
+	return libxdp_err(xdp_program__detach_multi(&prog, 1, ifindex, mode, flags));
 }
 
 void xdp_multiprog__close(struct xdp_multiprog *mp)
@@ -1757,14 +1806,14 @@ int check_xdp_prog_version(const struct btf *btf, const char *name, __u32 *versi
 
 	sec = btf_get_datasec(btf, XDP_METADATA_SECTION);
 	if (!sec)
-		return -ENOENT;
+		return libxdp_err(-ENOENT);
 
 	def = btf_get_section_var(btf, sec, name, BTF_KIND_PTR);
 	if (IS_ERR(def))
-		return PTR_ERR(def);
+		return libxdp_err(PTR_ERR(def));
 
 	if (!get_field_int(btf, name, def, version))
-		return -ENOENT;
+		return libxdp_err(-ENOENT);
 
 	return 0;
 }
@@ -2074,7 +2123,7 @@ struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex)
 
 	err = bpf_get_link_xdp_info(ifindex, &xinfo, sizeof(xinfo), 0);
 	if (err)
-		return ERR_PTR(err);
+		return libxdp_err_ptr(err, false);
 
 	if (xinfo.attach_mode == XDP_ATTACHED_SKB) {
 		prog_id = xinfo.skb_prog_id;
@@ -2097,13 +2146,16 @@ struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex)
 	}
 
 	if (!prog_id && !hw_prog_id) {
-		return ERR_PTR(-ENOENT);
+		return libxdp_err_ptr(-ENOENT, false);
 	}
 
 	mp = xdp_multiprog__from_id(prog_id, hw_prog_id, ifindex);
 	if (!IS_ERR_OR_NULL(mp))
 		mp->attach_mode = mode;
-
+	else if (IS_ERR(mp))
+		mp = libxdp_err_ptr(PTR_ERR(mp), false);
+	else
+		mp = libxdp_err_ptr(0, true);
 	return mp;
 }
 
@@ -2730,30 +2782,30 @@ int xdp_multiprog__detach(struct xdp_multiprog *mp)
 	int err = 0;
 
 	if (!mp || !mp->is_loaded)
-		return -EINVAL;
+		return libxdp_err(-EINVAL);
 
 	if (mp->hw_prog) {
 		err = xdp_multiprog__detach_hw(mp);
 		if (err)
-			return err;
+			return libxdp_err(err);
 	}
 
 	if (mp->main_prog) {
 		err = xdp_multiprog__attach(mp, NULL, mp->attach_mode);
 		if (err)
-			return err;
+			return libxdp_err(err);
 
 		if (!mp->is_legacy)
 			err = xdp_multiprog__unpin(mp);
 	}
-	return err;
+	return libxdp_err(err);
 }
 
 struct xdp_program *xdp_multiprog__next_prog(const struct xdp_program *prog,
 					     const struct xdp_multiprog *mp)
 {
 	if (!mp || mp->is_legacy)
-		return NULL;
+		return libxdp_err_ptr(0, true);
 
 	if (prog)
 		return prog->next;
@@ -2764,7 +2816,7 @@ struct xdp_program *xdp_multiprog__next_prog(const struct xdp_program *prog,
 struct xdp_program *xdp_multiprog__hw_prog(const struct xdp_multiprog *mp)
 {
 	if (!mp)
-		return NULL;
+		return libxdp_err_ptr(0, true);
 
 	return mp->hw_prog;
 }
@@ -2780,7 +2832,7 @@ enum xdp_attach_mode xdp_multiprog__attach_mode(const struct xdp_multiprog *mp)
 struct xdp_program *xdp_multiprog__main_prog(const struct xdp_multiprog *mp)
 {
 	if (!mp)
-		return NULL;
+		return libxdp_err_ptr(0, true);
 
 	return mp->main_prog;
 }
@@ -2793,7 +2845,7 @@ bool xdp_multiprog__is_legacy(const struct xdp_multiprog *mp)
 int xdp_multiprog__program_count(const struct xdp_multiprog *mp)
 {
 	if (!mp)
-		return -EINVAL;
+		return libxdp_err(-EINVAL);
 
 	return mp->num_links;
 }
@@ -2880,11 +2932,11 @@ int libxdp_clean_references(int ifindex)
 
 	const char *dir = get_bpffs_dir();
 	if (IS_ERR(dir))
-		return PTR_ERR(dir);
+		return libxdp_err(PTR_ERR(dir));
 
 	lock_fd = xdp_lock_acquire();
 	if (lock_fd < 0)
-		return lock_fd;
+		return libxdp_err(lock_fd);
 
 	d = opendir(dir);
 	if (!d) {
@@ -2918,5 +2970,5 @@ int libxdp_clean_references(int ifindex)
 	closedir(d);
 out:
 	xdp_lock_release(lock_fd);
-	return err;
+	return libxdp_err(err);
 }

@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <linux/err.h>
 #include <xdp/libxdp.h>
 
 #define LIBXDP_HIDE_SYMBOL __attribute__((visibility("hidden")))
@@ -115,5 +116,25 @@ static inline bool libxdp_validate_opts(const char *opts,
 	!(opts) || libxdp_is_mem_zeroed((const void *)opts + __off,	      \
 					(opts)->sz - __off);		      \
 })
+
+/* handle direct returned errors */
+static inline int libxdp_err(int ret)
+{
+	if (ret < 0)
+		errno = -ret;
+	return ret;
+}
+
+/* handle error for pointer-returning APIs, err is assumed to be < 0 always */
+static inline void *libxdp_err_ptr(int err, bool ret_null)
+{
+	/* set errno on error, this doesn't break anything */
+	errno = -err;
+
+	if (ret_null)
+		return NULL;
+	/* legacy: encode err as ptr */
+	return ERR_PTR(err);
+}
 
 #endif /* __LIBXDP_LIBXDP_INTERNAL_H */

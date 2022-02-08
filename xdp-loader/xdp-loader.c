@@ -128,9 +128,8 @@ retry:
 						   opt->section_name, &opts);
 		}
 
-		if (IS_ERR(p)) {
-			err = PTR_ERR(p);
-
+		err = libxdp_get_error(p);
+		if (err) {
 			if (err == -EPERM && !double_rlimit())
 				goto retry;
 

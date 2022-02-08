@@ -375,15 +375,15 @@ int get_pinned_program(const struct iface *iface, const char *pin_root_path,
 
 		opts.pin_path = pin_path;
 		prog = xdp_program__create(&opts);
-		if (IS_ERR_OR_NULL(prog) ||
+		if (libxdp_get_error(prog) ||
 		    !(m = xdp_program__is_attached(prog, iface->ifindex))) {
-			ret = IS_ERR(prog) ? PTR_ERR(prog) : -ENOENT;
+			ret = libxdp_get_error(prog) ?: -ENOENT;
 			pr_debug("Program %s no longer loaded on %s: %s\n",
 				 de->d_name, iface->ifname, strerror(-ret));
 			err = unlink(pin_path);
 			if (err)
 				ret = err;
-			if (!IS_ERR_OR_NULL(prog))
+			if (prog)
 				xdp_program__close(prog);
 		} else {
 			if (strcmp(xdp_program__name(prog), de->d_name)) {
