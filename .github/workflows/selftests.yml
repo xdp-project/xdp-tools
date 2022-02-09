@@ -39,6 +39,11 @@ jobs:
           echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-10 main" | sudo tee -a /etc/apt/sources.list
           sudo apt-get -qq update
           sudo apt-get -qq -y install clang-10 lld-10 llvm-10
+      - name: Install latest bpftool
+        run: |
+          git clone --depth=1 --recurse-submodules https://github.com/libbpf/bpftool bpftool
+          make LLVM_STRIP=llvm-strip-10 -C bpftool/src
+          sudo make install -C bpftool/src prefix=/usr
       - name: Compile
         run: make
       - name: Prepare test tools

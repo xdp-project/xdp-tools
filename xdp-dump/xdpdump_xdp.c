@@ -35,7 +35,7 @@ struct trace_configuration trace_cfg SEC(".data");
 /*****************************************************************************
  * XDP trace program
  *****************************************************************************/
-SEC("xdpdump_xdp")
+SEC("xdp")
 int xdpdump(struct xdp_md *xdp)
 {
 	void *data_end = (void *)(long)xdp->data_end;

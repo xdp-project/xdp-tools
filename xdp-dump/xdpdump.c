@@ -1499,6 +1499,7 @@ static void detach_traces(struct capture_programs *progs)
 static bool load_xdp_trace_program(struct dumpopt *cfg,
 				   struct capture_programs *progs)
 {
+	DECLARE_LIBXDP_OPTS(xdp_program_opts, opts, 0);
 	int                         fd, rc;
 	char                        errmsg[STRERR_BUFSIZE];
 	struct xdp_program         *prog;
@@ -1513,7 +1514,10 @@ static bool load_xdp_trace_program(struct dumpopt *cfg,
 	silence_libbpf_logging();
 	silence_libxdp_logging();
 
-	prog = xdp_program__find_file("xdpdump_xdp.o", "xdpdump_xdp", NULL);
+	opts.find_filename = "xdpdump_xdp.o";
+	opts.prog_name = "xdpdump";
+
+	prog = xdp_program__create(&opts);
 	if (libxdp_get_error(prog)) {
 		int err = libxdp_get_error(prog);
 

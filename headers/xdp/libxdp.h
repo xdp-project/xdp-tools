@@ -103,4 +103,54 @@ struct xdp_program *xdp_multiprog__hw_prog(const struct xdp_multiprog *mp);
 bool xdp_multiprog__is_legacy(const struct xdp_multiprog *mp);
 int xdp_multiprog__program_count(const struct xdp_multiprog *mp);
 
+/* Only following members can be set at once:
+ *
+ * @obj, @prog_name
+ *	Create using BPF program with name @prog_name in BPF object @obj
+ *
+ *	@prog_name is optional. In absence of @prog_name, first program of BPF
+ *	object is picked.
+ *
+ * @find_filename, @prog_name, @opts
+ *	Create using BPF program with name @prog_name in BPF object located in
+ *	LIBXDP_OBJECT_PATH with filename @find_filename, using
+ *	bpf_object_open_opts @opts.
+ *
+ *	@prog_name and @opts is optional. In absence of @prog_name, first
+ *	program of BPF object is picked.
+ *
+ * @open_filename, @prog_name, @opts
+ *	Create using BPF program with name @prog_name in BPF object located at
+ *	path @open_filename, using bpf_object_open_opts @opts.
+ *
+ *	@prog_name and @opts is optional. In absence of @prog_name, first
+ *	program of BPF object is picked.
+ *
+ * @id
+ *	Load from BPF program with ID @id
+ *
+ * @fd
+ *	Load from BPF program with fd @fd
+ *
+ * When one of these combinations is set, all other members of the opts struct
+ * must be zeroed out.
+ */
+struct xdp_program_opts {
+	size_t sz;
+	struct bpf_object *obj;
+	struct bpf_object_open_opts *opts;
+	const char *prog_name;
+	const char *find_filename;
+	const char *open_filename;
+	const char *pin_path;
+	__u32 id;
+	int fd;
+	size_t :0;
+};
+#define xdp_program_opts__last_field fd
+
+#define DECLARE_LIBXDP_OPTS DECLARE_LIBBPF_OPTS
+
+struct xdp_program *xdp_program__create(struct xdp_program_opts *opts);
+
 #endif

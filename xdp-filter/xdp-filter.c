@@ -243,6 +243,7 @@ int do_load(const void *cfg, const char *pin_root_path)
 	char *filename;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
+	DECLARE_LIBXDP_OPTS(xdp_program_opts, xdp_opts, 0);
 
 	if (opt->mode == XDP_MODE_HW) {
 		pr_warn("xdp-filter does not support offloading.\n");
@@ -294,7 +295,10 @@ int do_load(const void *cfg, const char *pin_root_path)
 	silence_libbpf_logging();
 
 retry:
-	p = xdp_program__find_file(filename, "xdp_filter", &opts);
+	xdp_opts.find_filename = filename;
+	xdp_opts.opts = &opts;
+	/* prog_name is NULL, so choose the first program in object */
+	p = xdp_program__create(&xdp_opts);
 	err = libxdp_get_error(p);
 	if (err) {
 		if (err == -EPERM && !double_rlimit())

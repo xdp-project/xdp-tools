@@ -67,3 +67,7 @@ LIBXDP_1.2.0 {
 		xsk_umem__extract_offset;
 		xsk_umem__get_data;
 } LIBXDP_1.0.0;
+
+LIBXDP_1.3.0 {
+		xdp_program__create;
+} LIBXDP_1.2.0;

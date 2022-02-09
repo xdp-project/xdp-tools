@@ -64,7 +64,7 @@ int prog0(struct xdp_md *ctx) {
 }
 /* the above is repeated as prog1...prog9 */
 
-SEC("xdp/dispatcher")
+SEC("xdp")
 int xdp_dispatcher(struct xdp_md *ctx)
 {
         __u8 num_progs_enabled = conf.num_progs_enabled;

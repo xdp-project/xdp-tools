@@ -25,6 +25,7 @@ static const struct loadopt {
 	struct multistring filenames;
 	char *pin_path;
 	char *section_name;
+	char *prog_name;
 	enum xdp_attach_mode mode;
 } defaults_load = {
 	.mode = XDP_MODE_NATIVE
@@ -52,6 +53,10 @@ static struct prog_option load_options[] = {
 		      .metavar = "<section>",
 		      .short_opt = 's',
 		      .help = "ELF section name of program to load (default: first in file)."),
+	DEFINE_OPTION("prog-name", OPT_STRING, struct loadopt, prog_name,
+		      .metavar = "<prog_name>",
+		      .short_opt = 'n',
+		      .help = "BPF program name of program to load (default: first in file)."),
 	DEFINE_OPTION("dev", OPT_IFNAME, struct loadopt, iface,
 		      .positional = true,
 		      .metavar = "<ifname>",
@@ -74,6 +79,11 @@ int do_load(const void *cfg, __unused const char *pin_root_path)
 	size_t num_progs, i;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = opt->pin_path);
+
+	if (opt->section_name && opt->prog_name) {
+		pr_warn("Only one of --section or --prog-name can be set\n");
+		return EXIT_FAILURE;
+	}
 
 	num_progs = opt->filenames.num_strings;
 	if (!num_progs) {
@@ -101,16 +111,25 @@ int do_load(const void *cfg, __unused const char *pin_root_path)
 
 retry:
 	for (i = 0; i < num_progs; i++) {
+		DECLARE_LIBXDP_OPTS(xdp_program_opts, xdp_opts, 0);
+
 		p = progs[i];
 		if (p)
 			xdp_program__close(p);
 
-		p = xdp_program__open_file(opt->filenames.strings[i],
-					   opt->section_name, &opts);
+		if (opt->prog_name) {
+			xdp_opts.open_filename = opt->filenames.strings[i];
+			xdp_opts.prog_name = opt->prog_name;
+			xdp_opts.opts = &opts;
 
-		if (IS_ERR(p)) {
-			err = PTR_ERR(p);
+			p = xdp_program__create(&xdp_opts);
+		} else {
+			p = xdp_program__open_file(opt->filenames.strings[i],
+						   opt->section_name, &opts);
+		}
 
+		err = libxdp_get_error(p);
+		if (err) {
 			if (err == -EPERM && !double_rlimit())
 				goto retry;
 

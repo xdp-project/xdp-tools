@@ -1,5 +1,5 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
-ALL_TESTS="test_load test_section test_load_multi test_load_incremental"
+ALL_TESTS="test_load test_section test_prog_name test_load_multi test_load_incremental"
 
 test_load()
 {
@@ -11,6 +11,12 @@ test_section()
 {
     check_run $XDP_LOADER load $NS $TEST_PROG_DIR/xdp_drop.o -s xdp -vv
     check_run $XDP_LOADER unload $NS --all -vv
+}
+
+test_prog_name()
+{
+	check_run $XDP_LOADER load $NS $TEST_PROG_DIR/xdp_drop.o -n xdp_drop -vv
+	check_run $XDP_LOADER unload $NS --all -vv
 }
 
 check_progs_loaded()

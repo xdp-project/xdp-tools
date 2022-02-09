@@ -50,7 +50,7 @@ int compat_test(struct xdp_md *ctx) {
 }
 
 
-SEC("xdp/dispatcher")
+SEC("xdp")
 int xdp_dispatcher(struct xdp_md *ctx)
 {
         __u8 num_progs_enabled = conf.num_progs_enabled;
@@ -73,7 +73,7 @@ out:
         return XDP_PASS;
 }
 
-SEC("xdp/pass")
+SEC("xdp")
 int xdp_pass(struct xdp_md *ctx)
 {
         return XDP_PASS;
