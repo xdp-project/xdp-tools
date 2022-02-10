@@ -11,18 +11,20 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-         - KERNEL_VERSION: 5.16.8
-           KERNEL_PATCH_VERSION: 200.fc35
-         - KERNEL_VERSION: 5.11.0
-           KERNEL_PATCH_VERSION: 156.fc34
-         - KERNEL_VERSION: 5.6.19
-           KERNEL_PATCH_VERSION: 300.fc32
+        KERNEL_VERSION:
+          - "5.16.8-200.fc35"
+          - "5.11.0-156.fc34"
+          - "5.6.19-300.fc32"
+        KERNEL_ARCH:
+          - aarch64
+          - ppc64le
+          - s390x
+          - x86_64
       fail-fast: false
 
     env:
       KERNEL_VERSION: ${{ matrix.KERNEL_VERSION }}
-      KERNEL_PATCH_VERSION: ${{ matrix.KERNEL_PATCH_VERSION }}
+      KERNEL_ARCH: ${{ matrix.KERNEL_ARCH }}
       CLANG: clang-10
       LLC: llc-10
 
@@ -34,7 +36,7 @@ jobs:
       - name: Prepare packages
         run: |
           sudo apt-get update
-          sudo apt-get install zstd binutils-dev elfutils libpcap-dev libelf-dev gcc-multilib pkg-config wireshark tshark bpfcc-tools python3 python3-pip python3-setuptools qemu-kvm rpm2cpio libdw-dev libdwarf-dev
+          sudo apt-get install zstd binutils-dev elfutils libpcap-dev libelf-dev gcc-multilib pkg-config wireshark tshark bpfcc-tools python3 python3-pip python3-setuptools qemu-kvm rpm2cpio libdw-dev libdwarf-dev qemu-system-arm qemu-system-ppc qemu-system-s390x
       - name: Prepare Clang
         run: |
           wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
