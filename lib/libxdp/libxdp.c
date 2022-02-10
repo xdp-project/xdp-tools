@@ -1527,10 +1527,15 @@ static int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
 {
 	int err;
 
-	bpf_program__set_type(prog->bpf_prog, BPF_PROG_TYPE_XDP);
-	err = xdp_program__load(prog);
-	if (err)
-		return err;
+	if (prog->bpf_obj) {
+		bpf_program__set_type(prog->bpf_prog, BPF_PROG_TYPE_XDP);
+		err = xdp_program__load(prog);
+		if (err)
+			return err;
+	}
+
+	if (prog->prog_fd < 0)
+		return -EINVAL;
 
 	return xdp_attach_fd(xdp_program__fd(prog), -1, ifindex, mode);
 }
