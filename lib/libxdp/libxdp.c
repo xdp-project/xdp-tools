@@ -1433,7 +1433,7 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 		mp = NULL;
 		if (err == -EOPNOTSUPP) {
 			if (num_progs == 1) {
-				pr_warn("Falling back to loading single prog "
+				pr_info("Falling back to loading single prog "
 					"without dispatcher\n");
 				return xdp_program__attach_single(progs[0], ifindex, mode);
 			} else {
@@ -2121,7 +2121,7 @@ out:
 	xdp_program__close(test_prog);
 
 	if (err) {
-		pr_warn("Compatibility check for dispatcher program failed: %s\n",
+		pr_info("Compatibility check for dispatcher program failed: %s\n",
 			strerror(-err));
 		return -EOPNOTSUPP;
 	}
