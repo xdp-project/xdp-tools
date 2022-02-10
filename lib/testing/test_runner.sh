@@ -72,7 +72,7 @@ ENABLE_VLAN=0
 is_multiprog_supported()
 {
     if [[ -z "${MULTIPROG_SUPPORT:-}" ]]; then
-        RESULT=$($XDP_LOADER load "$NS" "$TEST_PROG_DIR/xdp_pass.o" 2>&1)
+        RESULT=$($XDP_LOADER load -v "$NS" "$TEST_PROG_DIR/xdp_pass.o" 2>&1)
         if [[ "$RESULT" == *"Compatibility check for dispatcher program failed"* ]]; then
             MULTIPROG_SUPPORT="false"
         else
