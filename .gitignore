@@ -63,3 +63,6 @@ xdp-dispatcher.c
 .clangd
 .cache
 compile_commands.json
+
+# BPF skeleton files
+*.skel.h
