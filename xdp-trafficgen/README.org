@@ -1,0 +1,11 @@
+#+EXPORT_FILE_NAME: xdp-trafficgen
+#+TITLE: xdp-trafficgen
+#+OPTIONS: ^:nil
+#+MAN_CLASS_OPTIONS: :section-id "8\" \"DATE\" \"VERSION\" \"XDP program loader"
+# This file serves both as a README on github, and as the source for the man
+# page; the latter through the org-mode man page export support.
+# .
+# To export the man page, simply use the org-mode exporter; (require 'ox-man) if
+# it's not available. There's also a Makefile rule to export it.
+
+* XDP-trafficgen - an XDP-based traffic generator
