@@ -171,6 +171,12 @@ void print_macaddr(char *buf, size_t buf_len, const struct mac_addr *addr)
 	*buf = '\0';
 }
 
+bool macaddr_is_null(const struct mac_addr *addr) {
+	static struct mac_addr nulladdr = {};
+
+	return memcmp(addr, &nulladdr, sizeof(nulladdr)) == 0;
+}
+
 static const struct flag_val *find_flag(const struct flag_val *flag_vals,
 					const char *chr)
 {
@@ -265,6 +271,12 @@ static int handle_ifname_multi(char *optarg, void *tgt, __unused struct prog_opt
 void print_addr(char *buf, size_t buf_len, const struct ip_addr *addr)
 {
 	inet_ntop(addr->af, &addr->addr, buf, buf_len);
+}
+
+bool ipaddr_is_null(const struct ip_addr *addr) {
+	static struct ip_addr nulladdr = {};
+
+	return memcmp(addr, &nulladdr, sizeof(nulladdr)) == 0;
 }
 
 static int handle_ipaddr(char *optarg, void *tgt, __unused struct prog_option *opt)
