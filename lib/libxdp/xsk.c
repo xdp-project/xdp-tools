@@ -595,8 +595,11 @@ static int xsk_check_create_prog(struct bpf_insn *insns, size_t insns_cnt)
 
 static bool xsk_check_redirect_flags(void)
 {
-	__u32 size_out, retval, duration;
 	char data_in = 0, data_out;
+	DECLARE_LIBBPF_OPTS(bpf_test_run_opts, opts,
+			    .data_in = &data_in,
+			    .data_out = &data_out,
+			    .data_size_in = 1);
 	struct bpf_insn insns[] = {
 		BPF_LD_MAP_FD(BPF_REG_1, 0),
 		BPF_MOV64_IMM(BPF_REG_2, 0),
@@ -620,8 +623,8 @@ static bool xsk_check_redirect_flags(void)
 		return detected;
 	}
 
-	ret = bpf_prog_test_run(prog_fd, 0, &data_in, 1, &data_out, &size_out, &retval, &duration);
-	if (!ret && retval == XDP_PASS)
+	ret = bpf_prog_test_run_opts(prog_fd, &opts);
+	if (!ret && opts.retval == XDP_PASS)
 		detected = true;
 	close(prog_fd);
 	close(map_fd);
