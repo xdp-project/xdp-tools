@@ -1300,7 +1300,8 @@ int xdp_program__pin(struct xdp_program *prog, const char *pin_path)
 
 static int xdp_program__load(struct xdp_program *prog)
 {
-	int err, prog_fd;
+	bool is_loaded, autoload;
+	int err;
 
 	if (IS_ERR_OR_NULL(prog))
 		return -EINVAL;
@@ -1308,22 +1309,35 @@ static int xdp_program__load(struct xdp_program *prog)
 	if (prog->prog_fd >= 0)
 		return -EEXIST;
 
-	if (!prog->bpf_obj)
+	if (!prog->bpf_obj || !prog->bpf_prog)
 		return -EINVAL;
 
-	/* Make sure this program is loaded even if autoload was turned off */
-	bpf_program__set_autoload(prog->bpf_prog, true);
+	/* bpf_program__set_autoload fails if the object is loaded, use this to
+	 * detect if it is (since libbpf doesn't expose an API to discover
+	 * this). This is necessary because of objects containing multiple
+	 * programs: if a user creates xdp_program references to programs in
+	 * such an object before loading it, they will get out of sync.
+	 */
+	autoload = bpf_program__autoload(prog->bpf_prog);
+	is_loaded = !!bpf_program__set_autoload(prog->bpf_prog, autoload);
+	if (is_loaded) {
+		pr_debug("XDP program %s is already loaded with fd %d\n",
+			 xdp_program__name(prog), bpf_program__fd(prog->bpf_prog));
+	} else {
+		/* We got an explicit load request, make sure we actually load */
+		if (!autoload)
+			bpf_program__set_autoload(prog->bpf_prog, true);
 
-	err = bpf_object__load(prog->bpf_obj);
-	if (err)
-		return err;
+		err = bpf_object__load(prog->bpf_obj);
+		if (err)
+			return err;
 
-	prog_fd = bpf_program__fd(prog->bpf_prog);
-	pr_debug("Loaded XDP program %s, got fd %d\n",
-		 xdp_program__name(prog), prog_fd);
+		pr_debug("Loaded XDP program %s, got fd %d\n",
+			 xdp_program__name(prog), bpf_program__fd(prog->bpf_prog));
+	}
 
 	/* xdp_program__fill_from_fd() clones the fd and takes ownership of the clone */
-	return xdp_program__fill_from_fd(prog, prog_fd);
+	return xdp_program__fill_from_fd(prog, bpf_program__fd(prog->bpf_prog));
 }
 
 struct xdp_program *xdp_program__clone(struct xdp_program *prog)
