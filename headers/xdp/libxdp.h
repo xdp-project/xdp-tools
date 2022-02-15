@@ -65,6 +65,9 @@ struct xdp_program *xdp_program__clone(struct xdp_program *xdp_prog,
 				       unsigned int flags);
 
 void xdp_program__close(struct xdp_program *xdp_prog);
+int xdp_program__test_run(struct xdp_program *xdp_prog,
+                          struct bpf_test_run_opts *opts,
+                          unsigned int flags);
 
 enum xdp_attach_mode xdp_program__is_attached(const struct xdp_program *xdp_prog,
 					      int ifindex);

@@ -6,6 +6,7 @@
  * Copyright (C) 2020 Toke Høiland-Jørgensen <toke@redhat.com>
  */
 
+#include <linux/bpf.h>
 #define _GNU_SOURCE
 
 #include <string.h>
@@ -27,6 +28,7 @@
 #include <linux/magic.h>
 
 #include <bpf/libbpf.h>
+#include <bpf/bpf.h>
 #include <bpf/btf.h>
 #include <xdp/libxdp.h>
 #include <xdp/prog_dispatcher.h>
@@ -1901,6 +1903,48 @@ int xdp_program__detach(struct xdp_program *prog, int ifindex,
 		return -EINVAL;
 
 	return libxdp_err(xdp_program__detach_multi(&prog, 1, ifindex, mode, flags));
+}
+
+int xdp_program__test_run(struct xdp_program *prog, struct bpf_test_run_opts *opts, unsigned int flags)
+{
+	struct xdp_multiprog *mp = NULL;
+	int err, prog_fd;
+
+	if (IS_ERR_OR_NULL(prog) || flags)
+		return libxdp_err(-EINVAL);
+
+	if (prog->prog_fd < 0) {
+		err = xdp_program__load(prog);
+		if (err)
+			return libxdp_err(err);
+	}
+
+	if (prog->prog_type == BPF_PROG_TYPE_EXT) {
+		mp = xdp_multiprog__generate(&prog, 1, 0, NULL, false);
+		if (IS_ERR(mp)) {
+			err = PTR_ERR(mp);
+			if (err == -EOPNOTSUPP)
+				pr_warn("Program was already attached to a dispatcher, "
+					"and kernel doesn't support multiple attachments\n");
+			return libxdp_err(err);
+		}
+
+		prog_fd = xdp_multiprog__main_fd(mp);
+	} else if (prog->prog_type != BPF_PROG_TYPE_XDP) {
+		pr_warn("Can't test_run non-XDP programs\n");
+		return libxdp_err(-ENOEXEC);
+	} else {
+		prog_fd = prog->prog_fd;
+	}
+
+	err = bpf_prog_test_run_opts(prog_fd, opts);
+	if (err)
+		err = -errno;
+
+	if (mp)
+		xdp_multiprog__close(mp);
+
+	return libxdp_err(err);
 }
 
 void xdp_multiprog__close(struct xdp_multiprog *mp)
