@@ -125,7 +125,7 @@ int stats_print(struct stats_record *stats_rec, struct stats_record *stats_prev)
 }
 
 /* BPF_MAP_TYPE_ARRAY */
-static int map_get_value_array(int fd, __u32 key, struct datarec *value)
+static int map_get_value_array(int fd, __u32 key, struct xdp_stats_record *value)
 {
 	int err = 0;
 
@@ -137,11 +137,11 @@ static int map_get_value_array(int fd, __u32 key, struct datarec *value)
 }
 
 /* BPF_MAP_TYPE_PERCPU_ARRAY */
-static int map_get_value_percpu_array(int fd, __u32 key, struct datarec *value)
+static int map_get_value_percpu_array(int fd, __u32 key, struct xdp_stats_record *value)
 {
 	/* For percpu maps, userspace gets a value per possible CPU */
 	int nr_cpus = libbpf_num_possible_cpus();
-	struct datarec *values;
+	struct xdp_stats_record *values;
 	__u64 sum_bytes = 0;
 	__u64 sum_pkts = 0;
 	int i, err;
@@ -173,7 +173,7 @@ out:
 
 static int map_collect(int fd, __u32 map_type, __u32 key, struct record *rec)
 {
-	struct datarec value = {};
+	struct xdp_stats_record value = {};
 	int err;
 
 	/* Get time as close as possible to reading map contents */

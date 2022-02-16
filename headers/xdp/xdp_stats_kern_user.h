@@ -7,9 +7,15 @@
 #define __XDP_STATS_KERN_USER_H
 
 /* This is the data record stored in the map */
-struct datarec {
-	__u64 rx_packets;
-	__u64 rx_bytes;
+struct xdp_stats_record {
+	union {
+		__u64 packets;
+		__u64 rx_packets;
+	};
+	union {
+		__u64 bytes;
+		__u64 rx_bytes;
+	};
 };
 
 #ifndef XDP_ACTION_MAX
