@@ -12,12 +12,16 @@
 #include <../common/xdp_stats_kern_user.h>
 #endif
 
+#ifndef XDP_STATS_MAP_PINNING
+#define XDP_STATS_MAP_PINNING LIBBPF_PIN_BY_NAME
+#endif
+
 /* Keeps stats per (enum) xdp_action */
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
 	__uint(max_entries, XDP_ACTION_MAX);
 	__type(key, __u32);
-	__type(value, struct datarec);
+	__type(value, struct xdp_stats_record);
 	__uint(pinning, LIBBPF_PIN_BY_NAME);
 } XDP_STATS_MAP_NAME SEC(".maps");
 
@@ -29,7 +33,7 @@ __u32 xdp_stats_record_action(struct xdp_md *ctx, __u32 action)
 		return XDP_ABORTED;
 
 	/* Lookup in kernel BPF-side return pointer to actual data record */
-	struct datarec *rec = bpf_map_lookup_elem(&xdp_stats_map, &action);
+	struct xdp_stats_record *rec = bpf_map_lookup_elem(&xdp_stats_map, &action);
 	if (!rec)
 		return XDP_ABORTED;
 
