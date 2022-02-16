@@ -13,12 +13,16 @@
 #include <sched.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
 
 #include <bpf/bpf.h>
 #include <bpf/bpf_endian.h>
 #include <bpf/libbpf.h>
 #include <xdp/libxdp.h>
 #include <xdp/xdp_stats_kern_user.h>
+#include <linux/bpf.h>
 #include <linux/err.h>
 #include <linux/if_link.h>
 #include <linux/if_ether.h>
@@ -26,6 +30,7 @@
 #include <linux/ipv6.h>
 #include <linux/in6.h>
 #include <linux/udp.h>
+#include <linux/tcp.h>
 
 #include "params.h"
 #include "logging.h"
@@ -42,9 +47,10 @@
 static bool status_exited = false;
 static bool runners_exited = false;
 
-void handle_signal(__unused int signal)
+void handle_signal(__unused int sig)
 {
 	status_exited = true;
+	signal(SIGINT, SIG_DFL);
 }
 
 static int run_status(struct bpf_map *stats_map, __u16 interval)
@@ -521,6 +527,415 @@ out:
         return err;
 }
 
+struct tcp_packet {
+	struct ethhdr eth;
+	struct ipv6hdr iph;
+	struct tcphdr tcp;
+	__u8 payload[1500 - sizeof(struct tcphdr)
+		     - sizeof(struct ethhdr) - sizeof(struct ipv6hdr)];
+} __attribute__((__packed__));
+
+static __unused struct tcp_packet pkt_tcp = {
+	.eth.h_proto = __bpf_constant_htons(ETH_P_IPV6),
+	.iph.version = 6,
+	.iph.nexthdr = IPPROTO_TCP,
+	.iph.payload_len = bpf_htons(sizeof(struct tcp_packet)
+				     - offsetof(struct tcp_packet, tcp)),
+	.iph.hop_limit = 64,
+	.iph.saddr.s6_addr16 = {bpf_htons(0xfe80), 0, 0, 0, 0, 0, 0, bpf_htons(1)},
+	.iph.daddr.s6_addr16 = {bpf_htons(0xfe80), 0, 0, 0, 0, 0, 0, bpf_htons(2)},
+	.tcp.source = bpf_htons(1),
+	.tcp.dest = bpf_htons(1),
+	.tcp.window = bpf_htons(0x100),
+	.tcp.doff = 5,
+	.tcp.ack = 1,
+};
+
+static void hexdump_data(void *data, int size)
+{
+	unsigned char *ptr = data;
+	int i;
+	for (i = 0; i < size; i++) {
+		if (i % 16 == 0)
+			pr_debug("\n%06X: ", i);
+		else if (i % 2 == 0)
+			pr_debug(" ");
+		pr_debug("%02X", *ptr++);
+	}
+	pr_debug("\n");
+}
+
+static __be16 calc_tcp_cksum(const struct tcp_packet *pkt)
+{
+	__u32 chksum = bpf_htons(pkt->iph.nexthdr) + pkt->iph.payload_len;
+	int payload_len = sizeof(pkt->payload);
+	struct tcphdr tcph_ = pkt->tcp;
+	__u16 *ptr = (void *)&tcph_;
+	int i;
+
+	tcph_.check = 0;
+
+	for (i = 0; i < 8; i++) {
+		chksum += pkt->iph.saddr.s6_addr16[i];
+		chksum += pkt->iph.daddr.s6_addr16[i];
+	}
+	for (i = 0; i < 10; i++)
+		chksum += *(ptr++);
+
+	ptr = (void *)&pkt->payload;
+	for (i = 0; i < payload_len / 2; i++)
+		chksum += *(ptr++);
+
+	if (payload_len % 2)
+		chksum += (*((__u8 *)ptr)) << 8;
+
+	while (chksum >> 16)
+		chksum = (chksum & 0xFFFF) + (chksum >> 16);
+
+	return ~chksum;
+}
+
+static void prepare_tcp_pkt(const struct tcp_flowkey *fkey,
+			    const struct tcp_flowstate *fstate)
+{
+	memcpy(pkt_tcp.eth.h_source, fstate->src_mac, ETH_ALEN);
+	memcpy(pkt_tcp.eth.h_dest, fstate->dst_mac, ETH_ALEN);
+
+	pkt_tcp.iph.saddr = fkey->src_ip;
+	pkt_tcp.iph.daddr = fkey->dst_ip;
+	pkt_tcp.tcp.source = fkey->src_port;
+	pkt_tcp.tcp.dest = fkey->dst_port;
+	pkt_tcp.tcp.seq = bpf_htonl(fstate->seq);
+	pkt_tcp.tcp.ack_seq = bpf_htonl(fstate->rcv_seq);
+
+	pkt_tcp.tcp.check = calc_tcp_cksum(&pkt_tcp);
+	pr_debug("TCP packet:\n");
+	hexdump_data(&pkt_tcp, sizeof(pkt_tcp));
+}
+
+struct enum_val xdp_modes[] = {
+       {"native", XDP_MODE_NATIVE},
+       {"skb", XDP_MODE_SKB},
+       {"hw", XDP_MODE_HW},
+       {NULL, 0}
+};
+
+static const struct tcpopt {
+	__u32 num_pkts;
+	struct iface iface;
+	char *dst_addr;
+	__u16 dst_port;
+	__u16 interval;
+	__u16 timeout;
+	enum xdp_attach_mode mode;
+} defaults_tcp = {
+	.interval = 1000,
+	.dst_port = 10000,
+	.timeout = 2,
+	.mode = XDP_MODE_NATIVE,
+};
+
+static struct prog_option tcp_options[] = {
+	DEFINE_OPTION("dst-port", OPT_U16, struct tcpopt, dst_port,
+		      .short_opt = 'p',
+		      .metavar = "<port>",
+		      .help = "Connect to destination <port>. Default 10000"),
+	DEFINE_OPTION("num-packets", OPT_U32, struct tcpopt, num_pkts,
+		      .short_opt = 'n',
+		      .metavar = "<port>",
+		      .help = "Number of packets to send"),
+	DEFINE_OPTION("interval", OPT_U16, struct tcpopt, interval,
+		      .short_opt = 'I',
+		      .metavar = "<s>",
+		      .help = "Output statistics with this interval"),
+	DEFINE_OPTION("timeout", OPT_U16, struct tcpopt, timeout,
+		      .short_opt = 't',
+		      .metavar = "<s>",
+		      .help = "TCP connect timeout (default 2 seconds)."),
+	DEFINE_OPTION("interface", OPT_IFNAME, struct tcpopt, iface,
+		      .metavar = "<ifname>",
+		      .required = true,
+		      .short_opt = 'i',
+		      .help = "Connect through device <ifname>"),
+	DEFINE_OPTION("mode", OPT_ENUM, struct tcpopt, mode,
+		      .short_opt = 'm',
+		      .typearg = xdp_modes,
+		      .metavar = "<mode>",
+		      .help = "Load ingress XDP program in <mode>; default native"),
+	DEFINE_OPTION("dst-addr", OPT_STRING, struct tcpopt, dst_addr,
+		      .positional = true,
+		      .required = true,
+		      .metavar = "<hostname>",
+		      .help = "Destination host of generated stream"),
+	END_OPTIONS
+};
+
+int do_tcp(const void *opt, __unused const char *pin_root_path)
+{
+	const struct tcpopt *cfg = opt;
+
+	struct addrinfo *ai = NULL, hints = {
+		.ai_family = AF_INET6,
+		.ai_socktype = SOCK_STREAM,
+		.ai_protocol = IPPROTO_TCP,
+	};
+	struct ip_addr local_addr = { .af = AF_INET6 }, remote_addr = { .af = AF_INET6 };
+	struct bpf_map *state_map = NULL, *fstate_map, *stats_map, *map;
+	DECLARE_LIBXDP_OPTS(xdp_program_opts, opts,
+			    .find_filename = "xdp-trafficgen.kern.o",
+			    .prog_name = "xdp_handle_tcp_recv");
+	struct xdp_program *ifindex_prog = NULL, *test_prog = NULL;
+	struct sockaddr_in6 local_saddr = {}, *addr6;
+	struct thread_config *t = NULL, tcfg = {
+		.pkt = &pkt_tcp,
+		.pkt_size = sizeof(pkt_tcp),
+		.num_pkts = cfg->num_pkts,
+	};
+	struct trafficgen_config bpf_config = {
+		.ifindex_out = cfg->iface.ifindex,
+	};
+	struct trafficgen_state bpf_state = {};
+	char buf_local[50], buf_remote[50];
+	pthread_t *runner_threads = NULL;
+	socklen_t sockaddr_sz, tcpi_sz;
+	__u16 local_port, remote_port;
+	int sock = -1, err = -EINVAL;
+	struct tcp_flowstate fstate;
+	struct timeval timeout = {
+		.tv_sec = cfg->timeout,
+	};
+	struct tcp_info tcpi = {};
+	struct bpf_object *obj;
+	bool attached = false;
+	__u16 num_threads = 1;
+	__u32 key = 0;
+	char port[6];
+	int i, sopt;
+
+	err = probe_kernel_support();
+	if (err)
+		return err;
+
+	snprintf(port, sizeof(port), "%d", cfg->dst_port);
+
+	err = getaddrinfo(cfg->dst_addr, port, &hints, &ai);
+	if (err) {
+		pr_warn("Couldn't resolve hostname: %s\n", gai_strerror(err));
+		goto out;
+	}
+
+	addr6 = (struct sockaddr_in6* )ai->ai_addr;
+	remote_addr.addr.addr6 = addr6->sin6_addr;
+	remote_port = bpf_ntohs(addr6->sin6_port);
+
+	bpf_state.flow_key.dst_port = addr6->sin6_port;
+	bpf_state.flow_key.dst_ip = addr6->sin6_addr;
+
+	print_addr(buf_remote, sizeof(buf_remote), &remote_addr);
+
+	ifindex_prog = xdp_program__create(&opts);
+	if (!ifindex_prog) {
+		err = -errno;
+		pr_warn("Couldn't open XDP program: %s\n", strerror(-err));
+		goto out;
+	}
+	obj = xdp_program__bpf_obj(ifindex_prog);
+
+	opts.prog_name = "xdp_redirect_send_tcp";
+	opts.obj = obj;
+	opts.find_filename = NULL;
+	test_prog = xdp_program__create(&opts);
+	if (!test_prog) {
+		err = -errno;
+		pr_warn("Couldn't find test program: %s\n", strerror(-err));
+		goto out;
+	}
+
+	bpf_object__for_each_map(map, obj) {
+		if (strstr(bpf_map__name(map), ".bss")) {
+			state_map = map;
+			break;
+		}
+	}
+
+	fstate_map = bpf_object__find_map_by_name(obj, "flow_state_map");
+	stats_map = bpf_object__find_map_by_name(obj, textify(XDP_STATS_MAP_NAME));
+
+	if (!state_map || !fstate_map || !stats_map) {
+		pr_warn("Couldn't find BPF maps\n");
+		goto out;
+	}
+
+	/* don't pin the map */
+	bpf_map__set_pin_path(stats_map, NULL);
+
+	err = set_bpf_config(obj, &bpf_config, &bpf_state);
+	if (err)
+		goto out;
+
+	err = xdp_program__attach(ifindex_prog, cfg->iface.ifindex, cfg->mode, 0);
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't attach XDP program to iface '%s': %s\n",
+			cfg->iface.ifname, strerror(-err));
+		goto out;
+	}
+	attached = true;
+
+	sock = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+	if (sock < 0) {
+		err = -errno;
+		pr_warn("Couldn't open TCP socket: %s\n", strerror(-err));
+		goto out;
+	}
+
+	err = setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, cfg->iface.ifname, sizeof(cfg->iface.ifname));
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't bind to device '%s': %s\n", cfg->iface.ifname, strerror(-err));
+		goto out;
+	}
+
+	sopt = fcntl(sock, F_GETFL, NULL);
+	if (sopt < 0) {
+		err = -errno;
+		pr_warn("Couldn't get socket opts: %s\n", strerror(-err));
+		goto out;
+	}
+
+	err = fcntl(sock, F_SETFL, sopt | O_NONBLOCK);
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't set socket non-blocking: %s\n", strerror(-err));
+		goto out;
+	}
+
+	err = connect(sock, ai->ai_addr, ai->ai_addrlen);
+	if (err && errno == EINPROGRESS) {
+		fd_set wait;
+
+		FD_ZERO(&wait);
+		FD_SET(sock, &wait);
+
+		err = select(sock + 1, NULL, &wait, NULL, &timeout);
+		if (!err) {
+			err = -1;
+			errno = ETIMEDOUT;
+		} else if (err > 0) {
+			err = 0;
+		}
+	}
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't connect to destination: %s\n", strerror(-err));
+		goto out;
+	}
+
+	err = fcntl(sock, F_SETFL, sopt);
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't reset socket opts: %s\n", strerror(-err));
+		goto out;
+	}
+
+	sockaddr_sz = sizeof(local_saddr);
+	err = getsockname(sock, &local_saddr, &sockaddr_sz);
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't get local address: %s\n", strerror(-err));
+		goto out;
+	}
+
+	local_addr.addr.addr6 = local_saddr.sin6_addr;
+	local_port = bpf_htons(local_saddr.sin6_port);
+	print_addr(buf_local, sizeof(buf_local), &local_addr);
+
+	printf("Connected to %s port %d from %s port %d\n",
+	       buf_remote, remote_port, buf_local, local_port);
+
+	bpf_state.flow_key.src_port = local_saddr.sin6_port;
+	bpf_state.flow_key.src_ip = local_saddr.sin6_addr;
+
+	tcpi_sz = sizeof(tcpi);
+	err = getsockopt(sock, IPPROTO_TCP, TCP_INFO, &tcpi, &tcpi_sz);
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't get TCP_INFO for socket: %s\n", strerror(-err));
+		goto out;
+	}
+
+	err = bpf_map_lookup_elem(bpf_map__fd(fstate_map),
+				  &bpf_state.flow_key, &fstate);
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't find flow state in map: %s\n", strerror(-err));
+		goto out;
+	}
+
+	if (tcpi.tcpi_snd_wnd != fstate.window) {
+		pr_warn("TCP_INFO and packet data disagree on window (%u != %u)\n",
+			tcpi.tcpi_snd_wnd, fstate.window);
+	}
+
+	fstate.wscale = tcpi.tcpi_rcv_wscale;
+	fstate.flow_state = FLOW_STATE_RUNNING;
+	err = bpf_map_update_elem(bpf_map__fd(fstate_map),
+				  &bpf_state.flow_key, &fstate, BPF_EXIST);
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't update flow state map: %s\n", strerror(-err));
+		goto out;
+	}
+
+	err = bpf_map_update_elem(bpf_map__fd(state_map),
+				  &key, &bpf_state, BPF_EXIST);
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't update program state map: %s\n", strerror(-err));
+		goto out;
+	}
+
+	prepare_tcp_pkt(&bpf_state.flow_key, &fstate);
+
+	err = create_runners(&runner_threads, &t, num_threads, &tcfg, test_prog);
+	if (err)
+		goto out;
+
+	err = run_status(stats_map, cfg->interval);
+	for (i = 0; i < num_threads; i++) {
+		pthread_join(runner_threads[i], NULL);
+		xdp_program__close(t[i].prog);
+	}
+
+	/* send 3 RSTs with 200ms interval to kill the other side of the connection */
+	for (i = 0; i < 3; i++) {
+		usleep(200000);
+
+		pkt_tcp.tcp.rst = 1;
+		pkt_tcp.iph.payload_len = bpf_htons(sizeof(struct tcphdr));
+		pkt_tcp.tcp.check = calc_tcp_cksum(&pkt_tcp);
+		tcfg.cpu_core_id = 0;
+		tcfg.num_pkts = 1;
+		tcfg.pkt_size = offsetof(struct tcp_packet, payload);
+		tcfg.prog = test_prog;
+		run_traffic(&tcfg);
+	}
+
+out:
+	if (ai)
+		freeaddrinfo(ai);
+	if (sock >= 0)
+		close(sock);
+	if (attached)
+		xdp_program__detach(ifindex_prog, cfg->iface.ifindex, cfg->mode, 0);
+
+	xdp_program__close(ifindex_prog);
+	xdp_program__close(test_prog);
+
+	free(runner_threads);
+	free(t);
+	return err;
+}
 
 static const struct probeopt {
 } defaults_probe = {};
@@ -543,6 +958,7 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 		"\n"
 		"COMMAND can be one of:\n"
 		"       udp         - run in UDP mode\n"
+		"       tcp         - run in TCP mode\n"
 		"       help        - show this help message\n"
 		"\n"
 		"Use 'xdp-trafficgen COMMAND --help' to see options for each command\n");
@@ -551,6 +967,7 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 
 static const struct prog_command cmds[] = {
 	DEFINE_COMMAND(udp, "Run in UDP mode"),
+	DEFINE_COMMAND(tcp, "Run in TCP mode"),
 	DEFINE_COMMAND(probe, "Probe kernel support"),
 	{ .name = "help", .func = do_help, .no_cfg = true },
 	END_COMMANDS
