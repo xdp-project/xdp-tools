@@ -1020,6 +1020,7 @@ int do_poll(const void *cfg, const char *pin_root_path)
 {
 	int err = 0, map_fd = -1;
 	const struct pollopt *opt = cfg;
+	bool exit = false;
 
 	if (!opt->interval) {
 		err = -EINVAL;
@@ -1035,8 +1036,8 @@ int do_poll(const void *cfg, const char *pin_root_path)
 	}
 
 	prog_lock_release(0);
-	err = stats_poll(map_fd, pin_root_path, textify(XDP_STATS_MAP_NAME),
-			 opt->interval);
+	err = stats_poll(map_fd, opt->interval, &exit,
+			 pin_root_path, textify(XDP_STATS_MAP_NAME));
 	if (err) {
 		pr_warn("Error polling statistics: %s\n", strerror(-err));
 		goto out;
