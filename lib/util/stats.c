@@ -221,24 +221,49 @@ int stats_collect(int map_fd, __u32 map_type, struct stats_record *stats_rec)
 	return 0;
 }
 
-int stats_poll(int map_fd, const char *pin_dir, const char *map_name,
-	       int interval)
+static int check_map_pin(__u32 map_id, const char *pin_dir, const char *map_name)
+{
+	struct bpf_map_info info = {};
+	int fd, ret = 0;
+
+	fd = get_pinned_map_fd(pin_dir, map_name, &info);
+	if (fd < 0) {
+		if (fd == -ENOENT)
+			pr_warn("Stats map disappeared while polling\n");
+		else
+			pr_warn("Unable to re-open stats map\n");
+		return fd;
+	}
+
+	if (info.id != map_id) {
+		pr_warn("Stats map ID changed while polling\n");
+		ret = -EINVAL;
+	}
+	close(fd);
+
+	return ret;
+}
+
+int stats_poll(int map_fd, int interval, bool *exit,
+	       const char *pin_dir, const char *map_name)
 {
 	struct bpf_map_info info = {};
 	struct stats_record prev, record = { 0 };
 	__u32 info_len = sizeof(info);
-	int err, other_fd;
 	__u32 map_type, map_id;
+	int err;
 
 	record.stats[XDP_DROP].enabled = true;
 	record.stats[XDP_PASS].enabled = true;
+	record.stats[XDP_REDIRECT].enabled = true;
+	record.stats[XDP_TX].enabled = true;
 
 	if (!interval)
 		return -EINVAL;
 
 	err = bpf_obj_get_info_by_fd(map_fd, &info, &info_len);
 	if (err)
-		return err;
+		return -errno;
 	map_type = info.type;
 	map_id = info.id;
 
@@ -247,20 +272,14 @@ int stats_poll(int map_fd, const char *pin_dir, const char *map_name,
 
 	usleep(1000000 / 4);
 
-	while (1) {
-		memset(&info, 0, sizeof(info));
-		other_fd = get_pinned_map_fd(pin_dir, map_name, &info);
-		if (other_fd < 0) {
-			if (other_fd == -ENOENT)
-				pr_warn("Stats map disappeared while polling\n");
-			else
-				pr_warn("Unable to re-open stats map\n");
-			return other_fd;
-		} else if (info.id != map_id) {
-			pr_warn("Stats map ID changed while polling\n");
-			return -EINVAL;
+	while (!*exit) {
+		if (pin_dir) {
+			err = check_map_pin(map_id, pin_dir, map_name);
+			if (err)
+				return err;
 		}
-		close(other_fd);
+
+		memset(&info, 0, sizeof(info));
 		prev = record; /* struct copy */
 		stats_collect(map_fd, map_type, &record);
 		err = stats_print(&record, &prev);
