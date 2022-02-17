@@ -9,7 +9,10 @@ SUBDIRS=util testing
 
 all: $(SUBDIRS) libxdp
 
-$(SUBDIRS): libxdp
+util: libxdp
+	@echo; echo "  $@"; $(MAKE) -C $@
+
+testing: libxdp util
 	@echo; echo "  $@"; $(MAKE) -C $@
 
 .PHONY: libxdp
