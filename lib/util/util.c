@@ -807,13 +807,13 @@ int prog_lock_get(const char *progname)
 			}
 
 			len = read(fd, buf, sizeof(buf) - 1);
+			err = -errno;
 			close(fd);
 			if (len > 0) {
 				buf[len] = '\0';
 				pid = strtoul(buf, NULL, 10);
 			}
-			if (!pid || errno) {
-				err = -errno;
+			if (!pid || err) {
 				pr_warn("Unable to read PID from lockfile: %s\n",
 					strerror(-err));
 				return err;
