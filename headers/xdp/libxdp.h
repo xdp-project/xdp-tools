@@ -15,6 +15,10 @@
 #include <bpf/bpf.h>
 #include "xdp_helpers.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define XDP_BPFFS_ENVVAR "LIBXDP_BPFFS"
 #define XDP_OBJECT_ENVVAR "LIBXDP_OBJECT_PATH"
 
@@ -102,5 +106,9 @@ struct xdp_program *xdp_multiprog__main_prog(const struct xdp_multiprog *mp);
 struct xdp_program *xdp_multiprog__hw_prog(const struct xdp_multiprog *mp);
 bool xdp_multiprog__is_legacy(const struct xdp_multiprog *mp);
 int xdp_multiprog__program_count(const struct xdp_multiprog *mp);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif
