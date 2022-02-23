@@ -50,6 +50,10 @@
 #define PROG_NAME "xdpdump"
 #define DEFAULT_SNAP_LEN 262144
 
+#ifndef ENOTSUPP
+#define ENOTSUPP         524 /* Operation is not supported */
+#endif
+
 #define RX_FLAG_FENTRY (1<<0)
 #define RX_FLAG_FEXIT  (1<<1)
 
@@ -1415,8 +1419,20 @@ rlimit_loop:
 		trace_link_fentry = bpf_program__attach_trace(trace_prog_fentry);
 		err = libbpf_get_error(trace_link_fentry);
 		if (err) {
-			pr_warn("ERROR: Can't attach XDP trace fentry function: %s\n",
-				strerror(-err));
+			if (err == -ENOTSUPP)
+#if defined(__x86_64__) || defined(__i686__)
+				pr_warn("ERROR: The kernel does not support "
+					"fentry function attach because it is "
+					"too old!");
+#else
+				pr_warn("ERROR: The kernel does not support "
+					"fentry function attach on the "
+					"current CPU architecture!");
+#endif
+			else
+				pr_warn("ERROR: Can't attach XDP trace fentry "
+					"function: %s\n",
+					strerror(-err));
 			goto error_exit;
 		}
 	}
