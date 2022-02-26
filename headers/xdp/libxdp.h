@@ -15,6 +15,10 @@
 #include <bpf/bpf.h>
 #include "xdp_helpers.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define XDP_BPFFS_ENVVAR "LIBXDP_BPFFS"
 #define XDP_OBJECT_ENVVAR "LIBXDP_OBJECT_PATH"
 
@@ -152,5 +156,9 @@ struct xdp_program_opts {
 #define DECLARE_LIBXDP_OPTS DECLARE_LIBBPF_OPTS
 
 struct xdp_program *xdp_program__create(struct xdp_program_opts *opts);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif
