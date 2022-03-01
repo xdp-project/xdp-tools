@@ -172,13 +172,14 @@ test_capt_pcapng()
     fi
 
     PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name -w $PCAP_FILE --rx-capture=entry,exit")
-    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
-    RESULT=$(stop_background "$PID") || (print_result "xdpdump failed"; return 1)
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || (rm "$PCAP_FILE" >& /dev/null; return 1)
+    RESULT=$(stop_background "$PID") || (print_result "xdpdump failed"; rm "$PCAP_FILE" >& /dev/null; return 1)
 
-    RESULT=$(capinfos "$PCAP_FILE") || (print_result "capinfos failed"; return 1)
+    RESULT=$(capinfos "$PCAP_FILE") || (print_result "capinfos failed"; rm "$PCAP_FILE" >& /dev/null; return 1)
     if ! [[ $RESULT =~ $INFOS_REGEX ]]; then
         echo "REGEX: $INFOS_REGEX"
         print_result "Failed capinfos content"
+	rm "$PCAP_FILE" >& /dev/null
         return 1
     fi
 
@@ -191,6 +192,7 @@ test_capt_pcapng()
 			-e frame.verdict.ebpf_xdp)
 	if ! [[ $RESULT =~ $ATTRIB_REGEX ]]; then
             print_result "Failed attributes content"
+	    rm "$PCAP_FILE" >& /dev/null
             return 1
 	fi
     fi
