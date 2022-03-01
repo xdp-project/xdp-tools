@@ -99,6 +99,7 @@ test_interfaces()
 test_capt_pcap()
 {
     skip_if_missing_kernel_symbol bpf_xdp_output_proto
+    skip_if_missing_trace_attach
 
     local PASS_PKT="IP6 $INSIDE_IP6 > $OUTSIDE_IP6: ICMP6, echo reply(, id [0-9]+)?, seq 1, length 64"
 
@@ -126,6 +127,7 @@ version_greater_or_equal()
 test_capt_pcapng()
 {
     skip_if_missing_kernel_symbol bpf_xdp_output_proto
+    skip_if_missing_trace_attach
 
     local PCAP_FILE="/tmp/${NS}_PID_$$_$RANDOM.pcap"
     local PASS_PKT="IP6 $INSIDE_IP6 > $OUTSIDE_IP6: ICMP6, echo reply(, id [0-9]+)?, seq 1, length 64"
@@ -170,13 +172,14 @@ test_capt_pcapng()
     fi
 
     PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name -w $PCAP_FILE --rx-capture=entry,exit")
-    $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
-    RESULT=$(stop_background "$PID") || (print_result "xdpdump failed"; return 1)
+    $PING6 -W 2 -c 1 "$INSIDE_IP6" || (rm "$PCAP_FILE" >& /dev/null; return 1)
+    RESULT=$(stop_background "$PID") || (print_result "xdpdump failed"; rm "$PCAP_FILE" >& /dev/null; return 1)
 
-    RESULT=$(capinfos "$PCAP_FILE") || (print_result "capinfos failed"; return 1)
+    RESULT=$(capinfos "$PCAP_FILE") || (print_result "capinfos failed"; rm "$PCAP_FILE" >& /dev/null; return 1)
     if ! [[ $RESULT =~ $INFOS_REGEX ]]; then
         echo "REGEX: $INFOS_REGEX"
         print_result "Failed capinfos content"
+	rm "$PCAP_FILE" >& /dev/null
         return 1
     fi
 
@@ -189,6 +192,7 @@ test_capt_pcapng()
 			-e frame.verdict.ebpf_xdp)
 	if ! [[ $RESULT =~ $ATTRIB_REGEX ]]; then
             print_result "Failed attributes content"
+	    rm "$PCAP_FILE" >& /dev/null
             return 1
 	fi
     fi
@@ -201,6 +205,7 @@ test_capt_pcapng()
 test_capt_term()
 {
     skip_if_missing_kernel_symbol bpf_xdp_output_proto
+    skip_if_missing_trace_attach
 
     local PASS_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PASS_X_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
@@ -241,6 +246,7 @@ test_capt_term()
 test_exitentry()
 {
     skip_if_missing_kernel_symbol bpf_xdp_output_proto
+    skip_if_missing_trace_attach
 
     local PASS_ENTRY_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PASS_EXIT_REGEX="(xdp_test_prog_with_a_long_name\(\)@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
@@ -301,6 +307,7 @@ test_exitentry()
 test_snap()
 {
     skip_if_missing_kernel_symbol bpf_xdp_output_proto
+    skip_if_missing_trace_attach
 
     local PASS_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes, captured 16 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PASS_II_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes, captured 21 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
@@ -331,6 +338,7 @@ test_snap()
 test_multi_pkt()
 {
     skip_if_missing_kernel_symbol bpf_xdp_output_proto
+    skip_if_missing_trace_attach
 
     local PASS_ENTRY_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
     local PASS_EXIT_REGEX="(xdp_test_prog_with_a_long_name\(\)@exit\[PASS\]: packet size [0-9]+ bytes on if_index [0-9]+, rx queue [0-9]+, id 20000)"
@@ -360,6 +368,7 @@ test_multi_pkt()
 test_perf_wakeup()
 {
     skip_if_missing_kernel_symbol bpf_xdp_output_proto
+    skip_if_missing_trace_attach
 
     $XDPDUMP --help | grep -q "\-\-perf-wakeup"
     if [ $? -eq 1 ]; then
@@ -448,6 +457,7 @@ test_promiscuous_selfload()
 test_promiscuous_preload()
 {
     skip_if_missing_kernel_symbol bpf_xdp_output
+    skip_if_missing_trace_attach
 
     local PASS_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
 
@@ -619,6 +629,7 @@ test_pname_parse()
 test_multi_prog()
 {
     skip_if_legacy_fallback
+    skip_if_missing_trace_attach
 
     local ENTRY_REGEX="(xdp_dispatcher\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+).*(xdp_pass\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local EXIT_REGEX="(xdp_pass\(\)@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+).*(xdp_dispatcher\(\)@exit\[PASS\]: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"

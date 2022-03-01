@@ -69,6 +69,33 @@ OUTSIDE_MAC=
 ENABLE_IPV4=0
 ENABLE_VLAN=0
 
+is_trace_attach_supported()
+{
+    if [[ -z "${TRACE_ATTACH_SUPPORT:-}" ]]; then
+        [ -f "$STATEDIR/trace_attach_support" ] && \
+            TRACE_ATTACH_SUPPORT=$(< "$STATEDIR/trace_attach_support")
+
+        if [[ -z "${TRACE_ATTACH_SUPPORT:-}" ]]; then
+            RESULT=$($XDP_LOADER load -v "$NS" "$TEST_PROG_DIR/xdp_pass.o" 2>&1)
+            PID=$(start_background "$XDPDUMP -i $NS")
+            RESULT=$(stop_background "$PID")
+            if [[ "$RESULT" == *"The kernel does not support fentry function attach"* ]]; then
+                TRACE_ATTACH_SUPPORT="false"
+            else
+                TRACE_ATTACH_SUPPORT="true"
+            fi
+            echo "$TRACE_ATTACH_SUPPORT" > "$STATEDIR/trace_attach_support"
+            $XDP_LOADER unload "$NS" --all
+        fi
+    fi
+
+    if [[ "$TRACE_ATTACH_SUPPORT" == "true" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 is_multiprog_supported()
 {
     if [[ -z "${MULTIPROG_SUPPORT:-}" ]]; then
@@ -98,6 +125,13 @@ skip_if_missing_kernel_symbol()
 skip_if_legacy_fallback()
 {
     if ! is_multiprog_supported; then
+        exit "$SKIPPED_TEST"
+    fi
+}
+
+skip_if_missing_trace_attach()
+{
+    if ! is_trace_attach_supported; then
         exit "$SKIPPED_TEST"
     fi
 }
@@ -250,7 +284,8 @@ cleanup()
     local statefiles=("$STATEDIR"/*.state)
 
     if [ "${#statefiles[*]}" -eq 1 ] && [ ! -e "${statefiles[0]}" ]; then
-        rm -f "${STATEDIR}/highest_num" "${STATEDIR}/current"
+        rm -f "${STATEDIR}/highest_num" "${STATEDIR}/current" \
+           "${STATEDIR}/trace_attach_support"
         rmdir "$STATEDIR"
     fi
 }
