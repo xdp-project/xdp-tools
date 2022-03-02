@@ -79,32 +79,32 @@ static inline char *safe_strncpy(char *dst, const char *src, size_t size)
 			skel->maps.devmap_xmit_cnt_multi });                   \
 	})
 
-#define DEFINE_SAMPLE_INIT(name)                                               \
-	static int sample_init(struct name *skel, int mask)                    \
-	{                                                                      \
-		int ret;                                                       \
-		ret = __sample_init(mask);                                     \
-		if (ret < 0)                                                   \
-			return ret;                                            \
-		if (mask & SAMPLE_REDIRECT_MAP_CNT)                            \
-			__attach_tp(tp_xdp_redirect_map);                      \
-		if (mask & SAMPLE_REDIRECT_CNT)                                \
-			__attach_tp(tp_xdp_redirect);                          \
-		if (mask & SAMPLE_REDIRECT_ERR_MAP_CNT)                        \
-			__attach_tp(tp_xdp_redirect_map_err);                  \
-		if (mask & SAMPLE_REDIRECT_ERR_CNT)                            \
-			__attach_tp(tp_xdp_redirect_err);                      \
-		if (mask & SAMPLE_CPUMAP_ENQUEUE_CNT)                          \
-			__attach_tp(tp_xdp_cpumap_enqueue);                    \
-		if (mask & SAMPLE_CPUMAP_KTHREAD_CNT)                          \
-			__attach_tp(tp_xdp_cpumap_kthread);                    \
-		if (mask & SAMPLE_EXCEPTION_CNT)                               \
-			__attach_tp(tp_xdp_exception);                         \
-		if (mask & SAMPLE_DEVMAP_XMIT_CNT)                             \
-			__attach_tp(tp_xdp_devmap_xmit);                       \
-		if (mask & SAMPLE_DEVMAP_XMIT_CNT_MULTI)                       \
-			__attach_tp(tp_xdp_devmap_xmit_multi);                 \
-		return 0;                                                      \
+#define DEFINE_SAMPLE_INIT(name)                                   \
+	static int sample_init(struct name *skel, int sample_mask) \
+	{                                                          \
+		int ret;                                           \
+		ret = __sample_init(sample_mask);                  \
+		if (ret < 0)                                       \
+			return ret;                                \
+		if (sample_mask & SAMPLE_REDIRECT_MAP_CNT)         \
+			__attach_tp(tp_xdp_redirect_map);          \
+		if (sample_mask & SAMPLE_REDIRECT_CNT)             \
+			__attach_tp(tp_xdp_redirect);              \
+		if (sample_mask & SAMPLE_REDIRECT_ERR_MAP_CNT)     \
+			__attach_tp(tp_xdp_redirect_map_err);      \
+		if (sample_mask & SAMPLE_REDIRECT_ERR_CNT)         \
+			__attach_tp(tp_xdp_redirect_err);          \
+		if (sample_mask & SAMPLE_CPUMAP_ENQUEUE_CNT)       \
+			__attach_tp(tp_xdp_cpumap_enqueue);        \
+		if (sample_mask & SAMPLE_CPUMAP_KTHREAD_CNT)       \
+			__attach_tp(tp_xdp_cpumap_kthread);        \
+		if (sample_mask & SAMPLE_EXCEPTION_CNT)            \
+			__attach_tp(tp_xdp_exception);             \
+		if (sample_mask & SAMPLE_DEVMAP_XMIT_CNT)          \
+			__attach_tp(tp_xdp_devmap_xmit);           \
+		if (sample_mask & SAMPLE_DEVMAP_XMIT_CNT_MULTI)    \
+			__attach_tp(tp_xdp_devmap_xmit_multi);     \
+		return 0;                                          \
 	}
 
 #endif

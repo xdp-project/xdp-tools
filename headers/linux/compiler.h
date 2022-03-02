@@ -53,7 +53,7 @@
 
 #ifdef __ANDROID__
 /*
- * FIXME: Big hammer to get rid of tons of:
+ * Big hammer to get rid of tons of:
  *   "warning: always_inline function might not be inlinable"
  *
  * At least on android-ndk-r12/platforms/android-24/arch-arm

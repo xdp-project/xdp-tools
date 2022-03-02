@@ -77,10 +77,10 @@ static void print_avail_progs(struct bpf_object *obj)
 	}
 }
 
-static void usage(char *argv[], const struct option *long_options,
-		  const char *doc, int mask, bool error, struct bpf_object *obj)
+static void usage(char *argv[], const struct option *long_opts,
+		  const char *doc, int sample_mask, bool error, struct bpf_object *obj)
 {
-	sample_usage(argv, long_options, doc, mask, error);
+	sample_usage(argv, long_opts, doc, sample_mask, error);
 	print_avail_progs(obj);
 }
 

@@ -1134,6 +1134,7 @@ int sample_setup_maps(struct bpf_map **maps)
 
 	for (int i = 0; i < MAP_DEVMAP_XMIT_MULTI; i++) {
 		sample_map[i] = maps[i];
+		int n_cpus;
 
 		switch (i) {
 		case MAP_RX:
@@ -1149,7 +1150,9 @@ int sample_setup_maps(struct bpf_map **maps)
 			sample_map_count[i] = XDP_ACTION_MAX * sample_n_cpus;
 			break;
 		case MAP_CPUMAP_ENQUEUE:
-			sample_map_count[i] = sample_n_cpus * sample_n_cpus;
+			if (__builtin_mul_overflow(sample_n_cpus, sample_n_cpus, &n_cpus))
+				return -EOVERFLOW;
+			sample_map_count[i] = n_cpus;
 			break;
 		default:
 			return -EINVAL;
