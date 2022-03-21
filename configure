@@ -89,6 +89,20 @@ check_toolchain()
     echo "ARCH_INCLUDES:=$ARCH_INCLUDES" >> $CONFIG
 }
 
+check_zlib()
+{
+    if ${PKG_CONFIG} zlib --exists; then
+        echo "HAVE_ZLIB:=y" >>$CONFIG
+        echo "yes"
+
+        echo 'CFLAGS += -DHAVE_ZLIB' `${PKG_CONFIG} zlib --cflags` >> $CONFIG
+        echo 'LDLIBS += ' `${PKG_CONFIG} zlib --libs` >>$CONFIG
+    else
+        echo "missing - this is required"
+        return 1
+    fi
+}
+
 check_elf()
 {
     if ${PKG_CONFIG} libelf --exists; then
@@ -132,20 +146,6 @@ EOF
     else
         echo "missing - this is required"
         echo "error: $libpcap_err"
-        return 1
-    fi
-}
-
-check_zlib()
-{
-    if ${PKG_CONFIG} zlib --exists; then
-        echo "HAVE_ZLIB:=y" >>$CONFIG
-        echo "yes"
-
-        echo 'CFLAGS += -DHAVE_ZLIB' `${PKG_CONFIG} zlib --cflags` >> $CONFIG
-        echo 'LDLIBS += ' `${PKG_CONFIG} zlib --libs` >>$CONFIG
-    else
-        echo "missing - this is required"
         return 1
     fi
 }
@@ -305,14 +305,14 @@ EOF
     echo 'LDLIBS += -l:libbpf.a' >>$CONFIG
     echo "OBJECT_LIBBPF = ${OBJECT_LIBBPF}" >>$CONFIG
 
+    echo -n "zlib support: "
+    check_zlib || exit 1
+
     echo -n "ELF support: "
     check_elf || exit 1
 
     echo -n "pcap support: "
     check_pcap || exit 1
-
-    echo -n "zlib support: "
-    check_zlib || exit 1
 
 }
 
