@@ -1285,6 +1285,17 @@ static bool add_interfaces_to_pcapng(struct dumpopt *cfg,
 	return true;
 }
 
+static void print_compat_error(const char *what)
+{
+#if defined(__x86_64__) || defined(__i686__)
+	pr_warn("ERROR: The kernel does not support "
+		"fentry %s because it is too old!", what);
+#else
+	pr_warn("ERROR: The kernel does not support "
+		"fentry %s on the current CPU architecture!", what);
+#endif
+}
+
 /*****************************************************************************
  * load_and_attach_trace()
  *****************************************************************************/
@@ -1401,16 +1412,18 @@ rlimit_loop:
 	/* Load the bpf object into memory */
 	err = bpf_object__load(trace_obj);
 	if (err) {
-		char err_msg[STRERR_BUFSIZE];
-
 		if (err == -EPERM && !double_rlimit()) {
 			bpf_object__close(trace_obj);
 			goto rlimit_loop;
-		}
+		} else if (err == -E2BIG) {
+			print_compat_error("function load");
+		} else {
+			char err_msg[STRERR_BUFSIZE];
 
-		libbpf_strerror(err, err_msg, sizeof(err_msg));
-		pr_warn("ERROR: Can't load eBPF object: %s(%d)\n",
-			err_msg, err);
+			libbpf_strerror(err, err_msg, sizeof(err_msg));
+			pr_warn("ERROR: Can't load eBPF object: %s(%d)\n",
+				err_msg, err);
+		}
 		goto error_exit;
 	}
 
@@ -1420,15 +1433,7 @@ rlimit_loop:
 		err = libbpf_get_error(trace_link_fentry);
 		if (err) {
 			if (err == -ENOTSUPP)
-#if defined(__x86_64__) || defined(__i686__)
-				pr_warn("ERROR: The kernel does not support "
-					"fentry function attach because it is "
-					"too old!");
-#else
-				pr_warn("ERROR: The kernel does not support "
-					"fentry function attach on the "
-					"current CPU architecture!");
-#endif
+				print_compat_error("function attach");
 			else
 				pr_warn("ERROR: Can't attach XDP trace fentry "
 					"function: %s\n",
