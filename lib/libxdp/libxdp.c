@@ -1786,13 +1786,9 @@ static int xdp_multiprog__load(struct xdp_multiprog *mp)
 
 	err = xdp_program__load(mp->main_prog);
 	if (err) {
-		if (err == -LIBBPF_ERRNO__VERIFY) {
-			pr_warn("Got verifier error while loading dispatcher.\n");
-			err = -EOPNOTSUPP;
-		} else {
-			pr_warn("Failed to load dispatcher: %s\n",
+		pr_warn("Failed to load dispatcher: %s\n",
 				libxdp_strerror_r(err, buf, sizeof(buf)));
-		}
+		err = -EOPNOTSUPP;
 		goto out;
 	}
 	mp->is_loaded = true;
