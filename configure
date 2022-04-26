@@ -177,6 +177,16 @@ check_libbpf_function()
         return 0;
     fi
 
+    # If this is set we don't try to link against libbpf, as it may be in a
+    # different submodule and have not been built yet. Instead, we'll copy over the
+    if [ -n "$LIBBPF_UNBUILT" ]; then
+        LIBBPF_LDLIBS="-Xlinker --unresolved-symbols=ignore-in-object-files"
+        LIBBPF_CFLAGS="-I$TMPDIR/include"
+        mkdir -p "$TMPDIR/include/bpf"
+        cp "$LIBBPF_DIR"/src/{bpf,btf,libbpf*}.h "$TMPDIR/include/bpf"
+        [ "$?" -eq 0 ] || return
+    fi
+
     cat >$TMPDIR/libbpftest.c <<EOF
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
