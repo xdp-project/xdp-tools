@@ -186,12 +186,17 @@ int main(int argc, char **argv) {
     return 0;
 }
 EOF
-    libbpf_err=$($CC -o $TMPDIR/libbpftest $TMPDIR/libbpftest.c -Werror $LIBBPF_CFLAGS $LIBBPF_LDLIBS 2>&1)
+    compile_cmd="$CC -o $TMPDIR/libbpftest $TMPDIR/libbpftest.c -Werror $LIBBPF_CFLAGS $LIBBPF_LDLIBS"
+    libbpf_err=$($compile_cmd 2>&1)
     if [ "$?" -eq "0" ]; then
         echo "HAVE_FEATURES+=${config_var}" >>"$CONFIG"
         echo "yes"
     else
         echo "no"
+    fi
+    if [ -n "$DEBUG_CONFIGURE" ]; then
+        echo "    $compile_cmd"
+        echo "${libbpf_err}" | sed 's/^/    /gm'
     fi
 }
 
