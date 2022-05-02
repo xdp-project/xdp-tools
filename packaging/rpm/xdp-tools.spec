@@ -90,7 +90,6 @@ make install V=1
 %{_mandir}/man8/*
 %{_libdir}/bpf/xdpfilt_*.o
 %{_libdir}/bpf/xdpdump_*.o
-%{_libdir}/bpf/xsk_def_xdp_prog*.o
 %{_datadir}/xdp-tools/
 %license LICENSES/*
 
@@ -98,7 +97,9 @@ make install V=1
 %{_libdir}/libxdp.so.1
 %{_libdir}/libxdp.so.%{_soversion}
 %{_libdir}/bpf/xdp-dispatcher.o
+%{_libdir}/bpf/xsk_def_xdp_prog*.o
 %{_mandir}/man3/*
+%license LICENSES/*
 
 %files -n libxdp-static
 %{_libdir}/libxdp.a
