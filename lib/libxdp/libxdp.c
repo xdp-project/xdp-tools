@@ -1401,7 +1401,7 @@ static int xdp_program__load(struct xdp_program *prog)
 	return xdp_program__fill_from_fd(prog, prog_fd);
 }
 
-struct xdp_program *xdp_program__clone(struct xdp_program *prog)
+static struct xdp_program *__xdp_program__clone(struct xdp_program *prog)
 {
 	struct xdp_program *new_prog;
 	int new_fd, err;
@@ -1409,14 +1409,11 @@ struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 	/* Clone a loaded program struct by duplicating the fd and creating a
 	 * new structure from the kernel state.
 	 */
-	if (!prog || prog->prog_fd < 0)
-		return libxdp_err_ptr(-EINVAL, false);
-
 	new_fd = fcntl(prog->prog_fd, F_DUPFD_CLOEXEC, MIN_FD);
 	if (new_fd < 0) {
 		err = -errno;
 		pr_debug("Error on fcntl: %s\n", strerror(-err));
-		libxdp_err_ptr(err, false);
+		return libxdp_err_ptr(err, false);
 	}
 
 	new_prog = xdp_program__from_fd(new_fd);
@@ -1427,6 +1424,19 @@ struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 	}
 	return new_prog;
 }
+
+struct xdp_program *xdp_program__clone(struct xdp_program *prog, unsigned int flags)
+{
+	if (!prog || flags || (prog->prog_fd < 0 && !prog->bpf_obj))
+		return libxdp_err_ptr(-EINVAL, false);
+
+	if (prog->prog_fd >= 0)
+		return __xdp_program__clone(prog);
+
+	return xdp_program__create_from_obj(prog->bpf_obj, NULL,
+					    prog->prog_name, true);
+}
+
 
 static int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
 				      enum xdp_attach_mode mode)
@@ -2351,7 +2361,7 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 	}
 
 	/* clone the xdp_program ref so we can keep it */
-	new_prog = xdp_program__clone(prog);
+	new_prog = xdp_program__clone(prog, 0);
 	if (IS_ERR(new_prog)) {
 		err = PTR_ERR(new_prog);
 		pr_warn("Failed to clone xdp_program: %s\n", strerror(-err));

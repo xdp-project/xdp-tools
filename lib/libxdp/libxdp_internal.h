@@ -44,7 +44,6 @@ LIBXDP_HIDE_SYMBOL __printf(2, 3) void libxdp_print(enum libxdp_print_level leve
 
 LIBXDP_HIDE_SYMBOL int check_xdp_prog_version(const struct btf *btf, const char *name,
 					      __u32 *version);
-LIBXDP_HIDE_SYMBOL struct xdp_program *xdp_program__clone(struct xdp_program *prog);
 
 #define min(x, y) ((x) < (y) ? x : y)
 #define max(x, y) ((x) > (y) ? x : y)

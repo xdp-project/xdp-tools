@@ -60,6 +60,8 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 struct xdp_program *xdp_program__from_fd(int fd);
 struct xdp_program *xdp_program__from_id(__u32 prog_id);
 struct xdp_program *xdp_program__from_pin(const char *pin_path);
+struct xdp_program *xdp_program__clone(struct xdp_program *xdp_prog,
+                                       unsigned int flags);
 
 void xdp_program__close(struct xdp_program *xdp_prog);
 

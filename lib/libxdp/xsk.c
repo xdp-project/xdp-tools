@@ -670,7 +670,7 @@ check:
 
 out:
 	if (!IS_ERR_OR_NULL(prog))
-		prog = xdp_program__clone(prog);
+		prog = xdp_program__clone(prog, 0);
 
 	xdp_multiprog__close(multi_prog);
 	return prog;
