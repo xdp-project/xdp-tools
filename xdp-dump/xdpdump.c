@@ -1311,7 +1311,6 @@ static bool load_and_attach_trace(struct dumpopt *cfg,
 	struct bpf_link             *trace_link_fexit = NULL;
 	struct bpf_map              *perf_map;
 	struct bpf_map              *data_map;
-	const struct bpf_map_def    *data_map_def;
 	struct trace_configuration   trace_cfg;
 
 	if (idx >= progs->nr_of_progs || progs->nr_of_progs == 0) {
@@ -1347,9 +1346,7 @@ rlimit_loop:
 		goto error_exit;
 	}
 
-	data_map_def = bpf_map__def(data_map);
-	if (!data_map_def ||
-	    data_map_def->value_size != sizeof(trace_cfg)) {
+	if (bpf_map__value_size(data_map) != sizeof(trace_cfg)) {
 		pr_warn("ERROR: Can't find the correct sized .data MAP in the "
 			"trace program!\n");
 		goto error_exit;
@@ -1526,7 +1523,6 @@ static bool load_xdp_trace_program(struct dumpopt *cfg,
 	struct xdp_program         *prog;
 	struct bpf_map             *perf_map;
 	struct bpf_map             *data_map;
-	const struct bpf_map_def   *data_map_def;
 	struct trace_configuration  trace_cfg;
 
 	if (!cfg || !progs)
@@ -1563,9 +1559,7 @@ static bool load_xdp_trace_program(struct dumpopt *cfg,
 		goto error_exit;
 	}
 
-	data_map_def = bpf_map__def(data_map);
-	if (!data_map_def ||
-	    data_map_def->value_size != sizeof(trace_cfg)) {
+	if (bpf_map__value_size(data_map) != sizeof(trace_cfg)) {
 		pr_warn("ERROR: Can't find the correct sized .data MAP in the xdp program!\n");
 		goto error_exit;
 	}

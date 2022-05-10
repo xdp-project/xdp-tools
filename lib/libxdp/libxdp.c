@@ -427,18 +427,30 @@ static int xdp_lock_release(int lock_fd)
 	return err;
 }
 
+static int do_xdp_attach(int ifindex, int prog_fd, int old_fd, __u32 xdp_flags)
+{
+#ifdef HAVE_LIBBPF_BPF_XDP_ATTACH
+	LIBBPF_OPTS(bpf_xdp_attach_opts, opts,
+		    .old_prog_fd = old_fd);
+	return bpf_xdp_attach(ifindex, prog_fd, xdp_flags, &opts);
+#else
+	DECLARE_LIBBPF_OPTS(bpf_xdp_set_link_opts, opts, .old_fd = old_fd);
+	return bpf_set_link_xdp_fd_opts(ifindex, prog_fd, xdp_flags, old_fd ? &opts : NULL);
+#endif
+}
+
 static int xdp_attach_fd(int prog_fd, int old_fd, int ifindex,
 			 enum xdp_attach_mode mode)
 {
-	DECLARE_LIBBPF_OPTS(bpf_xdp_set_link_opts, opts, .old_fd = old_fd);
-	struct bpf_xdp_set_link_opts *setopts = &opts;
 	int err = 0, xdp_flags = 0;
 
 	pr_debug("Replacing XDP fd %d with %d on ifindex %d\n",
 		 old_fd, prog_fd, ifindex);
 
-	if (old_fd == -1)
+	if (old_fd == -1) {
 		xdp_flags |= XDP_FLAGS_UPDATE_IF_NOEXIST;
+		old_fd = 0;
+	}
 
 	switch (mode) {
 	case XDP_MODE_SKB:
@@ -454,11 +466,11 @@ static int xdp_attach_fd(int prog_fd, int old_fd, int ifindex,
 		break;
 	}
 again:
-	err = bpf_set_link_xdp_fd_opts(ifindex, prog_fd, xdp_flags, setopts);
+	err = do_xdp_attach(ifindex, prog_fd, old_fd, xdp_flags);
 	if (err < 0) {
-		if (err == -EINVAL && setopts) {
+		if (err == -EINVAL && old_fd) {
 			pr_debug("Got 'invalid argument', trying again without old_fd\n");
-			setopts = NULL;
+			old_fd = 0;
 			goto again;
 		}
 		pr_info("Error attaching XDP program to ifindex %d: %s\n",
@@ -2117,43 +2129,84 @@ err:
 	return ERR_PTR(err);
 }
 
+static int xdp_get_ifindex_prog_id(int ifindex, __u32 *prog_id,
+				   __u32 *hw_prog_id, enum xdp_attach_mode *mode)
+{
+	__u32 _prog_id, _drv_prog_id, _hw_prog_id, _skb_prog_id;
+	enum xdp_attach_mode _mode;
+	__u8 _attach_mode;
+
+	if (!hw_prog_id)
+		hw_prog_id = &_prog_id;
+	if (!mode)
+		mode = &_mode;
+	int err;
+#ifdef HAVE_LIBBPF_BPF_XDP_ATTACH
+	LIBBPF_OPTS(bpf_xdp_query_opts, opts);
+	err = bpf_xdp_query(ifindex, 0, &opts);
+	if (err)
+		return err;
+
+	_drv_prog_id = opts.drv_prog_id;
+	_skb_prog_id = opts.skb_prog_id;
+	_hw_prog_id  = opts.hw_prog_id;
+	_attach_mode = opts.attach_mode;
+#else
+	struct xdp_link_info xinfo = {};
+	err = bpf_get_link_xdp_info(ifindex, &xinfo, sizeof(xinfo), 0);
+	if (err)
+		return err;
+
+	_drv_prog_id = xdp_info.drv_prog_id;
+	_skb_prog_id = xdp_info.skb_prog_id;
+	_hw_prog_id  = xdp_info.hw_prog_id;
+	_attach_mode = xdp_info.attach_mode;
+#endif
+	switch (_attach_mode) {
+	case XDP_ATTACHED_SKB:
+		*prog_id = _skb_prog_id;
+		*mode = XDP_MODE_SKB;
+		break;
+	case XDP_ATTACHED_DRV:
+		*prog_id = _drv_prog_id;
+		*mode = XDP_MODE_NATIVE;
+		break;
+	case XDP_ATTACHED_MULTI:
+		if (_drv_prog_id) {
+			*prog_id = _drv_prog_id;
+			*mode = XDP_MODE_NATIVE;
+		} else if (_skb_prog_id) {
+			*prog_id = _skb_prog_id;
+			*mode = XDP_MODE_SKB;
+		}
+		*hw_prog_id = _hw_prog_id;
+		break;
+	case XDP_ATTACHED_HW:
+		*hw_prog_id = _hw_prog_id;
+		*mode = XDP_MODE_UNSPEC;
+		break;
+	case XDP_ATTACHED_NONE:
+	default:
+		*mode = XDP_MODE_UNSPEC;
+		break;
+	}
+	return 0;
+}
 
 struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex)
 {
 	enum xdp_attach_mode mode = XDP_MODE_UNSPEC;
-	struct xdp_link_info xinfo = {};
 	struct xdp_multiprog *mp;
 	__u32 hw_prog_id = 0;
 	__u32 prog_id = 0;
 	int err;
 
-	err = bpf_get_link_xdp_info(ifindex, &xinfo, sizeof(xinfo), 0);
+	err = xdp_get_ifindex_prog_id(ifindex, &prog_id, &hw_prog_id, &mode);
 	if (err)
 		return libxdp_err_ptr(err, false);
 
-	if (xinfo.attach_mode == XDP_ATTACHED_SKB) {
-		prog_id = xinfo.skb_prog_id;
-		mode = XDP_MODE_SKB;
-	} else if (xinfo.attach_mode == XDP_ATTACHED_DRV) {
-		prog_id = xinfo.drv_prog_id;
-		mode = XDP_MODE_NATIVE;
-	} else if (xinfo.attach_mode == XDP_ATTACHED_HW) {
-		hw_prog_id = xinfo.hw_prog_id;
-		mode = XDP_MODE_UNSPEC;
-	} else if (xinfo.attach_mode == XDP_ATTACHED_MULTI) {
-		if (xinfo.drv_prog_id) {
-			prog_id = xinfo.drv_prog_id;
-			mode = XDP_MODE_NATIVE;
-		} else if (xinfo.skb_prog_id) {
-			prog_id = xinfo.skb_prog_id;
-			mode = XDP_MODE_SKB;
-		}
-		hw_prog_id = xinfo.hw_prog_id;
-	}
-
-	if (!prog_id && !hw_prog_id) {
+	if (!prog_id && !hw_prog_id)
 		return libxdp_err_ptr(-ENOENT, false);
-	}
 
 	mp = xdp_multiprog__from_id(prog_id, hw_prog_id, ifindex);
 	if (!IS_ERR_OR_NULL(mp))
@@ -2856,30 +2909,6 @@ int xdp_multiprog__program_count(const struct xdp_multiprog *mp)
 	return mp->num_links;
 }
 
-static __u32 xdp_get_ifindex_prog_id(int ifindex)
-{
-	struct xdp_link_info xinfo = {};
-	__u32 prog_id = 0;
-
-	if (!bpf_get_link_xdp_info(ifindex, &xinfo, sizeof(xinfo), 0)) {
-		switch (xinfo.attach_mode) {
-		case XDP_ATTACHED_SKB:
-			prog_id = xinfo.skb_prog_id;
-			break;
-		case XDP_ATTACHED_DRV:
-			prog_id = xinfo.drv_prog_id;
-			break;
-		case XDP_ATTACHED_MULTI:
-			prog_id = xinfo.drv_prog_id ?: xinfo.skb_prog_id;
-			break;
-		case XDP_ATTACHED_NONE:
-		case XDP_ATTACHED_HW:
-		default:;
-		}
-	}
-	return prog_id;
-}
-
 static int remove_pin_dir(const char *subdir)
 {
 	char prog_path[PATH_MAX], pin_path[PATH_MAX];
@@ -2933,7 +2962,7 @@ err:
 int libxdp_clean_references(int ifindex)
 {
 	int err = 0, lock_fd, path_ifindex;
-	__u32 dir_prog_id, prog_id;
+	__u32 dir_prog_id, prog_id = 0;
 	DIR *d;
 
 	const char *dir = get_bpffs_dir();
@@ -2964,7 +2993,7 @@ int libxdp_clean_references(int ifindex)
 		if (ifindex && path_ifindex != ifindex)
 			continue;
 
-		prog_id = xdp_get_ifindex_prog_id(path_ifindex);
+		xdp_get_ifindex_prog_id(path_ifindex, &prog_id, NULL, NULL);
 		if (!prog_id || prog_id != dir_prog_id) {
 			pr_info("Prog id %"PRIu32" no longer attached on ifindex %d, removing pin directory %s\n",
 				dir_prog_id, path_ifindex, dent->d_name);

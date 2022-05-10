@@ -67,6 +67,17 @@ static struct bpf_object *open_bpf_obj(const char *filename,
 	return obj;
 }
 
+static int do_xdp_attach(int ifindex, int prog_fd, int old_fd, __u32 xdp_flags)
+{
+#ifdef HAVE_LIBBPF_BPF_XDP_ATTACH
+	LIBBPF_OPTS(bpf_xdp_attach_opts, opts,
+		    .old_prog_fd = old_fd);
+	return bpf_xdp_attach(ifindex, prog_fd, xdp_flags, &opts);
+#else
+	DECLARE_LIBBPF_OPTS(bpf_xdp_set_link_opts, opts, .old_fd = old_fd);
+	return bpf_set_link_xdp_fd_opts(ifindex, prog_fd, xdp_flags, old_fd ? &opts : NULL);
+#endif
+}
 
 int do_load(const void *cfg, __unused const char *pin_root_path)
 {
@@ -138,8 +149,7 @@ retry:
   	case XDP_MODE_UNSPEC:
   		break;
   	}
-	err = bpf_set_link_xdp_fd_opts(opt->iface.ifindex, prog_fd, xdp_flags,
-				       NULL);
+	err = do_xdp_attach(opt->iface.ifindex, prog_fd, 0, xdp_flags);
 	if (err < 0) {
  		pr_info("ERROR: Failed attaching XDP program to ifindex %d: %s\n",
 			opt->iface.ifindex, strerror(-err));

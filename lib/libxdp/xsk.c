@@ -483,7 +483,7 @@ static int xsk_size_map(struct xdp_program *xdp_prog, char *ifname)
 	if (!map)
 		return -ENOENT;
 
-	err = bpf_map__resize(map, max_queues);
+	err = bpf_map__set_max_entries(map, max_queues);
 	if (err)
 		return err;
 
