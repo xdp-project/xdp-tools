@@ -1839,7 +1839,7 @@ int check_xdp_prog_version(const struct btf *btf, const char *name, __u32 *versi
 static int check_dispatcher_version(struct btf *btf)
 {
 	const char *name = "dispatcher_version";
-	__u32 version;
+	__u32 version = 0;
 	int err;
 
 	err = check_xdp_prog_version(btf, name, &version);
