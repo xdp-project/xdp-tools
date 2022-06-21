@@ -9,14 +9,14 @@
 				 ##__VA_ARGS__);	\
 	}
 
-SEC("xdp_test_prog_long")
+SEC("xdp")
 int xdp_test_prog_with_a_long_name(struct xdp_md *ctx)
 {
 	bpf_debug("PASS[1]: prog %u\n", ctx->ingress_ifindex);
 	return XDP_PASS;
 }
 
-SEC("xdp_test_prog_long_II")
+SEC("xdp")
 int xdp_test_prog_with_a_long_name_too(struct xdp_md *ctx)
 {
 	bpf_debug("PASS[2]: prog %u\n", ctx->ingress_ifindex);
