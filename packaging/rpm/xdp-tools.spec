@@ -65,6 +65,7 @@ The libxdp-static package contains the static library version of libxdp.
 export CFLAGS='%{build_cflags}'
 export LDFLAGS='%{build_ldflags}'
 export LIBDIR='%{_libdir}'
+export RUNDIR='%{_rundir}'
 export CLANG=%{_bindir}/clang
 export LLC=%{_bindir}/llc
 export PRODUCTION=1
@@ -78,6 +79,7 @@ make %{?_smp_mflags} V=1
 export DESTDIR='%{buildroot}'
 export SBINDIR='%{_sbindir}'
 export LIBDIR='%{_libdir}'
+export RUNDIR='%{_rundir}'
 export MANDIR='%{_mandir}'
 export DATADIR='%{_datadir}'
 export HDRDIR='%{_includedir}/xdp'
