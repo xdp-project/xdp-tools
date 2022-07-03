@@ -1680,8 +1680,8 @@ static int xdp_multiprog__load(struct xdp_multiprog *mp)
 
 	err = xdp_program__load(mp->main_prog);
 	if (err) {
-		pr_warn("Failed to load dispatcher: %s\n",
-				libxdp_strerror_r(err, buf, sizeof(buf)));
+		pr_info("Failed to load dispatcher: %s\n",
+			libxdp_strerror_r(err, buf, sizeof(buf)));
 		err = -EOPNOTSUPP;
 		goto out;
 	}
