@@ -716,7 +716,7 @@ int check_bpf_environ(const char *pin_root_path)
 	return 0;
 }
 
-static const char *lock_dir = "/run";
+static const char *lock_dir = RUNDIR;
 static char *prog_lock_file = NULL;
 static int prog_lock_fd = -1;
 static pid_t prog_pid = 0;
