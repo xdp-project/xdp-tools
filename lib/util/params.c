@@ -477,7 +477,7 @@ static int prog_options_to_options(struct prog_option *poptions,
 		if (!opt->positional)
 			num++;
 
-	new_options = malloc(sizeof(struct option) * (num + 1));
+	new_options = calloc(num + 1, sizeof(struct option));
 	if (!new_options)
 		return -ENOMEM;
 
@@ -686,7 +686,7 @@ int dispatch_commands(const char *argv0, int argc, char **argv,
 	if (cmd->no_cfg)
 		return cmd->func(NULL, NULL);
 
-	cfg = malloc(cfg_size);
+	cfg = calloc(1, cfg_size);
 	if (!cfg) {
 		pr_warn("Couldn't allocate memory\n");
 		return EXIT_FAILURE;
