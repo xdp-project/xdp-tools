@@ -48,6 +48,12 @@
  #define PF_XDP AF_XDP
 #endif
 
+#ifndef SO_NETNS_COOKIE
+ #define SO_NETNS_COOKIE 71
+#endif
+
+#define INIT_NS 1
+
 struct xsk_umem {
 	struct xsk_ring_prod *fill_save;
 	struct xsk_ring_cons *comp_save;
@@ -67,6 +73,7 @@ struct xsk_ctx {
 	__u32 queue_id;
 	int refcount;
 	int ifindex;
+	__u64 netns_cookie;
 	int xsks_map_fd;
 	struct list_head list;
 	struct xdp_program *xdp_prog;
@@ -733,7 +740,7 @@ err_prog_load:
 	return err;
 }
 
-static struct xsk_ctx *xsk_get_ctx(struct xsk_umem *umem, int ifindex, __u32 queue_id)
+static struct xsk_ctx *xsk_get_ctx(struct xsk_umem *umem, __u64 netns_cookie, int ifindex, __u32 queue_id)
 {
 	struct xsk_ctx *ctx;
 
@@ -741,7 +748,7 @@ static struct xsk_ctx *xsk_get_ctx(struct xsk_umem *umem, int ifindex, __u32 que
 		return NULL;
 
 	list_for_each_entry(ctx, &umem->ctx_list, list) {
-		if (ctx->ifindex == ifindex && ctx->queue_id == queue_id) {
+		if (ctx->netns_cookie == netns_cookie && ctx->ifindex == ifindex && ctx->queue_id == queue_id) {
 			ctx->refcount++;
 			return ctx;
 		}
@@ -777,7 +784,7 @@ out_free:
 }
 
 static struct xsk_ctx *xsk_create_ctx(struct xsk_socket *xsk,
-				      struct xsk_umem *umem, int ifindex,
+				      struct xsk_umem *umem, __u64 netns_cookie, int ifindex,
 				      const char *ifname, __u32 queue_id,
 				      struct xsk_ring_prod *fill,
 				      struct xsk_ring_cons *comp)
@@ -801,6 +808,7 @@ static struct xsk_ctx *xsk_create_ctx(struct xsk_socket *xsk,
 		memcpy(comp, umem->comp_save, sizeof(*comp));
 	}
 
+	ctx->netns_cookie = netns_cookie;
 	ctx->ifindex = ifindex;
 	ctx->refcount = 1;
 	ctx->umem = umem;
@@ -866,6 +874,8 @@ int xsk_socket__create_shared(struct xsk_socket **xsk_ptr,
 	struct xsk_socket *xsk;
 	struct xsk_ctx *ctx;
 	int err, ifindex;
+	__u64 netns_cookie;
+	socklen_t optlen;
 	bool unmap;
 
 	if (!umem || !xsk_ptr || !(rx || tx))
@@ -898,14 +908,24 @@ int xsk_socket__create_shared(struct xsk_socket **xsk_ptr,
 		tx_setup_done = umem->tx_ring_setup_done;
 	}
 
-	ctx = xsk_get_ctx(umem, ifindex, queue_id);
+	optlen = sizeof(netns_cookie);
+	err = getsockopt(xsk->fd, SOL_SOCKET, SO_NETNS_COOKIE, &netns_cookie, &optlen);
+	if (err) {
+		if (errno != ENOPROTOOPT) {
+			err = -errno;
+			goto out_socket;
+		}
+		netns_cookie = INIT_NS;
+	}
+
+	ctx = xsk_get_ctx(umem, netns_cookie, ifindex, queue_id);
 	if (!ctx) {
 		if (!fill || !comp) {
 			err = -EFAULT;
 			goto out_socket;
 		}
 
-		ctx = xsk_create_ctx(xsk, umem, ifindex, ifname, queue_id,
+		ctx = xsk_create_ctx(xsk, umem, netns_cookie, ifindex, ifname, queue_id,
 				     fill, comp);
 		if (!ctx) {
 			err = -ENOMEM;
