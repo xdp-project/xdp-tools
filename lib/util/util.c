@@ -795,7 +795,7 @@ int prog_lock_get(const char *progname)
 	if (prog_lock_fd < 0) {
 		err = -errno;
 		if (err == -EEXIST) {
-			unsigned long pid = 0;
+			pid_t pid = 0;
 			char buf[100];
 			ssize_t len;
 			int fd;
@@ -820,7 +820,7 @@ int prog_lock_get(const char *progname)
 					strerror(-err));
 				return err;
 			}
-			pr_warn("Unable to get program lock: Already held by pid %lu\n",
+			pr_warn("Unable to get program lock: Already held by pid %d\n",
 				pid);
 		} else {
 			pr_warn("Unable to get program lock: %s\n", strerror(-err));
