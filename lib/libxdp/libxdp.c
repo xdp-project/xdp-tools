@@ -2157,10 +2157,10 @@ static int xdp_get_ifindex_prog_id(int ifindex, __u32 *prog_id,
 	if (err)
 		return err;
 
-	_drv_prog_id = xdp_info.drv_prog_id;
-	_skb_prog_id = xdp_info.skb_prog_id;
-	_hw_prog_id  = xdp_info.hw_prog_id;
-	_attach_mode = xdp_info.attach_mode;
+	_drv_prog_id = xinfo.drv_prog_id;
+	_skb_prog_id = xinfo.skb_prog_id;
+	_hw_prog_id  = xinfo.hw_prog_id;
+	_attach_mode = xinfo.attach_mode;
 #endif
 	switch (_attach_mode) {
 	case XDP_ATTACHED_SKB:
