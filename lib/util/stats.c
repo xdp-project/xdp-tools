@@ -107,8 +107,8 @@ int stats_print(struct stats_record *stats_rec, struct stats_record *stats_prev)
 			return 0;
 
 		if (first) {
-			printf("Period of %fs ending at %lu.%06lu\n", period,
-			       t.tv_sec, t.tv_nsec / 1000);
+			printf("Period of %fs ending at %ld.%06ld\n", period,
+			       (long) t.tv_sec, (long) t.tv_nsec / 1000);
 			first = false;
 		}
 
