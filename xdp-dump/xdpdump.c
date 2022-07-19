@@ -644,9 +644,9 @@ static bool capture_on_legacy_interface(struct dumpopt *cfg)
 			char hline[SNPRINTH_MIN_BUFFER_SIZE];
 
 			if (cfg->hex_dump) {
-				printf("%lu.%06lu: packet size %u bytes, "
+				printf("%ld.%06ld: packet size %u bytes, "
 				       "captured %u bytes on if_name \"%s\"\n",
-				       h.ts.tv_sec, h.ts.tv_usec,
+				       (long) h.ts.tv_sec, (long) h.ts.tv_usec,
 				       h.len, h.caplen, cfg->iface.ifname);
 
 				for (i = 0; i < h.caplen; i += 16) {
@@ -655,9 +655,9 @@ static bool capture_on_legacy_interface(struct dumpopt *cfg)
 					printf("  %s\n", hline);
 				}
 			} else {
-				printf("%lu.%06lu: packet size %u bytes on "
+				printf("%ld.%06ld: packet size %u bytes on "
 				       "if_name \"%s\"\n",
-				       h.ts.tv_sec, h.ts.tv_usec,
+				       (long) h.ts.tv_sec, (long) h.ts.tv_usec,
 				       h.len, cfg->iface.ifname);
 			}
 		}
