@@ -88,10 +88,10 @@ $(SHARED_OBJDIR):
 	$(Q)mkdir -p $(SHARED_OBJDIR)
 
 $(STATIC_OBJDIR)/%.o: %.c $(EXTRA_LIB_DEPS) | $(STATIC_OBJDIR)
-	$(QUIET_CC)$(CC) $(CFLAGS) -D LIBXDP_STATIC=1 -Wall -I../../headers -c $< -o $@
+	$(QUIET_CC)$(CC) $(CFLAGS) $(CPPFLAGS) -D LIBXDP_STATIC=1 -Wall -I../../headers -c $< -o $@
 
 $(SHARED_OBJDIR)/%.o: %.c $(EXTRA_LIB_DEPS) | $(SHARED_OBJDIR)
-	$(QUIET_CC)$(CC) $(CFLAGS) $(SHARED_CFLAGS) -Wall -I../../headers -c $< -o $@
+	$(QUIET_CC)$(CC) $(CFLAGS) $(CPPFLAGS) $(SHARED_CFLAGS) -Wall -I../../headers -c $< -o $@
 
 XDP_IN_SHARED	:= $(SHARED_OBJDIR)/libxdp.o $(SHARED_OBJDIR)/xsk.o
 
@@ -166,4 +166,4 @@ endif
 
 .PHONY: test
 test: all
-	$(Q)env CC="$(CC)" CFLAGS="$(TEST_CFLAGS)" LDLIBS="$(TEST_LDLIBS)" V=$(V) $(TEST_DIR)/test_runner.sh $(TEST_FILE)
+	$(Q)env CC="$(CC)" CFLAGS="$(TEST_CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDLIBS="$(TEST_LDLIBS)" V=$(V) $(TEST_DIR)/test_runner.sh $(TEST_FILE)
