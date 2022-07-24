@@ -11,7 +11,7 @@ all: $(UTIL_OBJS)
 UTIL_H := ${UTIL_OBJS:.o=.h}
 
 $(UTIL_OBJS): %.o: %.c $(UTIL_H) $(LIBMK)
-	$(QUIET_CC)$(CC) $(CFLAGS) -Wall -I../../headers -c -o $@ $<
+	$(QUIET_CC)$(CC) $(CFLAGS) $(CPPFLAGS) -Wall -I../../headers -c -o $@ $<
 
 clean:
 	$(Q)rm -f $(UTIL_OBJS)
