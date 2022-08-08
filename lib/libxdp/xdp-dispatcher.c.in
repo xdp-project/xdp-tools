@@ -7,7 +7,6 @@ define(`NUM_PROGS',ifdef(`MAX_DISPATCHER_ACTIONS', MAX_DISPATCHER_ACTIONS, `10')
 divert(0)dnl
 
 #include <linux/bpf.h>
-#include <linux/in.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
