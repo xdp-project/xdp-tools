@@ -10,7 +10,7 @@ int main(int argc, char **argv) {
     return 0;
 }
 EOF
-        check_run $CC -o $TMPDIR/libxdptest $TMPDIR/libxdptest.c $CFLAGS -lxdp $LDLIBS 2>&1
+        check_run $CC -o $TMPDIR/libxdptest $TMPDIR/libxdptest.c $CFLAGS $CPPFLAGS -lxdp $LDLIBS 2>&1
 }
 
 test_link_a()
@@ -23,5 +23,5 @@ int main(int argc, char **argv) {
     return 0;
 }
 EOF
-        check_run $CC -o $TMPDIR/libxdptest $TMPDIR/libxdptest.c $CFLAGS -l:libxdp.a $LDLIBS 2>&1
+        check_run $CC -o $TMPDIR/libxdptest $TMPDIR/libxdptest.c $CFLAGS $CPPFLAGS -l:libxdp.a $LDLIBS 2>&1
 }
