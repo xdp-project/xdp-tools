@@ -133,6 +133,13 @@ int map_set_flags(int fd, void *key, __u8 flags)
 		 (uint64_t)values[0], flags);
 
 	err = bpf_map_update_elem(fd, key, values, 0);
+	if (err) {
+		err = -errno;
+		if (err == -E2BIG)
+			pr_warn("Couldn't add entry: state map is full\n");
+		else
+			pr_warn("Unable to update state map: %s\n", strerror(-err));
+	}
 
 	free(values);
 	return err;
