@@ -7,7 +7,7 @@
 # To export the man page, simply use the org-mode exporter; (require 'ox-man) if
 # it's not available. There's also a Makefile rule to export it.
 
-* XDP-filter - a simple XDP-powered packet filter
+* xdp-filter - a simple XDP-powered packet filter
 
 XDP-filter is a packet filtering utility powered by XDP. It is deliberately
 simple and so does not have the same matching capabilities as, e.g., netfilter.

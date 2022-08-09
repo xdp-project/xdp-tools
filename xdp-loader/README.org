@@ -8,7 +8,7 @@
 # To export the man page, simply use the org-mode exporter; (require 'ox-man) if
 # it's not available. There's also a Makefile rule to export it.
 
-* XDP-loader - an XDP program loader
+* xdp-loader - an XDP program loader
 
 XDP-loader is a simple loader for XDP programs with support for attaching
 multiple programs to the same interface. To achieve this it exposes the same

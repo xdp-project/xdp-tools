@@ -160,7 +160,7 @@ $(MAN_OBJ): README.org $(LIBMK)
 $(MAN_PAGE): $(MAN_OBJ) $(LIBMK)
 	$(QUIET_GEN)MODDATE=$$(git log -1 --pretty="format:%cI" README.org 2>/dev/null); \
 		[ "$$?" -eq "0" ] && DATE=$$(date '+%B %_d, %Y' -d "$$MODDATE") || DATE=$$(date '+%B %_d, %Y'); \
-		sed -e "1 s/DATE/$$DATE/" -e "1 s/VERSION/v$(TOOLS_VERSION)/" $< > $@
+		sed -e "1 s/DATE/$$DATE/" -e "1 s/VERSION/v$(TOOLS_VERSION)/" -e '1,5 s/^.SH "\([^"]\+\) - \([^"]\+\)"/.SH "NAME"\n\1 \\- \2\n.SH "SYNOPSIS"/' $< > $@
 
 endif
 
