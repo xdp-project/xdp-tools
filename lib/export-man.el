@@ -31,7 +31,7 @@
   "Replace REGEXP with REPLACE in buffer."
   (let ((case-fold-search nil))
     (goto-char 0)
-    (while (re-search-forward regexp nil t)
+    (when (re-search-forward regexp nil t)
       (replace-match replace))))
 
 (defun open-file (filename)
@@ -55,6 +55,8 @@
       (mapc #'(lambda (r) (delete-matching-lines r)) exclude-regexes)
       (replace-regexp-in-buffer "DATE" date)
       (replace-regexp-in-buffer "VERSION" version)
+      (replace-regexp-in-buffer "^.SH \"\\([^\"]+\\) - \\([^\"]+\\)\""
+                                ".SH \"NAME\"\n\\1 \\\\- \\2\n.SH \"SYNOPSIS\"")
       (save-buffer))))
 
 (defun export-man-page (outfile infile enabled-features version)
