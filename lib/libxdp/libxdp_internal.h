@@ -136,4 +136,15 @@ static inline void *libxdp_err_ptr(int err, bool ret_null)
 	return ERR_PTR(err);
 }
 
+LIBXDP_HIDE_SYMBOL int xdp_program__try_attach_multi(struct xdp_program **progs, size_t num_progs,
+						     int ifindex, enum xdp_attach_mode mode,
+						     unsigned int flags);
+
+LIBXDP_HIDE_SYMBOL int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
+						  enum xdp_attach_mode mode);
+
+LIBXDP_HIDE_SYMBOL void xdp_adjust_mode_flags(int *xdp_flags, enum xdp_attach_mode mode);
+LIBXDP_HIDE_SYMBOL int xdp_program__load(struct xdp_program *prog);
+LIBXDP_HIDE_SYMBOL struct bpf_program *xdp_program__bpf_prog(struct xdp_program *prog);
+
 #endif /* __LIBXDP_LIBXDP_INTERNAL_H */

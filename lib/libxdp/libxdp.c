@@ -439,6 +439,23 @@ static int do_xdp_attach(int ifindex, int prog_fd, int old_fd, __u32 xdp_flags)
 #endif
 }
 
+void xdp_adjust_mode_flags(int *xdp_flags, enum xdp_attach_mode mode)
+{
+	switch (mode) {
+	case XDP_MODE_SKB:
+		*xdp_flags |= XDP_FLAGS_SKB_MODE;
+		break;
+	case XDP_MODE_NATIVE:
+		*xdp_flags |= XDP_FLAGS_DRV_MODE;
+		break;
+	case XDP_MODE_HW:
+		*xdp_flags |= XDP_FLAGS_HW_MODE;
+		break;
+	case XDP_MODE_UNSPEC:
+		break;
+	}
+}
+
 static int xdp_attach_fd(int prog_fd, int old_fd, int ifindex,
 			 enum xdp_attach_mode mode)
 {
@@ -452,19 +469,7 @@ static int xdp_attach_fd(int prog_fd, int old_fd, int ifindex,
 		old_fd = 0;
 	}
 
-	switch (mode) {
-	case XDP_MODE_SKB:
-		xdp_flags |= XDP_FLAGS_SKB_MODE;
-		break;
-	case XDP_MODE_NATIVE:
-		xdp_flags |= XDP_FLAGS_DRV_MODE;
-		break;
-	case XDP_MODE_HW:
-		xdp_flags |= XDP_FLAGS_HW_MODE;
-		break;
-	case XDP_MODE_UNSPEC:
-		break;
-	}
+	xdp_adjust_mode_flags(&xdp_flags, mode);
 again:
 	err = do_xdp_attach(ifindex, prog_fd, old_fd, xdp_flags);
 	if (err < 0) {
@@ -616,6 +621,14 @@ int xdp_program__fd(const struct xdp_program *xdp_prog)
 		return errno = ENOENT, -1;
 
 	return xdp_prog->prog_fd;
+}
+
+struct bpf_program *xdp_program__bpf_prog(struct xdp_program *prog)
+{
+	if (!prog)
+		return libxdp_err_ptr(0, true);
+
+	return prog->bpf_prog;
 }
 
 int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
@@ -1382,7 +1395,7 @@ int xdp_program__pin(struct xdp_program *prog, const char *pin_path)
 	return libxdp_err(bpf_program__pin(prog->bpf_prog, pin_path));
 }
 
-static int xdp_program__load(struct xdp_program *prog)
+int xdp_program__load(struct xdp_program *prog)
 {
 	int err;
 
@@ -1450,8 +1463,8 @@ struct xdp_program *xdp_program__clone(struct xdp_program *prog, unsigned int fl
 }
 
 
-static int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
-				      enum xdp_attach_mode mode)
+int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
+			       enum xdp_attach_mode mode)
 {
 	int err;
 
@@ -1462,7 +1475,6 @@ static int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
 
 	return xdp_attach_fd(xdp_program__fd(prog), -1, ifindex, mode);
 }
-
 
 static int xdp_multiprog__main_fd(struct xdp_multiprog *mp)
 {
@@ -1536,9 +1548,9 @@ static int xdp_multiprog__detach_hw(struct xdp_multiprog *old_mp)
 	return 0;
 }
 
-int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
-			      int ifindex, enum xdp_attach_mode mode,
-			      unsigned int flags)
+int xdp_program__try_attach_multi(struct xdp_program **progs, size_t num_progs,
+				  int ifindex, enum xdp_attach_mode mode,
+				  unsigned int flags)
 {
 	struct xdp_multiprog *old_mp = NULL, *mp;
 	int err = 0;
@@ -1571,16 +1583,6 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 	if (IS_ERR(mp)) {
 		err = PTR_ERR(mp);
 		mp = NULL;
-		if (err == -EOPNOTSUPP) {
-			if (num_progs == 1) {
-				pr_info("Falling back to loading single prog "
-					"without dispatcher\n");
-				return libxdp_err(xdp_program__attach_single(progs[0], ifindex, mode));
-			} else {
-				pr_warn("Can't fall back to legacy load with %zu "
-					"programs\n%s\n", num_progs, dispatcher_feature_err);
-			}
-		}
 		goto out;
 	}
 
@@ -1613,6 +1615,25 @@ out:
 	if (old_mp)
 		xdp_multiprog__close(old_mp);
 	return libxdp_err(err);
+}
+
+int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
+			      int ifindex, enum xdp_attach_mode mode,
+			      unsigned int flags)
+{
+	int err = xdp_program__try_attach_multi(progs, num_progs, ifindex, mode, flags);
+
+	if (err == -EOPNOTSUPP) {
+		if (num_progs == 1) {
+			pr_info("Falling back to loading single prog without dispatcher\n");
+			return libxdp_err(xdp_program__attach_single(progs[0], ifindex, mode));
+		}
+
+		pr_warn("Can't fall back to legacy load with %zu programs\n%s\n",
+			num_progs, dispatcher_feature_err);
+	}
+
+	return err;
 }
 
 int xdp_program__attach(struct xdp_program *prog, int ifindex,

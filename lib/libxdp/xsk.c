@@ -77,7 +77,9 @@ struct xsk_ctx {
 	int xsks_map_fd;
 	struct list_head list;
 	struct xdp_program *xdp_prog;
+	int link_fd;
 	char ifname[IFNAMSIZ];
+	bool has_bpf_link;
 };
 
 struct xsk_socket {
@@ -638,16 +640,172 @@ static bool xsk_check_redirect_flags(void)
 	return detected;
 }
 
-static struct xdp_program *xsk_lookup_program(int ifindex)
+static int xdp_program__create_bpf_link(struct xdp_program *prog, int ifindex,
+					enum xdp_attach_mode mode)
+{
+	DECLARE_LIBBPF_OPTS(bpf_link_create_opts, opts);
+	int link_fd, err, xdp_flags = 0;
+	__u32 prog_id = 0;
+
+	xdp_adjust_mode_flags(&xdp_flags, mode);
+
+	err = bpf_xdp_query_id(ifindex, xdp_flags, &prog_id);
+	if (err) {
+		pr_warn("Getting XDP prog id failed\n");
+		return err;
+	}
+
+	/* if there's a netlink-based XDP prog loaded on interface, bail out
+	 * and ask user to do the removal by himself
+	 */
+	if (prog_id) {
+		pr_warn("Netlink-based XDP prog detected, please unload it in order to use bpf_link\n");
+		return -EINVAL;
+	}
+
+	opts.flags = xdp_flags & ~(XDP_FLAGS_UPDATE_IF_NOEXIST | XDP_FLAGS_REPLACE);
+
+	link_fd = bpf_link_create(xdp_program__fd(prog), ifindex, BPF_XDP, &opts);
+	if (link_fd < 0) {
+		pr_warn("bpf_link_create failed: %s\n", strerror(errno));
+		return link_fd;
+	}
+
+	return link_fd;
+}
+
+static int xdp_program__attach_single_bpf_link(struct xdp_program *prog, int ifindex,
+					       enum xdp_attach_mode mode)
+{
+	int err;
+
+	bpf_program__set_type(xdp_program__bpf_prog(prog), BPF_PROG_TYPE_XDP);
+	err = xdp_program__load(prog);
+	if (err)
+		return err;
+
+	return xdp_program__create_bpf_link(prog, ifindex, mode);
+}
+
+static int xdp_bpf_link_lookup(int ifindex, __u32 *prog_id, int *link_fd)
+{
+	struct bpf_link_info link_info;
+	__u32 link_len;
+	__u32 id = 0;
+	int err;
+	int fd;
+
+	while (true) {
+		err = bpf_link_get_next_id(id, &id);
+		if (err) {
+			if (errno == ENOENT) {
+				err = 0;
+				break;
+			}
+			pr_warn("Can't get next link: %s\n", strerror(errno));
+			break;
+		}
+
+		fd = bpf_link_get_fd_by_id(id);
+		if (fd < 0) {
+			if (errno == ENOENT)
+				continue;
+			pr_warn("Can't get link by id (%u): %s\n", id, strerror(errno));
+			err = -errno;
+			break;
+		}
+
+		link_len = sizeof(struct bpf_link_info);
+		memset(&link_info, 0, link_len);
+		err = bpf_obj_get_info_by_fd(fd, &link_info, &link_len);
+		if (err) {
+			pr_warn("Can't get link info: %s\n", strerror(errno));
+			close(fd);
+			break;
+		}
+		if (link_info.type == BPF_LINK_TYPE_XDP) {
+			if ((int)link_info.xdp.ifindex == ifindex) {
+				*link_fd = fd;
+				if (prog_id)
+					*prog_id = link_info.prog_id;
+				break;
+			}
+		}
+		close(fd);
+	}
+
+	return err;
+}
+
+static bool xdp_bpf_link_supported(void)
+{
+	LIBBPF_OPTS(bpf_link_create_opts, opts, .flags = XDP_FLAGS_SKB_MODE);
+	struct bpf_insn insns[2] = {
+		BPF_MOV64_IMM(BPF_REG_0, XDP_PASS),
+		BPF_EXIT_INSN()
+	};
+	int prog_fd, link_fd = -1, insn_cnt = ARRAY_SIZE(insns);
+	int ifindex_lo = 1;
+	bool ret = false;
+	int err;
+
+	err = xdp_bpf_link_lookup(ifindex_lo, NULL, &link_fd);
+	if (err)
+		return ret;
+
+	if (link_fd >= 0)
+		return true;
+
+	prog_fd = bpf_prog_load(BPF_PROG_TYPE_XDP, NULL, "GPL", insns, insn_cnt, NULL);
+	if (prog_fd < 0)
+		return ret;
+
+	link_fd = bpf_link_create(prog_fd, ifindex_lo, BPF_XDP, &opts);
+	close(prog_fd);
+
+	if (link_fd >= 0) {
+		ret = true;
+		close(link_fd);
+	}
+
+	return ret;
+}
+
+static struct xdp_program *xdp_program__get_with_bpf_link(int ifindex, int *link_fd)
+{
+	struct xdp_program *prog;
+	__u32 prog_id;
+	int err;
+
+	err = xdp_bpf_link_lookup(ifindex, &prog_id, link_fd);
+	if (err)
+		return libxdp_err_ptr(err, false);
+
+	if (!prog_id)
+		return NULL;
+
+	prog = xdp_program__from_id(prog_id);
+	return prog;
+}
+
+static struct xdp_program *xsk_lookup_program(struct xsk_ctx *ctx)
 {
 	const char *version_name = "xsk_prog_version";
 	const char *prog_name = "xsk_def_prog";
-	struct xdp_multiprog *multi_prog;
+	struct xdp_multiprog *multi_prog = NULL;
 	struct xdp_program *prog = NULL;
 	__u32 version;
 	int err;
 
-	multi_prog = xdp_multiprog__get_from_ifindex(ifindex);
+	if (ctx->has_bpf_link) {
+		prog = xdp_program__get_with_bpf_link(ctx->ifindex,
+						      &ctx->link_fd);
+		if (IS_ERR_OR_NULL(prog))
+			return NULL;
+		goto check;
+	}
+
+	multi_prog = xdp_multiprog__get_from_ifindex(ctx->ifindex);
 	if (IS_ERR(multi_prog))
 		return NULL;
 
@@ -692,7 +850,7 @@ static int __xsk_setup_xdp_prog(struct xsk_socket *xsk, int *xsks_map_fd)
 	bool attached = false;
 	int err;
 
-	ctx->xdp_prog = xsk_lookup_program(ctx->ifindex);
+	ctx->xdp_prog = xsk_lookup_program(ctx);
 	if (IS_ERR(ctx->xdp_prog))
 		return PTR_ERR(ctx->xdp_prog);
 
@@ -706,14 +864,32 @@ static int __xsk_setup_xdp_prog(struct xsk_socket *xsk, int *xsks_map_fd)
 		if (err)
 			goto err_prog_load;
 
-		err = xdp_program__attach(ctx->xdp_prog, ctx->ifindex,
-					  xsk_convert_xdp_flags(xsk->config.xdp_flags), 0);
-		if (err)
-			goto err_prog_load;
+		if (ctx->has_bpf_link) {
+			err = xdp_program__attach_single_bpf_link(ctx->xdp_prog,
+								  ctx->ifindex, 0);
+			if (err < 0)
+				goto err_prog_load;
+			ctx->link_fd = err;
+			attached = true;
+			goto map;
+		}
+
+		err = xdp_program__try_attach_multi(&ctx->xdp_prog, 1, ctx->ifindex,
+						    xsk_convert_xdp_flags(xsk->config.xdp_flags),
+						    0);
+
+		if (err) {
+			if (err != -EOPNOTSUPP)
+				goto err_prog_load;
+			err = xdp_program__attach_single(ctx->xdp_prog, ctx->ifindex, 0);
+			if (err)
+				goto err_prog_load;
+		}
 
 		attached = true;
 	}
 
+map:
 	ctx->xsks_map_fd = xsk_lookup_bpf_map(xdp_program__fd(ctx->xdp_prog));
 	if (ctx->xsks_map_fd < 0) {
 		err = ctx->xsks_map_fd;
@@ -731,9 +907,13 @@ static int __xsk_setup_xdp_prog(struct xsk_socket *xsk, int *xsks_map_fd)
 	return 0;
 
 err_lookup:
-	if (attached)
-		xdp_program__detach(ctx->xdp_prog, ctx->ifindex,
-				    xsk_convert_xdp_flags(xsk->config.xdp_flags), 0);
+	if (attached) {
+		if (ctx->has_bpf_link)
+			close(ctx->link_fd);
+		else
+			xdp_program__detach(ctx->xdp_prog, ctx->ifindex,
+					    xsk_convert_xdp_flags(xsk->config.xdp_flags), 0);
+	}
 err_prog_load:
 	xdp_program__close(ctx->xdp_prog);
 	ctx->xdp_prog = NULL;
@@ -1025,7 +1205,8 @@ int xsk_socket__create_shared(struct xsk_socket **xsk_ptr,
 		goto out_mmap_tx;
 	}
 
-	if (!(xsk->config.libbpf_flags & XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD)) {
+	if (!(xsk->config.libbpf_flags & XSK_LIBXDP_FLAGS__INHIBIT_PROG_LOAD)) {
+		xsk->ctx->has_bpf_link = xdp_bpf_link_supported();
 		err = __xsk_setup_xdp_prog(xsk, NULL);
 		if (err)
 			goto out_mmap_tx;
@@ -1109,6 +1290,8 @@ void xsk_socket__delete(struct xsk_socket *xsk)
 	if (ctx->xdp_prog) {
 		xsk_delete_map_entry(ctx->xsks_map_fd, ctx->queue_id);
 		xdp_program__close(ctx->xdp_prog);
+		if (ctx->has_bpf_link)
+			close(ctx->link_fd);
 	}
 
 	err = xsk_get_mmap_offsets(xsk->fd, &off);
