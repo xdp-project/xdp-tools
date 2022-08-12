@@ -158,6 +158,8 @@ struct xdp_program_opts {
 #define DECLARE_LIBXDP_OPTS DECLARE_LIBBPF_OPTS
 
 struct xdp_program *xdp_program__create(struct xdp_program_opts *opts);
+int xdp_program__detach_by_id(int ifindex, __u32 prog_id,
+			      enum xdp_attach_mode mode);
 
 #ifdef __cplusplus
 } /* extern "C" */

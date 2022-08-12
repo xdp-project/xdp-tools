@@ -71,4 +71,6 @@ LIBXDP_1.2.0 {
 LIBXDP_1.3.0 {
 		xdp_program__clone;
 		xdp_program__create;
+		xsk_socket__get_prog_id;
+		xdp_program__detach_by_id;
 } LIBXDP_1.2.0;

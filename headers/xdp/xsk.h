@@ -209,6 +209,7 @@ int xsk_socket__update_xskmap(struct xsk_socket *xsk, int xsks_map_fd);
  */
 #define XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD (1 << 0)
 #define XSK_LIBXDP_FLAGS__INHIBIT_PROG_LOAD (1 << 0)
+#define XSK_LIBXDP_FLAGS__USE_MULTIPROG (1 << 1)
 
 struct xsk_socket_config {
 	__u32 rx_size;
@@ -245,6 +246,7 @@ int xsk_socket__create_shared(struct xsk_socket **xsk_ptr,
 /* Returns 0 for success and -EBUSY if the umem is still in use. */
 int xsk_umem__delete(struct xsk_umem *umem);
 void xsk_socket__delete(struct xsk_socket *xsk);
+__u32 xsk_socket__get_prog_id(struct xsk_socket *xsk);
 
 #ifdef __cplusplus
 } /* extern "C" */

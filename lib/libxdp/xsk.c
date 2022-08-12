@@ -184,7 +184,8 @@ static int xsk_set_xdp_socket_config(struct xsk_socket_config *cfg,
 		return 0;
 	}
 
-	if (usr_cfg->libbpf_flags & ~XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD)
+	if (usr_cfg->libbpf_flags & ~(XSK_LIBXDP_FLAGS__INHIBIT_PROG_LOAD |
+				      XSK_LIBXDP_FLAGS__USE_MULTIPROG))
 		return -EINVAL;
 
 	cfg->rx_size = usr_cfg->rx_size;
@@ -881,6 +882,7 @@ static int __xsk_setup_xdp_prog(struct xsk_socket *xsk, int *xsks_map_fd)
 		if (err) {
 			if (err != -EOPNOTSUPP)
 				goto err_prog_load;
+			pr_warn("Multiprog is not supported, please consider using bpf_link for AF_XDP\n");
 			err = xdp_program__attach_single(ctx->xdp_prog, ctx->ifindex, 0);
 			if (err)
 				goto err_prog_load;
@@ -1206,7 +1208,12 @@ int xsk_socket__create_shared(struct xsk_socket **xsk_ptr,
 	}
 
 	if (!(xsk->config.libbpf_flags & XSK_LIBXDP_FLAGS__INHIBIT_PROG_LOAD)) {
-		xsk->ctx->has_bpf_link = xdp_bpf_link_supported();
+		xsk->ctx->has_bpf_link = !(xsk->config.libbpf_flags &
+					   XSK_LIBXDP_FLAGS__USE_MULTIPROG) &&
+					   xdp_bpf_link_supported();
+		if (!xsk->ctx->has_bpf_link)
+			pr_info("AF_XDP socket runs without bpf_link, make sure to detach the XDP program manually after all sockets are closed\n");
+
 		err = __xsk_setup_xdp_prog(xsk, NULL);
 		if (err)
 			goto out_mmap_tx;
@@ -1315,4 +1322,9 @@ void xsk_socket__delete(struct xsk_socket *xsk)
 	if (xsk->fd != umem->fd)
 		close(xsk->fd);
 	free(xsk);
+}
+
+__u32 xsk_socket__get_prog_id(struct xsk_socket *xsk)
+{
+	return xdp_program__id(xsk->ctx->xdp_prog);
 }

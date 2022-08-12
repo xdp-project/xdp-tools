@@ -1786,6 +1786,14 @@ int xdp_program__detach(struct xdp_program *prog, int ifindex,
 	return libxdp_err(xdp_program__detach_multi(&prog, 1, ifindex, mode, flags));
 }
 
+int xdp_program__detach_by_id(int ifindex, __u32 prog_id,
+			      enum xdp_attach_mode mode)
+{
+	struct xdp_program *prog = xdp_program__from_id(prog_id);
+
+	return libxdp_err(xdp_program__detach(prog, ifindex, mode, 0));
+}
+
 void xdp_multiprog__close(struct xdp_multiprog *mp)
 {
 	struct xdp_program *p, *next = NULL;
