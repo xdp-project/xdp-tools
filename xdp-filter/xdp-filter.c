@@ -71,7 +71,7 @@ static __u32 find_features(const char *progname)
 	return 0;
 }
 
-int map_get_counter_flags(int fd, void *key, __u64 *counter, __u8 *flags)
+static int map_get_counter_flags(int fd, void *key, __u64 *counter, __u8 *flags)
 {
 	/* For percpu maps, userspace gets a value per possible CPU */
 	int nr_cpus = libbpf_num_possible_cpus();
@@ -109,7 +109,7 @@ out:
 	return err;
 }
 
-int map_set_flags(int fd, void *key, __u8 flags)
+static int map_set_flags(int fd, void *key, __u8 flags, bool delete_empty)
 {
 	/* For percpu maps, userspace gets a value per possible CPU */
 	int nr_cpus = libbpf_num_possible_cpus();
@@ -123,8 +123,19 @@ int map_set_flags(int fd, void *key, __u8 flags)
 	if (!values)
 		return -ENOMEM;
 
-	if ((bpf_map_lookup_elem(fd, key, values)) != 0)
+	if (bpf_map_lookup_elem(fd, key, values) != 0) {
 		memset(values, 0, sizeof(*values) * nr_cpus);
+	} else if (!flags && delete_empty) {
+		pr_debug("Deleting empty map value from flags %u\n", flags);
+
+		err = bpf_map_delete_elem(fd, key);
+		if (err) {
+			err = -errno;
+			pr_warn("Couldn't delete value from state map: %s\n",
+				strerror(-err));
+		}
+		goto out;
+	}
 
 	for (i = 0; i < nr_cpus; i++)
 		values[i]  = flags ? (values[i] & ~MAP_FLAGS) | (flags & MAP_FLAGS) : 0;
@@ -141,6 +152,7 @@ int map_set_flags(int fd, void *key, __u8 flags)
 			pr_warn("Unable to update state map: %s\n", strerror(-err));
 	}
 
+out:
 	free(values);
 	return err;
 }
@@ -632,7 +644,7 @@ int do_port(const void *cfg, const char *pin_root_path)
 	    !(flags & (MAP_FLAG_TCP | MAP_FLAG_UDP)))
 		flags = 0;
 
-	err = map_set_flags(map_fd, &map_key, flags);
+	err = map_set_flags(map_fd, &map_key, flags, false);
 	if (err)
 		goto out;
 
@@ -736,7 +748,7 @@ static int __do_address(const char *pin_root_path,
 	else
 		flags |= mode;
 
-	err = map_set_flags(map_fd, map_key, flags);
+	err = map_set_flags(map_fd, map_key, flags, true);
 	if (err)
 		goto out;
 
