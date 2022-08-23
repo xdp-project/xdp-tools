@@ -46,8 +46,8 @@ struct vlan_hdr {
  * structures.
  */
 struct icmphdr_common {
-	__u8		type;
-	__u8		code;
+	__u8	type;
+	__u8	code;
 	__sum16	cksum;
 };
 

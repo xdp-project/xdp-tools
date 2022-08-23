@@ -35,9 +35,6 @@
 
 #define XDP_RUN_CONFIG_SEC ".xdp_run_config"
 
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
-#define __unused __attribute__((unused))
-
 /* When cloning BPF fds, we want to make sure they don't end up as any of the
  * standard stdin, stderr, stdout descriptors: fd 0 can confuse the kernel, and
  * there are orchestration systems that will force-close the others if they
@@ -65,7 +62,7 @@ struct xdp_program {
 	__u64 load_time;
 	bool from_external_obj;
 	unsigned int run_prio;
-	unsigned int chain_call_actions; // bitmap
+	unsigned int chain_call_actions; /* bitmap */
 
 	/* for building list of attached programs to multiprog */
 	struct xdp_program *next;
@@ -73,8 +70,8 @@ struct xdp_program {
 
 struct xdp_multiprog {
 	struct xdp_dispatcher_config config;
-	struct xdp_program *main_prog; // dispatcher or legacy prog pointer
-	struct xdp_program *first_prog; // uses xdp_program->next to build a list
+	struct xdp_program *main_prog;  /* dispatcher or legacy prog pointer */
+	struct xdp_program *first_prog; /* uses xdp_program->next to build a list */
 	struct xdp_program *hw_prog;
 	size_t num_links;
 	bool is_loaded;
@@ -1128,7 +1125,7 @@ static int find_bpf_file(char *buf, size_t buf_size, const char *progname)
 }
 
 static struct xdp_program *__xdp_program__find_file(const char *filename,
-					            const char *section_name,
+						    const char *section_name,
 						    const char *prog_name,
 						    struct bpf_object_open_opts *opts)
 {
@@ -1227,7 +1224,7 @@ struct xdp_program *xdp_program__from_fd(int fd)
 
 	return xdp_prog;
 err:
-	free(xdp_prog);
+	xdp_program__close(xdp_prog);
 	return libxdp_err_ptr(err, false);
 }
 
@@ -1947,8 +1944,8 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 	__u32 info_len, map_id = 0;
 	struct xdp_program *prog;
 	struct btf *btf = NULL;
+	int map_fd = -1;
 	int err = 0;
-	int map_fd;
 
 	if (!mp)
 		return -EINVAL;
@@ -2064,6 +2061,8 @@ legacy:
 	mp->is_loaded = true;
 
 out:
+	if (map_fd >= 0)
+		close(map_fd);
 	btf__free(btf);
 	return err;
 }
@@ -2084,7 +2083,7 @@ static struct xdp_multiprog *xdp_multiprog__from_fd(int fd, int hw_fd,
 
 	return mp;
 err:
-	free(mp);
+	xdp_multiprog__close(mp);
 	return ERR_PTR(err);
 }
 
