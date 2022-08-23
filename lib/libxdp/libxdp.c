@@ -1173,7 +1173,7 @@ struct xdp_program *xdp_program__from_fd(int fd)
 
 	return xdp_prog;
 err:
-	free(xdp_prog);
+	xdp_program__close(xdp_prog);
 	return ERR_PTR(err);
 }
 
@@ -1819,8 +1819,8 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 	__u32 info_len, map_id = 0;
 	struct xdp_program *prog;
 	struct btf *btf = NULL;
+	int map_fd = -1;
 	int err = 0;
-	int map_fd;
 
 	if (!mp)
 		return -EINVAL;
@@ -1936,6 +1936,8 @@ legacy:
 	mp->is_loaded = true;
 
 out:
+	if (map_fd >= 0)
+		close(map_fd);
 	btf__free(btf);
 	return err;
 }
@@ -1956,7 +1958,7 @@ static struct xdp_multiprog *xdp_multiprog__from_fd(int fd, int hw_fd,
 
 	return mp;
 err:
-	free(mp);
+	xdp_multiprog__close(mp);
 	return ERR_PTR(err);
 }
 
