@@ -35,9 +35,6 @@
 
 #define XDP_RUN_CONFIG_SEC ".xdp_run_config"
 
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
-#define __unused __attribute__((unused))
-
 /* When cloning BPF fds, we want to make sure they don't end up as any of the
  * standard stdin, stderr, stdout descriptors: fd 0 can confuse the kernel, and
  * there are orchestration systems that will force-close the others if they
