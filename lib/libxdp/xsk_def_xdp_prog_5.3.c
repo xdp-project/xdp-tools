@@ -9,14 +9,14 @@
 #define DEFAULT_QUEUE_IDS 64
 
 struct {
-        __uint(type, BPF_MAP_TYPE_XSKMAP);
-        __uint(key_size, sizeof(int));
-        __uint(value_size, sizeof(int));
+	__uint(type, BPF_MAP_TYPE_XSKMAP);
+	__uint(key_size, sizeof(int));
+	__uint(value_size, sizeof(int));
 	__uint(max_entries, DEFAULT_QUEUE_IDS);
 } xsks_map SEC(".maps");
 
 struct {
-        __uint(priority, 20);
+	__uint(priority, 20);
 	__uint(XDP_PASS, 1);
 } XDP_RUN_CONFIG(xsk_def_prog);
 
@@ -31,7 +31,7 @@ int xsk_def_prog(struct xdp_md *ctx)
 	 */
 	if (bpf_map_lookup_elem(&xsks_map, &index))
 		return bpf_redirect_map(&xsks_map, index, 0);
-        return XDP_PASS;
+	return XDP_PASS;
 
 }
 

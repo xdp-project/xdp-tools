@@ -51,7 +51,7 @@ struct xsk_umem;
 struct xsk_socket;
 
 XDP_ALWAYS_INLINE __u64 *xsk_ring_prod__fill_addr(struct xsk_ring_prod *fill,
-					      __u32 idx)
+						  __u32 idx)
 {
 	__u64 *addrs = (__u64 *)fill->ring;
 
@@ -67,7 +67,7 @@ xsk_ring_cons__comp_addr(const struct xsk_ring_cons *comp, __u32 idx)
 }
 
 XDP_ALWAYS_INLINE struct xdp_desc *xsk_ring_prod__tx_desc(struct xsk_ring_prod *tx,
-						      __u32 idx)
+							  __u32 idx)
 {
 	struct xdp_desc *descs = (struct xdp_desc *)tx->ring;
 

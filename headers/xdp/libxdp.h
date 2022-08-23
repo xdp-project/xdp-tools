@@ -23,17 +23,17 @@ extern "C" {
 #define XDP_OBJECT_ENVVAR "LIBXDP_OBJECT_PATH"
 
 enum xdp_attach_mode {
-                      XDP_MODE_UNSPEC = 0,
-                      XDP_MODE_NATIVE,
-                      XDP_MODE_SKB,
-                      XDP_MODE_HW
+	XDP_MODE_UNSPEC = 0,
+	XDP_MODE_NATIVE,
+	XDP_MODE_SKB,
+	XDP_MODE_HW
 };
 
 /* This is compatible with libbpf logging levels */
 enum libxdp_print_level {
-        LIBXDP_WARN,
-        LIBXDP_INFO,
-        LIBXDP_DEBUG,
+	LIBXDP_WARN,
+	LIBXDP_INFO,
+	LIBXDP_DEBUG,
 };
 typedef int (*libxdp_print_fn_t)(enum libxdp_print_level level,
 				 const char *, va_list ap);
@@ -61,12 +61,12 @@ struct xdp_program *xdp_program__from_fd(int fd);
 struct xdp_program *xdp_program__from_id(__u32 prog_id);
 struct xdp_program *xdp_program__from_pin(const char *pin_path);
 struct xdp_program *xdp_program__clone(struct xdp_program *xdp_prog,
-                                       unsigned int flags);
+				       unsigned int flags);
 
 void xdp_program__close(struct xdp_program *xdp_prog);
 
 enum xdp_attach_mode xdp_program__is_attached(const struct xdp_program *xdp_prog,
-                                              int ifindex);
+					      int ifindex);
 const char *xdp_program__name(const struct xdp_program *xdp_prog);
 const unsigned char *xdp_program__tag(const struct xdp_program *xdp_prog);
 struct bpf_object *xdp_program__bpf_obj(struct xdp_program *xdp_prog);
@@ -75,28 +75,28 @@ uint32_t xdp_program__id(const struct xdp_program *xdp_prog);
 int xdp_program__fd(const struct xdp_program *xdp_prog);
 unsigned int xdp_program__run_prio(const struct xdp_program *xdp_prog);
 int xdp_program__set_run_prio(struct xdp_program *xdp_prog,
-                              unsigned int run_prio);
+			      unsigned int run_prio);
 bool xdp_program__chain_call_enabled(const struct xdp_program *xdp_prog,
 				     enum xdp_action action);
 int xdp_program__set_chain_call_enabled(struct xdp_program *prog,
-                                        unsigned int action,
-                                        bool enabled);
+					unsigned int action,
+					bool enabled);
 int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 					  char *buf,
 					  size_t buf_len);
 int xdp_program__pin(struct xdp_program *xdp_prog, const char *pin_path);
 int xdp_program__attach(struct xdp_program *xdp_prog,
-                        int ifindex, enum xdp_attach_mode mode,
-                        unsigned int flags);
+			int ifindex, enum xdp_attach_mode mode,
+			unsigned int flags);
 int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
-                              int ifindex, enum xdp_attach_mode mode,
-                              unsigned int flags);
+			      int ifindex, enum xdp_attach_mode mode,
+			      unsigned int flags);
 int xdp_program__detach(struct xdp_program *xdp_prog,
-                        int ifindex, enum xdp_attach_mode mode,
-                        unsigned int flags);
+			int ifindex, enum xdp_attach_mode mode,
+			unsigned int flags);
 int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
-                              int ifindex, enum xdp_attach_mode mode,
-                              unsigned int flags);
+			      int ifindex, enum xdp_attach_mode mode,
+			      unsigned int flags);
 
 struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex);
 struct xdp_program *xdp_multiprog__next_prog(const struct xdp_program *prog,

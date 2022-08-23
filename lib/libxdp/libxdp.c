@@ -65,7 +65,7 @@ struct xdp_program {
 	__u64 load_time;
 	bool from_external_obj;
 	unsigned int run_prio;
-	unsigned int chain_call_actions; // bitmap
+	unsigned int chain_call_actions; /* bitmap */
 
 	/* for building list of attached programs to multiprog */
 	struct xdp_program *next;
@@ -73,8 +73,8 @@ struct xdp_program {
 
 struct xdp_multiprog {
 	struct xdp_dispatcher_config config;
-	struct xdp_program *main_prog; // dispatcher or legacy prog pointer
-	struct xdp_program *first_prog; // uses xdp_program->next to build a list
+	struct xdp_program *main_prog;  /* dispatcher or legacy prog pointer */
+	struct xdp_program *first_prog; /* uses xdp_program->next to build a list */
 	struct xdp_program *hw_prog;
 	size_t num_links;
 	bool is_loaded;
@@ -1128,7 +1128,7 @@ static int find_bpf_file(char *buf, size_t buf_size, const char *progname)
 }
 
 static struct xdp_program *__xdp_program__find_file(const char *filename,
-					            const char *section_name,
+						    const char *section_name,
 						    const char *prog_name,
 						    struct bpf_object_open_opts *opts)
 {

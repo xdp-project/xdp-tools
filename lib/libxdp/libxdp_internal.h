@@ -33,8 +33,8 @@ static inline int try_snprintf(char *buf, size_t buf_len, const char *format, ..
 
 LIBXDP_HIDE_SYMBOL __printf(2, 3) void libxdp_print(enum libxdp_print_level level,
 						    const char *format, ...);
-#define __pr(level, fmt, ...)                                       \
-	do {                                                        \
+#define __pr(level, fmt, ...)					    \
+	do {							    \
 		libxdp_print(level, "libxdp: " fmt, ##__VA_ARGS__); \
 	} while (0)
 
@@ -57,8 +57,8 @@ LIBXDP_HIDE_SYMBOL int check_xdp_prog_version(const struct btf *btf, const char 
 #endif
 
 #ifndef container_of
-#define container_of(ptr, type, member)                            \
-	({                                                         \
+#define container_of(ptr, type, member)				   \
+	({							   \
 		const typeof(((type *)0)->member) *__mptr = (ptr); \
 		(type *)((char *)__mptr - offsetof(type, member)); \
 	})
