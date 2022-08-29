@@ -1164,12 +1164,20 @@ static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
 	struct bpf_prog_info info = {};
 	__u32 len = sizeof(info);
 	struct btf *btf = NULL;
-	int err = 0;
+	int err = 0, prog_fd;
 
 	if (!xdp_prog)
 		return -EINVAL;
 
-	err = bpf_obj_get_info_by_fd(fd, &info, &len);
+	/* Duplicate the descriptor, as we take ownership of the fd below */
+	prog_fd = fcntl(fd, F_DUPFD_CLOEXEC, MIN_FD);
+	if (prog_fd < 0) {
+		err = -errno;
+		pr_debug("Error on fcntl: %s", strerror(-err));
+		return err;
+	}
+
+	err = bpf_obj_get_info_by_fd(prog_fd, &info, &len);
 	if (err) {
 		err = -errno;
 		pr_warn("couldn't get program info: %s", strerror(-err));
@@ -1196,11 +1204,12 @@ static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
 
 	memcpy(xdp_prog->prog_tag, info.tag, BPF_TAG_SIZE);
 	xdp_prog->load_time = info.load_time;
-	xdp_prog->prog_fd = fd;
+	xdp_prog->prog_fd = prog_fd;
 	xdp_prog->prog_id = info.id;
 
 	return 0;
 err:
+	close(prog_fd);
 	btf__free(btf);
 	return err;
 }
@@ -1381,7 +1390,7 @@ int xdp_program__pin(struct xdp_program *prog, const char *pin_path)
 
 static int xdp_program__load(struct xdp_program *prog)
 {
-	int err;
+	int err, prog_fd;
 
 	if (!prog)
 		return -EINVAL;
@@ -1396,42 +1405,12 @@ static int xdp_program__load(struct xdp_program *prog)
 	if (err)
 		return err;
 
+	prog_fd = bpf_program__fd(prog->bpf_prog);
 	pr_debug("Loaded XDP program %s, got fd %d\n",
-		 xdp_program__name(prog), bpf_program__fd(prog->bpf_prog));
+		 xdp_program__name(prog), prog_fd);
 
-	/* Duplicate the descriptor, as xdp_program__fill_from_fd takes ownership */
-	int prog_fd = fcntl(bpf_program__fd(prog->bpf_prog), F_DUPFD_CLOEXEC, MIN_FD);
-	if (prog_fd < 0) {
-		err = -errno;
-		pr_debug("Error on fcntl: %s", strerror(-err));
-		return err;
-	}
-
+	/* xdp_program__fill_from_fd() clones the fd and takes ownership of the clone */
 	return xdp_program__fill_from_fd(prog, prog_fd);
-}
-
-static struct xdp_program *__xdp_program__clone(struct xdp_program *prog)
-{
-	struct xdp_program *new_prog;
-	int new_fd, err;
-
-	/* Clone a loaded program struct by duplicating the fd and creating a
-	 * new structure from the kernel state.
-	 */
-	new_fd = fcntl(prog->prog_fd, F_DUPFD_CLOEXEC, MIN_FD);
-	if (new_fd < 0) {
-		err = -errno;
-		pr_debug("Error on fcntl: %s\n", strerror(-err));
-		return libxdp_err_ptr(err, false);
-	}
-
-	new_prog = xdp_program__from_fd(new_fd);
-	if (IS_ERR(new_prog)) {
-		err = errno;
-		close(new_fd);
-		errno = err;
-	}
-	return new_prog;
 }
 
 struct xdp_program *xdp_program__clone(struct xdp_program *prog, unsigned int flags)
@@ -1440,7 +1419,12 @@ struct xdp_program *xdp_program__clone(struct xdp_program *prog, unsigned int fl
 		return libxdp_err_ptr(-EINVAL, false);
 
 	if (prog->prog_fd >= 0)
-		return __xdp_program__clone(prog);
+		/* Clone a loaded program struct by creating a new object from the
+		   program fd; xdp_program__fill_from_fd() already duplicates the fd
+		   before filling in the object, so this creates a completely
+		   independent xdp_program object.
+		*/
+		return xdp_program__from_fd(prog->prog_fd);
 
 	return xdp_program__create_from_obj(prog->bpf_obj, NULL,
 					    prog->prog_name, true);
