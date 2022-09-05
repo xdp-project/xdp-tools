@@ -342,7 +342,7 @@ following commands (careful, this can lock you out of remote access!):
 
 .RS
 .nf
-\fC# xdp-filter load eth0 -f ipv6 -w
+\fC# xdp-filter load eth0 -f ipv6 -p deny
 # xdp-filter ip fc00:dead:cafe::1 -m src
 \fP
 .fi
@@ -354,7 +354,7 @@ issue the following (careful, this can lock you out of remote access!):
 
 .RS
 .nf
-\fC# xdp-filter load eth0 -f ipv6,tcp -w
+\fC# xdp-filter load eth0 -f ipv6,tcp -p deny
 # xdp-filter port 22
 # xdp-filter ip fc00:dead:cafe::1 -m src
 \fP
