@@ -470,7 +470,7 @@ static const char *get_lock_dir(void)
 	return dir;
 }
 
-static int xdp_lock_acquire(void)
+int xdp_lock_acquire(void)
 {
 	int lock_fd, err;
 	const char *dir;
@@ -499,7 +499,7 @@ static int xdp_lock_acquire(void)
 	return lock_fd;
 }
 
-static int xdp_lock_release(int lock_fd)
+int xdp_lock_release(int lock_fd)
 {
 	int err;
 
