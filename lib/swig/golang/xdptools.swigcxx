@@ -1,0 +1,5 @@
+%module xdptools
+%{
+    #include "xdptools_c_interface.h"
+%}
+%include "xdptools_c_interface.h"
