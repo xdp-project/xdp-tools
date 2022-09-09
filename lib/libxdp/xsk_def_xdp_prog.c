@@ -20,10 +20,20 @@ struct {
 	__uint(XDP_PASS, 1);
 } XDP_RUN_CONFIG(xsk_def_prog);
 
+/* Program refcount, in order to work properly,
+ * must be declared before any other global variables
+ * and initialized with '1'.
+ */
+volatile int refcnt = 1;
+
 /* This is the program for post 5.3 kernels. */
 SEC("xdp")
 int xsk_def_prog(struct xdp_md *ctx)
 {
+	/* Make sure refcount is referenced by the program */
+	if (!refcnt)
+		return XDP_PASS;
+
 	/* A set entry here means that the corresponding queue_id
 	 * has an active AF_XDP socket bound to it.
 	 */
