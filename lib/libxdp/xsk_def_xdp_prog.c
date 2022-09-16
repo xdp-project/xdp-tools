@@ -21,7 +21,7 @@ struct {
 } XDP_RUN_CONFIG(xsk_def_prog);
 
 /* This is the program for post 5.3 kernels. */
-SEC("xdp/xsk_def_prog")
+SEC("xdp")
 int xsk_def_prog(struct xdp_md *ctx)
 {
 	/* A set entry here means that the corresponding queue_id
