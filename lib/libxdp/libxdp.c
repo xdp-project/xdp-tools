@@ -29,11 +29,10 @@
 #include <bpf/btf.h>
 #include <xdp/libxdp.h>
 #include <xdp/prog_dispatcher.h>
+#include <xdp/xdp_helpers.h>
 
 #include "compat.h"
 #include "libxdp_internal.h"
-
-#define XDP_RUN_CONFIG_SEC ".xdp_run_config"
 
 /* When cloning BPF fds, we want to make sure they don't end up as any of the
  * standard stdin, stderr, stdout descriptors: fd 0 can confuse the kernel, and
@@ -885,7 +884,9 @@ static int xdp_program__parse_btf(struct xdp_program *xdp_prog,
 	if (err)
 		return err;
 
-	sec = btf_get_datasec(btf, XDP_RUN_CONFIG_SEC);
+	sec = btf_get_datasec(btf, XDP_RUN_CONFIG_SECTION_NEW);
+	if (!sec)
+		sec = btf_get_datasec(btf, XDP_RUN_CONFIG_SECTION_ORIG);
 	if (!sec)
 		return -ENOENT;
 
@@ -1803,7 +1804,9 @@ int check_xdp_prog_version(const struct btf *btf, const char *name, __u32 *versi
 {
 	const struct btf_type *sec, *def;
 
-	sec = btf_get_datasec(btf, XDP_METADATA_SECTION);
+	sec = btf_get_datasec(btf, XDP_METADATA_SECTION_NEW);
+	if (!sec)
+		sec = btf_get_datasec(btf, XDP_METADATA_SECTION_ORIG);
 	if (!sec)
 		return libxdp_err(-ENOENT);
 
