@@ -1,4 +1,4 @@
 [submodule "libbpf"]
 	path = lib/libbpf
-	url = https://github.com/xdp-project/libbpf/
+	url = https://github.com/libbpf/libbpf.git
 	ignore = untracked
