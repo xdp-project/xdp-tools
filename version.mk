@@ -1,2 +1,2 @@
-TOOLS_VERSION := "1.2.6"
+TOOLS_VERSION := "1.2.8"
 
