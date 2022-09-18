@@ -1301,7 +1301,7 @@ static int xdp_program__load(struct xdp_program *prog)
 	return xdp_program__fill_from_fd(prog, prog_fd);
 }
 
-struct xdp_program *xdp_program__clone(struct xdp_program *prog, unsigned int flags)
+struct xdp_program *xdp_program__clone(struct xdp_program *prog)
 {
 	if (!prog || prog->prog_fd < 0)
 		return ERR_PTR(-EINVAL);
