@@ -275,8 +275,9 @@ and the documentation in the Linux kernel
 \fIhttps://www.kernel.org/doc/html/latest/networking/af_xdp.html\fP).
 
 .PP
-For an example on how to use the interface, take a look at the sample
-application in the Linux kernel source tree at samples/bpf/xdpsock_user.c.
+For an example on how to use the interface, take a look at the AF_XDP-example
+program in the bpf-examples repository:
+\fIhttps://github.com/xdp-project/bpf-examples/tree/master/AF_XDP-example\fP.
 
 .SS "Control path"
 .PP
@@ -334,16 +335,14 @@ int xsk_socket__fd(const struct xsk_socket *xsk);
 .RE
 
 .PP
-The control path also provides two APIs for setting up AF_XDP sockets
-when the process that is going to use the AF_XDP socket is
-non-privileged. These two functions perform the operations that
-require privileges and can be executed from some form of control
-process that has the necessary privileges. The xsk_socket__create
-executed on the non-privileged process will then skip these two
-steps. For an example on how to use these, please take a look at
-https://github.com/torvalds/linux/blob/master/samples/bpf/xdpsock_user.c \fBat\fP \fIsamples/bpf/xdpsock_user.c\fP
-and https://github.com/torvalds/linux/blob/master/samples/bpf/xdpsock_ctrl_proc.c \fBat\fP \fIsamples/bpf/xdpsock_ctrl_proc.c\fP in the
-Linux kernel source tree.
+The control path also provides two APIs for setting up AF_XDP sockets when the
+process that is going to use the AF_XDP socket is non-privileged. These two
+functions perform the operations that require privileges and can be executed
+from some form of control process that has the necessary privileges. The
+xsk_socket__create executed on the non-privileged process will then skip these
+two steps. For an example on how to use these, please take a look at the
+AF_XDP-example program in the bpf-examples repository:
+\fIhttps://github.com/xdp-project/bpf-examples/tree/master/AF_XDP-example\fP.
 
 .RS
 .nf
@@ -440,10 +439,9 @@ operation than the other two.
 .RE
 
 .PP
-For an example on how to use all these APIs, take a look at the sample
-applications in the Linux kernel source tree at
-https://github.com/torvalds/linux/blob/master/samples/bpf/xdpsock_user.c \fBat\fP \fIsamples/bpf/xdpsock_user.c\fP and
-https://github.com/torvalds/linux/blob/master/samples/bpf/xsk_fwd.c \fBat\fP \fIsamples/bpf/xsk_fwd.c\fP.
+For an example on how to use all these APIs, take a look at the AF_XDP-example
+program in the bpf-examples repository:
+\fIhttps://github.com/xdp-project/bpf-examples/tree/master/AF_XDP-example\fP.
 
 .SH "Kernel and BPF program feature compatibility"
 .PP
