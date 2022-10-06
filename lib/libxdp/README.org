@@ -242,8 +242,9 @@ and the documentation in the Linux kernel
 (Documentation/networking/af_xdp.rst or
 https://www.kernel.org/doc/html/latest/networking/af_xdp.html).
 
-For an example on how to use the interface, take a look at the sample
-application in the Linux kernel source tree at samples/bpf/xdpsock_user.c.
+For an example on how to use the interface, take a look at the AF_XDP-example
+and AF_XDP-forwarding programs in the bpf-examples repository:
+https://github.com/xdp-project/bpf-examples.
 
 ** Control path
 
@@ -293,16 +294,14 @@ int xsk_umem__fd(const struct xsk_umem *umem);
 int xsk_socket__fd(const struct xsk_socket *xsk);
 #+end_src
 
-The control path also provides two APIs for setting up AF_XDP sockets
-when the process that is going to use the AF_XDP socket is
-non-privileged. These two functions perform the operations that
-require privileges and can be executed from some form of control
-process that has the necessary privileges. The xsk_socket__create
-executed on the non-privileged process will then skip these two
-steps. For an example on how to use these, please take a look at
-[[https://github.com/torvalds/linux/blob/master/samples/bpf/xdpsock_user.c][samples/bpf/xdpsock_user.c]]
-and [[https://github.com/torvalds/linux/blob/master/samples/bpf/xdpsock_ctrl_proc.c][samples/bpf/xdpsock_ctrl_proc.c]] in the
-Linux kernel source tree.
+The control path also provides two APIs for setting up AF_XDP sockets when the
+process that is going to use the AF_XDP socket is non-privileged. These two
+functions perform the operations that require privileges and can be executed
+from some form of control process that has the necessary privileges. The
+xsk_socket__create executed on the non-privileged process will then skip these
+two steps. For an example on how to use these, please take a look at the
+AF_XDP-example program in the bpf-examples repository:
+https://github.com/xdp-project/bpf-examples/tree/master/AF_XDP-example.
 
 #+begin_src C
 int xsk_setup_xdp_prog(int ifindex, int *xsks_map_fd);
@@ -380,10 +379,9 @@ operation than the other two.
 int xsk_ring_prod__needs_wakeup(const struct xsk_ring_prod *r);
 #+end_src
 
-For an example on how to use all these APIs, take a look at the sample
-applications in the Linux kernel source tree at
-[[https://github.com/torvalds/linux/blob/master/samples/bpf/xdpsock_user.c][samples/bpf/xdpsock_user.c]] and
-[[https://github.com/torvalds/linux/blob/master/samples/bpf/xsk_fwd.c][samples/bpf/xsk_fwd.c]].
+For an example on how to use all these APIs, take a look at the AF_XDP-example
+and AF_XDP-forwarding programs in the bpf-examples repository:
+https://github.com/xdp-project/bpf-examples.
 
 * Kernel and BPF program feature compatibility
 
