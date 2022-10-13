@@ -92,6 +92,14 @@ usage()
     exit 1
 }
 
+if [ "$EUID" -ne "0" ]; then
+    if command -v sudo >/dev/null 2>&1; then
+        exec sudo env CC="$CC" CFLAGS="$CFLAGS" CPPFLAGS="$CPPFLAGS" LDLIBS="$LDLIBS" V=${VERBOSE_TESTS} "$0" "$@"
+    else
+        die "Tests must be run as root"
+    fi
+fi
+
 TEST_DEFINITIONS="${1:-}"
 [ -f "$TEST_DEFINITIONS" ] || usage
 source "$TEST_DEFINITIONS"
