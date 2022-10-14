@@ -43,6 +43,9 @@
  */
 #define MIN_FD 3
 
+/* Max number of times we retry attachment */
+#define MAX_RETRY 10
+
 static const char *dispatcher_feature_err =
 	"This means that the kernel does not support the features needed\n"
 	"by the multiprog dispatcher, either because it is too old entirely,\n"
@@ -472,6 +475,10 @@ again:
 		}
 		pr_info("Error attaching XDP program to ifindex %d: %s\n",
 			ifindex, strerror(-err));
+
+		if (err == -EEXIST && old_fd)
+			/* We raced with another attach/detach, have to retry */
+			return -EAGAIN;
 
 		switch (-err) {
 		case EBUSY:
@@ -1522,11 +1529,12 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 			      unsigned int flags)
 {
 	struct xdp_multiprog *old_mp = NULL, *mp;
-	int err = 0;
+	int err = 0, retry_counter = 0;
 
 	if (!progs || !num_progs || flags)
 		return libxdp_err(-EINVAL);
 
+retry:
 	old_mp = xdp_multiprog__get_from_ifindex(ifindex);
 	if (IS_ERR_OR_NULL(old_mp))
 		old_mp = NULL;
@@ -1576,6 +1584,21 @@ int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 		pr_debug("Failed to attach dispatcher on ifindex %d: %s\n",
 			 ifindex, strerror(-err));
 		xdp_multiprog__unpin(mp);
+
+		if (err == -EAGAIN) {
+			if (++retry_counter > MAX_RETRY) {
+				pr_warn("Retried more than %d times, giving up\n",
+					retry_counter);
+				err = -EBUSY;
+				goto out_close;
+			}
+
+			pr_debug("Existing dispatcher replaced while building replacement, retrying.\n");
+			xdp_multiprog__close(old_mp);
+			xdp_multiprog__close(mp);
+			usleep(1 << retry_counter); /* exponential backoff */
+			goto retry;
+		}
 		goto out_close;
 	}
 
@@ -1611,12 +1634,13 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 			      unsigned int flags)
 {
 	struct xdp_multiprog *new_mp = NULL, *mp = NULL;
-	int err = 0;
+	int err = 0, retry_counter = 0;
 	size_t i;
 
 	if (flags || !num_progs || !progs)
 		return libxdp_err(-EINVAL);
 
+ retry:
 	mp = xdp_multiprog__get_from_ifindex(ifindex);
 	if (IS_ERR_OR_NULL(mp)) {
 		pr_warn("No XDP dispatcher found on ifindex %d\n", ifindex);
@@ -1733,6 +1757,17 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 out:
 	xdp_multiprog__close(mp);
 	xdp_multiprog__close(new_mp);
+	if (err == -EAGAIN) {
+		if (++retry_counter > MAX_RETRY) {
+			pr_warn("Retried more than %d times, giving up\n",
+				retry_counter);
+			return libxdp_err(-EBUSY);
+		}
+
+		pr_debug("Existing dispatcher replaced while building replacement, retrying.\n");
+		usleep(1 << retry_counter);  /* exponential backoff */
+		goto retry;
+	}
 	return libxdp_err(err);
 }
 
