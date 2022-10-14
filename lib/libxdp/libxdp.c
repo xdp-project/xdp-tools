@@ -2214,11 +2214,12 @@ static int xdp_get_ifindex_prog_id(int ifindex, __u32 *prog_id,
 struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex)
 {
 	enum xdp_attach_mode mode = XDP_MODE_UNSPEC;
+	int err, retry_counter = 0;
 	struct xdp_multiprog *mp;
 	__u32 hw_prog_id = 0;
 	__u32 prog_id = 0;
-	int err;
 
+retry:
 	err = xdp_get_ifindex_prog_id(ifindex, &prog_id, &hw_prog_id, &mode);
 	if (err)
 		return libxdp_err_ptr(err, false);
@@ -2229,9 +2230,22 @@ struct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex)
 	mp = xdp_multiprog__from_id(prog_id, hw_prog_id, ifindex);
 	if (!IS_ERR_OR_NULL(mp))
 		mp->attach_mode = mode;
-	else if (IS_ERR(mp))
-		mp = libxdp_err_ptr(PTR_ERR(mp), false);
-	else
+	else if (IS_ERR(mp)) {
+		err = PTR_ERR(mp);
+		if (err == -ENOENT) {
+			if (++retry_counter > MAX_RETRY) {
+				pr_warn("Retried more than %d times, giving up\n",
+					retry_counter);
+				err = -EBUSY;
+			} else {
+				pr_debug("Dispatcher disappeared before we could load it, retrying.\n");
+				usleep(1 << retry_counter); /* exponential backoff */
+				goto retry;
+			}
+		}
+
+		mp = libxdp_err_ptr(err, false);
+	}  else
 		mp = libxdp_err_ptr(0, true);
 	return mp;
 }
