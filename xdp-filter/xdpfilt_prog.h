@@ -12,7 +12,6 @@
 #include <linux/bpf.h>
 #include <linux/in.h>
 #include <bpf/bpf_helpers.h>
-#include <bpf/bpf_endian.h>
 #include <xdp/xdp_helpers.h>
 
 #include "common_kern_user.h"
