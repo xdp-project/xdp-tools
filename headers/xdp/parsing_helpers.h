@@ -25,6 +25,7 @@
 #include <linux/udp.h>
 #include <linux/tcp.h>
 #include <linux/in.h>
+#include <bpf/bpf_endian.h>
 
 /* Header cursor to keep track of current parsing position */
 struct hdr_cursor {
