@@ -1,0 +1,57 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+#include <stdio.h>
+
+#include "logging.h"
+#include "params.h"
+
+#include "bpfc.h"
+
+#define PROG_NAME "filterc"
+
+static const struct filteropt {
+	char *output;
+	char *filter;
+} filteropt_defaults = {
+};
+struct filteropt cfg_filteropt;
+
+static struct prog_option filterc_options[] = {
+	DEFINE_OPTION("output", OPT_STRING, struct filteropt, output,
+		      .short_opt = 'o',
+		      .required = true,
+		      .metavar = "<file>",
+		      .help = "Output compiled object to <file>"),
+	DEFINE_OPTION("filter", OPT_STRING, struct filteropt, filter,
+		      .required = true,
+		      .positional = true,
+		      .metavar = "<filter>",
+		      .help = "pcap-filter(7) string to compile"),
+	END_OPTIONS
+};
+
+int main(int argc, char **argv)
+{
+	struct cbpf_program *cbpf_prog = NULL;
+	int rc = EXIT_FAILURE;
+
+	if (parse_cmdline_args(argc, argv, filterc_options, &cfg_filteropt,
+			       sizeof(cfg_filteropt), PROG_NAME, PROG_NAME,
+			       "Compile pcap-filter expressions to eBPF object files",
+			       &filteropt_defaults) != 0)
+		goto out;
+
+	cbpf_prog = cbpf_program_from_filter(cfg_filteropt.filter);
+	if (!cbpf_prog) {
+		pr_warn("Failed to compile filter\n");
+		goto out;
+	}
+
+	cbpf_program_dump(cbpf_prog);
+
+	rc = EXIT_SUCCESS;
+
+out:
+	if (cbpf_prog)
+		cbpf_program_free(cbpf_prog);
+	return rc;
+}
