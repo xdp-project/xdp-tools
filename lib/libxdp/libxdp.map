@@ -69,7 +69,10 @@ LIBXDP_1.2.0 {
 } LIBXDP_1.0.0;
 
 LIBXDP_1.3.0 {
+		xdp_multiprog__xdp_frags_support;
 		xdp_program__clone;
 		xdp_program__create;
+		xdp_program__set_xdp_frags_support;
 		xdp_program__test_run;
+		xdp_program__xdp_frags_support;
 } LIBXDP_1.2.0;

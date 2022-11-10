@@ -88,6 +88,9 @@ int xdp_program__set_chain_call_enabled(struct xdp_program *prog,
 int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 					  char *buf,
 					  size_t buf_len);
+bool xdp_program__xdp_frags_support(const struct xdp_program *prog);
+int xdp_program__set_xdp_frags_support(struct xdp_program *prog, bool frags);
+
 int xdp_program__pin(struct xdp_program *xdp_prog, const char *pin_path);
 int xdp_program__attach(struct xdp_program *xdp_prog,
 			int ifindex, enum xdp_attach_mode mode,
@@ -112,6 +115,7 @@ struct xdp_program *xdp_multiprog__main_prog(const struct xdp_multiprog *mp);
 struct xdp_program *xdp_multiprog__hw_prog(const struct xdp_multiprog *mp);
 bool xdp_multiprog__is_legacy(const struct xdp_multiprog *mp);
 int xdp_multiprog__program_count(const struct xdp_multiprog *mp);
+bool xdp_multiprog__xdp_frags_support(const struct xdp_multiprog *mp);
 
 /* Only following members can be set at once:
  *
