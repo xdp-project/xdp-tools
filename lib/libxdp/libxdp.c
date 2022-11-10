@@ -71,6 +71,7 @@ struct xdp_program {
 	__u32 prog_id;
 	__u64 load_time;
 	bool from_external_obj;
+	bool is_frags;
 	unsigned int run_prio;
 	unsigned int chain_call_actions; /* bitmap */
 
@@ -83,14 +84,22 @@ struct xdp_multiprog {
 	struct xdp_program *main_prog;  /* dispatcher or legacy prog pointer */
 	struct xdp_program *first_prog; /* uses xdp_program->next to build a list */
 	struct xdp_program *hw_prog;
+	__u32 version;
 	size_t num_links;
 	bool is_loaded;
 	bool is_legacy;
+	bool kernel_frags_support;
 	bool checked_compat;
 	enum xdp_attach_mode attach_mode;
 	int ifindex;
 };
 
+#define XDP_DISPATCHER_VERSION_V1 1
+struct xdp_dispatcher_config_v1 {
+	__u8 num_progs_enabled;             /* Number of active program slots */
+	__u32 chain_call_actions[MAX_DISPATCHER_ACTIONS];
+	__u32 run_prios[MAX_DISPATCHER_ACTIONS];
+};
 
 static const char *xdp_action_names[] = {
 	[XDP_ABORTED] = "XDP_ABORTED",
@@ -678,6 +687,46 @@ int xdp_program__set_run_prio(struct xdp_program *prog, unsigned int run_prio)
 
 	prog->run_prio = run_prio;
 	return 0;
+}
+
+bool xdp_program__xdp_frags_support(const struct xdp_program *prog)
+{
+	if (IS_ERR_OR_NULL(prog))
+		return false;
+
+	/* Until we load the program we just check the bpf_program__flags() to
+	 * ensure any changes made to those are honoured on the libxdp side. For
+	 * loaded programs we keep our own state variable which is populated
+	 * either by copying over the program flags in xdp_program__load(), or
+	 * by loading the state from the dispatcher state variables if
+	 * instantiating the object from the kernel.
+	  */
+	if (!prog->bpf_prog || prog->prog_fd >= 0)
+		return prog->is_frags;
+
+	return !!(bpf_program__flags(prog->bpf_prog) & BPF_F_XDP_HAS_FRAGS);
+}
+
+int xdp_program__set_xdp_frags_support(struct xdp_program *prog, bool frags)
+{
+	__u32 prog_flags;
+	int ret;
+
+	if (IS_ERR_OR_NULL(prog) || !prog->bpf_prog || prog->prog_fd >= 0)
+		return libxdp_err(-EINVAL);
+
+	prog_flags = bpf_program__flags(prog->bpf_prog);
+
+	if (frags)
+		prog_flags |= BPF_F_XDP_HAS_FRAGS;
+	else
+		prog_flags &= ~BPF_F_XDP_HAS_FRAGS;
+
+	ret = bpf_program__set_flags(prog->bpf_prog, prog_flags);
+	if (!ret)
+		prog->is_frags = frags;
+
+	return ret;
 }
 
 const char *xdp_program__name(const struct xdp_program *prog)
@@ -1520,10 +1569,23 @@ static int xdp_program__load(struct xdp_program *prog)
 	if (is_loaded) {
 		pr_debug("XDP program %s is already loaded with fd %d\n",
 			 xdp_program__name(prog), bpf_program__fd(prog->bpf_prog));
+
+		prog->is_frags = !!(bpf_program__flags(prog->bpf_prog) & BPF_F_XDP_HAS_FRAGS);
 	} else {
 		/* We got an explicit load request, make sure we actually load */
 		if (!autoload)
 			bpf_program__set_autoload(prog->bpf_prog, true);
+
+		/* Make sure we sync is_frags to internal state variable (in case it was
+		 * changed on bpf_prog since creation), and unset flag if we're loading
+		 * an EXT program (the dispatcher will have the flag set instead in this
+		 * case)
+		 */
+		prog->is_frags = xdp_program__xdp_frags_support(prog);
+
+		if (bpf_program__type(prog->bpf_prog) == BPF_PROG_TYPE_EXT)
+			bpf_program__set_flags(prog->bpf_prog,
+					       bpf_program__flags(prog->bpf_prog) & ~BPF_F_XDP_HAS_FRAGS);
 
 		err = bpf_object__load(prog->bpf_obj);
 		if (err)
@@ -1956,6 +2018,32 @@ int xdp_program__test_run(struct xdp_program *prog, struct bpf_test_run_opts *op
 	return libxdp_err(err);
 }
 
+static int xdp_multiprog__check_kernel_frags_support(struct xdp_multiprog *mp)
+{
+	struct xdp_program *test_prog;
+	int err;
+
+	pr_debug("Checking for kernel frags support\n");
+	test_prog = __xdp_program__find_file("xdp-dispatcher.o", NULL, "xdp_pass", NULL);
+	if (IS_ERR(test_prog)) {
+		err = PTR_ERR(test_prog);
+		pr_warn("Couldn't open BPF file xdp-dispatcher.o\n");
+		return err;
+	}
+
+	bpf_program__set_flags(test_prog->bpf_prog, BPF_F_XDP_HAS_FRAGS);
+	err = xdp_program__load(test_prog);
+	if (!err) {
+		pr_debug("Kernel supports XDP programs with frags\n");
+		mp->kernel_frags_support = true;
+	} else {
+		pr_debug("Kernel DOES NOT support XDP programs with frags\n");
+	}
+	xdp_program__close(test_prog);
+
+	return 0;
+}
+
 void xdp_multiprog__close(struct xdp_multiprog *mp)
 {
 	struct xdp_program *p, *next = NULL;
@@ -1982,6 +2070,7 @@ static struct xdp_multiprog *xdp_multiprog__new(int ifindex)
 		return ERR_PTR(-ENOMEM);
 	memset(mp, 0, sizeof(*mp));
 	mp->ifindex = ifindex;
+	mp->version = XDP_DISPATCHER_VERSION;
 
 	return mp;
 }
@@ -1994,8 +2083,12 @@ static int xdp_multiprog__load(struct xdp_multiprog *mp)
 	if (IS_ERR_OR_NULL(mp) || !mp->main_prog || mp->is_loaded || xdp_multiprog__is_legacy(mp))
 		return -EINVAL;
 
-	pr_debug("Loading multiprog dispatcher for %d programs\n",
-		 mp->config.num_progs_enabled);
+	pr_debug("Loading multiprog dispatcher for %d programs %s frags support\n",
+		 mp->config.num_progs_enabled,
+		 mp->config.is_xdp_frags ? "with" : "without");
+
+	if (mp->config.is_xdp_frags)
+		xdp_program__set_xdp_frags_support(mp->main_prog, true);
 
 	err = xdp_program__load(mp->main_prog);
 	if (err) {
@@ -2027,30 +2120,106 @@ int check_xdp_prog_version(const struct btf *btf, const char *name, __u32 *versi
 	return 0;
 }
 
-static int check_dispatcher_version(const char *prog_name, struct btf *btf)
+static int check_dispatcher_version(struct xdp_multiprog *mp,
+				    const char *prog_name, const struct btf *btf,
+				    __u32 nr_maps, __u32 map_id)
 {
+	__u32 version = 0, map_key = 0, info_len = sizeof(struct bpf_map_info);
 	const char *name = "dispatcher_version";
-	__u32 version = 0;
-	int err;
+	struct bpf_map_info map_info = {};
+	int err, map_fd, i;
+	__u8 *buf = NULL;
 
 	if (prog_name && strcmp(prog_name, "xdp_dispatcher")) {
-		pr_debug("XDP program with name '%s' is not a dispatcher\n",
-			 prog_name);
+		pr_debug("XDP program with name '%s' is not a dispatcher\n", prog_name);
 		return -ENOENT;
 	}
 
-	err = check_xdp_prog_version(btf, name, &version);
-	if (err)
-		return err;
+	if (nr_maps != 1) {
+		pr_warn("Expected a single map for dispatcher, found %u\n", nr_maps);
+		return -ENOENT;
+	}
 
-	if (version > XDP_DISPATCHER_VERSION) {
-		pr_warn("XDP dispatcher version %d higher than supported %d\n",
+	map_fd = bpf_map_get_fd_by_id(map_id);
+	if (map_fd < 0) {
+		err = -errno;
+		pr_warn("Could not get config map fd for id %u: %s\n", map_id, strerror(-err));
+		return err;
+	}
+
+	err = bpf_obj_get_info_by_fd(map_fd, &map_info, &info_len);
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't get map info: %s\n", strerror(-err));
+		goto out;
+	}
+
+	if (map_info.key_size != sizeof(map_key) ||
+	    map_info.value_size < 2 ||
+	    map_info.max_entries != 1 ||
+	    !(map_info.map_flags & BPF_F_RDONLY_PROG)) {
+		pr_warn("Map flags or key/value size mismatch\n");
+		err = -EINVAL;
+		goto out;
+	}
+
+	buf = malloc(map_info.value_size);
+	if (!buf) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	err = bpf_map_lookup_elem(map_fd, &map_key, buf);
+	if (err) {
+		err = -errno;
+		pr_warn("Could not lookup map value: %s\n", strerror(-err));
+		goto out;
+	}
+
+	if (buf[0] == XDP_DISPATCHER_MAGIC) {
+		version = buf[1];
+	} else {
+		err = check_xdp_prog_version(btf, name, &version);
+		if (err)
+			goto out;
+	}
+
+	switch (version) {
+	case XDP_DISPATCHER_VERSION_V1:
+		struct xdp_dispatcher_config_v1 *config = (void *)buf;
+
+		for (i = 0; i < MAX_DISPATCHER_ACTIONS; i++) {
+			mp->config.chain_call_actions[i] = config->chain_call_actions[i];
+			mp->config.run_prios[i] = config->run_prios[i];
+		}
+		mp->config.num_progs_enabled = config->num_progs_enabled;
+		break;
+
+	case XDP_DISPATCHER_VERSION:
+		if (map_info.value_size != sizeof(mp->config)) {
+			pr_warn("Dispatcher version matches, but map size %u != expected %zu\n",
+				map_info.value_size, sizeof(mp->config));
+			err = -EINVAL;
+			goto out;
+		}
+		memcpy(&mp->config, buf, sizeof(mp->config));
+		break;
+
+	default:
+		pr_warn("XDP dispatcher version %u higher than supported %u\n",
 			version, XDP_DISPATCHER_VERSION);
-		return -EOPNOTSUPP;
+		err = -EOPNOTSUPP;
+		goto out;
 	}
 	pr_debug("Verified XDP dispatcher version %d <= %d\n",
 		 version, XDP_DISPATCHER_VERSION);
-	return 0;
+
+	mp->version = version;
+
+out:
+	close(map_fd);
+	free(buf);
+	return err;
 }
 
 static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
@@ -2110,6 +2279,7 @@ static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 		prog->chain_call_actions = (mp->config.chain_call_actions[i] &
 					    ~(1U << XDP_DISPATCHER_RETVAL));
 		prog->run_prio = mp->config.run_prios[i];
+		prog->is_frags = !!(mp->config.program_flags[i] & BPF_F_XDP_HAS_FRAGS);
 
 		if (!p) {
 			mp->first_prog = prog;
@@ -2138,8 +2308,6 @@ err:
 static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 				       int prog_fd, int hw_fd)
 {
-	__u32 map_key = 0, map_info_len = sizeof(struct bpf_map_info);
-	struct bpf_map_info map_info = {};
 	struct bpf_prog_info info = {};
 	__u32 info_len, map_id = 0;
 	struct xdp_program *prog;
@@ -2172,7 +2340,8 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 			goto out;
 		}
 
-		err = check_dispatcher_version(info.name, btf);
+		err = check_dispatcher_version(mp, info.name, btf,
+					       info.nr_map_ids, map_id);
 		if (err) {
 			if (err != -ENOENT) {
 				pr_warn("Dispatcher version check failed for ID %d\n",
@@ -2184,40 +2353,6 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 				err = 0;
 				goto legacy;
 			}
-		}
-
-		if (info.nr_map_ids != 1) {
-			pr_warn("Expected a single map for dispatcher, found %d\n",
-				info.nr_map_ids);
-			err = -EINVAL;
-			goto out;
-		}
-
-		map_fd = bpf_map_get_fd_by_id(map_id);
-		if (map_fd < 0) {
-			err = -errno;
-			pr_warn("Could not get config map fd for id %u: %s\n", map_id, strerror(-err));
-			goto out;
-		}
-		err = bpf_obj_get_info_by_fd(map_fd, &map_info, &map_info_len);
-		if (err) {
-			err = -errno;
-			pr_warn("Couldn't get map info: %s\n", strerror(-err));
-			goto out;
-		}
-
-		if (map_info.key_size != sizeof(map_key) ||
-		    map_info.value_size != sizeof(mp->config)) {
-			pr_warn("Map key or value size mismatch\n");
-			err = -EINVAL;
-			goto out;
-		}
-
-		err = bpf_map_lookup_elem(map_fd, &map_key, &mp->config);
-		if (err) {
-			err = -errno;
-			pr_warn("Could not lookup map value: %s\n", strerror(-err));
-			goto out;
 		}
 
 legacy:
@@ -2437,7 +2572,7 @@ int libxdp_check_kern_compat(void)
 	const char *bpffs_dir;
 	char buf[PATH_MAX];
 	int lock_fd;
-	int err;
+	int err = 0;
 
 	bpffs_dir = get_bpffs_dir();
 	if (IS_ERR(bpffs_dir)) {
@@ -2737,8 +2872,8 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 						     bool remove_progs)
 {
 	size_t num_new_progs = old_mp ? old_mp->num_links : 0;
+	struct xdp_program **new_progs = NULL;
 	struct xdp_program *dispatcher;
-	struct xdp_program **new_progs;
 	struct xdp_multiprog *mp;
 	struct bpf_map *map;
 	size_t i;
@@ -2759,20 +2894,32 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	if (IS_ERR(mp))
 		return mp;
 
+	err = xdp_multiprog__check_kernel_frags_support(mp);
+	if (err)
+		goto err;
+
 	if (old_mp) {
 		struct xdp_program *prog;
 		size_t j;
 
 		if (xdp_multiprog__is_legacy(old_mp)) {
 			pr_warn("Existing program is not using a dispatcher, can't replace; unload first\n");
-			xdp_multiprog__close(mp);
-			return ERR_PTR(-EBUSY);
+			err = -EBUSY;
+			goto err;
+		}
+
+		if (old_mp->version < mp->version) {
+			pr_warn("Existing dispatcher version %u is older than our version %u. "
+				"Refusing transparent upgrade, unload first\n",
+				old_mp->version, mp->version);
+			err = -EBUSY;
+			goto err;
 		}
 
 		new_progs = calloc(num_new_progs, sizeof(*new_progs));
 		if (!new_progs) {
-			xdp_multiprog__close(mp);
-			return ERR_PTR(-ENOMEM);
+			err = -ENOMEM;
+			goto err;
 		}
 
 		for (i = 0, prog = old_mp->first_prog; prog; prog = prog->next) {
@@ -2805,6 +2952,7 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 		if (!remove_progs)
 			for (j = 0; i < num_new_progs; i++, j++)
 				new_progs[i] = progs[j];
+
 	} else {
 		new_progs = progs;
 	}
@@ -2820,14 +2968,6 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 		goto err;
 	}
 
-	err = check_dispatcher_version(bpf_program__name(dispatcher->bpf_prog),
-				       dispatcher->btf);
-	if (err) {
-		pr_warn("XDP dispatcher object version check failed: %s\n",
-			strerror(-err));
-		goto err;
-	}
-
 	mp->main_prog = dispatcher;
 
 	map = bpf_object__next_map(mp->main_prog->bpf_obj, NULL);
@@ -2837,12 +2977,30 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 		goto err;
 	}
 
+	mp->config.magic = XDP_DISPATCHER_MAGIC;
+	mp->config.dispatcher_version = mp->version;
 	mp->config.num_progs_enabled = num_new_progs;
+	mp->config.is_xdp_frags = mp->kernel_frags_support;
 	for (i = 0; i < num_new_progs; i++) {
 		mp->config.chain_call_actions[i] =
 			(new_progs[i]->chain_call_actions |
 			 (1U << XDP_DISPATCHER_RETVAL));
 		mp->config.run_prios[i] = new_progs[i]->run_prio;
+
+		if (xdp_program__xdp_frags_support(new_progs[i]))
+			mp->config.program_flags[i] = BPF_F_XDP_HAS_FRAGS;
+		else
+			mp->config.is_xdp_frags = false;
+	}
+
+	if (mp->kernel_frags_support) {
+		if (!mp->config.is_xdp_frags)
+			pr_debug("At least one attached program doesn't "
+				 "support frags, disabling it for the "
+				 "dispatcher\n");
+		else
+			pr_debug("All attached programs support frags, "
+				 "enabling it for the dispatcher\n");
 	}
 
 	err = bpf_map__set_initial_value(map, &mp->config, sizeof(mp->config));
@@ -3147,6 +3305,11 @@ int xdp_multiprog__program_count(const struct xdp_multiprog *mp)
 		return libxdp_err(-EINVAL);
 
 	return mp->num_links;
+}
+
+bool xdp_multiprog__xdp_frags_support(const struct xdp_multiprog *mp)
+{
+	return !xdp_multiprog__is_legacy(mp) && mp->config.is_xdp_frags;
 }
 
 static int remove_pin_dir(const char *subdir)
