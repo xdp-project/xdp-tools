@@ -20,6 +20,7 @@ extern "C" {
 #endif
 
 #define XDP_BPFFS_ENVVAR "LIBXDP_BPFFS"
+#define XDP_BPFFS_MOUNT_ENVVAR "LIBXDP_BPFFS_AUTOMOUNT"
 #define XDP_OBJECT_ENVVAR "LIBXDP_OBJECT_PATH"
 
 enum xdp_attach_mode {
