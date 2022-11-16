@@ -695,7 +695,8 @@ int print_ips()
 	char pin_root_path[PATH_MAX];
 	int err = 0;
 
-	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), PROG_NAME);
+	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), PROG_NAME,
+			       true);
 	if (err)
 		goto out;
 
@@ -1089,7 +1090,7 @@ int main(int argc, char **argv)
 {
 	if (argc > 1)
 		return dispatch_commands(argv[1], argc - 1, argv + 1, cmds,
-					 sizeof(union all_opts), PROG_NAME);
+					 sizeof(union all_opts), PROG_NAME, true);
 
 	return do_help(NULL, NULL);
 }

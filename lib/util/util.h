@@ -58,8 +58,8 @@
 int try_snprintf(char *buf, size_t buf_len, const char *format, ...);
 int make_dir_subdir(const char *parent, const char *dir);
 
-int check_bpf_environ(const char *pin_root_path);
-int double_rlimit();
+int check_bpf_environ(void);
+int double_rlimit(void);
 
 int attach_xdp_program(struct xdp_program *prog, const struct iface *iface,
 		       enum xdp_attach_mode mode, const char *pin_root_dir);
@@ -81,7 +81,7 @@ int iterate_pinned_programs(const char *pin_root_path, program_callback cb,
 			    void *arg);
 int iterate_iface_multiprogs(multiprog_callback cb, void *arg);
 
-int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir);
+int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir, bool fatal);
 int get_pinned_map_fd(const char *bpf_root, const char *map_name,
 		      struct bpf_map_info *info);
 int unlink_pinned_map(int dir_fd, const char *map_name);

@@ -222,6 +222,6 @@ int main(int argc, char **argv)
 {
 	if (argc > 1)
 		return dispatch_commands(argv[1], argc - 1, argv + 1, cmds,
-					 sizeof(union all_opts), PROG_NAME);
+					 sizeof(union all_opts), PROG_NAME, false);
 	return do_help(NULL, NULL);
 }
