@@ -306,13 +306,13 @@ bpf_program_by_section_name(const struct bpf_object *obj,
 	return NULL;
 }
 
-static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
+static bool bpf_is_valid_mntpt(const char *mnt)
 {
 	struct statfs st_fs;
 
 	if (statfs(mnt, &st_fs) < 0)
 		return false;
-	if ((unsigned long)st_fs.f_type != magic)
+	if ((unsigned long)st_fs.f_type != BPF_FS_MAGIC)
 		return false;
 
 	return true;
@@ -356,11 +356,13 @@ retry:
 	return 0;
 }
 
-static const char *bpf_find_mntpt_single(unsigned long magic, char *mnt,
-					 int len, const char *mntpt)
+static const char *bpf_find_mntpt_single(char *mnt, int len, const char *mntpt, bool mount)
 {
-	if (!bpf_is_valid_mntpt(mntpt, magic)) {
-		int err;
+	int err;
+
+	if (!bpf_is_valid_mntpt(mntpt)) {
+		if (!mount)
+			return NULL;
 
 		pr_debug("No bpffs found at %s, mounting a new one\n",
 			 mntpt);
@@ -380,14 +382,21 @@ static const char *find_bpffs()
 	static bool bpf_mnt_cached = false;
 	static char bpf_wrk_dir[PATH_MAX];
 	static const char *mnt = NULL;
-	char *envdir;
+	char *envdir, *envval;
+	bool mount = false;
 
 	if (bpf_mnt_cached)
 		return mnt;
 
 	envdir = secure_getenv(XDP_BPFFS_ENVVAR);
-	mnt = bpf_find_mntpt_single(BPF_FS_MAGIC, bpf_wrk_dir,
-				    sizeof(bpf_wrk_dir), envdir ?: BPF_DIR_MNT);
+	envval = secure_getenv(XDP_BPFFS_MOUNT_ENVVAR);
+	if (envval && envval[0] == '1' && envval[1] == '\0')
+		mount = true;
+
+	mnt = bpf_find_mntpt_single(bpf_wrk_dir,
+				    sizeof(bpf_wrk_dir),
+				    envdir ?: BPF_DIR_MNT,
+				    mount);
 	if (!mnt)
 		pr_warn("No bpffs found at %s\n", envdir ?: BPF_DIR_MNT);
 	else
@@ -2308,6 +2317,14 @@ static int xdp_multiprog__check_compat(struct xdp_multiprog *mp)
 		return 0;
 
 	pr_debug("Checking dispatcher compatibility\n");
+
+	bpffs_dir = get_bpffs_dir();
+	if (IS_ERR(bpffs_dir)) {
+		err = PTR_ERR(bpffs_dir);
+		pr_warn("Can't use dispatcher without a working bpffs\n");
+		return -EOPNOTSUPP;
+	}
+
 	test_prog = __xdp_program__find_file("xdp-dispatcher.o", NULL, "xdp_pass", NULL);
 	if (IS_ERR(test_prog)) {
 		err = PTR_ERR(test_prog);
@@ -2339,12 +2356,6 @@ static int xdp_multiprog__check_compat(struct xdp_multiprog *mp)
 		err = -errno;
 		pr_debug("Failed to attach test program to dispatcher: %s\n",
 			 strerror(-err));
-		goto out;
-	}
-
-	bpffs_dir = get_bpffs_dir();
-	if (IS_ERR(bpffs_dir)) {
-		err = PTR_ERR(bpffs_dir);
 		goto out;
 	}
 
