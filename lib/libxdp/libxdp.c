@@ -17,6 +17,7 @@
 #include <sys/file.h>
 #include <sys/vfs.h>
 #include <sys/types.h>
+#include <sys/mount.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <dirent.h>
@@ -317,16 +318,61 @@ static bool bpf_is_valid_mntpt(const char *mnt, unsigned long magic)
 	return true;
 }
 
+static int bpf_mnt_fs(const char *target)
+{
+	bool bind_done = false;
+	int err;
+
+retry:
+	err = mount("", target, "none", MS_PRIVATE | MS_REC, NULL);
+	if (err) {
+		if (errno != EINVAL || bind_done) {
+			err = -errno;
+			pr_warn("mount --make-private %s failed: %s\n",
+				target, strerror(-err));
+			return err;
+		}
+
+		err = mount(target, target, "none", MS_BIND, NULL);
+		if (err) {
+			err = -errno;
+			pr_warn("mount --bind %s %s failed: %s\n",
+				target, target, strerror(-err));
+			return err;
+		}
+
+		bind_done = true;
+		goto retry;
+	}
+
+	err = mount("bpf", target, "bpf", 0, "mode=0700");
+	if (err) {
+		err = -errno;
+		pr_warn("mount -t bpf bpf %s failed: %s\n",
+			target, strerror(-err));
+		return err;
+	}
+
+	return 0;
+}
+
 static const char *bpf_find_mntpt_single(unsigned long magic, char *mnt,
 					 int len, const char *mntpt)
 {
-	if (bpf_is_valid_mntpt(mntpt, magic)) {
-		strncpy(mnt, mntpt, len - 1);
-		mnt[len - 1] = '\0';
-		return mnt;
+	if (!bpf_is_valid_mntpt(mntpt, magic)) {
+		int err;
+
+		pr_debug("No bpffs found at %s, mounting a new one\n",
+			 mntpt);
+
+		err = bpf_mnt_fs(mntpt);
+		if (err)
+			return NULL;
 	}
 
-	return NULL;
+	strncpy(mnt, mntpt, len - 1);
+	mnt[len - 1] = '\0';
+	return mnt;
 }
 
 static const char *find_bpffs()
