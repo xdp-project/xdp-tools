@@ -662,7 +662,7 @@ out:
 
 int dispatch_commands(const char *argv0, int argc, char **argv,
 		      const struct prog_command *cmds, size_t cfg_size,
-		      const char *prog_name)
+		      const char *prog_name, bool needs_bpffs)
 {
 	const struct prog_command *c, *cmd = NULL;
 	int ret = EXIT_FAILURE, err, len;
@@ -701,11 +701,12 @@ int dispatch_commands(const char *argv0, int argc, char **argv,
 	if (err)
 		goto out;
 
-	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), prog_name);
-	if (err)
+	err = get_bpf_root_dir(pin_root_path, sizeof(pin_root_path), prog_name,
+			       needs_bpffs);
+	if (err && needs_bpffs)
 		goto out;
 
-	err = check_bpf_environ(pin_root_path);
+	err = check_bpf_environ();
 	if (err)
 		goto out;
 

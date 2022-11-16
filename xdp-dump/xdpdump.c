@@ -1909,7 +1909,7 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 
 	/* If all the options are parsed ok, make sure we are root! */
-	if (check_bpf_environ(""))
+	if (check_bpf_environ())
 		return EXIT_FAILURE;
 
 	if (cfg_dumpopt.snaplen == 0)

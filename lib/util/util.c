@@ -86,7 +86,7 @@ static int set_rlimit(unsigned int min_limit)
 	return 0;
 }
 
-int double_rlimit()
+int double_rlimit(void)
 {
 	pr_debug("Permission denied when loading eBPF object; "
 		 "raising rlimit and retrying\n");
@@ -610,13 +610,14 @@ out:
 	return mnt;
 }
 
-int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir)
+int get_bpf_root_dir(char *buf, size_t buf_len, const char *subdir, bool fatal)
 {
 	const char *bpf_dir;
 
 	bpf_dir = bpf_get_work_dir();
 	if (!bpf_dir) {
-		pr_warn("Could not find BPF working dir - bpffs not mounted?\n");
+		logging_print(fatal ? LOG_WARN : LOG_DEBUG,
+			      "Could not find BPF working dir - bpffs not mounted?\n");
 		return -ENOENT;
 	}
 
@@ -690,18 +691,12 @@ const char *action2str(__u32 action)
 	return NULL;
 }
 
-int check_bpf_environ(const char *pin_root_path)
+int check_bpf_environ(void)
 {
 	init_lib_logging();
 
 	if (geteuid() != 0) {
 		pr_warn("This program must be run as root.\n");
-		return 1;
-	}
-
-	if (!pin_root_path) {
-		pr_warn("Couldn't find a valid bpffs. "
-			"Please mount bpffs at %s\n", BPF_DIR_MNT);
 		return 1;
 	}
 

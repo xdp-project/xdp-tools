@@ -130,6 +130,6 @@ int parse_cmdline_args(int argc, char **argv, struct prog_option *long_options,
 
 int dispatch_commands(const char *argv0, int argc, char **argv,
 		      const struct prog_command *cmds, size_t cfg_size,
-		      const char *prog_name);
+		      const char *prog_name, bool needs_bpffs);
 
 #endif /* __COMMON_PARAMS_H */
