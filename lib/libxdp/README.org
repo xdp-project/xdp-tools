@@ -222,7 +222,11 @@ follows:
 - etc, up to ten component programs
 
 If set, the =LIBXDP_BPFFS= environment variable will override the location of
-=bpffs=, but the =xdp= subdirectory is always used.
+=bpffs=, but the =xdp= subdirectory is always used. If no =bpffs= is mounted,
+libxdp will consult the environment variable =LIBXDP_BPFFS_AUTOMOUNT=. If this
+is set to =1=, libxdp will attempt to automount a bpffs. If not, libxdp will
+fall back to loading a single program without a dispatcher, as if the kernel did
+not support the features needed for multiprog attachment.
 
 * Using AF_XDP sockets
 

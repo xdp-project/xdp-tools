@@ -1,4 +1,4 @@
-.TH "libxdp" "3" "January 10, 2022" "v1.2.2" "libxdp - library for loading XDP programs" 
+.TH "libxdp" "3" "October  6, 2022" "v1.2.2" "libxdp - library for loading XDP programs" 
 
 .SH "NAME"
 libxdp \- library for attaching XDP programs and using AF_XDP sockets
@@ -253,7 +253,11 @@ etc, up to ten component programs
 
 .PP
 If set, the \fILIBXDP_BPFFS\fP environment variable will override the location of
-\fIbpffs\fP, but the \fIxdp\fP subdirectory is always used.
+\fIbpffs\fP, but the \fIxdp\fP subdirectory is always used. If no \fIbpffs\fP is mounted,
+libxdp will consult the environment variable \fILIBXDP_BPFFS_AUTOMOUNT\fP. If this
+is set to \fI1\fP, libxdp will attempt to automount a bpffs. If not, libxdp will
+fall back to loading a single program without a dispatcher, as if the kernel did
+not support the features needed for multiprog attachment.
 
 .SH "Using AF_XDP sockets"
 .PP
