@@ -405,7 +405,7 @@ static const char *find_bpffs()
 	return mnt;
 }
 
-static const char *get_bpffs_dir()
+static const char *get_bpffs_dir(void)
 {
 	static char bpffs_dir[PATH_MAX];
 	static bool dir_cached = false;
@@ -438,7 +438,7 @@ err:
 	return ERR_PTR(err);
 }
 
-static int xdp_lock_acquire()
+static int xdp_lock_acquire(void)
 {
 	int lock_fd, err;
 	const char *dir;
@@ -986,7 +986,7 @@ static int xdp_program__parse_btf(struct xdp_program *xdp_prog,
 	return 0;
 }
 
-static struct xdp_program *xdp_program__new()
+static struct xdp_program *xdp_program__new(void)
 {
 	struct xdp_program *xdp_prog;
 
