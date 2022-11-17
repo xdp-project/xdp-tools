@@ -405,15 +405,29 @@ static const char *find_bpffs()
 	return mnt;
 }
 
+static int mk_state_subdir(char *dir, size_t dir_sz, const char *parent)
+{
+	int err;
+
+	err = try_snprintf(dir, dir_sz, "%s/xdp", parent);
+	if (err)
+		return err;
+
+	err = mkdir(dir, S_IRWXU);
+	if (err && errno != EEXIST)
+		return -errno;
+
+	return 0;
+}
+
 static const char *get_bpffs_dir(void)
 {
 	static char bpffs_dir[PATH_MAX];
-	static bool dir_cached = false;
-	static const char *dir;
+	static const char *dir = NULL;
 	const char *parent;
 	int err;
 
-	if (dir_cached)
+	if (dir)
 		return dir;
 
 	parent = find_bpffs();
@@ -422,20 +436,35 @@ static const char *get_bpffs_dir(void)
 		goto err;
 	}
 
-	err = try_snprintf(bpffs_dir, sizeof(bpffs_dir), "%s/xdp", parent);
+	err = mk_state_subdir(bpffs_dir, sizeof(bpffs_dir), parent);
 	if (err)
 		goto err;
 
-	err = mkdir(bpffs_dir, S_IRWXU);
-	if (err && errno != EEXIST) {
-		err = -errno;
-		goto err;
-	}
 	dir = bpffs_dir;
-	dir_cached = true;
 	return dir;
 err:
 	return ERR_PTR(err);
+}
+
+static const char *get_lock_dir(void)
+{
+	static const char *dir = NULL;
+	static char rundir[PATH_MAX];
+	int err;
+
+	if (dir)
+		return dir;
+
+	dir = get_bpffs_dir();
+	if (!IS_ERR(dir))
+		return dir;
+
+	err = mk_state_subdir(rundir, sizeof(rundir), RUNDIR);
+	if (err)
+		return ERR_PTR(err);
+
+	dir = rundir;
+	return dir;
 }
 
 static int xdp_lock_acquire(void)
@@ -443,7 +472,7 @@ static int xdp_lock_acquire(void)
 	int lock_fd, err;
 	const char *dir;
 
-	dir = get_bpffs_dir();
+	dir = get_lock_dir();
 	if (IS_ERR(dir))
 		return PTR_ERR(dir);
 
