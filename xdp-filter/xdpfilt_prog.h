@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 
 /* XDP filter program fragment. This header file contains the full-featured
- * program, split up with ifdefs. The actual program file in xdp_filt_kern.c
- * includes this file multiple times with different #defines to create the
+ * program, split up with ifdefs. The actual program files xdpfilt_*.c
+ * include this file with different #defines to create the
  * different eBPF program sections that include only the needed features.
  */
 
