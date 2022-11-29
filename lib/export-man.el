@@ -42,7 +42,8 @@
 
 (defun get-file-mod-time (filename)
   (let* ((file-modtime (file-attribute-modification-time (file-attributes filename)))
-         (git-logtime (shell-command-to-string (format "git log -1 --pretty='format:%%cI' -- %s" filename)))
+         (git-logtime (ignore-errors (shell-command-to-string
+                                      (format "git log -1 --pretty='format:%%cI' -- %s" filename))))
          (git-modtime (ignore-errors (parse-iso8601-time-string git-logtime))))
     (or git-modtime file-modtime)))
 
