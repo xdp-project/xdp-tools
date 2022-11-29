@@ -1,4 +1,4 @@
-.TH "xdp-loader" "8" "AUGUST 16, 2022" "V1.2.8" "XDP program loader" 
+.TH "xdp-loader" "8" "DECEMBER 10, 2022" "V1.2.8" "XDP program loader" 
 
 .SH "NAME"
 xdp-loader \- an XDP program loader
@@ -59,7 +59,9 @@ the program to be offloaded to the hardware, or 'unspecified' which leaves it up
 to the kernel to pick a mode (which it will do by picking native mode if the
 driver supports it, or generic mode otherwise). Note that using 'unspecified'
 can make it difficult to predict what mode a program will end up being loaded
-in. For this reason, the default is 'native'.
+in. For this reason, the default is 'native'. Note that hardware with support
+for the 'hw' mode is rare: Solarflare cards (using the 'sfc' driver) are the
+only devices with support for this in the mainline Linux kernel.
 
 .SS "-p, --pin-path <path>"
 .PP
