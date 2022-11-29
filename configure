@@ -184,7 +184,8 @@ check_libbpf_function()
     if [ -n "$LIBBPF_UNBUILT" ]; then
         LIBBPF_LDLIBS="-Xlinker --unresolved-symbols=ignore-in-object-files"
         LIBBPF_CFLAGS="-I$TMPDIR/include"
-        mkdir -p "$TMPDIR/include/bpf"
+        mkdir -p "$TMPDIR/include"
+        cp -r headers/bpf headers/linux headers/xdp "$TMPDIR/include/"
         cp "$LIBBPF_DIR"/src/bpf.h "$LIBBPF_DIR"/src/btf.h "$LIBBPF_DIR"/src/libbpf*.h "$TMPDIR/include/bpf"
         [ "$?" -eq 0 ] || return
     fi
