@@ -12,9 +12,13 @@ RESULT=""
 
 print_result()
 {
-    echo "$RESULT"
     if [ -n "$1" ]; then
         echo "ERROR: $1"
+        echo "==== RESULT: ===="
+        echo "$RESULT"
+        echo "==== END ===="
+    else
+        echo "$RESULT"
     fi
 }
 
@@ -191,7 +195,7 @@ test_capt_pcapng()
 			-e frame.packet_id \
 			-e frame.verdict.ebpf_xdp)
 	if ! [[ $RESULT =~ $ATTRIB_REGEX ]]; then
-            print_result "Failed attributes content"
+            print_result "Failed attributes content with Tshark $TSHARK_VERSION"
 	    rm "$PCAP_FILE" >& /dev/null
             return 1
 	fi
