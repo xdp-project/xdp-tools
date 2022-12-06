@@ -629,7 +629,7 @@ out:
 int xdp_program__set_chain_call_enabled(struct xdp_program *prog,
 					unsigned int action, bool enabled)
 {
-	if (!prog || prog->prog_fd || action >= XDP_DISPATCHER_RETVAL)
+	if (!prog || prog->prog_fd >= 0 || action >= XDP_DISPATCHER_RETVAL)
 		return libxdp_err(-EINVAL);
 
 	if (enabled)
@@ -659,7 +659,7 @@ unsigned int xdp_program__run_prio(const struct xdp_program *prog)
 
 int xdp_program__set_run_prio(struct xdp_program *prog, unsigned int run_prio)
 {
-	if (!prog || prog->prog_fd)
+	if (!prog || prog->prog_fd >= 0)
 		return libxdp_err(-EINVAL);
 
 	prog->run_prio = run_prio;
