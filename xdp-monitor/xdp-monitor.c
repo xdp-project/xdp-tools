@@ -8,6 +8,8 @@ static const char *__doc_err_only__=
 "        Enable redirect success stats via '-s/--stats'\n"
 "        (which comes with a per packet processing overhead)\n";
 
+#define PROG_NAME "xdp-monitor"
+
 #include <time.h>
 #include <ctype.h>
 #include <errno.h>
@@ -27,6 +29,8 @@ static const char *__doc_err_only__=
 
 #include <xdp_sample.h>
 #include "xdp_monitor.skel.h"
+#include "params.h"
+#include "util.h"
 
 static int mask = SAMPLE_REDIRECT_ERR_CNT | SAMPLE_CPUMAP_ENQUEUE_CNT |
 		  SAMPLE_CPUMAP_KTHREAD_CNT | SAMPLE_EXCEPTION_CNT |
@@ -34,52 +38,46 @@ static int mask = SAMPLE_REDIRECT_ERR_CNT | SAMPLE_CPUMAP_ENQUEUE_CNT |
 
 DEFINE_SAMPLE_INIT(xdp_monitor);
 
-static const struct option long_options[] = {
-	{ "help", no_argument, NULL, 'h' },
-	{ "stats", no_argument, NULL, 's' },
-	{ "interval", required_argument, NULL, 'i' },
-	{ "verbose", no_argument, NULL, 'v' },
-	{}
+static const struct monitoropt {
+	bool stats;
+	bool extended;
+	__u32 interval;
+} defaults_monitoropt = { .stats = false, .interval = 2 };
+
+static struct prog_option xdpmonitor_options[] = {
+	DEFINE_OPTION("interval", OPT_U32, struct monitoropt, interval,
+		      .short_opt = 'i',
+		      .metavar = "<seconds>",
+		      .help = "Polling interval (default 2)"),
+	DEFINE_OPTION("stats", OPT_BOOL, struct monitoropt, stats,
+		      .short_opt = 's',
+		      .help = "Enable statistics for transmitted packets (not just errors)"),
+	DEFINE_OPTION("extended", OPT_BOOL, struct monitoropt, extended,
+		      .short_opt = 'e',
+		      .help = "Start running in extended output mode (C^\\ to toggle)"),
+	END_OPTIONS
 };
 
 int main(int argc, char **argv)
 {
-	unsigned long interval = 2;
 	int ret = EXIT_FAIL_OPTION;
+	struct monitoropt cfg = {};
 	struct xdp_monitor *skel;
-	bool errors_only = true;
-	int longindex = 0, opt;
-	bool error = true;
 
-	/* Parse commands line args */
-	while ((opt = getopt_long(argc, argv, "si:vh",
-				  long_options, &longindex)) != -1) {
-		switch (opt) {
-		case 's':
-			errors_only = false;
-			mask |= SAMPLE_REDIRECT_CNT;
-			break;
-		case 'i':
-			interval = strtoul(optarg, NULL, 0);
-			break;
-		case 'v':
-			sample_switch_mode();
-			break;
-		case 'h':
-			error = false;
-			__attribute__((__fallthrough__));
-		default:
-			sample_usage(argv, long_options, __doc__, mask, error);
-			return ret;
-		}
-	}
+	if (parse_cmdline_args(argc, argv, xdpmonitor_options, &cfg,
+			       PROG_NAME, PROG_NAME, __doc__,
+			       &defaults_monitoropt) != 0)
+		return ret;
+
+	/* If all the options are parsed ok, make sure we are root! */
+	if (check_bpf_environ())
+		return ret;
 
 	skel = xdp_monitor__open();
 	if (!skel) {
 		fprintf(stderr, "Failed to xdp_monitor__open: %s\n",
 			strerror(errno));
-		ret = EXIT_FAIL_BPF;
-		goto end;
+		return EXIT_FAIL_BPF;
 	}
 
 	ret = sample_init_pre_load(skel);
@@ -96,6 +94,14 @@ int main(int argc, char **argv)
 		goto end_destroy;
 	}
 
+	if (cfg.stats)
+		mask |= SAMPLE_REDIRECT_CNT;
+	else
+		printf("%s", __doc_err_only__);
+
+	if (cfg.extended)
+		sample_switch_mode();
+
 	ret = sample_init(skel, mask, 0, 0);
 	if (ret < 0) {
 		fprintf(stderr, "Failed to initialize sample: %s\n", strerror(-ret));
@@ -103,19 +109,16 @@ int main(int argc, char **argv)
 		goto end_destroy;
 	}
 
-	if (errors_only)
-		printf("%s", __doc_err_only__);
-
-	ret = sample_run(interval, NULL, NULL);
+	ret = sample_run(cfg.interval, NULL, NULL);
 	if (ret < 0) {
 		fprintf(stderr, "Failed during sample run: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
 		goto end_destroy;
 	}
 	ret = EXIT_OK;
+
 end_destroy:
 	xdp_monitor__destroy(skel);
-end:
 	sample_teardown();
 	return ret;
 }
