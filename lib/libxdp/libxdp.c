@@ -121,6 +121,7 @@ static struct xdp_embedded_obj embedded_objs[] = {
 };
 static struct xdp_program *xdp_program__find_embedded(const char *filename,
 						      const char *section_name,
+						      const char *prog_name,
 						      struct bpf_object_open_opts *opts)
 {
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, default_opts,
@@ -151,7 +152,7 @@ static struct xdp_program *xdp_program__find_embedded(const char *filename,
 		err = libbpf_get_error(obj);
 		if (err)
 			return ERR_PTR(err);
-		return xdp_program__create_from_obj(obj, section_name, NULL, false);
+		return xdp_program__create_from_obj(obj, section_name, prog_name, false);
 	}
 
 	return NULL;
@@ -159,6 +160,7 @@ static struct xdp_program *xdp_program__find_embedded(const char *filename,
 #else
 static inline struct xdp_program *xdp_program__find_embedded(__unused const char *filename,
 							     __unused const char *section_name,
+							     __unused const char *prog_name,
 							     __unused struct bpf_object_open_opts *opts)
 {
 	return NULL;
@@ -1224,7 +1226,7 @@ static struct xdp_program *__xdp_program__find_file(const char *filename,
 	char buf[PATH_MAX];
 	int err;
 
-	prog = xdp_program__find_embedded(filename, section_name, opts);
+	prog = xdp_program__find_embedded(filename, section_name, prog_name, opts);
 	if (prog)
 		return prog;
 
