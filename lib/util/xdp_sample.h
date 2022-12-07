@@ -32,7 +32,7 @@ enum stats_mask {
 
 int sample_setup_maps(struct bpf_map **maps);
 int __sample_init(int mask, int ifindex_from, int ifindex_to);
-void sample_exit(int status);
+void sample_teardown(void);
 int sample_run(int interval, void (*post_cb)(void *), void *ctx);
 
 void sample_switch_mode(void);

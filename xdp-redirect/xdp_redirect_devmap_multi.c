@@ -190,8 +190,7 @@ restart:
 					tried = true;
 					xdp_program__close(xdp_prog);
 					xdp_redirect_devmap_multi__destroy(skel);
-					/* Free resources, but skip exit */
-					sample_exit(-1);
+					sample_teardown();
 					goto restart;
 				}
 				fprintf(stderr, "Failed to attach XDP program to ifindex %d: %s\n",
@@ -248,6 +247,6 @@ end_destroy:
 	xdp_program__close(xdp_prog);
 	xdp_redirect_devmap_multi__destroy(skel);
 end:
-	sample_exit(ret);
-	return 0;
+	sample_teardown();
+	return ret;
 }

@@ -1223,7 +1223,7 @@ static void sample_summary_print(void)
 	}
 }
 
-void sample_exit(int status)
+void sample_teardown(void)
 {
 	size_t size;
 
@@ -1233,8 +1233,6 @@ void sample_exit(int status)
 	}
 	sample_summary_print();
 	close(sample_sig_fd);
-	if (status >= 0)
-		exit(status);
 }
 
 static int sample_stats_collect(struct stats_record *rec)

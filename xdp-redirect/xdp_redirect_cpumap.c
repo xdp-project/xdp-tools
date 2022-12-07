@@ -569,6 +569,6 @@ end_destroy:
 	xdp_program__close(xdp_prog);
 	xdp_redirect_cpumap__destroy(skel);
 end:
-	sample_exit(ret);
-	return 0;
+	sample_teardown();
+	return ret;
 }

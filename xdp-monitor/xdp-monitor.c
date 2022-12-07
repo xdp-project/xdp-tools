@@ -116,5 +116,6 @@ int main(int argc, char **argv)
 end_destroy:
 	xdp_monitor__destroy(skel);
 end:
-	sample_exit(ret);
+	sample_teardown();
+	return ret;
 }

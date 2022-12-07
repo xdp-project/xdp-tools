@@ -190,6 +190,6 @@ end_detach:
 end_destroy:
 	xdp_redirect_basic__destroy(skel);
 end:
-	sample_exit(ret);
-	return 0;
+	sample_teardown();
+	return ret;
 }
