@@ -139,7 +139,7 @@ int get_proto_ipv6(struct xdp_md *ctx, u64 nh_off)
 }
 
 SEC("xdp")
-int  xdp_prognum0_no_touch(struct xdp_md *ctx)
+int  cpumap_no_touch(struct xdp_md *ctx)
 {
 	u32 key = bpf_get_smp_processor_id();
 	struct datarec *rec;
@@ -166,7 +166,7 @@ int  xdp_prognum0_no_touch(struct xdp_md *ctx)
 }
 
 SEC("xdp")
-int  xdp_prognum1_touch_data(struct xdp_md *ctx)
+int  cpumap_touch_data(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
@@ -208,7 +208,7 @@ int  xdp_prognum1_touch_data(struct xdp_md *ctx)
 }
 
 SEC("xdp")
-int  xdp_prognum2_round_robin(struct xdp_md *ctx)
+int  cpumap_round_robin(struct xdp_md *ctx)
 {
 	u32 key = bpf_get_smp_processor_id();
 	struct datarec *rec;
@@ -251,7 +251,7 @@ int  xdp_prognum2_round_robin(struct xdp_md *ctx)
 }
 
 SEC("xdp")
-int  xdp_prognum3_proto_separate(struct xdp_md *ctx)
+int  cpumap_l4_proto(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
@@ -317,7 +317,7 @@ int  xdp_prognum3_proto_separate(struct xdp_md *ctx)
 }
 
 SEC("xdp")
-int  xdp_prognum4_ddos_filter_pktgen(struct xdp_md *ctx)
+int  cpumap_l4_filter(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
@@ -434,7 +434,7 @@ u32 get_ipv6_hash_ip_pair(struct xdp_md *ctx, u64 nh_off)
  * same CPU.
  */
 SEC("xdp")
-int  xdp_prognum5_lb_hash_ip_pairs(struct xdp_md *ctx)
+int  cpumap_l4_hash(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
@@ -490,8 +490,8 @@ int  xdp_prognum5_lb_hash_ip_pairs(struct xdp_md *ctx)
 	return bpf_redirect_map(&cpu_map, cpu_dest, 0);
 }
 
-SEC("xdp_cpumap/redirect")
-int xdp_redirect_cpumap_devmap(struct xdp_md *ctx)
+SEC("xdp/cpumap")
+int cpumap_redirect(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
@@ -506,20 +506,20 @@ int xdp_redirect_cpumap_devmap(struct xdp_md *ctx)
 	return bpf_redirect_map(&tx_port, 0, 0);
 }
 
-SEC("xdp_cpumap/pass")
-int xdp_redirect_cpumap_pass(struct xdp_md *ctx)
+SEC("xdp/cpumap")
+int cpumap_pass(struct xdp_md *ctx)
 {
 	return XDP_PASS;
 }
 
-SEC("xdp_cpumap/drop")
-int xdp_redirect_cpumap_drop(struct xdp_md *ctx)
+SEC("xdp/cpumap")
+int cpumap_drop(struct xdp_md *ctx)
 {
 	return XDP_DROP;
 }
 
-SEC("xdp_devmap/egress")
-int xdp_redirect_egress_prog(struct xdp_md *ctx)
+SEC("xdp/devmap")
+int redirect_egress_prog(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;

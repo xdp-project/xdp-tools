@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright(c) 2017 Jesper Dangaard Brouer, Red Hat, Inc.
  */
-static const char *__doc__ =
-"XDP CPU redirect tool, using BPF_MAP_TYPE_CPUMAP\n"
-"Usage: xdp-redirect cpumap -d <IFINDEX|IFNAME> -c 0 ... -c N\n"
-"Valid specification for CPUMAP BPF program:\n"
-"  --mprog-name/-e pass (use built-in XDP_PASS program)\n"
-"  --mprog-name/-e drop (use built-in XDP_DROP program)\n"
-"  --redirect-device/-r <ifindex|ifname> (use built-in DEVMAP redirect program)\n"
-"  Custom CPUMAP BPF program:\n"
-"    --mprog-filename/-f <filename> --mprog-name/-e <program>\n"
-"    Optionally, also pass --redirect-map/-m and --redirect-device/-r together\n"
-"    to configure DEVMAP in BPF object <filename>\n";
 
 #include <time.h>
 #include <errno.h>
@@ -33,6 +22,9 @@ static const char *__doc__ =
 #include <linux/if_link.h>
 #include <xdp/libxdp.h>
 
+#include "logging.h"
+
+#include "xdp_redirect.h"
 #include "xdp_sample.h"
 #include "xdp_redirect_cpumap.skel.h"
 
@@ -44,46 +36,23 @@ static int mask = SAMPLE_RX_CNT | SAMPLE_REDIRECT_ERR_MAP_CNT |
 		  SAMPLE_CPUMAP_ENQUEUE_CNT | SAMPLE_CPUMAP_KTHREAD_CNT |
 		  SAMPLE_EXCEPTION_CNT;
 
-DEFINE_SAMPLE_INIT(xdp_redirect_cpumap);
-
-static const struct option long_options[] = {
-	{ "help", no_argument, NULL, 'h' },
-	{ "dev", required_argument, NULL, 'd' },
-	{ "skb-mode", no_argument, NULL, 'S' },
-	{ "progname", required_argument, NULL, 'p' },
-	{ "qsize", required_argument, NULL, 'q' },
-	{ "cpu", required_argument, NULL, 'c' },
-	{ "stress-mode", no_argument, NULL, 'x' },
-	{ "interval", required_argument, NULL, 'i' },
-	{ "verbose", no_argument, NULL, 'v' },
-	{ "stats", no_argument, NULL, 's' },
-	{ "mprog-name", required_argument, NULL, 'e' },
-	{ "mprog-filename", required_argument, NULL, 'f' },
-	{ "redirect-device", required_argument, NULL, 'r' },
-	{ "redirect-map", required_argument, NULL, 'm' },
-	{}
+const struct cpumap_opts defaults_redirect_cpumap = {
+	.mode = XDP_MODE_NATIVE,
+	.interval = 2,
+	.qsize = 2048,
+	.program_mode = CPUMAP_CPU_L4_HASH,
 };
 
-static void print_avail_progs(struct bpf_object *obj)
-{
-	struct bpf_program *pos;
+static const char *cpumap_prog_names[] = {
+	"cpumap_no_touch",
+	"cpumap_touch_data",
+	"cpumap_round_robin",
+	"cpumap_l4_proto",
+	"cpumap_l4_filter",
+	"cpumap_l4_hash",
+};
 
-	printf(" Programs to be used for -p/--progname:\n");
-	bpf_object__for_each_program(pos, obj) {
-		if (bpf_program__type(pos) == BPF_PROG_TYPE_XDP) {
-			if (!strncmp(bpf_program__name(pos), "xdp_prognum",
-				     sizeof("xdp_prognum") - 1))
-				printf(" %s\n", bpf_program__name(pos));
-		}
-	}
-}
-
-static void usage(char *argv[], const struct option *long_opts,
-		  const char *doc, int sample_mask, bool error, struct bpf_object *obj)
-{
-	sample_usage(argv, long_opts, doc, sample_mask, error);
-	print_avail_progs(obj);
-}
+DEFINE_SAMPLE_INIT(xdp_redirect_cpumap);
 
 static int create_cpu_entry(__u32 cpu, struct bpf_cpumap_val *value,
 			    __u32 avail_idx, bool new)
@@ -174,159 +143,70 @@ static void stress_cpumap(void *ctx)
 }
 
 static int set_cpumap_prog(struct xdp_redirect_cpumap *skel,
-			   const char *redir_interface, const char *redir_map,
-			   const char *mprog_filename, const char *mprog_name)
+			   enum cpumap_remote_action action,
+			   const struct iface *redir_iface)
 {
-	if (mprog_filename) {
-		struct bpf_program *prog;
-		struct bpf_object *obj;
-		int ret;
+	struct bpf_devmap_val val = {};
+	__u32 key = 0;
+	int err;
 
-		if (!mprog_name) {
-			fprintf(stderr, "BPF program not specified for file %s\n",
-				mprog_filename);
-			goto end;
-		}
-		if ((redir_interface && !redir_map) || (!redir_interface && redir_map)) {
-			fprintf(stderr, "--redirect-%s specified but --redirect-%s not specified\n",
-				redir_interface ? "device" : "map", redir_interface ? "map" : "device");
-			goto end;
-		}
-
-		/* Custom BPF program */
-		obj = bpf_object__open_file(mprog_filename, NULL);
-		if (!obj) {
-			ret = -errno;
-			fprintf(stderr, "Failed to bpf_prog_load_xattr: %s\n",
-				strerror(errno));
-			return ret;
-		}
-
-		ret = bpf_object__load(obj);
-		if (ret < 0) {
-			ret = -errno;
-			fprintf(stderr, "Failed to bpf_object__load: %s\n",
-				strerror(errno));
-			return ret;
-		}
-
-		if (redir_map) {
-			int err, redir_map_fd, ifindex_out, key = 0;
-
-			redir_map_fd = bpf_object__find_map_fd_by_name(obj, redir_map);
-			if (redir_map_fd < 0) {
-				fprintf(stderr, "Failed to bpf_object__find_map_fd_by_name: %s\n",
-					strerror(errno));
-				return redir_map_fd;
-			}
-
-			ifindex_out = if_nametoindex(redir_interface);
-			if (!ifindex_out)
-				ifindex_out = strtoul(redir_interface, NULL, 0);
-			if (!ifindex_out) {
-				fprintf(stderr, "Bad interface name or index\n");
-				return -EINVAL;
-			}
-
-			err = bpf_map_update_elem(redir_map_fd, &key, &ifindex_out, 0);
-			if (err < 0)
-				return err;
-		}
-
-		prog = bpf_object__find_program_by_name(obj, mprog_name);
-		if (!prog) {
-			ret = -errno;
-			fprintf(stderr, "Failed to bpf_object__find_program_by_name: %s\n",
-				strerror(errno));
-			return ret;
-		}
-
-		return bpf_program__fd(prog);
-	} else {
-		if (mprog_name) {
-			if (redir_interface || redir_map) {
-				fprintf(stderr, "Need to specify --mprog-filename/-f\n");
-				goto end;
-			}
-			if (!strcmp(mprog_name, "pass") || !strcmp(mprog_name, "drop")) {
-				/* Use built-in pass/drop programs */
-				return *mprog_name == 'p' ? bpf_program__fd(skel->progs.xdp_redirect_cpumap_pass)
-					: bpf_program__fd(skel->progs.xdp_redirect_cpumap_drop);
-			} else {
-				fprintf(stderr, "Unknown name \"%s\" for built-in BPF program\n",
-					mprog_name);
-				goto end;
-			}
-		} else {
-			if (redir_map) {
-				fprintf(stderr, "Need to specify --mprog-filename, --mprog-name and"
-					" --redirect-device with --redirect-map\n");
-				goto end;
-			}
-			if (redir_interface) {
-				/* Use built-in devmap redirect */
-				struct bpf_devmap_val val = {};
-				int ifindex_out, err;
-				__u32 key = 0;
-
-				if (!redir_interface)
-					return 0;
-
-				ifindex_out = if_nametoindex(redir_interface);
-				if (!ifindex_out)
-					ifindex_out = strtoul(redir_interface, NULL, 0);
-				if (!ifindex_out) {
-					fprintf(stderr, "Bad interface name or index\n");
-					return -EINVAL;
-				}
-
-				if (get_mac_addr(ifindex_out, skel->bss->tx_mac_addr) < 0) {
-					printf("Get interface %d mac failed\n", ifindex_out);
-					return -EINVAL;
-				}
-
-				val.ifindex = ifindex_out;
-				val.bpf_prog.fd = bpf_program__fd(skel->progs.xdp_redirect_egress_prog);
-				err = bpf_map_update_elem(bpf_map__fd(skel->maps.tx_port), &key, &val, 0);
-				if (err < 0)
-					return -errno;
-
-				return bpf_program__fd(skel->progs.xdp_redirect_cpumap_devmap);
-			}
-		}
+	switch (action) {
+	case ACTION_DISABLED:
+		return 0;
+	case ACTION_DROP:
+		return bpf_program__fd(skel->progs.cpumap_drop);
+	case ACTION_PASS:
+		return bpf_program__fd(skel->progs.cpumap_pass);
+	case ACTION_REDIRECT:
+		break;
+	default:
+		return -EINVAL;
 	}
 
-	/* Disabled */
-	return 0;
-end:
-	fprintf(stderr, "Invalid options for CPUMAP BPF program\n");
-	return -EINVAL;
+	if (!redir_iface->ifindex) {
+		pr_warn("Must specify redirect device when using --remote-action 'redirect'\n");
+		return -EINVAL;
+	}
+
+	if (get_mac_addr(redir_iface->ifindex, skel->bss->tx_mac_addr) < 0) {
+		pr_warn("Couldn't get MAC address for interface %s\n", redir_iface->ifname);
+		return -EINVAL;
+	}
+
+	val.ifindex = redir_iface->ifindex;
+	val.bpf_prog.fd = bpf_program__fd(skel->progs.redirect_egress_prog);
+
+	err = bpf_map_update_elem(bpf_map__fd(skel->maps.tx_port), &key, &val, 0);
+	if (err < 0)
+		return -errno;
+
+	return bpf_program__fd(skel->progs.cpumap_redirect);
 }
 
-int xdp_redirect_cpumap_main(int argc, char **argv)
+int do_redirect_cpumap(const void *cfg, __unused const char *pin_root_path)
 {
-	const char *redir_interface = NULL, *redir_map = NULL;
-	const char *mprog_filename = NULL, *mprog_name = NULL;
-	enum xdp_attach_mode xdp_mode = XDP_MODE_NATIVE;
+	const struct cpumap_opts *opt = cfg;
+
 	DECLARE_LIBBPF_OPTS(xdp_program_opts, opts);
 	struct xdp_program *xdp_prog = NULL;
 	struct xdp_redirect_cpumap *skel;
+	struct bpf_program *prog = NULL;
 	struct bpf_map_info info = {};
 	struct bpf_cpumap_val value;
 	__u32 infosz = sizeof(info);
 	int ret = EXIT_FAIL_OPTION;
-	unsigned long interval = 2;
-	bool stress_mode = false;
-	struct bpf_program *prog;
-	const char *prog_name;
-	int added_cpus = 0;
-	bool error = true;
-	int longindex = 0;
-	int add_cpu = -1;
-	int ifindex = -1;
-	int *cpu, i, opt;
-	__u32 qsize;
-	int n_cpus;
+	int n_cpus, fd;
+	size_t i;
+
+	if (opt->extended)
+		sample_switch_mode();
+
+	if (opt->stats)
+		mask |= SAMPLE_REDIRECT_MAP_CNT;
+
+	if (opt->redir_iface.ifindex)
+		mask |= SAMPLE_DEVMAP_XMIT_CNT_MULTI;
+
 
 	n_cpus = libbpf_num_possible_cpus();
 
@@ -346,7 +226,7 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 	 * Sysadm can configured system to avoid deep-sleep via:
 	 *   tuned-adm profile network-latency
 	 */
-	qsize = 2048;
+
 
 	skel = xdp_redirect_cpumap__open();
 	if (!skel) {
@@ -354,6 +234,20 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 			strerror(errno));
 		ret = EXIT_FAIL_BPF;
 		goto end;
+	}
+
+	/* Make sure we only load the one XDP program we are interested in */
+	while ((prog = bpf_object__next_program(skel->obj, prog)) != NULL)
+		if (bpf_program__type(prog) == BPF_PROG_TYPE_XDP &&
+		    bpf_program__expected_attach_type(prog) == BPF_XDP)
+			bpf_program__set_autoload(prog, false);
+
+	prog = bpf_object__find_program_by_name(skel->obj,
+						cpumap_prog_names[opt->program_mode]);
+	if (!prog) {
+		pr_warn("Failed to find program '%s'\n",
+			cpumap_prog_names[opt->program_mode]);
+		goto end_destroy;
 	}
 
 	ret = sample_init_pre_load(skel);
@@ -377,120 +271,11 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 		goto end_destroy;
 	}
 
-	cpu = calloc(n_cpus, sizeof(int));
-	if (!cpu) {
-		fprintf(stderr, "Failed to allocate cpu array\n");
-		goto end_destroy;
-	}
-
-	prog = skel->progs.xdp_prognum5_lb_hash_ip_pairs;
-	while ((opt = getopt_long(argc, argv, "d:si:Sxp:f:e:r:m:c:q:vh",
-				  long_options, &longindex)) != -1) {
-		switch (opt) {
-		case 'd':
-			if (strlen(optarg) >= IF_NAMESIZE) {
-				fprintf(stderr, "-d/--dev name too long\n");
-				usage(argv, long_options, __doc__, mask, true, skel->obj);
-				goto end_cpu;
-			}
-			ifindex = if_nametoindex(optarg);
-			if (!ifindex)
-				ifindex = strtoul(optarg, NULL, 0);
-			if (!ifindex) {
-				fprintf(stderr, "Bad interface index or name (%d): %s\n",
-					errno, strerror(errno));
-				usage(argv, long_options, __doc__, mask, true, skel->obj);
-				goto end_cpu;
-			}
-			break;
-		case 's':
-			mask |= SAMPLE_REDIRECT_MAP_CNT;
-			break;
-		case 'i':
-			interval = strtoul(optarg, NULL, 0);
-			break;
-		case 'S':
-			xdp_mode = XDP_MODE_SKB;
-			break;
-		case 'x':
-			stress_mode = true;
-			break;
-		case 'p':
-			/* Selecting eBPF prog to load */
-			prog_name = optarg;
-			prog = bpf_object__find_program_by_name(skel->obj,
-								prog_name);
-			if (!prog) {
-				fprintf(stderr,
-					"Failed to find program %s specified by"
-					" option -p/--progname\n",
-					prog_name);
-				print_avail_progs(skel->obj);
-				goto end_cpu;
-			}
-			break;
-		case 'f':
-			mprog_filename = optarg;
-			break;
-		case 'e':
-			mprog_name = optarg;
-			break;
-		case 'r':
-			redir_interface = optarg;
-			mask |= SAMPLE_DEVMAP_XMIT_CNT_MULTI;
-			break;
-		case 'm':
-			redir_map = optarg;
-			break;
-		case 'c':
-			/* Add multiple CPUs */
-			add_cpu = strtoul(optarg, NULL, 0);
-			if (add_cpu >= n_cpus) {
-				fprintf(stderr,
-				"--cpu nr too large for cpumap err (%d):%s\n",
-					errno, strerror(errno));
-				usage(argv, long_options, __doc__, mask, true, skel->obj);
-				goto end_cpu;
-			}
-			cpu[added_cpus++] = add_cpu;
-			break;
-		case 'q':
-			qsize = strtoul(optarg, NULL, 0);
-			if (!qsize) {
-				fprintf(stderr, "Invalid -q/--qsize value\n");
-				usage(argv, long_options, __doc__, mask, true, skel->obj);
-				goto end_cpu;
-			}
-			break;
-		case 'v':
-			sample_switch_mode();
-			break;
-		case 'h':
-			error = false;
-			__attribute__((__fallthrough__));
-		default:
-			usage(argv, long_options, __doc__, mask, error, skel->obj);
-			goto end_cpu;
-		}
-	}
-
 	ret = EXIT_FAIL_OPTION;
-	if (ifindex == -1) {
-		fprintf(stderr, "Required option --dev missing\n");
-		usage(argv, long_options, __doc__, mask, true, skel->obj);
-		goto end_cpu;
-	}
 
-	if (add_cpu == -1) {
-		fprintf(stderr, "Required option --cpu missing\n"
-				"Specify multiple --cpu option to add more\n");
-		usage(argv, long_options, __doc__, mask, true, skel->obj);
-		goto end_cpu;
-	}
-
-	skel->rodata->from_match[0] = ifindex;
-	if (redir_interface)
-		skel->rodata->to_match[0] = if_nametoindex(redir_interface);
+	skel->rodata->from_match[0] = opt->iface_in.ifindex;
+	if (opt->redir_iface.ifindex)
+		skel->rodata->to_match[0] = opt->redir_iface.ifindex;
 
 	opts.obj = skel->obj;
 	opts.prog_name = bpf_program__name(prog);
@@ -499,14 +284,14 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 		ret = -errno;
 		fprintf(stderr, "Couldn't open XDP program: %s\n",
 			strerror(-ret));
-		goto end_cpu;
+		goto end_destroy;
 	}
 
-	ret = xdp_program__attach(xdp_prog, ifindex, xdp_mode, 0);
+	ret = xdp_program__attach(xdp_prog, opt->iface_in.ifindex, opt->mode, 0);
 	if (ret < 0) {
 		fprintf(stderr, "Failed to attach XDP program: %s\n",
 			strerror(-ret));
-		goto end_cpu;
+		goto end_destroy;
 	}
 
 	ret = bpf_obj_get_info_by_fd(bpf_map__fd(skel->maps.cpu_map), &info, &infosz);
@@ -528,33 +313,30 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 		goto end_detach;
 	}
 
-	ret = sample_init(skel, mask, ifindex, 0);
+	ret = sample_init(skel, mask, opt->iface_in.ifindex, 0);
 	if (ret < 0) {
 		fprintf(stderr, "Failed to initialize sample: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
 		goto end_detach;
 	}
 
-	value.bpf_prog.fd = set_cpumap_prog(skel, redir_interface, redir_map,
-					    mprog_filename, mprog_name);
-	if (value.bpf_prog.fd < 0) {
-		fprintf(stderr, "Failed to set CPUMAP BPF program: %s\n",
-			strerror(-value.bpf_prog.fd));
-		usage(argv, long_options, __doc__, mask, true, skel->obj);
+	fd = set_cpumap_prog(skel, opt->remote_action, &opt->redir_iface);
+	if (fd < 0) {
 		ret = EXIT_FAIL_BPF;
 		goto end_detach;
 	}
-	value.qsize = qsize;
+	value.qsize = opt->qsize;
+	value.bpf_prog.fd = fd;
 
-	for (i = 0; i < added_cpus; i++) {
-		if (create_cpu_entry(cpu[i], &value, i, true) < 0) {
-			fprintf(stderr, "Cannot proceed, exiting\n");
-			usage(argv, long_options, __doc__, mask, true, skel->obj);
+	for (i = 0; i < opt->cpus.num_vals; i++) {
+		if (create_cpu_entry(opt->cpus.vals[i], &value, i, true) < 0) {
+			pr_warn("Cannot proceed, exiting\n");
+			ret = EXIT_FAIL;
 			goto end_detach;
 		}
 	}
 
-	ret = sample_run(interval, stress_mode ? stress_cpumap : NULL, &value);
+	ret = sample_run(opt->interval, opt->stress_mode ? stress_cpumap : NULL, &value);
 	if (ret < 0) {
 		fprintf(stderr, "Failed during sample run: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
@@ -562,9 +344,7 @@ int xdp_redirect_cpumap_main(int argc, char **argv)
 	}
 	ret = EXIT_OK;
 end_detach:
-	xdp_program__detach(xdp_prog, ifindex, xdp_mode, 0);
-end_cpu:
-	free(cpu);
+	xdp_program__detach(xdp_prog, opt->iface_in.ifindex, opt->mode, 0);
 end_destroy:
 	xdp_program__close(xdp_prog);
 	xdp_redirect_cpumap__destroy(skel);

@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0
-static const char *__doc__ =
-"XDP multi redirect tool, using BPF_MAP_TYPE_DEVMAP and BPF_F_BROADCAST flag for bpf_redirect_map\n"
-"Usage: xdp-redirect devmap_multi <IFINDEX|IFNAME> <IFINDEX|IFNAME> ... <IFINDEX|IFNAME>\n";
 
 #include <errno.h>
 #include <stdio.h>
@@ -26,9 +23,9 @@ static const char *__doc__ =
 #include <xdp/libxdp.h>
 
 #include "xdp_sample.h"
+#include "xdp_redirect.h"
 #include "xdp_redirect_devmap_multi.skel.h"
 
-#define MAX_IFACE_NUM 32
 static int ifaces[MAX_IFACE_NUM] = {};
 
 static int mask = SAMPLE_RX_CNT | SAMPLE_REDIRECT_ERR_MAP_CNT |
@@ -36,16 +33,6 @@ static int mask = SAMPLE_RX_CNT | SAMPLE_REDIRECT_ERR_MAP_CNT |
 		  SAMPLE_DEVMAP_XMIT_CNT_MULTI | SAMPLE_SKIP_HEADING;
 
 DEFINE_SAMPLE_INIT(xdp_redirect_devmap_multi);
-
-static const struct option long_options[] = {
-	{ "help", no_argument, NULL, 'h' },
-	{ "skb-mode", no_argument, NULL, 'S' },
-	{ "load-egress", no_argument, NULL, 'X' },
-	{ "stats", no_argument, NULL, 's' },
-	{ "interval", required_argument, NULL, 'i' },
-	{ "verbose", no_argument, NULL, 'v' },
-	{}
-};
 
 static int update_mac_map(struct bpf_map *map)
 {
@@ -75,58 +62,35 @@ static int update_mac_map(struct bpf_map *map)
 	return 0;
 }
 
-int xdp_redirect_devmap_multi_main(int argc, char **argv)
+const struct devmap_multi_opts defaults_redirect_devmap_multi = { .mode = XDP_MODE_NATIVE,
+								  .interval = 2 };
+
+
+int do_redirect_devmap_multi(const void *cfg, __unused const char *pin_root_path)
 {
-	enum xdp_attach_mode xdp_mode = XDP_MODE_NATIVE;
+	const struct devmap_multi_opts *opt = cfg;
+
 	DECLARE_LIBBPF_OPTS(xdp_program_opts, opts);
 	struct bpf_program *ingress_prog = NULL;
 	struct bpf_devmap_val devmap_val = {};
 	struct xdp_redirect_devmap_multi *skel;
 	struct xdp_program *xdp_prog = NULL;
 	struct bpf_map *forward_map = NULL;
-	bool xdp_devmap_attached = false;
+	bool first = true, tried = false;
 	int ret = EXIT_FAIL_OPTION;
-	unsigned long interval = 2;
-	char ifname[IF_NAMESIZE];
-	unsigned int ifindex;
-	bool tried = false;
-	bool error = true;
-	int i, opt;
+	struct iface *iface;
+	int i;
 
-	while ((opt = getopt_long(argc, argv, "hSXi:vs",
-				  long_options, NULL)) != -1) {
-		switch (opt) {
-		case 'S':
-			xdp_mode = XDP_MODE_SKB;
-			/* devmap_xmit tracepoint not available */
-			mask &= ~(SAMPLE_DEVMAP_XMIT_CNT |
-				  SAMPLE_DEVMAP_XMIT_CNT_MULTI);
-			break;
-		case 'X':
-			xdp_devmap_attached = true;
-			break;
-		case 'i':
-			interval = strtoul(optarg, NULL, 0);
-			break;
-		case 'v':
-			sample_switch_mode();
-			break;
-		case 's':
-			mask |= SAMPLE_REDIRECT_MAP_CNT;
-			break;
-		case 'h':
-			error = false;
-			__attribute__((__fallthrough__));
-		default:
-			sample_usage(argv, long_options, __doc__, mask, error);
-			return ret;
-		}
-	}
+	if (opt->extended)
+		sample_switch_mode();
 
-	if (argc <= optind + 1) {
-		sample_usage(argv, long_options, __doc__, mask, error);
-		return ret;
-	}
+	if (opt->mode == XDP_MODE_SKB)
+		/* devmap_xmit tracepoint not available */
+		mask &= ~(SAMPLE_DEVMAP_XMIT_CNT |
+			  SAMPLE_DEVMAP_XMIT_CNT_MULTI);
+
+	if (opt->stats)
+		mask |= SAMPLE_REDIRECT_CNT;
 
 restart:
 	skel = xdp_redirect_devmap_multi__open();
@@ -152,19 +116,12 @@ restart:
 	}
 
 	ret = EXIT_FAIL_OPTION;
-	for (i = 0; i < MAX_IFACE_NUM && argv[optind + i]; i++) {
-		ifaces[i] = if_nametoindex(argv[optind + i]);
-		if (!ifaces[i])
-			ifaces[i] = strtoul(argv[optind + i], NULL, 0);
-		if (!if_indextoname(ifaces[i], ifname)) {
-			fprintf(stderr, "Bad interface index or name\n");
-			sample_usage(argv, long_options, __doc__, mask, true);
-			goto end_destroy;
-		}
-
-		skel->rodata->from_match[i] = ifaces[i];
-		skel->rodata->to_match[i] = ifaces[i];
+	/* opt parsing enforces num <= MAX_IFACES_NUM */
+	for (i = 0, iface = opt->ifaces; iface; i++, iface = iface->next) {
+		skel->rodata->from_match[i] = iface->ifindex;
+		skel->rodata->to_match[i] = iface->ifindex;
 	}
+
 
 	opts.obj = skel->obj;
 	opts.prog_name = bpf_program__name(ingress_prog);
@@ -176,13 +133,12 @@ restart:
 		goto end_destroy;
 	}
 
-	for (i = 0; ifaces[i] > 0; i++) {
-		ifindex = ifaces[i];
+	for (iface = opt->ifaces; iface; iface = iface->next) {
 
-		ret = xdp_program__attach(xdp_prog, ifindex, xdp_mode, 0);
+		ret = xdp_program__attach(xdp_prog, iface->ifindex, opt->mode, 0);
 		if (ret) {
-			if (i == 0) {
-				if (xdp_mode == XDP_MODE_SKB && !tried) {
+			if (first) {
+				if (opt->mode == XDP_MODE_SKB && !tried) {
 					fprintf(stderr,
 						"Trying fallback to sizeof(int) as value_size for devmap in generic mode\n");
 					ingress_prog = skel->progs.redir_multi_general;
@@ -193,8 +149,8 @@ restart:
 					sample_teardown();
 					goto restart;
 				}
-				fprintf(stderr, "Failed to attach XDP program to ifindex %d: %s\n",
-					ifindex, strerror(-ret));
+				fprintf(stderr, "Failed to attach XDP program to iface %s: %s\n",
+					iface->ifname, strerror(-ret));
 				goto end_destroy;
 			}
 			fprintf(stderr, "Failed to attach XDP program to ifindex %d: %s\n",
@@ -205,19 +161,21 @@ restart:
 		/* Add all the interfaces to forward group and attach
 		 * egress devmap program if exist
 		 */
-		devmap_val.ifindex = ifindex;
-		if (xdp_devmap_attached)
+		devmap_val.ifindex = iface->ifindex;
+		if (opt->load_egress)
 			devmap_val.bpf_prog.fd = bpf_program__fd(skel->progs.xdp_devmap_prog);
-		ret = bpf_map_update_elem(bpf_map__fd(forward_map), &ifindex, &devmap_val, 0);
+		ret = bpf_map_update_elem(bpf_map__fd(forward_map), &iface->ifindex, &devmap_val, 0);
 		if (ret < 0) {
 			fprintf(stderr, "Failed to update devmap value: %s\n",
 				strerror(errno));
 			ret = EXIT_FAIL_BPF;
 			goto end_detach;
 		}
+
+		first = false;
 	}
 
-	if (xdp_devmap_attached) {
+	if (opt->load_egress) {
 		/* Update mac_map with all egress interfaces' mac addr */
 		if (update_mac_map(skel->maps.mac_map) < 0) {
 			fprintf(stderr, "Updating mac address failed\n");
@@ -233,7 +191,7 @@ restart:
 		goto end_detach;
 	}
 
-	ret = sample_run(interval, NULL, NULL);
+	ret = sample_run(opt->interval, NULL, NULL);
 	if (ret < 0) {
 		fprintf(stderr, "Failed during sample run: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
@@ -241,8 +199,8 @@ restart:
 	}
 	ret = EXIT_OK;
 end_detach:
-	for (i = 0; ifaces[i] > 0; i++)
-		xdp_program__detach(xdp_prog, ifaces[i], xdp_mode, 0);
+	for (iface = opt->ifaces; iface; iface = iface->next)
+		xdp_program__detach(xdp_prog, iface->ifindex, opt->mode, 0);
 end_destroy:
 	xdp_program__close(xdp_prog);
 	xdp_redirect_devmap_multi__destroy(skel);

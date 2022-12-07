@@ -109,12 +109,14 @@ struct prog_command {
 	bool no_cfg;
 };
 
-#define DEFINE_COMMAND(_name, _doc)                                           \
+#define DEFINE_COMMAND_NAME(_name, _func, _doc)                               \
 	{                                                                     \
-		.name = textify(_name), .func = do_##_name,                   \
-		.options = _name##_options, .default_cfg = &defaults_##_name, \
+		.name = _name, .func = do_##_func,                        \
+		.options = _func##_options, .default_cfg = &defaults_##_func, \
 		.doc = _doc                                                   \
 	}
+#define DEFINE_COMMAND(_name, _doc) DEFINE_COMMAND_NAME(textify(_name), _name, _doc)
+
 #define DEFINE_COMMAND_NODEF(_name, _doc)                   \
 	{                                                   \
 		.name = textify(_name), .func = do_##_name, \
