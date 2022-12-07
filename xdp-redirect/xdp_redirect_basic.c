@@ -19,6 +19,8 @@
 #include <linux/if_link.h>
 #include <xdp/libxdp.h>
 
+#include "logging.h"
+
 #include "xdp_redirect.h"
 #include "xdp_sample.h"
 #include "xdp_redirect_basic.skel.h"
@@ -55,14 +57,14 @@ int do_redirect_basic(const void *cfg, __unused const char *pin_root_path)
 
 	skel = xdp_redirect_basic__open();
 	if (!skel) {
-		fprintf(stderr, "Failed to xdp_redirect_basic__open: %s\n", strerror(errno));
+		pr_warn("Failed to xdp_redirect_basic__open: %s\n", strerror(errno));
 		ret = EXIT_FAIL_BPF;
 		goto end;
 	}
 
 	ret = sample_init_pre_load(skel);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to sample_init_pre_load: %s\n", strerror(-ret));
+		pr_warn("Failed to sample_init_pre_load: %s\n", strerror(-ret));
 		ret = EXIT_FAIL_BPF;
 		goto end_destroy;
 	}
@@ -76,21 +78,21 @@ int do_redirect_basic(const void *cfg, __unused const char *pin_root_path)
 	xdp_prog = xdp_program__create(&opts);
 	if (!xdp_prog) {
 		ret = -errno;
-		fprintf(stderr, "Couldn't open XDP program: %s\n",
+		pr_warn("Couldn't open XDP program: %s\n",
 			strerror(-ret));
 		goto end_destroy;
 	}
 
 	ret = xdp_program__attach(xdp_prog, opt->iface_in.ifindex, opt->mode, 0);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to attach XDP program: %s\n", strerror(-ret));
+		pr_warn("Failed to attach XDP program: %s\n", strerror(-ret));
 		ret = EXIT_FAIL_BPF;
 		goto end_destroy;
 	}
 
 	ret = sample_init(skel, mask, opt->iface_in.ifindex, opt->iface_out.ifindex);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to initialize sample: %s\n", strerror(-ret));
+		pr_warn("Failed to initialize sample: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
 		goto end_detach;
 	}
@@ -100,14 +102,14 @@ int do_redirect_basic(const void *cfg, __unused const char *pin_root_path)
 	opts.find_filename = "xdp-dispatcher.o";
 	dummy_prog = xdp_program__create(&opts);
 	if (!dummy_prog) {
-		fprintf(stderr, "Failed to load dummy program: %s\n", strerror(errno));
+		pr_warn("Failed to load dummy program: %s\n", strerror(errno));
 		ret = EXIT_FAIL_BPF;
 		goto end_detach;
 	}
 
 	ret = xdp_program__attach(dummy_prog, opt->iface_out.ifindex, opt->mode, 0);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to attach dummy program: %s\n", strerror(-ret));
+		pr_warn("Failed to attach dummy program: %s\n", strerror(-ret));
 		ret = EXIT_FAIL_BPF;
 		goto end_detach;
 	}
@@ -122,7 +124,7 @@ int do_redirect_basic(const void *cfg, __unused const char *pin_root_path)
 
 	ret = sample_run(opt->interval, NULL, NULL);
 	if (ret < 0) {
-		fprintf(stderr, "Failed during sample run: %s\n", strerror(-ret));
+		pr_warn("Failed during sample run: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
 		goto end_detach;
 	}

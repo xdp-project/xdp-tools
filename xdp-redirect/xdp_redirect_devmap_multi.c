@@ -22,6 +22,8 @@
 #include <linux/if_ether.h>
 #include <xdp/libxdp.h>
 
+#include "logging.h"
+
 #include "xdp_sample.h"
 #include "xdp_redirect.h"
 #include "xdp_redirect_devmap_multi.skel.h"
@@ -46,14 +48,14 @@ static int update_mac_map(struct bpf_map *map)
 
 		ret = get_mac_addr(ifindex, mac_addr);
 		if (ret < 0) {
-			fprintf(stderr, "get interface %d mac failed\n",
+			pr_warn("get interface %d mac failed\n",
 				ifindex);
 			return ret;
 		}
 
 		ret = bpf_map_update_elem(mac_map_fd, &ifindex, mac_addr, 0);
 		if (ret < 0) {
-			fprintf(stderr, "Failed to update mac address for ifindex %d\n",
+			pr_warn("Failed to update mac address for ifindex %d\n",
 				ifindex);
 			return ret;
 		}
@@ -95,7 +97,7 @@ int do_redirect_devmap_multi(const void *cfg, __unused const char *pin_root_path
 restart:
 	skel = xdp_redirect_devmap_multi__open();
 	if (!skel) {
-		fprintf(stderr, "Failed to xdp_redirect_devmap_multi__open: %s\n",
+		pr_warn("Failed to xdp_redirect_devmap_multi__open: %s\n",
 			strerror(errno));
 		ret = EXIT_FAIL_BPF;
 		goto end;
@@ -110,7 +112,7 @@ restart:
 
 	ret = sample_init_pre_load(skel);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to sample_init_pre_load: %s\n", strerror(-ret));
+		pr_warn("Failed to sample_init_pre_load: %s\n", strerror(-ret));
 		ret = EXIT_FAIL_BPF;
 		goto end_destroy;
 	}
@@ -128,19 +130,19 @@ restart:
 	xdp_prog = xdp_program__create(&opts);
 	if (!xdp_prog) {
 		ret = -errno;
-		fprintf(stderr, "Couldn't open XDP program: %s\n",
+		pr_warn("Couldn't open XDP program: %s\n",
 			strerror(-ret));
 		goto end_destroy;
 	}
 
 	for (iface = opt->ifaces; iface; iface = iface->next) {
+		pr_debug("Loading program on interface %s\n", iface->ifname);
 
 		ret = xdp_program__attach(xdp_prog, iface->ifindex, opt->mode, 0);
 		if (ret) {
 			if (first) {
 				if (opt->mode == XDP_MODE_SKB && !tried) {
-					fprintf(stderr,
-						"Trying fallback to sizeof(int) as value_size for devmap in generic mode\n");
+					pr_debug("Trying fallback to sizeof(int) as value_size for devmap in generic mode\n");
 					ingress_prog = skel->progs.redir_multi_general;
 					forward_map = skel->maps.forward_map_general;
 					tried = true;
@@ -149,12 +151,12 @@ restart:
 					sample_teardown();
 					goto restart;
 				}
-				fprintf(stderr, "Failed to attach XDP program to iface %s: %s\n",
+				pr_warn("Failed to attach XDP program to iface %s: %s\n",
 					iface->ifname, strerror(-ret));
 				goto end_destroy;
 			}
-			fprintf(stderr, "Failed to attach XDP program to ifindex %d: %s\n",
-				ifindex, strerror(-ret));
+			pr_warn("Failed to attach XDP program to iface %s: %s\n",
+				iface->ifname, strerror(-ret));
 			goto end_detach;
 		}
 
@@ -166,7 +168,7 @@ restart:
 			devmap_val.bpf_prog.fd = bpf_program__fd(skel->progs.xdp_devmap_prog);
 		ret = bpf_map_update_elem(bpf_map__fd(forward_map), &iface->ifindex, &devmap_val, 0);
 		if (ret < 0) {
-			fprintf(stderr, "Failed to update devmap value: %s\n",
+			pr_warn("Failed to update devmap value: %s\n",
 				strerror(errno));
 			ret = EXIT_FAIL_BPF;
 			goto end_detach;
@@ -178,7 +180,7 @@ restart:
 	if (opt->load_egress) {
 		/* Update mac_map with all egress interfaces' mac addr */
 		if (update_mac_map(skel->maps.mac_map) < 0) {
-			fprintf(stderr, "Updating mac address failed\n");
+			pr_warn("Updating mac address failed\n");
 			ret = EXIT_FAIL;
 			goto end_detach;
 		}
@@ -186,14 +188,14 @@ restart:
 
 	ret = sample_init(skel, mask, 0, 0);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to initialize sample: %s\n", strerror(-ret));
+		pr_warn("Failed to initialize sample: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
 		goto end_detach;
 	}
 
 	ret = sample_run(opt->interval, NULL, NULL);
 	if (ret < 0) {
-		fprintf(stderr, "Failed during sample run: %s\n", strerror(-ret));
+		pr_warn("Failed during sample run: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
 		goto end_detach;
 	}

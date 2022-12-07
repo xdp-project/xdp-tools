@@ -66,7 +66,7 @@ static int create_cpu_entry(__u32 cpu, struct bpf_cpumap_val *value,
 	 */
 	ret = bpf_map_update_elem(map_fd, &cpu, value, 0);
 	if (ret < 0) {
-		fprintf(stderr, "Create CPU entry failed: %s\n", strerror(errno));
+		pr_warn("Create CPU entry failed: %s\n", strerror(errno));
 		return ret;
 	}
 
@@ -75,14 +75,14 @@ static int create_cpu_entry(__u32 cpu, struct bpf_cpumap_val *value,
 	 */
 	ret = bpf_map_update_elem(avail_fd, &avail_idx, &cpu, 0);
 	if (ret < 0) {
-		fprintf(stderr, "Add to avail CPUs failed: %s\n", strerror(errno));
+		pr_warn("Add to avail CPUs failed: %s\n", strerror(errno));
 		return ret;
 	}
 
 	/* When not replacing/updating existing entry, bump the count */
 	ret = bpf_map_lookup_elem(count_fd, &key, &curr_cpus_count);
 	if (ret < 0) {
-		fprintf(stderr, "Failed reading curr cpus_count: %s\n",
+		pr_warn("Failed reading curr cpus_count: %s\n",
 			strerror(errno));
 		return ret;
 	}
@@ -91,15 +91,15 @@ static int create_cpu_entry(__u32 cpu, struct bpf_cpumap_val *value,
 		ret = bpf_map_update_elem(count_fd, &key,
 					  &curr_cpus_count, 0);
 		if (ret < 0) {
-			fprintf(stderr, "Failed write curr cpus_count: %s\n",
+			pr_warn("Failed write curr cpus_count: %s\n",
 				strerror(errno));
 			return ret;
 		}
 	}
 
-	printf("%s CPU: %u as idx: %u qsize: %d cpumap_prog_fd: %d (cpus_count: %u)\n",
-	       new ? "Add new" : "Replace", cpu, avail_idx,
-	       value->qsize, value->bpf_prog.fd, curr_cpus_count);
+	pr_debug("%s CPU: %u as idx: %u qsize: %d cpumap_prog_fd: %d (cpus_count: %u)\n",
+		 new ? "Add new" : "Replace", cpu, avail_idx,
+		 value->qsize, value->bpf_prog.fd, curr_cpus_count);
 
 	return 0;
 }
@@ -116,7 +116,7 @@ static int mark_cpus_unavailable(void)
 		ret = bpf_map_update_elem(avail_fd, &i,
 					  &invalid_cpu, 0);
 		if (ret < 0) {
-			fprintf(stderr, "Failed marking CPU unavailable: %s\n",
+			pr_warn("Failed marking CPU unavailable: %s\n",
 				strerror(errno));
 			return ret;
 		}
@@ -230,7 +230,7 @@ int do_redirect_cpumap(const void *cfg, __unused const char *pin_root_path)
 
 	skel = xdp_redirect_cpumap__open();
 	if (!skel) {
-		fprintf(stderr, "Failed to xdp_redirect_cpumap__open: %s\n",
+		pr_warn("Failed to xdp_redirect_cpumap__open: %s\n",
 			strerror(errno));
 		ret = EXIT_FAIL_BPF;
 		goto end;
@@ -252,20 +252,20 @@ int do_redirect_cpumap(const void *cfg, __unused const char *pin_root_path)
 
 	ret = sample_init_pre_load(skel);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to sample_init_pre_load: %s\n", strerror(-ret));
+		pr_warn("Failed to sample_init_pre_load: %s\n", strerror(-ret));
 		ret = EXIT_FAIL_BPF;
 		goto end_destroy;
 	}
 
 	if (bpf_map__set_max_entries(skel->maps.cpu_map, n_cpus) < 0) {
-		fprintf(stderr, "Failed to set max entries for cpu_map map: %s",
+		pr_warn("Failed to set max entries for cpu_map map: %s",
 			strerror(errno));
 		ret = EXIT_FAIL_BPF;
 		goto end_destroy;
 	}
 
 	if (bpf_map__set_max_entries(skel->maps.cpus_available, n_cpus) < 0) {
-		fprintf(stderr, "Failed to set max entries for cpus_available map: %s",
+		pr_warn("Failed to set max entries for cpus_available map: %s",
 			strerror(errno));
 		ret = EXIT_FAIL_BPF;
 		goto end_destroy;
@@ -282,21 +282,21 @@ int do_redirect_cpumap(const void *cfg, __unused const char *pin_root_path)
 	xdp_prog = xdp_program__create(&opts);
 	if (!xdp_prog) {
 		ret = -errno;
-		fprintf(stderr, "Couldn't open XDP program: %s\n",
+		pr_warn("Couldn't open XDP program: %s\n",
 			strerror(-ret));
 		goto end_destroy;
 	}
 
 	ret = xdp_program__attach(xdp_prog, opt->iface_in.ifindex, opt->mode, 0);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to attach XDP program: %s\n",
+		pr_warn("Failed to attach XDP program: %s\n",
 			strerror(-ret));
 		goto end_destroy;
 	}
 
 	ret = bpf_obj_get_info_by_fd(bpf_map__fd(skel->maps.cpu_map), &info, &infosz);
 	if (ret < 0) {
-		fprintf(stderr, "Failed bpf_obj_get_info_by_fd for cpumap: %s\n",
+		pr_warn("Failed bpf_obj_get_info_by_fd for cpumap: %s\n",
 			strerror(errno));
 		goto end_detach;
 	}
@@ -309,13 +309,13 @@ int do_redirect_cpumap(const void *cfg, __unused const char *pin_root_path)
 
 	ret = mark_cpus_unavailable();
 	if (ret < 0) {
-		fprintf(stderr, "Unable to mark CPUs as unavailable\n");
+		pr_warn("Unable to mark CPUs as unavailable\n");
 		goto end_detach;
 	}
 
 	ret = sample_init(skel, mask, opt->iface_in.ifindex, 0);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to initialize sample: %s\n", strerror(-ret));
+		pr_warn("Failed to initialize sample: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
 		goto end_detach;
 	}
@@ -338,7 +338,7 @@ int do_redirect_cpumap(const void *cfg, __unused const char *pin_root_path)
 
 	ret = sample_run(opt->interval, opt->stress_mode ? stress_cpumap : NULL, &value);
 	if (ret < 0) {
-		fprintf(stderr, "Failed during sample run: %s\n", strerror(-ret));
+		pr_warn("Failed during sample run: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
 		goto end_detach;
 	}

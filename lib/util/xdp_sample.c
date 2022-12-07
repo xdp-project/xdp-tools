@@ -32,6 +32,7 @@
 #include <linux/hashtable.h>
 
 #include "xdp_sample.h"
+#include "logging.h"
 
 #define __sample_print(fmt, cond, ...)                                         \
 	({                                                                     \
@@ -179,7 +180,7 @@ static __u64 gettime(void)
 
 	res = clock_gettime(CLOCK_MONOTONIC, &t);
 	if (res < 0) {
-		fprintf(stderr, "Error with gettimeofday! (%i)\n", res);
+		pr_warn("Error with gettimeofday! (%i)\n", res);
 		return UINT64_MAX;
 	}
 	return (__u64)t.tv_sec * NANOSEC_PER_SEC + t.tv_nsec;
@@ -240,8 +241,7 @@ static struct datarec *alloc_record_per_cpu(void)
 
 	array = calloc(nr_cpus, sizeof(*array));
 	if (!array) {
-		fprintf(stderr, "Failed to allocate memory (nr_cpus: %u)\n",
-			nr_cpus);
+		pr_warn("Failed to allocate memory (nr_cpus: %u)\n", nr_cpus);
 		return NULL;
 	}
 	return array;
@@ -373,15 +373,14 @@ static struct stats_record *alloc_stats_record(void)
 
 	rec = calloc(1, sizeof(*rec) + sample_n_cpus * sizeof(struct record));
 	if (!rec) {
-		fprintf(stderr, "Failed to allocate memory\n");
+		pr_warn("Failed to allocate memory\n");
 		return NULL;
 	}
 
 	if (sample_mask & SAMPLE_RX_CNT) {
 		rec->rx_cnt.cpu = alloc_record_per_cpu();
 		if (!rec->rx_cnt.cpu) {
-			fprintf(stderr,
-				"Failed to allocate rx_cnt per-CPU array\n");
+			pr_warn("Failed to allocate rx_cnt per-CPU array\n");
 			goto end_rec;
 		}
 	}
@@ -389,9 +388,7 @@ static struct stats_record *alloc_stats_record(void)
 		for (i = 0; i < XDP_REDIRECT_ERR_MAX; i++) {
 			rec->redir_err[i].cpu = alloc_record_per_cpu();
 			if (!rec->redir_err[i].cpu) {
-				fprintf(stderr,
-					"Failed to allocate redir_err per-CPU array for "
-					"\"%s\" case\n",
+				pr_warn("Failed to allocate redir_err per-CPU array for \"%s\" case\n",
 					xdp_redirect_err_names[i]);
 				while (i--)
 					free(rec->redir_err[i].cpu);
@@ -402,8 +399,7 @@ static struct stats_record *alloc_stats_record(void)
 	if (sample_mask & SAMPLE_CPUMAP_KTHREAD_CNT) {
 		rec->kthread.cpu = alloc_record_per_cpu();
 		if (!rec->kthread.cpu) {
-			fprintf(stderr,
-				"Failed to allocate kthread per-CPU array\n");
+			pr_warn("Failed to allocate kthread per-CPU array\n");
 			goto end_redir;
 		}
 	}
@@ -411,9 +407,7 @@ static struct stats_record *alloc_stats_record(void)
 		for (i = 0; i < XDP_ACTION_MAX; i++) {
 			rec->exception[i].cpu = alloc_record_per_cpu();
 			if (!rec->exception[i].cpu) {
-				fprintf(stderr,
-					"Failed to allocate exception per-CPU array for "
-					"\"%s\" case\n",
+				pr_warn("Failed to allocate exception per-CPU array for \"%s\" case\n",
 					xdp_action2str(i));
 				while (i--)
 					free(rec->exception[i].cpu);
@@ -424,8 +418,7 @@ static struct stats_record *alloc_stats_record(void)
 	if (sample_mask & SAMPLE_DEVMAP_XMIT_CNT) {
 		rec->devmap_xmit.cpu = alloc_record_per_cpu();
 		if (!rec->devmap_xmit.cpu) {
-			fprintf(stderr,
-				"Failed to allocate devmap_xmit per-CPU array\n");
+			pr_warn("Failed to allocate devmap_xmit per-CPU array\n");
 			goto end_exception;
 		}
 	}
@@ -435,10 +428,7 @@ static struct stats_record *alloc_stats_record(void)
 		for (i = 0; i < sample_n_cpus; i++) {
 			rec->enq[i].cpu = alloc_record_per_cpu();
 			if (!rec->enq[i].cpu) {
-				fprintf(stderr,
-					"Failed to allocate enqueue per-CPU array for "
-					"CPU %d\n",
-					i);
+				pr_warn("Failed to allocate enqueue per-CPU array for CPU %d\n", i);
 				while (i--)
 					free(rec->enq[i].cpu);
 				goto end_devmap_xmit;
@@ -1388,7 +1378,7 @@ int sample_run(int interval, void (*post_cb)(void *), void *ctx)
 	int timerfd, ret;
 
 	if (!interval) {
-		fprintf(stderr, "Incorrect interval 0\n");
+		pr_warn("Incorrect interval 0\n");
 		return -EINVAL;
 	}
 	sample_interval = interval;

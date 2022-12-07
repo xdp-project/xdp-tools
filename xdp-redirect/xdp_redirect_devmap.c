@@ -18,6 +18,8 @@
 #include <xdp/libxdp.h>
 #include <linux/if_link.h>
 
+#include "logging.h"
+
 #include "xdp_redirect.h"
 #include "xdp_sample.h"
 #include "xdp_redirect_devmap.skel.h"
@@ -59,7 +61,7 @@ int do_redirect_devmap(const void *cfg, __unused const char *pin_root_path)
 restart:
 	skel = xdp_redirect_devmap__open();
 	if (!skel) {
-		fprintf(stderr, "Failed to xdp_redirect_devmap__open: %s\n",
+		pr_warn("Failed to xdp_redirect_devmap__open: %s\n",
 			strerror(errno));
 		ret = EXIT_FAIL_BPF;
 		goto end;
@@ -74,7 +76,7 @@ restart:
 
 	ret = sample_init_pre_load(skel);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to sample_init_pre_load: %s\n", strerror(-ret));
+		pr_warn("Failed to sample_init_pre_load: %s\n", strerror(-ret));
 		ret = EXIT_FAIL_BPF;
 		goto end_destroy;
 	}
@@ -83,7 +85,7 @@ restart:
 	if (opt->load_egress) {
 		ret = get_mac_addr(opt->iface_out.ifindex, skel->rodata->tx_mac_addr);
 		if (ret < 0) {
-			fprintf(stderr, "Failed to get interface %s mac address: %s\n",
+			pr_warn("Failed to get interface %s mac address: %s\n",
 				opt->iface_out.ifname, strerror(-ret));
 			ret = EXIT_FAIL;
 			goto end_destroy;
@@ -98,7 +100,7 @@ restart:
 	xdp_prog = xdp_program__create(&opts);
 	if (!xdp_prog) {
 		ret = -errno;
-		fprintf(stderr, "Couldn't open XDP program: %s\n",
+		pr_warn("Couldn't open XDP program: %s\n",
 			strerror(-ret));
 		goto end_destroy;
 	}
@@ -108,8 +110,7 @@ restart:
 		/* First try with struct bpf_devmap_val as value for generic
 		 * mode, then fallback to sizeof(int) for older kernels.
 		 */
-		fprintf(stderr,
-			"Trying fallback to sizeof(int) as value_size for devmap in generic mode\n");
+		pr_warn("Trying fallback to sizeof(int) as value_size for devmap in generic mode\n");
 		if (opt->mode == XDP_MODE_SKB && !tried) {
 			prog = skel->progs.xdp_redirect_devmap_general;
 			tx_port_map = skel->maps.tx_port_general;
@@ -119,7 +120,7 @@ restart:
 			sample_teardown();
 			goto restart;
 		}
-		fprintf(stderr, "Failed to attach XDP program: %s\n",
+		pr_warn("Failed to attach XDP program: %s\n",
 			strerror(-ret));
 		ret = EXIT_FAIL_XDP;
 		goto end_destroy;
@@ -127,7 +128,7 @@ restart:
 
 	ret = sample_init(skel, mask, opt->iface_in.ifindex, opt->iface_out.ifindex);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to initialize sample: %s\n", strerror(-ret));
+		pr_warn("Failed to initialize sample: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
 		goto end_detach;
 	}
@@ -137,14 +138,14 @@ restart:
 	opts.find_filename = "xdp-dispatcher.o";
 	dummy_prog = xdp_program__create(&opts);
 	if (!dummy_prog) {
-		fprintf(stderr, "Failed to load dummy program: %s\n", strerror(errno));
+		pr_warn("Failed to load dummy program: %s\n", strerror(errno));
 		ret = EXIT_FAIL_BPF;
 		goto end_detach;
 	}
 
 	ret = xdp_program__attach(dummy_prog, opt->iface_out.ifindex, opt->mode, 0);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to attach dummy program: %s\n", strerror(-ret));
+		pr_warn("Failed to attach dummy program: %s\n", strerror(-ret));
 		ret = EXIT_FAIL_BPF;
 		goto end_detach;
 	}
@@ -154,7 +155,7 @@ restart:
 		devmap_val.bpf_prog.fd = bpf_program__fd(skel->progs.xdp_redirect_devmap_egress);
 	ret = bpf_map_update_elem(bpf_map__fd(tx_port_map), &key, &devmap_val, 0);
 	if (ret < 0) {
-		fprintf(stderr, "Failed to update devmap value: %s\n",
+		pr_warn("Failed to update devmap value: %s\n",
 			strerror(errno));
 		ret = EXIT_FAIL_BPF;
 		goto end_detach;
@@ -170,7 +171,7 @@ restart:
 
 	ret = sample_run(opt->interval, NULL, NULL);
 	if (ret < 0) {
-		fprintf(stderr, "Failed during sample run: %s\n", strerror(-ret));
+		pr_warn("Failed during sample run: %s\n", strerror(-ret));
 		ret = EXIT_FAIL;
 		goto end_destroy;
 	}
