@@ -18,8 +18,10 @@ enum option_type {
 	OPT_STRING,
 	OPT_U16,
 	OPT_U32,
+	OPT_U32_MULTI,
 	OPT_MACADDR,
 	OPT_IFNAME,
+	OPT_IFNAME_MULTI,
 	OPT_IPADDR,
 	OPT_ENUM,
 	OPT_MULTISTRING,
@@ -38,7 +40,9 @@ struct prog_option {
 	void *typearg;
 	bool required;
 	bool positional;
-	bool was_set;
+	unsigned int min_num;
+	unsigned int max_num;
+	unsigned int num_set;
 };
 
 struct flag_val {
@@ -56,7 +60,13 @@ struct multistring {
 	size_t num_strings;
 };
 
+struct u32_multi {
+	__u32 *vals;
+	size_t num_vals;
+};
+
 struct iface {
+	struct iface *next;
 	char *ifname;
 	int ifindex;
 };

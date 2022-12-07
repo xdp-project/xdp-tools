@@ -30,10 +30,11 @@ static bool opt_needs_arg(const struct prog_option *opt)
 
 static bool opt_is_multi(const struct prog_option *opt)
 {
-	return opt->type == OPT_MULTISTRING;
+	return opt->type == OPT_MULTISTRING || opt->type == OPT_IFNAME_MULTI ||
+		opt->type == OPT_U32_MULTI;
 }
 
-static int handle_bool(__unused char *optarg, void *tgt, __unused void *typearg)
+static int handle_bool(__unused char *optarg, void *tgt, __unused struct prog_option *opt)
 {
 	bool *opt_set = tgt;
 
@@ -41,7 +42,7 @@ static int handle_bool(__unused char *optarg, void *tgt, __unused void *typearg)
 	return 0;
 }
 
-static int handle_string(char *optarg, void *tgt, __unused void *typearg)
+static int handle_string(char *optarg, void *tgt, __unused struct prog_option *opt)
 {
 	char **opt_set = tgt;
 
@@ -49,7 +50,7 @@ static int handle_string(char *optarg, void *tgt, __unused void *typearg)
 	return 0;
 }
 
-static int handle_multistring(char *optarg, void *tgt, __unused void *typearg)
+static int handle_multistring(char *optarg, void *tgt, __unused struct prog_option *opt)
 {
 	struct multistring *opt_set = tgt;
 	void *ptr;
@@ -67,7 +68,7 @@ static int handle_multistring(char *optarg, void *tgt, __unused void *typearg)
 	return 0;
 }
 
-static int handle_u32(char *optarg, void *tgt, __unused void *typearg)
+static int handle_u32(char *optarg, void *tgt, __unused struct prog_option *opt)
 {
 	__u32 *opt_set = tgt;
 	unsigned long val;
@@ -81,7 +82,30 @@ static int handle_u32(char *optarg, void *tgt, __unused void *typearg)
 	return 0;
 }
 
-static int handle_u16(char *optarg, void *tgt, __unused void *typearg)
+static int handle_u32_multi(char *optarg, void *tgt, struct prog_option *opt)
+{
+	struct u32_multi *opt_set = tgt;
+	__u32 val;
+	void *ptr;
+	int ret;
+
+	if (opt_set->num_vals +1 > SIZE_MAX / sizeof(*opt_set->vals))
+		return -ENOMEM;
+
+	ret = handle_u32(optarg, &val, opt);
+	if (ret)
+		return ret;
+
+	ptr = realloc(opt_set->vals, sizeof(*opt_set->vals) * (opt_set->num_vals +1));
+	if (!ptr)
+		return -errno;
+
+	opt_set->vals = ptr;
+	opt_set->vals[opt_set->num_vals++] = val;
+	return 0;
+}
+
+static int handle_u16(char *optarg, void *tgt, __unused struct prog_option *opt)
 {
 	__u16 *opt_set = tgt;
 	unsigned long val;
@@ -114,7 +138,7 @@ static int parse_mac(char *str, unsigned char mac[ETH_ALEN])
 	return 0;
 }
 
-static int handle_macaddr(char *optarg, void *tgt, __unused void *typearg)
+static int handle_macaddr(char *optarg, void *tgt, __unused struct prog_option *opt)
 {
 	struct mac_addr *opt_set = tgt;
 	int err;
@@ -158,9 +182,9 @@ static const struct flag_val *find_flag(const struct flag_val *flag_vals,
 	return NULL;
 }
 
-static int handle_flags(char *optarg, void *tgt, void *typearg)
+static int handle_flags(char *optarg, void *tgt, struct prog_option *opt)
 {
-	const struct flag_val *flag, *flag_vals = typearg;
+	const struct flag_val *flag, *flag_vals = opt->typearg;
 	unsigned int *opt_set = tgt;
 	unsigned int flagval = 0;
 	char *c = NULL;
@@ -182,19 +206,59 @@ static int handle_flags(char *optarg, void *tgt, void *typearg)
 	return 0;
 }
 
-static int handle_ifname(char *optarg, void *tgt, __unused void *typearg)
+static int get_ifindex(const char *ifname)
+{
+	int ifindex;
+
+	ifindex = if_nametoindex(ifname);
+	if (!ifindex) {
+		pr_warn("Couldn't find network interface '%s'.\n", ifname);
+		return -ENOENT;
+	}
+	return ifindex;
+}
+
+static int handle_ifname(char *optarg, void *tgt, __unused struct prog_option *opt)
 {
 	struct iface *iface = tgt;
 	int ifindex;
 
-	ifindex = if_nametoindex(optarg);
-	if (!ifindex) {
-		pr_warn("Couldn't find network interface '%s'.\n", optarg);
-		return -ENOENT;
-	}
+	ifindex = get_ifindex(optarg);
+	if (ifindex < 0)
+		return ifindex;
 
 	iface->ifname = optarg;
 	iface->ifindex = ifindex;
+	return 0;
+}
+
+static int handle_ifname_multi(char *optarg, void *tgt, __unused struct prog_option *opt)
+{
+	struct iface **ifaces = tgt;
+	struct iface *iface, *tmp;
+	int ifindex;
+
+	ifindex = get_ifindex(optarg);
+	if (ifindex < 0)
+		return ifindex;
+
+	iface = calloc(sizeof(*iface), 1);
+	if (!iface)
+		return -ENOMEM;
+
+	iface->ifname = optarg;
+	iface->ifindex = ifindex;
+
+	if (!*ifaces) {
+		*ifaces = iface;
+		return 0;
+	}
+
+	tmp = *ifaces;
+	while(tmp->next)
+		tmp = tmp->next;
+
+	tmp->next = iface;
 	return 0;
 }
 
@@ -203,7 +267,7 @@ void print_addr(char *buf, size_t buf_len, const struct ip_addr *addr)
 	inet_ntop(addr->af, &addr->addr, buf, buf_len);
 }
 
-static int handle_ipaddr(char *optarg, void *tgt, __unused void *typearg)
+static int handle_ipaddr(char *optarg, void *tgt, __unused struct prog_option *opt)
 {
 	struct ip_addr *addr = tgt;
 	int af;
@@ -230,9 +294,9 @@ static const struct enum_val *find_enum(const struct enum_val *enum_vals,
 	return NULL;
 }
 
-static int handle_enum(char *optarg, void *tgt, void *typearg)
+static int handle_enum(char *optarg, void *tgt, struct prog_option *opt)
 {
-	const struct enum_val *val, *all_vals = typearg;
+	const struct enum_val *val, *all_vals = opt->typearg;
 	unsigned int *opt_set = tgt;
 
 	val = find_enum(all_vals, optarg);
@@ -277,7 +341,7 @@ const char *get_enum_name(const struct enum_val *vals, unsigned int value)
 }
 
 static const struct opthandler {
-	int (*func)(char *optarg, void *tgt, void *typearg);
+	int (*func)(char *optarg, void *tgt, struct prog_option *opt);
 } handlers[__OPT_MAX] = {
 			 {NULL},
 			 {handle_bool},
@@ -285,8 +349,10 @@ static const struct opthandler {
 			 {handle_string},
 			 {handle_u16},
 			 {handle_u32},
+			 {handle_u32_multi},
 			 {handle_macaddr},
 			 {handle_ifname},
+			 {handle_ifname_multi},
 			 {handle_ipaddr},
 			 {handle_enum},
 			 {handle_multistring}
@@ -354,6 +420,8 @@ static const struct helprinter {
 	{NULL},
 	{NULL},
 	{NULL},
+	{NULL},
+	{NULL},
 	{print_help_enum},
 	{NULL}
 };
@@ -380,7 +448,7 @@ static void _print_options(const struct prog_option *poptions, bool required)
 			continue;
 
 		if (opt->positional) {
-			printf("  %-24s", opt->metavar ?: opt->name);
+			printf("  %-30s", opt->metavar ?: opt->name);
 		} else {
 			char buf[BUFSIZE];
 			int pos;
@@ -397,7 +465,7 @@ static void _print_options(const struct prog_option *poptions, bool required)
 			if (opt->metavar)
 				snprintf(&buf[pos], BUFSIZE - pos, " %s",
 					 opt->metavar);
-			printf("%-22s", buf);
+			printf("%-28s", buf);
 		}
 
 		if (help_printers[opt->type].func != NULL)
@@ -445,9 +513,9 @@ void usage(const char *prog_name, const char *doc,
 	}
 	printf("Options:\n");
 	_print_options(poptions, false);
-	printf(" -v, --verbose              Enable verbose logging (-vv: more verbose)\n");
-	printf("     --version              Display version information\n");
-	printf(" -h, --help                 Show this help\n");
+	printf(" -v, --verbose                    Enable verbose logging (-vv: more verbose)\n");
+	printf("     --version                    Display version information\n");
+	printf(" -h, --help                       Show this help\n");
 	printf("\n");
 }
 
@@ -540,10 +608,15 @@ static int _set_opt(void *cfg, struct prog_option *opt, char *optarg)
 {
 	int ret;
 
-	ret = handlers[opt->type].func(optarg, (cfg + opt->cfg_offset),
-				       opt->typearg);
+	if (opt->max_num && opt->num_set + 1 > opt->max_num) {
+		pr_warn("Too many parameters for %s (max %u)\n",
+			opt->metavar ?: opt->name, opt->max_num);
+		return -E2BIG;
+	}
+
+	ret = handlers[opt->type].func(optarg, (cfg + opt->cfg_offset), opt);
 	if (!ret)
-		opt->was_set = true;
+		opt->num_set++;
 	else if (ret != -ENOENT)
 		pr_warn("Couldn't parse option %s: %s.\n", opt->name, strerror(-ret));
 	return ret;
@@ -569,7 +642,7 @@ static int set_pos_opt(void *cfg, struct prog_option *all_opts, char *optarg)
 	struct prog_option *o, *opt = NULL;
 
 	FOR_EACH_OPTION (all_opts, o) {
-		if (o->positional && (!o->was_set || opt_is_multi(o))) {
+		if (o->positional && (!o->num_set || opt_is_multi(o))) {
 			opt = o;
 			break;
 		}
@@ -634,8 +707,10 @@ int parse_cmdline_args(int argc, char **argv, struct prog_option *poptions,
 	}
 
 	FOR_EACH_OPTION (poptions, opt_iter) {
-		if (opt_iter->was_set)
+		if (opt_iter->num_set && (!opt_iter->min_num ||
+					  opt_iter->num_set >= opt_iter->min_num))
 			continue;
+
 		if (opt_iter->required) {
 			if (opt_iter->positional)
 				pr_warn("Missing required parameter %s\n",
