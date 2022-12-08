@@ -21,7 +21,7 @@
 
 #include "logging.h"
 
-#include "xdp_redirect.h"
+#include "xdp-bench.h"
 #include "xdp_sample.h"
 #include "xdp_redirect_basic.skel.h"
 

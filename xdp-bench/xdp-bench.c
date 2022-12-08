@@ -3,24 +3,24 @@
 #include <errno.h>
 #include <string.h>
 
-#include "xdp_redirect.h"
+#include "xdp-bench.h"
 #include "params.h"
 
-#define PROG_NAME "xdp-redirect"
+#define PROG_NAME "xdp-bench"
 
 int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 {
 	fprintf(stderr,
-		"Usage: xdp-redirect COMMAND [options]\n"
+		"Usage: xdp-bench COMMAND [options]\n"
 		"\n"
 		"COMMAND can be one of:\n"
-		"       basic          - XDP redirect using the bpf_redirect() helper\n"
-		"       cpumap         - XDP CPU redirect using BPF_MAP_TYPE_CPUMAP\n"
-		"       devmap         - XDP redirect using BPF_MAP_TYPE_DEVMAP\n"
-		"       devmap_multi   - XDP multi-redirect using BPF_MAP_TYPE_DEVMAP and the BPF_F_BROADCAST flag\n"
+		"       redirect       - XDP redirect using the bpf_redirect() helper\n"
+		"       redirect-cpu   - XDP CPU redirect using BPF_MAP_TYPE_CPUMAP\n"
+		"       redirect-map   - XDP redirect using BPF_MAP_TYPE_DEVMAP\n"
+		"       redirect-multi - XDP multi-redirect using BPF_MAP_TYPE_DEVMAP and the BPF_F_BROADCAST flag\n"
 		"       help           - show this help message\n"
 		"\n"
-		"Use 'xdp-redirect COMMAND --help' to see options for each command\n");
+		"Use 'xdp-bench COMMAND --help' to see options for each command\n");
 	return -1;
 }
 
@@ -191,13 +191,13 @@ struct prog_option redirect_devmap_multi_options[] = {
 };
 
 static const struct prog_command cmds[] = {
-	DEFINE_COMMAND_NAME("basic", redirect_basic,
+	DEFINE_COMMAND_NAME("redirect", redirect_basic,
 			    "XDP redirect using the bpf_redirect() helper"),
-	DEFINE_COMMAND_NAME("cpumap", redirect_cpumap,
+	DEFINE_COMMAND_NAME("redirect-cpu", redirect_cpumap,
 		"XDP CPU redirect using BPF_MAP_TYPE_CPUMAP"),
-	DEFINE_COMMAND_NAME("devmap", redirect_devmap,
+	DEFINE_COMMAND_NAME("redirect-map", redirect_devmap,
 			    "XDP redirect using BPF_MAP_TYPE_DEVMAP"),
-	DEFINE_COMMAND_NAME("devmap_multi", redirect_devmap_multi,
+	DEFINE_COMMAND_NAME("redirect-multi", redirect_devmap_multi,
 			    "XDP multi-redirect using BPF_MAP_TYPE_DEVMAP and the BPF_F_BROADCAST flag"),
 	{ .name = "help", .func = do_help, .no_cfg = true },
 	END_COMMANDS

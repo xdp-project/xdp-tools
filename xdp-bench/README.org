@@ -1,13 +1,13 @@
-#+EXPORT_FILE_NAME: xdp-redirect
-#+TITLE: xdp-redirect
-#+MAN_CLASS_OPTIONS: :section-id "8\" \"DATE\" \"VERSION\" \"A simple XDP-powered packet redirect tool"
+#+EXPORT_FILE_NAME: xdp-bench
+#+TITLE: xdp-bench
+#+MAN_CLASS_OPTIONS: :section-id "8\" \"DATE\" \"VERSION\" \"A simple XDP benchmarking tool"
 # This file serves both as a README on github, and as the source for the man
 # page; the latter through the org-mode man page export support.
 # .
 # To export the man page, simply use the org-mode exporter; (require 'ox-man) if
 # it's not available. There's also a Makefile rule to export it.
 
-* XDP-redirect - a simple XDP-powered packet redirect tool
+* XDP-bench - a XDP simple benchmarking tool
 
 XDP-redirect is a packet redirecting utility powered by XDP. It is intended to
 be a simple program demonstrating the various in kernel packet redirection
