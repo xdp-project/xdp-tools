@@ -32,28 +32,28 @@ Usage: xdpdump [options]
  XDPDump tool to dump network traffic
 
 Options:
-     --rx-capture <mode>    Capture point for the rx direction (valid values: entry,exit)
- -D, --list-interfaces      Print the list of available interfaces
-     --load-xdp-mode <mode>  Mode used for --load-xdp-mode, default native (valid values: native,skb,hw,unspecified)
-     --load-xdp-program     Load XDP trace program if no XDP program is loaded
- -i, --interface <ifname>   Name of interface to capture on
-     --perf-wakeup <events>  Wake up xdpdump every <events> packets
- -p, --program-names <prog>  Specific program to attach to
- -P, --promiscuous-mode     Open interface in promiscuous mode
+     --rx-capture <mode>          Capture point for the rx direction (valid values: entry,exit)
+ -D, --list-interfaces            Print the list of available interfaces
+     --load-xdp-mode <mode>       Mode used for --load-xdp-mode, default native (valid values: native,skb,hw,unspecified)
+     --load-xdp-program           Load XDP trace program if no XDP program is loaded
+ -i, --interface <ifname>         Name of interface to capture on
+     --perf-wakeup <events>       Wake up xdpdump every <events> packets
+ -p, --program-names <prog>       Specific program to attach to
+ -P, --promiscuous-mode           Open interface in promiscuous mode
  -s, --snapshot-length <snaplen>  Minimum bytes of packet to capture
-     --use-pcap             Use legacy pcap format for XDP traces
- -w, --write <file>         Write raw packets to pcap file
- -x, --hex                  Print the full packet in hex
- -v, --verbose              Enable verbose logging (-vv: more verbose)
-     --version              Display version information
- -h, --help                 Show this help
+     --use-pcap                   Use legacy pcap format for XDP traces
+ -w, --write <file>               Write raw packets to pcap file
+ -x, --hex                        Print the full packet in hex
+ -v, --verbose                    Enable verbose logging (-vv: more verbose)
+     --version                    Display version information
+ -h, --help                       Show this help
 
 END
           )
 
     $XDPDUMP --help | grep -q "\-\-perf-wakeup"
     if [ $? -eq 1 ]; then
-        XDPDUMP_HELP_TEXT=$(echo "$XDPDUMP_HELP_TEXT" | sed '/     --perf-wakeup <events>  Wake up xdpdump every <events> packets/d')
+        XDPDUMP_HELP_TEXT=$(echo "$XDPDUMP_HELP_TEXT" | sed '/--perf-wakeup <events>/d')
     fi
 
     RESULT=$($XDPDUMP --help)
