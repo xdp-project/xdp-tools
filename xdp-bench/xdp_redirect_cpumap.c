@@ -250,7 +250,7 @@ int do_redirect_cpumap(const void *cfg, __unused const char *pin_root_path)
 		goto end_destroy;
 	}
 
-	ret = sample_init_pre_load(skel);
+	ret = sample_init_pre_load(skel, opt->iface_in.ifname);
 	if (ret < 0) {
 		pr_warn("Failed to sample_init_pre_load: %s\n", strerror(-ret));
 		ret = EXIT_FAIL_BPF;

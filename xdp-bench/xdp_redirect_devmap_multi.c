@@ -110,7 +110,7 @@ restart:
 	if (!forward_map)
 		forward_map = skel->maps.forward_map_native;
 
-	ret = sample_init_pre_load(skel);
+	ret = sample_init_pre_load(skel, NULL);
 	if (ret < 0) {
 		pr_warn("Failed to sample_init_pre_load: %s\n", strerror(-ret));
 		ret = EXIT_FAIL_BPF;

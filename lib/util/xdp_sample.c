@@ -71,6 +71,7 @@
 
 enum map_type {
 	MAP_RX,
+	MAP_RXQ,
 	MAP_REDIRECT_ERR,
 	MAP_CPUMAP_ENQUEUE,
 	MAP_CPUMAP_KTHREAD,
@@ -89,7 +90,10 @@ enum log_level {
 struct record {
 	__u64 timestamp;
 	struct datarec total;
-	struct datarec *cpu;
+	union {
+		struct datarec *cpu;
+		struct datarec *rxq;
+	};
 };
 
 struct map_entry {
@@ -100,6 +104,7 @@ struct map_entry {
 
 struct stats_record {
 	struct record rx_cnt;
+	struct record rxq_cnt;
 	struct record redir_err[XDP_REDIRECT_ERR_MAX];
 	struct record kthread;
 	struct record exception[XDP_ACTION_MAX];
@@ -149,6 +154,7 @@ unsigned long sample_interval;
 bool sample_err_exp;
 int sample_xdp_cnt;
 int sample_n_cpus;
+int sample_n_rxqs;
 int sample_sig_fd;
 int sample_mask;
 int ifindex[2];
@@ -193,14 +199,13 @@ static const char *xdp_action2str(int action)
 	return NULL;
 }
 
-static struct datarec *alloc_record_per_cpu(void)
+static struct datarec *alloc_records(int nr_entries)
 {
-	int nr_cpus = libbpf_num_possible_cpus();
 	struct datarec *array;
 
-	array = calloc(nr_cpus, sizeof(*array));
+	array = calloc(nr_entries, sizeof(*array));
 	if (!array) {
-		pr_warn("Failed to allocate memory (nr_cpus: %u)\n", nr_cpus);
+		pr_warn("Failed to allocate memory (nr_entries: %u)\n", nr_entries);
 		return NULL;
 	}
 	return array;
@@ -211,10 +216,29 @@ static int map_entry_init(struct map_entry *e, __u64 pair)
 	e->pair = pair;
 	INIT_HLIST_NODE(&e->node);
 	e->val.timestamp = gettime();
-	e->val.cpu = alloc_record_per_cpu();
+	e->val.cpu = alloc_records(libbpf_num_possible_cpus());
 	if (!e->val.cpu)
 		return -ENOMEM;
 	return 0;
+}
+
+static void map_collect_rxqs(struct datarec *values, struct record *rec)
+{
+	int i;
+
+	/* Get time as close as possible to reading map contents */
+	rec->timestamp = gettime();
+
+	/* Record and sum values from each RXQ */
+	for (i = 0; i < sample_n_rxqs; i++) {
+		pr_debug("%d: %lx %lx\n", i, (unsigned long)&rec->rxq[i], (unsigned long)&values[i]);
+		rec->rxq[i].processed = READ_ONCE(values[i].processed);
+		rec->rxq[i].dropped = READ_ONCE(values[i].dropped);
+		rec->rxq[i].issue = READ_ONCE(values[i].issue);
+		rec->rxq[i].xdp_pass = READ_ONCE(values[i].xdp_pass);
+		rec->rxq[i].xdp_drop = READ_ONCE(values[i].xdp_drop);
+		rec->rxq[i].xdp_redirect = READ_ONCE(values[i].xdp_redirect);
+	}
 }
 
 static void map_collect_percpu(struct datarec *values, struct record *rec)
@@ -337,26 +361,38 @@ static struct stats_record *alloc_stats_record(void)
 	}
 
 	if (sample_mask & SAMPLE_RX_CNT) {
-		rec->rx_cnt.cpu = alloc_record_per_cpu();
+		rec->rx_cnt.cpu = alloc_records(libbpf_num_possible_cpus());
 		if (!rec->rx_cnt.cpu) {
 			pr_warn("Failed to allocate rx_cnt per-CPU array\n");
 			goto end_rec;
 		}
 	}
+	if (sample_mask & SAMPLE_RXQ_STATS) {
+		if (sample_n_rxqs <= 0) {
+			pr_warn("Invalid number of RXQs: %d\n", sample_n_rxqs);
+			goto end_rx_cnt;
+		}
+
+		rec->rxq_cnt.rxq = alloc_records(sample_n_rxqs);
+		if (!rec->rxq_cnt.rxq) {
+			pr_warn("Failed to allocate rxq_cnt per RXQ array\n");
+			goto end_rx_cnt;
+		}
+	}
 	if (sample_mask & (SAMPLE_REDIRECT_CNT | SAMPLE_REDIRECT_ERR_CNT)) {
 		for (i = 0; i < XDP_REDIRECT_ERR_MAX; i++) {
-			rec->redir_err[i].cpu = alloc_record_per_cpu();
+			rec->redir_err[i].cpu = alloc_records(libbpf_num_possible_cpus());
 			if (!rec->redir_err[i].cpu) {
 				pr_warn("Failed to allocate redir_err per-CPU array for \"%s\" case\n",
 					xdp_redirect_err_names[i]);
 				while (i--)
 					free(rec->redir_err[i].cpu);
-				goto end_rx_cnt;
+				goto end_rxq_cnt;
 			}
 		}
 	}
 	if (sample_mask & SAMPLE_CPUMAP_KTHREAD_CNT) {
-		rec->kthread.cpu = alloc_record_per_cpu();
+		rec->kthread.cpu = alloc_records(libbpf_num_possible_cpus());
 		if (!rec->kthread.cpu) {
 			pr_warn("Failed to allocate kthread per-CPU array\n");
 			goto end_redir;
@@ -364,7 +400,7 @@ static struct stats_record *alloc_stats_record(void)
 	}
 	if (sample_mask & SAMPLE_EXCEPTION_CNT) {
 		for (i = 0; i < XDP_ACTION_MAX; i++) {
-			rec->exception[i].cpu = alloc_record_per_cpu();
+			rec->exception[i].cpu = alloc_records(libbpf_num_possible_cpus());
 			if (!rec->exception[i].cpu) {
 				pr_warn("Failed to allocate exception per-CPU array for \"%s\" case\n",
 					xdp_action2str(i));
@@ -375,7 +411,7 @@ static struct stats_record *alloc_stats_record(void)
 		}
 	}
 	if (sample_mask & SAMPLE_DEVMAP_XMIT_CNT) {
-		rec->devmap_xmit.cpu = alloc_record_per_cpu();
+		rec->devmap_xmit.cpu = alloc_records(libbpf_num_possible_cpus());
 		if (!rec->devmap_xmit.cpu) {
 			pr_warn("Failed to allocate devmap_xmit per-CPU array\n");
 			goto end_exception;
@@ -385,7 +421,7 @@ static struct stats_record *alloc_stats_record(void)
 		hash_init(rec->xmit_map);
 	if (sample_mask & SAMPLE_CPUMAP_ENQUEUE_CNT) {
 		for (i = 0; i < sample_n_cpus; i++) {
-			rec->enq[i].cpu = alloc_record_per_cpu();
+			rec->enq[i].cpu = alloc_records(libbpf_num_possible_cpus());
 			if (!rec->enq[i].cpu) {
 				pr_warn("Failed to allocate enqueue per-CPU array for CPU %d\n", i);
 				while (i--)
@@ -407,6 +443,8 @@ end_kthread:
 end_redir:
 	for (i = 0; i < XDP_REDIRECT_ERR_MAX; i++)
 		free(rec->redir_err[i].cpu);
+end_rxq_cnt:
+	free(rec->rxq_cnt.rxq);
 end_rx_cnt:
 	free(rec->rx_cnt.cpu);
 end_rec:
@@ -556,6 +594,36 @@ static void stats_get_rx_cnt(struct stats_record *stats_rec,
 		out->totals.rx += pps;
 		out->totals.drop += drop;
 		out->totals.err += err;
+	}
+}
+
+static void stats_get_rxq_cnt(struct stats_record *stats_rec,
+			      struct stats_record *stats_prev)
+{
+	struct record *rec, *prev;
+	double t, pps, drop, err;
+	int i;
+
+	rec = &stats_rec->rxq_cnt;
+	prev = &stats_prev->rxq_cnt;
+	t = calc_period(rec, prev);
+
+	print_default("\n");
+	for (i = 0; i < sample_n_rxqs; i++) {
+		struct datarec *r = &rec->rxq[i];
+		struct datarec *p = &prev->rxq[i];
+		char str[64];
+
+		pps = calc_pps(r, p, t);
+		drop = calc_drop_pps(r, p, t);
+		err = calc_errs_pps(r, p, t);
+		if (!pps && !drop && !err)
+			continue;
+
+		snprintf(str, sizeof(str), "rxq:%d", i);
+		print_default("    %-18s " FMT_COLUMNf FMT_COLUMNf FMT_COLUMNf
+			      "\n",
+			      str, PPS(pps), DROP(drop), ERR(err));
 	}
 }
 
@@ -1000,6 +1068,9 @@ static void stats_print(const char *prefix, int mask, struct stats_record *r,
 		stats_get_rx_cnt(r, p, nr_cpus, NULL);
 	}
 
+	if (mask & SAMPLE_RXQ_STATS)
+		stats_get_rxq_cnt(r, p);
+
 	if (mask & SAMPLE_CPUMAP_ENQUEUE_CNT)
 		stats_get_cpumap_enqueue(r, p, nr_cpus);
 
@@ -1061,19 +1132,63 @@ static void stats_print(const char *prefix, int mask, struct stats_record *r,
 	}
 }
 
-int sample_setup_maps(struct bpf_map **maps)
+static int get_num_rxqs(const char *ifname)
+{
+	struct ethtool_channels ch = {
+		.cmd = ETHTOOL_GCHANNELS,
+	};
+
+	struct ifreq ifr = {
+		.ifr_data = (void *)&ch,
+	};
+	int fd, ret;
+
+	if (!ifname)
+		return 0;
+
+	strcpy(ifr.ifr_name, ifname);
+	fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+	if (fd < 0) {
+		ret = -errno;
+		pr_warn("Couldn't open socket socket: %s\n", strerror(-ret));
+		return ret;
+	}
+
+	ret = ioctl(fd, SIOCETHTOOL, &ifr);
+	if (ret < 0) {
+		ret = -errno;
+		pr_warn("Error in ethtool ioctl: %s\n", strerror(-ret));
+		goto out;
+	}
+
+	ret = ch.rx_count + ch.combined_count;
+out:
+	close(fd);
+	pr_debug("Got %d queues for ifname %s\n", ret, ifname);
+	return ret;
+}
+
+
+int sample_setup_maps(struct bpf_map **maps, const char *ifname)
 {
 	sample_n_cpus = libbpf_num_possible_cpus();
 
 	for (int i = 0; i < MAP_DEVMAP_XMIT_MULTI; i++) {
 		sample_map[i] = maps[i];
-		int n_cpus;
+		int n_cpus, rxqs;
 
 		switch (i) {
 		case MAP_RX:
 		case MAP_CPUMAP_KTHREAD:
 		case MAP_DEVMAP_XMIT:
 			sample_map_count[i] = sample_n_cpus;
+			break;
+		case MAP_RXQ:
+			rxqs = get_num_rxqs(ifname);
+			if (rxqs < 0)
+				return rxqs;
+			sample_n_rxqs = rxqs;
+			sample_map_count[i] = rxqs ?: 1;
 			break;
 		case MAP_REDIRECT_ERR:
 			sample_map_count[i] =
@@ -1190,6 +1305,9 @@ static int sample_stats_collect(struct stats_record *rec)
 
 	if (sample_mask & SAMPLE_RX_CNT)
 		map_collect_percpu(sample_mmap[MAP_RX], &rec->rx_cnt);
+
+	if (sample_mask & SAMPLE_RXQ_STATS)
+		map_collect_rxqs(sample_mmap[MAP_RXQ], &rec->rxq_cnt);
 
 	if (sample_mask & SAMPLE_REDIRECT_CNT)
 		map_collect_percpu(sample_mmap[MAP_REDIRECT_ERR], &rec->redir_err[0]);

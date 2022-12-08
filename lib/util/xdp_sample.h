@@ -19,7 +19,8 @@ enum stats_mask {
 	SAMPLE_REDIRECT_MAP_CNT      = SAMPLE_REDIRECT_CNT | _SAMPLE_REDIRECT_MAP,
 	SAMPLE_REDIRECT_ERR_MAP_CNT  = SAMPLE_REDIRECT_ERR_CNT | _SAMPLE_REDIRECT_MAP,
 	SAMPLE_DEVMAP_XMIT_CNT_MULTI = 1U << 8,
-	SAMPLE_SKIP_HEADING	     = 1U << 9,
+	SAMPLE_SKIP_HEADING          = 1U << 9,
+	SAMPLE_RXQ_STATS             = 1U << 10,
 };
 
 /* Exit return codes */
@@ -30,7 +31,7 @@ enum stats_mask {
 #define EXIT_FAIL_BPF		4
 #define EXIT_FAIL_MEM		5
 
-int sample_setup_maps(struct bpf_map **maps);
+int sample_setup_maps(struct bpf_map **maps, const char *ifname);
 int __sample_init(int mask, int ifindex_from, int ifindex_to);
 void sample_teardown(void);
 int sample_run(int interval, void (*post_cb)(void *), void *ctx);
@@ -64,15 +65,16 @@ static inline char *safe_strncpy(char *dst, const char *src, size_t size)
 			return -errno;                                         \
 	})
 
-#define sample_init_pre_load(skel)                                             \
+#define sample_init_pre_load(skel, ifname)                                     \
 	({                                                                     \
 		skel->rodata->nr_cpus = libbpf_num_possible_cpus();            \
 		sample_setup_maps((struct bpf_map *[]){                        \
-			skel->maps.rx_cnt, skel->maps.redir_err_cnt,           \
+			skel->maps.rx_cnt, skel->maps.rxq_cnt,                 \
+			skel->maps.redir_err_cnt,                              \
 			skel->maps.cpumap_enqueue_cnt,                         \
 			skel->maps.cpumap_kthread_cnt,                         \
 			skel->maps.exception_cnt, skel->maps.devmap_xmit_cnt,  \
-			skel->maps.devmap_xmit_cnt_multi });                   \
+			skel->maps.devmap_xmit_cnt_multi}, ifname);            \
 	})
 
 #define DEFINE_SAMPLE_INIT(name)                                   \

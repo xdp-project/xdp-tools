@@ -15,6 +15,7 @@ array_map cpumap_enqueue_cnt SEC(".maps");
 array_map cpumap_kthread_cnt SEC(".maps");
 array_map exception_cnt SEC(".maps");
 array_map devmap_xmit_cnt SEC(".maps");
+array_map rxq_cnt SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_HASH);
