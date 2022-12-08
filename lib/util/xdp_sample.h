@@ -21,6 +21,7 @@ enum stats_mask {
 	SAMPLE_DEVMAP_XMIT_CNT_MULTI = 1U << 8,
 	SAMPLE_SKIP_HEADING          = 1U << 9,
 	SAMPLE_RXQ_STATS             = 1U << 10,
+	SAMPLE_DROP_OK               = 1U << 11,
 };
 
 /* Exit return codes */

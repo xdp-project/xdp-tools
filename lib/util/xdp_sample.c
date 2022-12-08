@@ -1049,8 +1049,8 @@ static void stats_print(const char *prefix, int mask, struct stats_record *r,
 	if (mask & SAMPLE_REDIRECT_CNT)
 		print_always(FMT_COLUMNl, REDIR(out->totals.redir));
 	printf(FMT_COLUMNl,
-	       out->totals.err + out->totals.drop + out->totals.drop_xmit,
-	       "err,drop/s");
+	       out->totals.err + out->totals.drop_xmit + (out->totals.drop * !(mask & SAMPLE_DROP_OK)),
+	       (mask & SAMPLE_DROP_OK) ? "err/s" : "err,drop/s");
 	if (mask & SAMPLE_DEVMAP_XMIT_CNT ||
 	    mask & SAMPLE_DEVMAP_XMIT_CNT_MULTI)
 		printf(FMT_COLUMNl, XMIT(out->totals.xmit));
@@ -1060,7 +1060,7 @@ static void stats_print(const char *prefix, int mask, struct stats_record *r,
 		str = (sample_log_level & LL_DEFAULT) && out->rx_cnt.pps ?
 				    "receive total" :
 				    "receive";
-		print_err((out->rx_cnt.err || out->rx_cnt.drop),
+		print_err((out->rx_cnt.err || (out->rx_cnt.drop && !(mask & SAMPLE_DROP_OK))),
 			  "  %-20s " FMT_COLUMNl FMT_COLUMNl FMT_COLUMNl "\n",
 			  str, PPS(out->rx_cnt.pps), DROP(out->rx_cnt.drop),
 			  ERR(out->rx_cnt.err));

@@ -14,6 +14,7 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 		"Usage: xdp-bench COMMAND [options]\n"
 		"\n"
 		"COMMAND can be one of:\n"
+		"       drop           - Drop all packets\n"
 		"       redirect       - XDP redirect using the bpf_redirect() helper\n"
 		"       redirect-cpu   - XDP CPU redirect using BPF_MAP_TYPE_CPUMAP\n"
 		"       redirect-map   - XDP redirect using BPF_MAP_TYPE_DEVMAP\n"
@@ -28,6 +29,13 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 struct enum_val xdp_modes[] = {
        {"native", XDP_MODE_NATIVE},
        {"skb", XDP_MODE_SKB},
+       {NULL, 0}
+};
+
+struct enum_val drop_program_modes[] = {
+       {"no-touch", DROP_NO_TOUCH},
+       {"read-data", DROP_READ_DATA},
+       {"swap-macs", DROP_SWAP_MACS},
        {NULL, 0}
 };
 
@@ -49,6 +57,35 @@ struct enum_val cpumap_program_modes[] = {
        {NULL, 0}
 };
 
+
+struct prog_option drop_options[] = {
+	DEFINE_OPTION("program-mode", OPT_ENUM, struct drop_opts, program_mode,
+		      .short_opt = 'p',
+		      .metavar = "<mode>",
+		      .typearg = drop_program_modes,
+		      .help = "Action to take before dropping packet. Default no-touch."),
+	DEFINE_OPTION("rxq-stats", OPT_BOOL, struct drop_opts, rxq_stats,
+		      .short_opt = 'r',
+		      .help = "Collect per-RXQ drop statistics"),
+	DEFINE_OPTION("interval", OPT_U32, struct drop_opts, interval,
+		      .short_opt = 'i',
+		      .metavar = "<seconds>",
+		      .help = "Polling interval (default 2)"),
+	DEFINE_OPTION("extended", OPT_BOOL, struct drop_opts, extended,
+		      .short_opt = 'e',
+		      .help = "Start running in extended output mode (C^\\ to toggle)"),
+	DEFINE_OPTION("xdp-mode", OPT_ENUM, struct drop_opts, mode,
+		      .short_opt = 'm',
+		      .typearg = xdp_modes,
+		      .metavar = "<mode>",
+		      .help = "Load XDP program in <mode>; default native"),
+	DEFINE_OPTION("dev", OPT_IFNAME, struct drop_opts, iface_in,
+		      .positional = true,
+		      .metavar = "<ifname>",
+		      .required = true,
+		      .help = "Load on device <ifname>"),
+	END_OPTIONS
+};
 
 struct prog_option redirect_basic_options[] = {
 	DEFINE_OPTION("interval", OPT_U32, struct basic_opts, interval,
@@ -191,6 +228,7 @@ struct prog_option redirect_devmap_multi_options[] = {
 };
 
 static const struct prog_command cmds[] = {
+	DEFINE_COMMAND(drop, "Drop all packets"),
 	DEFINE_COMMAND_NAME("redirect", redirect_basic,
 			    "XDP redirect using the bpf_redirect() helper"),
 	DEFINE_COMMAND_NAME("redirect-cpu", redirect_cpumap,

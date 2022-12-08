@@ -8,10 +8,26 @@
 
 #define MAX_IFACE_NUM 32
 
+int do_drop(const void *cfg, const char *pin_root_path);
 int do_redirect_basic(const void *cfg, const char *pin_root_path);
 int do_redirect_cpumap(const void *cfg, const char *pin_root_path);
 int do_redirect_devmap(const void *cfg, const char *pin_root_path);
 int do_redirect_devmap_multi(const void *cfg, const char *pin_root_path);
+
+enum drop_program_mode {
+	DROP_NO_TOUCH,
+	DROP_READ_DATA,
+	DROP_SWAP_MACS,
+};
+
+struct drop_opts {
+	bool extended;
+	bool rxq_stats;
+	__u32 interval;
+	enum xdp_attach_mode mode;
+	enum drop_program_mode program_mode;
+	struct iface iface_in;
+};
 
 struct basic_opts {
 	bool stats;
@@ -71,6 +87,7 @@ struct cpumap_opts {
 	struct iface redir_iface;
 };
 
+extern const struct drop_opts defaults_drop;
 extern const struct basic_opts defaults_redirect_basic;
 extern const struct cpumap_opts defaults_redirect_cpumap;
 extern const struct devmap_opts defaults_redirect_devmap;
