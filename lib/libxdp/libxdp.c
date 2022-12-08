@@ -1494,6 +1494,9 @@ static int xdp_program__load(struct xdp_program *prog)
 	if (!prog->bpf_obj)
 		return -EINVAL;
 
+	/* Make sure this program is loaded even if autoload was turned off */
+	bpf_program__set_autoload(prog->bpf_prog, true);
+
 	err = bpf_object__load(prog->bpf_obj);
 	if (err)
 		return err;
