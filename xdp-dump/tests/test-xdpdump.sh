@@ -187,7 +187,7 @@ test_capt_pcapng()
         return 1
     fi
 
-    if version_greater_or_equal "$TSHARK_VERSION" 3.4.0; then
+    if version_greater_or_equal "$TSHARK_VERSION" 3.6.7; then
 	local ATTRIB_REGEX="^xdptest:xdp_test_prog_with_a_long_name\(\)@fentry	0	1	$.*^xdptest:xdp_test_prog_with_a_long_name\(\)@fexit	0	1	2$.*"
 	RESULT=$(tshark -r "$PCAP_FILE" -T fields \
 			-e frame.interface_name \
