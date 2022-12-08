@@ -35,6 +35,7 @@
 #include "libxdp_internal.h"
 
 #define XDP_RUN_CONFIG_SEC ".xdp_run_config"
+#define XDP_SKIP_ENVVAR "LIBXDP_SKIP_DISPATCHER"
 
 /* When cloning BPF fds, we want to make sure they don't end up as any of the
  * standard stdin, stderr, stdout descriptors: fd 0 can confuse the kernel, and
@@ -1648,6 +1649,16 @@ retry:
 			return libxdp_err(-EINVAL);
 
 		return libxdp_err(xdp_program__attach_hw(progs[0], ifindex));
+	}
+
+	if (num_progs == 1) {
+		char *envval;
+
+		envval = secure_getenv(XDP_SKIP_ENVVAR);
+		if (envval && envval[0] == '1' && envval[1] == '\0') {
+			pr_debug("Skipping dispatcher due to environment setting\n");
+			return libxdp_err(xdp_program__attach_single(progs[0], ifindex, mode));
+		}
 	}
 
 	mp = xdp_multiprog__generate(progs, num_progs, ifindex, old_mp, false);
