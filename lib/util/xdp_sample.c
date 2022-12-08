@@ -193,47 +193,6 @@ static const char *xdp_action2str(int action)
 	return NULL;
 }
 
-static void sample_print_help(int mask)
-{
-	printf("Please see %s(8) for more details.\n\n", program_invocation_short_name);
-	printf("Supported output features:\n");
-	if (mask & SAMPLE_RX_CNT)
-		puts(" - rx_cnt");
-	if (mask & SAMPLE_REDIRECT_CNT)
-		puts(" - redirect_cnt");
-	if (mask & SAMPLE_REDIRECT_ERR_CNT)
-		puts(" - redirect_err_cnt");
-	if (mask & SAMPLE_CPUMAP_ENQUEUE_CNT)
-		puts(" - enqueue_cnt");
-	if (mask & SAMPLE_CPUMAP_KTHREAD_CNT)
-		puts(" - kthread_cnt");
-	if (mask & SAMPLE_DEVMAP_XMIT_CNT)
-		puts(" - devmap_xmit");
-	if (mask & SAMPLE_DEVMAP_XMIT_CNT_MULTI)
-		puts(" - devmap_xmit_cnt_multi");
-}
-
-void sample_usage(char *argv[], const struct option *long_options,
-		  const char *doc, int mask, bool error)
-{
-	int i;
-
-	if (!error)
-		sample_print_help(mask);
-
-	printf("\n%s\nOption for %s:\n", doc, argv[0]);
-	for (i = 0; long_options[i].name != 0; i++) {
-		printf(" --%-15s", long_options[i].name);
-		if (long_options[i].flag != NULL)
-			printf(" flag (internal value: %d)",
-			       *long_options[i].flag);
-		else
-			printf("\t short-option: -%c", long_options[i].val);
-		printf("\n");
-	}
-	printf("\n");
-}
-
 static struct datarec *alloc_record_per_cpu(void)
 {
 	int nr_cpus = libbpf_num_possible_cpus();

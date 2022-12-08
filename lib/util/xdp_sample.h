@@ -36,8 +36,6 @@ void sample_teardown(void);
 int sample_run(int interval, void (*post_cb)(void *), void *ctx);
 
 void sample_switch_mode(void);
-void sample_usage(char *argv[], const struct option *long_options,
-		  const char *doc, int mask, bool error);
 
 const char *get_driver_name(int ifindex);
 int get_mac_addr(int ifindex, void *mac_addr);
