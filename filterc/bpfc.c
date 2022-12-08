@@ -109,7 +109,7 @@ static int convert_cbpf(struct cbpf_program *cbpf_prog,
 	int *addrs = NULL;
 	size_t insns_cnt = 0;
 	u_int i;
-	int code, target, imm, src_reg, dst_reg, bpf_src, err = 0;
+	int code, target, imm, src_reg, dst_reg, bpf_src, stack_off, err = 0;
 
 	addrs = calloc(sizeof(*addrs), cbpf_prog->bf_len);
 	if (!addrs) {
@@ -253,6 +253,52 @@ do_pass:
 			code = BPF_JMP | BPF_JA;
 			target = i + fp->jf + 1;
 			*insn++ = BPF_JA_INSN(code, target);
+			break;
+
+		/* RET_K is remaped into 2 insns. RET_A case doesn't need an
+		 * extra mov as BPF_REG_0 is already mapped into BPF_REG_A.
+		 */
+		case BPF_RET | BPF_A:
+		case BPF_RET | BPF_K:
+			if (BPF_RVAL(fp->code) == BPF_K)
+				*insn++ = BPF_MOV32_IMM(BPF_REG_0, fp->k);
+
+			*insn++ = BPF_EXIT_INSN();
+			break;
+
+		/* Store to stack. */
+		case BPF_ST:
+		case BPF_STX:
+			stack_off = fp->k * 4  + 4;
+			*insn = BPF_STX_MEM(BPF_W, BPF_REG_FP, BPF_CLASS(fp->code) ==
+					    BPF_ST ? BPF_REG_A : BPF_REG_X,
+					    -stack_off);
+			break;
+
+		/* Load from stack. */
+		case BPF_LD | BPF_MEM:
+		case BPF_LDX | BPF_MEM:
+			stack_off = fp->k * 4  + 4;
+			*insn = BPF_LDX_MEM(BPF_W, BPF_CLASS(fp->code) == BPF_LD  ?
+					    BPF_REG_A : BPF_REG_X, BPF_REG_FP,
+					    -stack_off);
+			break;
+
+		/* A = K or X = K */
+		case BPF_LD | BPF_IMM:
+		case BPF_LDX | BPF_IMM:
+			*insn++ = BPF_MOV32_IMM(BPF_CLASS(fp->code) == BPF_LD ?
+					      BPF_REG_A : BPF_REG_X, fp->k);
+			break;
+
+		/* X = A */
+		case BPF_MISC | BPF_TAX:
+			*insn++ = BPF_MOV64_REG(BPF_REG_X, BPF_REG_A);
+			break;
+
+		/* A = X */
+		case BPF_MISC | BPF_TXA:
+			*insn++ = BPF_MOV64_REG(BPF_REG_A, BPF_REG_X);
 			break;
 
 		/* Unknown instruction. */
