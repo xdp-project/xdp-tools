@@ -1452,7 +1452,15 @@ int sample_run(int interval, void (*post_cb)(void *), void *ctx)
 	struct itimerspec its = { ts, ts };
 	struct stats_record *rec, *prev;
 	struct pollfd pfd[2] = {};
+	bool imm_exit = false;
+	const char *envval;
 	int timerfd, ret;
+
+	envval = secure_getenv("XDP_SAMPLE_IMMEDIATE_EXIT");
+	if (envval && envval[0] == '1' && envval[1] == '\0') {
+		pr_debug("XDP_SAMPLE_IMMEDIATE_EXIT envvar set, exiting immediately after setup\n");
+		imm_exit = true;
+	}
 
 	if (!interval) {
 		pr_warn("Incorrect interval 0\n");
@@ -1483,6 +1491,9 @@ int sample_run(int interval, void (*post_cb)(void *), void *ctx)
 
 	ret = sample_stats_collect(rec);
 	if (ret < 0)
+		goto end_rec_prev;
+
+	if (imm_exit)
 		goto end_rec_prev;
 
 	for (;;) {
