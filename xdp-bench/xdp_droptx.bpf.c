@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Copyright (c) 2016 John Fastabend <john.r.fastabend@intel.com>
- *
+*
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -18,9 +18,10 @@
 const volatile bool read_data = 0;
 const volatile bool swap_macs = 0;
 const volatile bool rxq_stats = 0;
+const volatile enum xdp_action action = XDP_DROP;
 
 SEC("xdp")
-int xdp_drop_prog(struct xdp_md *ctx)
+int xdp_droptx_prog(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
@@ -54,10 +55,13 @@ int xdp_drop_prog(struct xdp_md *ctx)
 			swap_src_dst_mac(data);
 	}
 
-	NO_TEAR_INC(rec->dropped);
-	if (rxq_stats)
-		NO_TEAR_INC(rxq_rec->dropped);
-	return XDP_DROP;
+	if (action == XDP_DROP) {
+		NO_TEAR_INC(rec->dropped);
+		if (rxq_stats)
+			NO_TEAR_INC(rxq_rec->dropped);
+	}
+
+	return action;
 }
 
 char _license[] SEC("license") = "GPL";

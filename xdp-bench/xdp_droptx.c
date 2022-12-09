@@ -23,30 +23,31 @@
 
 #include "xdp-bench.h"
 #include "xdp_sample.h"
-#include "xdp_drop.skel.h"
+#include "xdp_droptx.skel.h"
 
-static int mask = SAMPLE_RX_CNT | SAMPLE_EXCEPTION_CNT | SAMPLE_DROP_OK;
+static int mask = SAMPLE_RX_CNT | SAMPLE_EXCEPTION_CNT;
 
-DEFINE_SAMPLE_INIT(xdp_drop);
+DEFINE_SAMPLE_INIT(xdp_droptx);
 
-const struct drop_opts defaults_drop = { .mode = XDP_MODE_NATIVE,
-					 .interval = 2 };
+const struct droptx_opts defaults_drop = { .mode = XDP_MODE_NATIVE,
+					     .interval = 2 };
+const struct droptx_opts defaults_tx = { .mode = XDP_MODE_NATIVE,
+					 .interval = 2,
+					 .program_mode = DROPTX_SWAP_MACS };
 
-int do_drop(const void *cfg, __unused const char *pin_root_path)
+static int do_droptx(const struct droptx_opts *opt, enum xdp_action action)
 {
-	const struct drop_opts *opt = cfg;
-
 	DECLARE_LIBBPF_OPTS(xdp_program_opts, opts);
 	struct xdp_program *xdp_prog = NULL;
 	int ret = EXIT_FAIL_OPTION;
-	struct xdp_drop *skel;
+	struct xdp_droptx *skel;
 
 	if (opt->extended)
 		sample_switch_mode();
 
-	skel = xdp_drop__open();
+	skel = xdp_droptx__open();
 	if (!skel) {
-		pr_warn("Failed to xdp_drop__open: %s\n", strerror(errno));
+		pr_warn("Failed to xdp_droptx__open: %s\n", strerror(errno));
 		ret = EXIT_FAIL_BPF;
 		goto end;
 	}
@@ -58,9 +59,13 @@ int do_drop(const void *cfg, __unused const char *pin_root_path)
 		goto end_destroy;
 	}
 
-	if (opt->program_mode >= DROP_READ_DATA)
+	skel->rodata->action = action;
+	if (action == XDP_DROP)
+		mask |= SAMPLE_DROP_OK;
+
+	if (opt->program_mode >= DROPTX_READ_DATA)
 		skel->rodata->read_data = true;
-	if (opt->program_mode >= DROP_SWAP_MACS)
+	if (opt->program_mode >= DROPTX_SWAP_MACS)
 		skel->rodata->swap_macs = true;
 	if (opt->rxq_stats) {
 		skel->rodata->rxq_stats = true;
@@ -68,7 +73,7 @@ int do_drop(const void *cfg, __unused const char *pin_root_path)
 	}
 
 	opts.obj = skel->obj;
-	opts.prog_name = bpf_program__name(skel->progs.xdp_drop_prog);
+	opts.prog_name = bpf_program__name(skel->progs.xdp_droptx_prog);
 	xdp_prog = xdp_program__create(&opts);
 	if (!xdp_prog) {
 		ret = -errno;
@@ -93,7 +98,8 @@ int do_drop(const void *cfg, __unused const char *pin_root_path)
 
 	ret = EXIT_FAIL;
 
-	printf("Dropping packets on %s (ifindex %d; driver %s)\n",
+	printf("%s packets on %s (ifindex %d; driver %s)\n",
+	       action == XDP_DROP ? "Dropping" : "Hairpinning (XDP_TX)",
 	       opt->iface_in.ifname, opt->iface_in.ifindex, get_driver_name(opt->iface_in.ifindex));
 
 	ret = sample_run(opt->interval, NULL, NULL);
@@ -106,8 +112,22 @@ int do_drop(const void *cfg, __unused const char *pin_root_path)
 end_detach:
 	xdp_program__detach(xdp_prog, opt->iface_in.ifindex, opt->mode, 0);
 end_destroy:
-	xdp_drop__destroy(skel);
+	xdp_droptx__destroy(skel);
 end:
 	sample_teardown();
 	return ret;
+}
+
+int do_drop(const void *cfg, __unused const char *pin_root_path)
+{
+	const struct droptx_opts *opt = cfg;
+
+	return do_droptx(opt, XDP_DROP);
+}
+
+int do_tx(const void *cfg, __unused const char *pin_root_path)
+{
+	const struct droptx_opts *opt = cfg;
+
+	return do_droptx(opt, XDP_TX);
 }
