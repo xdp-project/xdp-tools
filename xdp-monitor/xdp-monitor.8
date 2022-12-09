@@ -1,7 +1,7 @@
-.TH "xdp-monitor" "8" "DECEMBER  8, 2022" "V1.2.2" "A simple XDP monitoring tool" 
+.TH "xdp-monitor" "8" "DECEMBER  9, 2022" "V1.2.2" "A simple XDP monitoring tool" 
 
 .SH "NAME"
-XDP-monitor \- a simple BPF-powered XDP monitoring
+XDP-monitor \- a simple BPF-powered XDP monitoring tool
 .SH "SYNOPSIS"
 .PP
 XDP-monitor is a tool that monitors various XDP related statistics and events using
@@ -33,19 +33,30 @@ The syntax for running xdp-monitor is:
 .PP
 The supported options are:
 
+.SS "-i, --interval <SECONDS>"
+.PP
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
+
 .SS "-s, --stats"
 .PP
 Enable statistics for successful redirection. This option comes with a per
 packet tracing overhead, for recording all successful redirections.
 
-.SS "-i, --interval"
+.SS "-e, --extended"
 .PP
-Set the polling interval for collecting all statistics and displaying them to
-the output. The unit of interval is in seconds.
+Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
+"terse" mode. The output mode can be switched by hitting C-$\ while the program
+is running. See also the \fBOutput Format Description\fP section below.
 
 .SS "-v, --verbose"
 .PP
-Enable verbose output.
+Enable verbose logging. Supply twice to enable verbose logging from the
+underlying \fIlibxdp\fP and \fIlibbpf\fP libraries.
+
+.SS "--version"
+.PP
+Show the application version and exit.
 
 .SS "-h, --help"
 .PP
@@ -54,7 +65,8 @@ Display a summary of the available options
 .SH "Output Format Description"
 .PP
 By default, redirect success statistics are disabled, use \fI\-\-stats\fP to enable.
-The terse output mode is default, verbose mode can be activated using \fI\-\-verbose\fP.
+The terse output mode is default, extended output mode can be activated using
+the \fI\-\-extended\fP command line option.
 
 .PP
 SIGQUIT (Ctrl + \\) can be used to switch the mode dynamically at runtime.

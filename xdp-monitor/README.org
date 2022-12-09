@@ -7,7 +7,7 @@
 # To export the man page, simply use the org-mode exporter; (require 'ox-man) if
 # it's not available. There's also a Makefile rule to export it.
 
-* XDP-monitor - a simple BPF-powered XDP monitoring
+* XDP-monitor - a simple BPF-powered XDP monitoring tool
 
 XDP-monitor is a tool that monitors various XDP related statistics and events using
 BPF tracepoints infrastructure, trying to be as low overhead as possible.
@@ -30,16 +30,25 @@ xdp-monitor [options]
 
 The supported options are:
 
+** -i, --interval <SECONDS>
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
+
 ** -s, --stats
 Enable statistics for successful redirection. This option comes with a per
 packet tracing overhead, for recording all successful redirections.
 
-** -i, --interval
-Set the polling interval for collecting all statistics and displaying them to
-the output. The unit of interval is in seconds.
+** -e, --extended
+Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
+"terse" mode. The output mode can be switched by hitting C-\ while the program
+is running. See also the *Output Format Description* section below.
 
 ** -v, --verbose
-Enable verbose output.
+Enable verbose logging. Supply twice to enable verbose logging from the
+underlying =libxdp= and =libbpf= libraries.
+
+** --version
+Show the application version and exit.
 
 ** -h, --help
 Display a summary of the available options
@@ -47,7 +56,8 @@ Display a summary of the available options
 * Output Format Description
 
 By default, redirect success statistics are disabled, use =--stats= to enable.
-The terse output mode is default, verbose mode can be activated using =--verbose=.
+The terse output mode is default, extended output mode can be activated using
+the =--extended= command line option.
 
 SIGQUIT (Ctrl + \\) can be used to switch the mode dynamically at runtime.
 
