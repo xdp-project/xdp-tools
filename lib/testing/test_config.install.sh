@@ -3,4 +3,5 @@
 
 XDP_FILTER=xdp-filter
 XDP_LOADER=xdp-loader
+XDP_BENCH=xdp-bench
 XDPDUMP=xdpdump
