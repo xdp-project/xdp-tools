@@ -9,233 +9,413 @@
 
 * XDP-bench - a XDP simple benchmarking tool
 
-XDP-redirect is a packet redirecting utility powered by XDP. It is intended to
-be a simple program demonstrating the various in kernel packet redirection
-facilities and their various practical applications. The tools support basic
-packet redirection using the (now obsolete) =bpf_redirect= helper,
+XDP-bench is a benchmarking utility for exercising the different operation modes
+of XDP. It is intended to be a simple program demonstrating the various
+operating modes; these include dropping packets, hairpin forwarding (using the
+=XDP_TX= return code), and redirection using the various in-kernel packet
+redirection facilities.
+
+The drop and TX modes support various options to control whether packet data is
+touched (read or written) before being dropped or transmitted. The redirection
+modes support using the simple ifindex-based =bpf_redirect= helper, the
 =bpf_redirect_map= helper using a cpumap as its target, =bpf_redirect_map= using
 a devmap as its target, and the devmap's broadcast mode which allows redirecting
 to multiple devices.
 
 There is more information on the meaning of the output in both default (terse)
-and verbose output mode, in the =Output Format Description= section.
+and extended output mode, in the *Output Format Description* section below.
 
-** Running xdp-redirect
-The syntax for running xdp-redirect is:
+** Running xdp-bench
+The syntax for running xdp-bench is:
 
 #+begin_src sh
-xdp-redirect COMMAND [options]
+Usage: xdp-bench COMMAND [options]
 
-Where COMMAND can be one of:
-       basic		- Use bpf_redirect helper for redirection
-       cpumap		- Use bpf_redirect_map with a cpumap as target
-       devmap		- Use bpf_redirect_map with a devmap as target
-       devmap_multi	- Use bpf_redirect_map with a devmap as target, in broadcast mode
+COMMAND can be one of:
+       drop           - Drop all packets on an interface
+       tx             - Transmit packets back out on an interface (hairpin forwarding)
+       redirect       - XDP redirect using the bpf_redirect() helper
+       redirect-cpu   - XDP CPU redirect using BPF_MAP_TYPE_CPUMAP
+       redirect-map   - XDP redirect using BPF_MAP_TYPE_DEVMAP
+       redirect-multi - XDP multi-redirect using BPF_MAP_TYPE_DEVMAP and the BPF_F_BROADCAST flag
 #+end_src
 
-Each command, and its options are explained below. Or use =xdp-redirect COMMAND
+Each command, and its options are explained below. Or use =xdp-bench COMMAND
 --help= to see the options for each command.
 
-* The BASIC command
-In this mode, =xdp-redirect= sets up packet redirection between the two
+* The DROP command
+In this mode, =xdp-bench= installs an XDP program on an interface that simply
+drops all packets. There are options to control what to do with the packet
+before dropping it (touch the packet data or not), as well as which statistics
+to gather. This is a basic benchmark for the baseline (best-case) performance of
+XDP on an interface.
+
+The syntax for the =drop= command is:
+
+=xdp-bench drop [options] <ifname>=
+
+Where =<ifname>= is the name of the interface the XDP program should be
+installed on.
+
+The supported options are:
+
+** -p, --packet-operation <ACTION>
+Specify which operation should be taken on the packet before dropping it. The
+following actions are available:
+
+#+begin_src sh
+ no-touch		- Drop the packet without touching the packet data
+ touch		- Read a field in the packet header before dropping
+ swap-macs		- Swap the soruce and destination MAC addresses before dropping
+#+end_src
+
+Whether to touch the packet before dropping it can have a significant
+performance impact as this requires bringing packet data into the CPU cache (and
+flushing it back out if writing).
+
+The default for this option is =no-touch=.
+
+** -r, --rxq-stats
+If set, the XDP program will also gather statistics on which receive queue index
+each packet was received on. This is displayed in the extended output mode along
+with per-CPU data (which, depending on the hardware configuration may or may not
+be equivalent).
+
+** -i, --interval <SECONDS>
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
+
+** -e, --extended
+Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
+"terse" mode. The output mode can be switched by hitting C-\ while the program
+is running. See also the *Output Format Description* section below.
+
+** -m, --mode
+Selects the XDP program mode (native or skb). Note that native XDP mode is the
+default, and loading the redirect program in skb manner is neither performant,
+nor recommended. However, this option is useful if the interface driver lacks
+native XDP support, or when simply testing the tool.
+
+** -v, --verbose
+Enable verbose logging. Supply twice to enable verbose logging from the
+underlying =libxdp= and =libbpf= libraries.
+
+** --version
+Show the application version and exit.
+
+** -h, --help
+Display a summary of the available options
+
+* The TX command
+In this mode, =xdp-bench= installs an XDP program on an interface that performs
+so-called "hairpin forwarding", which means each packet is transmitted back out
+the same interface (using the =XDP_TX= return code).. There are options to
+control what to do with the packet before transmitting it (touch the packet data
+or not), as well as which statistics to gather.
+
+The syntax for the =tx= command is:
+
+=xdp-bench tx [options] <ifname>=
+
+Where =<ifname>= is the name of the interface the XDP program should be
+installed on.
+
+The supported options are:
+
+** -p, --packet-operation <ACTION>
+Specify which operation should be taken on the packet before transmitting it. The
+following actions are available:
+
+#+begin_src sh
+ no-touch		- Transmit the packet without touching the packet data
+ touch		- Read a field in the packet header before transmitting
+ swap-macs		- Swap the soruce and destination MAC addresses before transmitting
+#+end_src
+
+To allow the packet to be successfully transmitted back to the sender, the MAC
+addresses have to be swapped, so that the source MAC matches the network device.
+However, there is a performance overhead in doing swapping, so this option
+allows this function to be turned off.
+
+The default for this option is =swap-macs=.
+
+** -r, --rxq-stats
+If set, the XDP program will also gather statistics on which receive queue index
+each packet was received on. This is displayed in the extended output mode along
+with per-CPU data (which, depending on the hardware configuration may or may not
+be equivalent).
+
+** -i, --interval <SECONDS>
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
+
+** -e, --extended
+Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
+"terse" mode. The output mode can be switched by hitting C-\ while the program
+is running. See also the *Output Format Description* section below.
+
+** -m, --mode
+Selects the XDP program mode (native or skb). Note that native XDP mode is the
+default, and loading the redirect program in skb manner is neither performant,
+nor recommended. However, this option is useful if the interface driver lacks
+native XDP support, or when simply testing the tool.
+
+** -v, --verbose
+Enable verbose logging. Supply twice to enable verbose logging from the
+underlying =libxdp= and =libbpf= libraries.
+
+** --version
+Show the application version and exit.
+
+** -h, --help
+Display a summary of the available options
+
+* The REDIRECT command
+In this mode, =xdp-bench= sets up packet redirection between the two
 interfaces supplied on the command line using the =bpf_redirect= BPF helper
 triggered on packet reception on the ingress interface.
 
-The syntax for the =basic= command is:
+The syntax for the =redirect= command is:
 
-=xdp-redirect basic [options] <ifname|ifindex>_in <ifname|ifindex>_out=
+=xdp-bench redirect [options] <ifname_in> <ifname_out>=
 
-Where =<ifname|ifindex>_in= is the name of the input interface from where
-packets will be redirect to the output interface =<ifname|ifindex>_out=.
+Where =<ifname_in>= is the name of the input interface from where packets will
+be redirect to the output interface =<ifname_out>=.
+
 The supported options are:
 
-** -S, --skb-mode
-Load the XDP program in generic XDP mode. Note that native XDP mode is the
-default, and loading the redirect program in this manner is neither performant,
-nor recommended. However, this option is useful if the interface driver lacks
-native XDP support, or when simply testing the tool.
+** -i, --interval <SECONDS>
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
 
 ** -s, --stats
 Enable statistics for successful redirection. This option comes with a per
 packet tracing overhead, for recording all successful redirections.
 
-** -i, --interval
-Set the polling interval for collecting all statistics and displaying them to
-the output. The unit of interval is in seconds.
+** -e, --extended
+Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
+"terse" mode. The output mode can be switched by hitting C-\ while the program
+is running. See also the *Output Format Description* section below.
+
+** -m, --mode
+Selects the XDP program mode (native or skb). Note that native XDP mode is the
+default, and loading the redirect program in skb manner is neither performant,
+nor recommended. However, this option is useful if the interface driver lacks
+native XDP support, or when simply testing the tool.
 
 ** -v, --verbose
-Enable verbose output.
+Enable verbose logging. Supply twice to enable verbose logging from the
+underlying =libxdp= and =libbpf= libraries.
+
+** --version
+Show the application version and exit.
 
 ** -h, --help
 Display a summary of the available options
 
-* The CPUMAP command
-In this mode, =xdp-redirect= sets up packet redirection between the two
-interfaces supplied on the command line using the bpf_redirect_map BPF helper
-triggered on packet reception on the ingress interface, using a cpumap as its
-target. Hence, this tool can be used to redirect packets on an interface from
-one CPU to another. In addition to this, the tool then supports redirecting the
-packet to another output device when it is processed on the target CPU.
+* The REDIRECT-CPU command
+In this mode, =xdp-bench= sets up packet redirection using the
+=bpf_redirect_map= BPF helper triggered on packet reception on the ingress
+interface, using a cpumap as its target. Hence, this tool can be used to
+redirect packets on an interface from one CPU to another. In addition to this,
+the tool then supports redirecting the packet to another output device when it
+is processed on the target CPU.
 
-The syntax for the =cpumap= command is:
+The syntax for the =redirect-cpu= command is:
 
-=xdp-redirect cpumap [options] -d <ifname|ifindex> -c 0 ... -c N=
+=xdp-bench redirect-cpu [options] <ifname> -c 0 ... -c N=
 
-Where =<ifname|ifindex>= is the name of the input interface from where
-packets will be redirect to the target CPU list specified using =-c=.
+Where =<ifname>= is the name of the input interface from where packets will be
+redirect to the target CPU list specified using =-c=.
+
 The supported options are:
 
-** -d, --dev
-Specify the interface from which packets will be redirected to other CPUs.
-This option is mandatory.
-
 ** -c, --cpu <CPU>
-Specify a possible target CPU. This option can be passed multiple times to
-specify a list of CPUs. This option is mandatory.
+Specify a possible target CPU index. This option must be passed at least once,
+and can be passed multiple times to specify a list of CPUs. Which CPU is chosen
+for a given packet depends on the value of the =--program-mode= option,
+described below.
 
-** -q, --qsize <QSIZE>
+** -p, --program-mode <MODE>
+Specify a program that embeds a predefined policy deciding how packets are
+redirected to different CPUs. The following options are available:
+
+#+begin_src sh
+ no-touch		- Redirect without touching packet data
+ touch		- Read packet data before redirecting
+ round-robin	- Cycle between target CPUs in a round-robin fashion (for each packet)
+ l4-proto		- Choose the target CPU based on the layer-4 protocol of packet
+ l4-filter		- Like l4-proto, but drop UDP packets with destination port 9 (used by pktgen)
+ l4-hash		- Use source and destination IP hashing to pick target CPU
+#+end_src
+
+The =no-touch= and =touch= modes always redirect packets to the same CPU (the
+first value supplied to =--cpu=). The =round-robin= and =l4-hash= modes
+distribute packets between all the CPUs supplied as =--cpu= arguments, while
+=l4-proto= and =l4-filter= send TCP and unrecognised packets to CPU index 0, UDP
+packets to CPU index 1 and ICMP packets to CPU index 2 (where the index refers
+to the order the actual CPUs are given on the command line).
+
+The default for this option is =l4-hash=.
+
+** -r --remote-action <ACTION>
+If this option is set, a separate program is installed into the cpumap, which
+will be invoked on the remote CPU after the packet is processed there. The
+action can be either =drop= or =pass= which will drop the packet or pass it to
+the regular networking stack, respectively. Or it can be =redirect=, which will
+cause the packet to be redirected to another interface and transmitted out that
+interface on the remote CPU. If this option is set to =redirect= the target
+device must be specified using =--redirect-device=.
+
+The default for this option is =disabled=.
+
+** -r, --redirect-device <IFNAME>
+Specify the device to redirect the packet to when it is received on the target CPU.
+Note that this option can only be specified with =--remote-action redirect=.
+
+** -q, --qsize <PACKETS>
 Set the queue size for the per-CPU cpumap ring buffer used for redirecting
-packets from multiple CPUs to one CPU.
+packets from multiple CPUs to one CPU. The default value is 2048 packets.
 
 ** -x, --stress-mode
 Stress the cpumap implementation by deallocating and reallocating the cpumap
 ring buffer on each polling interval.
 
-** -p, --progname <PROG>
-Specify a program that embeds a predefined policy deciding how packets are
-redirected to different CPUs. The following options are available:
-
-#+begin_src sh
- xdp_prognum0_no_touch			- Redirect without touching packet data
- xdp_prognum1_touch_data			- Read packet data before redirecting
- xdp_prognum2_round_robin			- Cycle between target CPUs in round-robin fashion
- xdp_prognum3_proto_separate		- Choose a CPU based on the protocol of packet
- xdp_prognum4_ddos_filter_pktgen	- A DDoS filter for pktgen packet load
- xdp_prognum5_lb_hash_ip_pairs		- Use source and destination IP hashing to pick target CPU
-#+end_src
-
-** -e, --mprog-name <NAME>
-Specify the verdict for the packet when it is received on the target CPU. =NAME=
-must be one of =pass= or =drop=.
-
-** -r, --redirect-device <ifname|ifindex>
-Specify the device to redirect the packet to when it is received on the target CPU.
-Note that this option can only be specified with =--mprog-name= and/or
-=--mprog-filename= when =--redirect-map= is also present.
-
-** -f, --mprog-filename <filename>
-Use a custom program to be invoked when the packet is received on the target CPU. This
-option must be specified in combination with =--mprog-name= that specifies the name
-of the XDP program in the BPF object file =<filename>=.
-
-** -m, --redirect-map <map_name>
-When specifying =--mprog-filename= and =--mprog-name=, the user may use this
-option along with =--redirect-device= to specify the name of a devmap BPF map
-and configure it at index 0 with the device specified using =--redirect-device=.
-
-** -S, --skb-mode
-Load the XDP program in generic XDP mode. Note that native XDP mode is the
-default, and loading the redirect program in this manner is neither performant,
-nor recommended. However, this option is useful if the interface driver lacks
-native XDP support, or when simply testing the tool.
+** -i, --interval <SECONDS>
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
 
 ** -s, --stats
 Enable statistics for successful redirection. This option comes with a per
 packet tracing overhead, for recording all successful redirections.
 
-** -i, --interval
-Set the polling interval for collecting all statistics and displaying them to
-the output. The unit of interval is in seconds.
+** -e, --extended
+Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
+"terse" mode. The output mode can be switched by hitting C-\ while the program
+is running. See also the *Output Format Description* section below.
+
+** -m, --mode
+Selects the XDP program mode (native or skb). Note that native XDP mode is the
+default, and loading the redirect program in skb manner is neither performant,
+nor recommended. However, this option is useful if the interface driver lacks
+native XDP support, or when simply testing the tool.
 
 ** -v, --verbose
-Enable verbose output.
+Enable verbose logging. Supply twice to enable verbose logging from the
+underlying =libxdp= and =libbpf= libraries.
+
+** --version
+Show the application version and exit.
 
 ** -h, --help
 Display a summary of the available options
 
-* The DEVMAP command
-In this mode, =xdp-redirect= sets up packet redirection between the two
-interfaces supplied on the command line using the =bpf_redirect_map= BPF helper
-triggered on packet reception on the ingress interface, using a devmap as its
-target.
+* The REDIRECT-MAP command
+In this mode, =xdp-bench= sets up packet redirection between two interfaces
+supplied on the command line using the =bpf_redirect_map()= BPF helper triggered
+on packet reception on the ingress interface, using a devmap as its target.
 
-The syntax for the =devmap= command is:
+The syntax for the =redirect-map= command is:
 
-=xdp-redirect devmap [options] <ifname|ifindex>_in <ifname|ifindex>_out=
+=xdp-bench redirect-map [options] <ifname_in> <ifname_out>=
 
-Where =<ifname|ifindex>_in= is the name of the input interface from where
-packets will be redirect to the output interface =<ifname|ifindex>_out=.
+Where =<ifname_in>= is the name of the input interface from where packets will
+be redirect to the output interface =<ifname_out>=.
+
 The supported options are:
 
 ** -X, --load-egress
 Load a program in the devmap entry used for redirection, so that it is invoked
 after the packet is redirected to the target device, before it is transmitted
-out of the output interface.
+out of the output interface. The remote program will update the packet data so
+its source MAC address matches the one of the destination interface.
 
-** -S, --skb-mode
-Load the XDP program in generic XDP mode. Note that native XDP mode is the
-default, and loading the redirect program in this manner is neither performant,
-nor recommended. However, this option is useful if the interface driver lacks
-native XDP support, or when simply testing the tool.
+** -i, --interval <SECONDS>
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
 
 ** -s, --stats
 Enable statistics for successful redirection. This option comes with a per
 packet tracing overhead, for recording all successful redirections.
 
-** -i, --interval
-Set the polling interval for collecting all statistics and displaying them to
-the output. The unit of interval is in seconds.
+** -e, --extended
+Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
+"terse" mode. The output mode can be switched by hitting C-\ while the program
+is running. See also the *Output Format Description* section below.
+
+** -m, --mode
+Selects the XDP program mode (native or skb). Note that native XDP mode is the
+default, and loading the redirect program in skb manner is neither performant,
+nor recommended. However, this option is useful if the interface driver lacks
+native XDP support, or when simply testing the tool.
 
 ** -v, --verbose
-Enable verbose output.
+Enable verbose logging. Supply twice to enable verbose logging from the
+underlying =libxdp= and =libbpf= libraries.
+
+** --version
+Show the application version and exit.
 
 ** -h, --help
 Display a summary of the available options
 
-* The DEVMAP\under{}MULTI command
-In this mode, =xdp-redirect= sets up one-to-many packet redirection between
-interfaces supplied on the command line using the =bpf_redirect_map= BPF helper
+* The REDIRECT-MULTI command
+In this mode, =xdp-bench= sets up one-to-many packet redirection between
+interfaces supplied on the command line, using the =bpf_redirect_map= BPF helper
 triggered on packet reception on the ingress interface, using a devmap as its
-target. The packet is broadcasted to all output interfaces specified on the
+target. The packet is broadcast to all output interfaces specified on the
 command line, using devmap's packet broadcast feature.
 
-The syntax for the =devmap= command is:
+The syntax for the =redirect-multi= command is:
 
-=xdp-redirect devmap_multi [options] <ifname|ifindex>_in <ifname|ifindex>_out1 ... <ifname|ifindex>_outN=
+=xdp-bench redirect-multi [options] <ifname_in> <ifname_out1> ... <ifname_outN>=
 
-Where =<ifname|ifindex>_in= is the name of the input interface from where
-packets will be redirect to one or many output interface(s).
+Where =<ifname_in>= is the name of the input interface from where packets will
+be redirect to one or many output interface(s).
+
 The supported options are:
 
 ** -X, --load-egress
 Load a program in the devmap entry used for redirection, so that it is invoked
-after the packet is redirected to the target device(s), before it is transmitted
-out of the output interface(s).
+after the packet is redirected to the target device, before it is transmitted
+out of the output interface. The remote program will update the packet data so
+its source MAC address matches the one of the destination interface.
 
-** -S, --skb-mode
-Load the XDP program in generic XDP mode. Note that native XDP mode is the
-default, and loading the redirect program in this manner is neither performant,
-nor recommended. However, this option is useful if the interface driver lacks
-native XDP support, or when simply testing the tool.
+** -i, --interval <SECONDS>
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
 
 ** -s, --stats
 Enable statistics for successful redirection. This option comes with a per
 packet tracing overhead, for recording all successful redirections.
 
-** -i, --interval
-Set the polling interval for collecting all statistics and displaying them to
-the output. The unit of interval is in seconds.
+** -e, --extended
+Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
+"terse" mode. The output mode can be switched by hitting C-\ while the program
+is running. See also the *Output Format Description* section below.
+
+** -m, --mode
+Selects the XDP program mode (native or skb). Note that native XDP mode is the
+default, and loading the redirect program in skb manner is neither performant,
+nor recommended. However, this option is useful if the interface driver lacks
+native XDP support, or when simply testing the tool.
 
 ** -v, --verbose
-Enable verbose output.
+Enable verbose logging. Supply twice to enable verbose logging from the
+underlying =libxdp= and =libbpf= libraries.
+
+** --version
+Show the application version and exit.
 
 ** -h, --help
 Display a summary of the available options
 
+
 * Output Format Description
 
 By default, redirect success statistics are disabled, use =--stats= to enable.
-The terse output mode is default, verbose mode can be activated using =--verbose=.
+The terse output mode is default, extended output mode can be activated using
+the =--extended= command line option.
 
 SIGQUIT (Ctrl + \\) can be used to switch the mode dynamically at runtime.
 
@@ -243,11 +423,11 @@ Terse mode displays at most the following fields:
 #+begin_src sh
   rx/s		Number of packets received per second
   redir/s	Number of packets successfully redirected per second
-  err,drop/s	Aggregated count of errors per second (including dropped packets)
+  err,drop/s	Aggregated count of errors per second (including dropped packets when not using the drop command)
   xmit/s	Number of packets transmitted on the output device per second
 #+end_src
 
-Verbose output mode displays at most the following fields:
+Extended output mode displays at most the following fields:
 #+begin_src sh
  FIELD		  DESCRIPTION
  receive	       Displays the number of packets received and errors encountered
@@ -324,6 +504,7 @@ Please report any bugs on Github: https://github.com/xdp-project/xdp-tools/issue
 
 * AUTHOR
 
-Earlier xdp-redirect tools were written by Jesper Dangaard Brouer, John
-Fastabend. They were then rewritten to support more features by Kumar Kartikeya Dwivedi.
-This man page was written by Kumar Kartikeya Dwivedi.
+Earlier xdp-redirect tools were written by Jesper Dangaard Brouer and John
+Fastabend. They were then rewritten to support more features by Kumar Kartikeya
+Dwivedi, who also ported them to xdp-tools together with Toke Høiland-Jørgensen.
+This man page was written by Kumar Kartikeya Dwivedi and Toke Høiland-Jørgensen.
