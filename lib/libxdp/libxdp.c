@@ -1532,7 +1532,7 @@ static int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
 {
 	int err;
 
-	if (prog->bpf_obj) {
+	if (prog->prog_fd < 0) {
 		bpf_program__set_type(prog->bpf_prog, BPF_PROG_TYPE_XDP);
 		err = xdp_program__load(prog);
 		if (err)
