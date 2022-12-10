@@ -133,6 +133,13 @@ is_progmap_supported()
     fi
 }
 
+skip_if_missing_veth_rxq()
+{
+    if ! ethtool -l $NS >/dev/null 2>&1; then
+        exit "$SKIPPED_TEST"
+    fi
+}
+
 skip_if_missing_kernel_symbol()
 {
     if ! grep -q "$1" /proc/kallsyms; then

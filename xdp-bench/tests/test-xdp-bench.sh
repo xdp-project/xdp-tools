@@ -1,6 +1,6 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 XDP_BENCH=${XDP_BENCH:-./xdp-bench}
-ALL_TESTS="test_drop test_tx test_redirect test_redirect_cpu test_redirect_map test_redirect_multi"
+ALL_TESTS="test_drop test_tx test_rxq_stats test_redirect test_redirect_cpu test_redirect_map test_redirect_multi"
 
 test_drop()
 {
@@ -8,7 +8,6 @@ test_drop()
     check_run $XDP_BENCH drop $NS -vv
     check_run $XDP_BENCH drop $NS -p read-data -vv
     check_run $XDP_BENCH drop $NS -p swap-macs -vv
-    check_run $XDP_BENCH drop $NS -r -vv
     check_run $XDP_BENCH drop $NS -m skb -vv
     check_run $XDP_BENCH drop $NS -e -vv
 }
@@ -19,9 +18,16 @@ test_tx()
     check_run $XDP_BENCH tx $NS -vv
     check_run $XDP_BENCH tx $NS -p read-data -vv
     check_run $XDP_BENCH tx $NS -p swap-macs -vv
-    check_run $XDP_BENCH tx $NS -r -vv
     check_run $XDP_BENCH tx $NS -m skb -vv
     check_run $XDP_BENCH tx $NS -e -vv
+}
+
+test_rxq_stats()
+{
+    skip_if_missing_veth_rxq
+
+    export XDP_SAMPLE_IMMEDIATE_EXIT=1
+    check_run $XDP_BENCH drop $NS -r -vv
 }
 
 test_redirect()

@@ -1157,7 +1157,7 @@ static int get_num_rxqs(const char *ifname)
 	ret = ioctl(fd, SIOCETHTOOL, &ifr);
 	if (ret < 0) {
 		ret = -errno;
-		pr_warn("Error in ethtool ioctl: %s\n", strerror(-ret));
+		pr_debug("Error in ethtool ioctl: %s\n", strerror(-ret));
 		goto out;
 	}
 
@@ -1175,7 +1175,7 @@ int sample_setup_maps(struct bpf_map **maps, const char *ifname)
 
 	for (int i = 0; i < MAP_DEVMAP_XMIT_MULTI; i++) {
 		sample_map[i] = maps[i];
-		int n_cpus, rxqs;
+		int n_cpus;
 
 		switch (i) {
 		case MAP_RX:
@@ -1184,11 +1184,8 @@ int sample_setup_maps(struct bpf_map **maps, const char *ifname)
 			sample_map_count[i] = sample_n_cpus;
 			break;
 		case MAP_RXQ:
-			rxqs = get_num_rxqs(ifname);
-			if (rxqs < 0)
-				return rxqs;
-			sample_n_rxqs = rxqs;
-			sample_map_count[i] = rxqs ?: 1;
+			sample_n_rxqs = get_num_rxqs(ifname);
+			sample_map_count[i] = sample_n_rxqs > 0 ? sample_n_rxqs : 1;
 			break;
 		case MAP_REDIRECT_ERR:
 			sample_map_count[i] =
@@ -1228,6 +1225,11 @@ static int sample_setup_maps_mappings(void)
 int __sample_init(int mask, int ifindex_from, int ifindex_to)
 {
 	sigset_t st;
+
+	if (mask & SAMPLE_RXQ_STATS && sample_n_rxqs <= 0) {
+		pr_warn("Couldn't retrieve the number of RXQs, so can't enable RXQ stats\n");
+		return -EINVAL;
+	}
 
 	sigemptyset(&st);
 	sigaddset(&st, SIGQUIT);
