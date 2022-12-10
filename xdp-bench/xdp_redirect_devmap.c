@@ -37,6 +37,7 @@ int do_redirect_devmap(const void *cfg, __unused const char *pin_root_path)
 	const struct devmap_opts *opt = cfg;
 
 	struct xdp_program *xdp_prog = NULL, *dummy_prog = NULL;
+	const char *prog_name = "redir_devmap_native";
 	DECLARE_LIBBPF_OPTS(xdp_program_opts, opts);
 	struct bpf_devmap_val devmap_val = {};
 	struct bpf_map *tx_port_map = NULL;
@@ -67,12 +68,20 @@ restart:
 		goto end;
 	}
 
-	/* Set to NULL when not restarting */
-	if (!prog)
-		prog = skel->progs.xdp_redirect_devmap_native;
-	/* Set to NULL when not restarting */
-	if (!tx_port_map)
+	/* Make sure we only load the one XDP program we are interested in */
+	while ((prog = bpf_object__next_program(skel->obj, prog)) != NULL)
+		if (bpf_program__type(prog) == BPF_PROG_TYPE_XDP &&
+		    bpf_program__expected_attach_type(prog) == BPF_XDP)
+			bpf_program__set_autoload(prog, false);
+
+	if (tried) {
+		tx_port_map = skel->maps.tx_port_general;
+		bpf_map__set_autocreate(skel->maps.tx_port_native, false);
+		bpf_program__set_autoload(skel->progs.xdp_redirect_devmap_egress, false);
+	} else {
+		bpf_map__set_autocreate(skel->maps.tx_port_general, false);
 		tx_port_map = skel->maps.tx_port_native;
+	}
 
 	ret = sample_init_pre_load(skel, opt->iface_in.ifname);
 	if (ret < 0) {
@@ -96,7 +105,7 @@ restart:
 	skel->rodata->to_match[0] = opt->iface_out.ifindex;
 
 	opts.obj = skel->obj;
-	opts.prog_name = bpf_program__name(prog);
+	opts.prog_name = prog_name;
 	xdp_prog = xdp_program__create(&opts);
 	if (!xdp_prog) {
 		ret = -errno;
@@ -110,11 +119,11 @@ restart:
 		/* First try with struct bpf_devmap_val as value for generic
 		 * mode, then fallback to sizeof(int) for older kernels.
 		 */
-		pr_warn("Trying fallback to sizeof(int) as value_size for devmap in generic mode\n");
-		if (opt->mode == XDP_MODE_SKB && !tried) {
-			prog = skel->progs.xdp_redirect_devmap_general;
-			tx_port_map = skel->maps.tx_port_general;
+		if (!opt->load_egress && !tried) {
+			pr_warn("Attempting fallback to int-sized devmap\n");
+			prog_name = "redir_devmap_general";
 			tried = true;
+
 			xdp_program__close(xdp_prog);
 			xdp_redirect_devmap__destroy(skel);
 			sample_teardown();

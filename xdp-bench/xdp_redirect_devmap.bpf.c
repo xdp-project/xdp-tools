@@ -56,13 +56,13 @@ static __always_inline int xdp_redirect_devmap(struct xdp_md *ctx, void *redirec
 }
 
 SEC("xdp")
-int xdp_redirect_devmap_general(struct xdp_md *ctx)
+int redir_devmap_general(struct xdp_md *ctx)
 {
 	return xdp_redirect_devmap(ctx, &tx_port_general);
 }
 
 SEC("xdp")
-int xdp_redirect_devmap_native(struct xdp_md *ctx)
+int redir_devmap_native(struct xdp_md *ctx)
 {
 	return xdp_redirect_devmap(ctx, &tx_port_native);
 }

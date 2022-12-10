@@ -72,13 +72,14 @@ int do_redirect_devmap_multi(const void *cfg, __unused const char *pin_root_path
 {
 	const struct devmap_multi_opts *opt = cfg;
 
+	const char *prog_name = "redir_multi_native";
 	DECLARE_LIBBPF_OPTS(xdp_program_opts, opts);
-	struct bpf_program *ingress_prog = NULL;
-	struct bpf_devmap_val devmap_val = {};
 	struct xdp_redirect_devmap_multi *skel;
+	struct bpf_devmap_val devmap_val = {};
 	struct xdp_program *xdp_prog = NULL;
 	struct bpf_map *forward_map = NULL;
 	bool first = true, tried = false;
+	struct bpf_program *prog = NULL;
 	int ret = EXIT_FAIL_OPTION;
 	struct iface *iface;
 	int i;
@@ -103,12 +104,20 @@ restart:
 		goto end;
 	}
 
-	/* Set to NULL when not restarting */
-	if (!ingress_prog)
-		ingress_prog = skel->progs.redir_multi_native;
-	/* Set to NULL when not restarting */
-	if (!forward_map)
+	/* Make sure we only load the one XDP program we are interested in */
+	while ((prog = bpf_object__next_program(skel->obj, prog)) != NULL)
+		if (bpf_program__type(prog) == BPF_PROG_TYPE_XDP &&
+		    bpf_program__expected_attach_type(prog) == BPF_XDP)
+			bpf_program__set_autoload(prog, false);
+
+	if (tried) {
+		forward_map = skel->maps.forward_map_general;
+		bpf_map__set_autocreate(skel->maps.forward_map_native, false);
+		bpf_program__set_autoload(skel->progs.xdp_devmap_prog, false);
+	} else {
+		bpf_map__set_autocreate(skel->maps.forward_map_general, false);
 		forward_map = skel->maps.forward_map_native;
+	}
 
 	ret = sample_init_pre_load(skel, NULL);
 	if (ret < 0) {
@@ -126,7 +135,7 @@ restart:
 
 
 	opts.obj = skel->obj;
-	opts.prog_name = bpf_program__name(ingress_prog);
+	opts.prog_name = prog_name;
 	xdp_prog = xdp_program__create(&opts);
 	if (!xdp_prog) {
 		ret = -errno;
@@ -141,11 +150,11 @@ restart:
 		ret = xdp_program__attach(xdp_prog, iface->ifindex, opt->mode, 0);
 		if (ret) {
 			if (first) {
-				if (opt->mode == XDP_MODE_SKB && !tried) {
-					pr_debug("Trying fallback to sizeof(int) as value_size for devmap in generic mode\n");
-					ingress_prog = skel->progs.redir_multi_general;
-					forward_map = skel->maps.forward_map_general;
+				if (!opt->load_egress  && !tried) {
+					pr_warn("Attempting fallback to int-sized devmap\n");
+					prog_name = "redir_multi_general";
 					tried = true;
+
 					xdp_program__close(xdp_prog);
 					xdp_redirect_devmap_multi__destroy(skel);
 					sample_teardown();
