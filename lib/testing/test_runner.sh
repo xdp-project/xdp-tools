@@ -140,6 +140,13 @@ skip_if_missing_veth_rxq()
     fi
 }
 
+skip_if_missing_cpumap_attach()
+{
+    if ! $TEST_PROG_DIR/test-tool probe cpumap-prog; then
+        exit "$SKIPPED_TEST"
+    fi
+}
+
 skip_if_missing_kernel_symbol()
 {
     if ! grep -q "$1" /proc/kallsyms; then

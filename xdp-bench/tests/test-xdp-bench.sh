@@ -1,6 +1,6 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 XDP_BENCH=${XDP_BENCH:-./xdp-bench}
-ALL_TESTS="test_drop test_tx test_rxq_stats test_redirect test_redirect_cpu test_redirect_map test_redirect_multi"
+ALL_TESTS="test_drop test_tx test_rxq_stats test_redirect test_redirect_cpu test_redirect_map test_redirect_map_egress test_redirect_multi test_redirect_multi_egress"
 
 test_drop()
 {
@@ -43,6 +43,8 @@ test_redirect()
 
 test_redirect_cpu()
 {
+    skip_if_missing_cpumap_attach
+
     export XDP_SAMPLE_IMMEDIATE_EXIT=1
     check_run ip link add dev btest0 type veth peer name btest1
     check_run $XDP_BENCH redirect-cpu btest0 -c 0 -vv
@@ -68,7 +70,15 @@ test_redirect_map()
     check_run $XDP_BENCH redirect-map btest0 btest1 -s -vv
     check_run $XDP_BENCH redirect-map btest0 btest1 -m skb -vv
     check_run $XDP_BENCH redirect-map btest0 btest1 -e -vv
+    ip link del dev btest0
+}
 
+test_redirect_map_egress()
+{
+    skip_if_missing_cpumap_attach
+
+    export XDP_SAMPLE_IMMEDIATE_EXIT=1
+    check_run ip link add dev btest0 type veth peer name btest1
     is_progmap_supported || export LIBXDP_SKIP_DISPATCHER=1
     check_run $XDP_BENCH redirect-map btest0 btest1 -X -vv
     ip link del dev btest0
@@ -83,9 +93,21 @@ test_redirect_multi()
     check_run $XDP_BENCH redirect-multi btest0 btest1 btest2 btest3 -s -vv
     check_run $XDP_BENCH redirect-multi btest0 btest1 btest2 btest3 -m skb -vv
     check_run $XDP_BENCH redirect-multi btest0 btest1 btest2 btest3 -e -vv
+    ip link del dev btest0
+    ip link del dev btest2
+}
 
+test_redirect_multi_egress()
+{
+    skip_if_missing_cpumap_attach
+
+    export XDP_SAMPLE_IMMEDIATE_EXIT=1
     is_progmap_supported || export LIBXDP_SKIP_DISPATCHER=1
+    check_run ip link add dev btest0 type veth peer name btest1
+    check_run ip link add dev btest2 type veth peer name btest3
+
     check_run $XDP_BENCH redirect-multi btest0 btest1 btest2 btest3 -X -vv
+
     ip link del dev btest0
     ip link del dev btest2
 }
