@@ -95,6 +95,7 @@ static const char *xdp_action_names[] = {
 
 static struct xdp_program *xdp_program__create_from_obj(struct bpf_object *obj,
 							const char *section_name,
+							const char *prog_name,
 							bool external);
 
 #ifdef LIBXDP_STATIC
@@ -119,6 +120,7 @@ static struct xdp_embedded_obj embedded_objs[] = {
 };
 static struct xdp_program *xdp_program__find_embedded(const char *filename,
 						      const char *section_name,
+						      const char *prog_name,
 						      struct bpf_object_open_opts *opts)
 {
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, default_opts,
@@ -149,7 +151,7 @@ static struct xdp_program *xdp_program__find_embedded(const char *filename,
 		err = libbpf_get_error(obj);
 		if (err)
 			return ERR_PTR(err);
-		return xdp_program__create_from_obj(obj, section_name, false);
+		return xdp_program__create_from_obj(obj, section_name, prog_name, false);
 	}
 
 	return NULL;
@@ -157,6 +159,7 @@ static struct xdp_program *xdp_program__find_embedded(const char *filename,
 #else
 static inline struct xdp_program *xdp_program__find_embedded(__unused const char *filename,
 							     __unused const char *section_name,
+							     __unused const char *prog_name,
 							     __unused struct bpf_object_open_opts *opts)
 {
 	return NULL;
@@ -954,17 +957,20 @@ void xdp_program__close(struct xdp_program *xdp_prog)
 
 static struct xdp_program *xdp_program__create_from_obj(struct bpf_object *obj,
 							const char *section_name,
+							const char *prog_name,
 							bool external)
 {
 	struct xdp_program *xdp_prog;
 	struct bpf_program *bpf_prog;
 	int err;
 
-	if (!obj)
+	if (!obj || (section_name && prog_name))
 		return ERR_PTR(-EINVAL);
 
 	if (section_name)
 		bpf_prog = bpf_program_by_section_name(obj, section_name);
+	else if (prog_name)
+		bpf_prog = bpf_object__find_program_by_name(obj, prog_name);
 	else
 		bpf_prog = bpf_object__next_program(obj, NULL);
 
@@ -1002,7 +1008,7 @@ err:
 struct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
 					      const char *section_name)
 {
-	return xdp_program__create_from_obj(obj, section_name, true);
+	return xdp_program__create_from_obj(obj, section_name, NULL, true);
 }
 
 static struct bpf_object *open_bpf_obj(const char *filename,
@@ -1025,9 +1031,10 @@ static struct bpf_object *open_bpf_obj(const char *filename,
 	return obj;
 }
 
-struct xdp_program *xdp_program__open_file(const char *filename,
-					   const char *section_name,
-					   struct bpf_object_open_opts *opts)
+static struct xdp_program *__xdp_program__open_file(const char *filename,
+						    const char *section_name,
+						    const char *prog_name,
+						    struct bpf_object_open_opts *opts)
 {
 	struct xdp_program *xdp_prog;
 	struct bpf_object *obj;
@@ -1042,11 +1049,18 @@ struct xdp_program *xdp_program__open_file(const char *filename,
 		return ERR_PTR(err);
 	}
 
-	xdp_prog = xdp_program__create_from_obj(obj, section_name, false);
+	xdp_prog = xdp_program__create_from_obj(obj, section_name, prog_name, false);
 	if (IS_ERR(xdp_prog))
 		bpf_object__close(obj);
 
 	return xdp_prog;
+}
+
+struct xdp_program *xdp_program__open_file(const char *filename,
+					   const char *section_name,
+					   struct bpf_object_open_opts *opts)
+{
+	return __xdp_program__open_file(filename, section_name, NULL, opts);
 }
 
 static bool try_bpf_file(char *buf, size_t buf_size, char *path,
@@ -1088,15 +1102,16 @@ static int find_bpf_file(char *buf, size_t buf_size, const char *progname)
 	return -ENOENT;
 }
 
-struct xdp_program *xdp_program__find_file(const char *filename,
-					   const char *section_name,
-					   struct bpf_object_open_opts *opts)
+static struct xdp_program *__xdp_program__find_file(const char *filename,
+						    const char *section_name,
+						    const char *prog_name,
+						    struct bpf_object_open_opts *opts)
 {
 	struct xdp_program *prog;
 	char buf[PATH_MAX];
 	int err;
 
-	prog = xdp_program__find_embedded(filename, section_name, opts);
+	prog = xdp_program__find_embedded(filename, section_name, prog_name, opts);
 	if (prog)
 		return prog;
 
@@ -1105,7 +1120,14 @@ struct xdp_program *xdp_program__find_file(const char *filename,
 		return ERR_PTR(err);
 
 	pr_debug("Loading XDP program from '%s' section '%s'\n", buf, section_name);
-	return xdp_program__open_file(buf, section_name, opts);
+	return __xdp_program__open_file(buf, section_name, prog_name, opts);
+}
+
+struct xdp_program *xdp_program__find_file(const char *filename,
+					   const char *section_name,
+					   struct bpf_object_open_opts *opts)
+{
+	return __xdp_program__find_file(filename, section_name, NULL, opts);
 }
 
 static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
@@ -2101,7 +2123,7 @@ static int xdp_multiprog__check_compat(struct xdp_multiprog *mp)
 		return 0;
 
 	pr_debug("Checking dispatcher compatibility\n");
-	test_prog = xdp_program__find_file("xdp-dispatcher.o", "xdp/pass", NULL);
+	test_prog = __xdp_program__find_file("xdp-dispatcher.o", NULL, "xdp_pass", NULL);
 	if (IS_ERR(test_prog)) {
 		err = PTR_ERR(test_prog);
 		pr_warn("Couldn't open BPF file xdp-dispatcher.o\n");
@@ -2449,8 +2471,8 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	if (num_new_progs > 1)
 		qsort(new_progs, num_new_progs, sizeof(*new_progs), cmp_xdp_programs);
 
-	dispatcher = xdp_program__find_file("xdp-dispatcher.o",
-					    "xdp/dispatcher", NULL);
+	dispatcher = __xdp_program__find_file("xdp-dispatcher.o", NULL,
+					      "xdp_dispatcher", NULL);
 	if (IS_ERR(dispatcher)) {
 		err = PTR_ERR(dispatcher);
 		pr_warn("Couldn't open BPF file 'xdp-dispatcher.o'\n");
