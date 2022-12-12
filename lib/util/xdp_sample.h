@@ -24,6 +24,12 @@ enum stats_mask {
 	SAMPLE_DROP_OK               = 1U << 11,
 };
 
+enum sample_compat {
+	SAMPLE_COMPAT_CPUMAP_KTHREAD,
+	__SAMPLE_COMPAT_MAX
+};
+#define SAMPLE_COMPAT_MAX __SAMPLE_COMPAT_MAX
+
 /* Exit return codes */
 #define EXIT_OK			0
 #define EXIT_FAIL		1
@@ -36,6 +42,10 @@ int sample_setup_maps(struct bpf_map **maps, const char *ifname);
 int __sample_init(int mask, int ifindex_from, int ifindex_to);
 void sample_teardown(void);
 int sample_run(int interval, void (*post_cb)(void *), void *ctx);
+bool sample_is_compat(enum sample_compat compat_value);
+bool sample_probe_cpumap_compat(void);
+void sample_check_cpumap_compat(struct bpf_program *prog,
+				struct bpf_program *prog_compat);
 
 void sample_switch_mode(void);
 
@@ -66,9 +76,19 @@ static inline char *safe_strncpy(char *dst, const char *src, size_t size)
 			return -errno;                                         \
 	})
 
+#define __attach_tp_compat(name, name_compat, _compat)                         \
+	({                                                                     \
+	if (sample_is_compat(SAMPLE_COMPAT_ ## _compat))                       \
+		  __attach_tp(name);                                           \
+	else                                                                   \
+		__attach_tp(name_compat);                                      \
+	})
+
 #define sample_init_pre_load(skel, ifname)                                     \
 	({                                                                     \
 		skel->rodata->nr_cpus = libbpf_num_possible_cpus();            \
+		sample_check_cpumap_compat(skel->progs.tp_xdp_cpumap_kthread,  \
+					   skel->progs.tp_xdp_cpumap_compat);  \
 		sample_setup_maps((struct bpf_map *[]){                        \
 			skel->maps.rx_cnt, skel->maps.rxq_cnt,                 \
 			skel->maps.redir_err_cnt,                              \
@@ -98,7 +118,9 @@ static inline char *safe_strncpy(char *dst, const char *src, size_t size)
 		if (sample_mask & SAMPLE_CPUMAP_ENQUEUE_CNT)       \
 			__attach_tp(tp_xdp_cpumap_enqueue);        \
 		if (sample_mask & SAMPLE_CPUMAP_KTHREAD_CNT)       \
-			__attach_tp(tp_xdp_cpumap_kthread);        \
+			__attach_tp_compat(tp_xdp_cpumap_kthread,  \
+					   tp_xdp_cpumap_compat,   \
+					   CPUMAP_KTHREAD);        \
 		if (sample_mask & SAMPLE_EXCEPTION_CNT)            \
 			__attach_tp(tp_xdp_exception);             \
 		if (sample_mask & SAMPLE_DEVMAP_XMIT_CNT)          \

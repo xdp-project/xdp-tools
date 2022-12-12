@@ -34,6 +34,8 @@
 #include "xdp_sample.h"
 #include "logging.h"
 
+#include "xdp_sample.skel.h"
+
 #define __sample_print(fmt, cond, ...)                                         \
 	({                                                                     \
 		if (cond)                                                      \
@@ -158,6 +160,49 @@ int sample_n_rxqs;
 int sample_sig_fd;
 int sample_mask;
 int ifindex[2];
+
+static struct {
+	bool checked;
+	bool compat;
+} sample_compat[SAMPLE_COMPAT_MAX] = {};
+
+bool sample_is_compat(enum sample_compat compat_value)
+{
+	return sample_compat[compat_value].compat;
+}
+
+bool sample_probe_cpumap_compat(void)
+{
+	struct xdp_sample *skel;
+	bool res;
+
+	skel = xdp_sample__open_and_load();
+	res = !!skel;
+	xdp_sample__destroy(skel);
+
+	return res;
+}
+
+void sample_check_cpumap_compat(struct bpf_program *prog,
+				struct bpf_program *prog_compat)
+{
+	bool res = sample_compat[SAMPLE_COMPAT_CPUMAP_KTHREAD].compat;
+
+	if (!sample_compat[SAMPLE_COMPAT_CPUMAP_KTHREAD].checked) {
+		res = sample_probe_cpumap_compat();
+
+		sample_compat[SAMPLE_COMPAT_CPUMAP_KTHREAD].checked = true;
+		sample_compat[SAMPLE_COMPAT_CPUMAP_KTHREAD].compat = res;
+	}
+
+	if (res) {
+		pr_debug("Kernel supports 5-arg xdp_cpumap_kthread tracepoint\n");
+		bpf_program__set_autoload(prog_compat, false);
+	} else {
+		pr_debug("Kernel does not support 5-arg xdp_cpumap_kthread tracepoint, using compat version\n");
+		bpf_program__set_autoload(prog, false);
+	}
+}
 
 static const char *xdp_redirect_err_names[XDP_REDIRECT_ERR_MAX] = {
 	/* Key=1 keeps unknown errors */

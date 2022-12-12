@@ -181,6 +181,28 @@ int BPF_PROG(tp_xdp_cpumap_kthread, int map_id, unsigned int processed,
 	return 0;
 }
 
+SEC("tp_btf/xdp_cpumap_kthread")
+int BPF_PROG(tp_xdp_cpumap_compat, int map_id, unsigned int processed,
+	     unsigned int drops, int sched)
+{
+	struct datarec *rec;
+	u32 cpu;
+
+	if (cpumap_map_id && cpumap_map_id != map_id)
+		return 0;
+
+	cpu = bpf_get_smp_processor_id();
+	rec = bpf_map_lookup_elem(&cpumap_kthread_cnt, &cpu);
+	if (!rec)
+		return 0;
+	NO_TEAR_ADD(rec->processed, processed);
+	NO_TEAR_ADD(rec->dropped, drops);
+	/* Count times kthread yielded CPU via schedule call */
+	if (sched)
+		NO_TEAR_INC(rec->issue);
+	return 0;
+}
+
 SEC("tp_btf/xdp_exception")
 int BPF_PROG(tp_xdp_exception, const struct net_device *dev,
 	     const struct bpf_prog *xdp, u32 act)
