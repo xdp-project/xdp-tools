@@ -5,7 +5,15 @@
 
 #include <linux/types.h>
 
-#define XDP_METADATA_SECTION "xdp_metadata"
+#define XDP_METADATA_SECTION_ORIG "xdp_metadata"
+#define XDP_METADATA_SECTION_NEW ".data.xdp_metadata"
+
+#if defined(USE_LIBBPF_V1_SECTION_NAMES)
+#define XDP_METADATA_SECTION XDP_METADATA_SECTION_NEW
+#else
+#define XDP_METADATA_SECTION XDP_METADATA_SECTION_ORIG
+#endif
+
 #define XDP_DISPATCHER_VERSION 1
 /* default retval for dispatcher corresponds to the highest bit in the
  * chain_call_actions bitmap; we use this to make sure the dispatcher always
