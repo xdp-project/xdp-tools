@@ -23,6 +23,34 @@ check_opts()
     echo "BPF_TARGET:=${BPF_TARGET}" >>$CONFIG
 }
 
+find_tool()
+{
+    local tool_name
+    local tool_path
+    local v
+
+    tool_name="$1"
+    tool_path="$2"
+
+    if [ "$tool_name" != "$tool_path" ] || command -v "$tool_path" >/dev/null 2>&1; then
+        echo $tool_path
+        return 0
+    fi
+
+    # we're looking for a binary with the same name as tool_name; try version
+    # suffixes in order until we find one
+    for v in 16 15 14 13 12 11 10; do
+        tool_path="${tool_name}-$v"
+        if command -v "$tool_path" >/dev/null 2>&1; then
+            echo $tool_path
+            return 0
+        fi
+    done
+
+    # Fall back to supplied default, check in caller will error out
+    echo $tool_name
+}
+
 check_toolchain()
 {
     local emacs_version
@@ -38,6 +66,9 @@ check_toolchain()
     : ${EMACS=emacs}
     : ${ARCH_INCLUDES=}
 
+    CLANG=$(find_tool clang "$CLANG")
+    LLC=$(find_tool llc "$LLC")
+
     for TOOL in $PKG_CONFIG $CC $LD $OBJCOPY $CLANG $LLC $M4; do
         if [ ! $(command -v ${TOOL} 2>/dev/null) ]; then
             echo "*** ERROR: Cannot find tool ${TOOL}" ;
@@ -46,6 +77,11 @@ check_toolchain()
     done
 
     clang_version=$($CLANG --version | grep -Po '(?<=clang version )[[:digit:]]+')
+    if [ "$?" -ne "0" ]; then
+        echo "*** ERROR: Couldn't execute '$CLANG --version'"
+        exit 1
+    fi
+
     echo "Found clang binary '$CLANG' with version $clang_version (from '$($CLANG --version | head -n 1)')"
     if [ "$clang_version" -lt "10" ]; then
         echo "*** ERROR: Need LLVM version 10+, '$CLANG' is version $clang_version"
