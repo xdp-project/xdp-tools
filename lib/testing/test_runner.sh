@@ -145,6 +145,8 @@ skip_if_missing_cpumap_attach()
     if ! $TEST_PROG_DIR/test-tool probe cpumap-prog; then
         exit "$SKIPPED_TEST"
     fi
+
+    bpftool feature list_builtins attach_types
 }
 
 skip_if_missing_kernel_symbol()
@@ -489,6 +491,8 @@ check_run()
 
     "$@"
     ret=$?
+    echo "Command '$@' exited with status $ret"
+    echo ""
     if [ "$ret" -ne "0" ]; then
         exit $ret
     fi
@@ -517,7 +521,8 @@ exec_test()
         echo "FAIL"
     fi
     if [ "$ret" -ne "0" ] || [ "$VERBOSE_TESTS" -eq "1" ]; then
-        echo "$output" | sed 's/^/\t/'
+        echo "$output" | sed  's/^/          /'
+        echo "          Test $testn exited with return code: $ret"
     fi
     return $ret
 }

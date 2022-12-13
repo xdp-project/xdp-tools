@@ -1296,6 +1296,7 @@ static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
 		xdp_prog->btf = btf;
 	}
 
+	pr_debug("Duplicated fd %d to %d for prog %s\n", fd, prog_fd, xdp_prog->prog_name);
 	memcpy(xdp_prog->prog_tag, info.tag, BPF_TAG_SIZE);
 	xdp_prog->load_time = info.load_time;
 	xdp_prog->prog_fd = prog_fd;
@@ -2970,12 +2971,14 @@ static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 		goto err;
 
 	if (mp)
-		pr_debug("Loaded %zu programs on ifindex '%d'%s\n",
+		pr_debug("Loaded %zu programs on ifindex %d%s\n",
 			 mp->num_links, ifindex,
 			 mode == XDP_MODE_SKB ? " in skb mode" : "");
 	else
-		pr_debug("Detached multiprog on ifindex '%d'%s\n",
-			 ifindex, mode == XDP_MODE_SKB ? " in skb mode" : "");
+		pr_debug("Detached %s on ifindex %d%s\n",
+			 old_mp->is_legacy ? "program" : "multiprog",
+			 ifindex,
+			 mode == XDP_MODE_SKB ? " in skb mode" : "");
 
 	return 0;
 err:
