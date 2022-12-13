@@ -98,9 +98,9 @@ static int do_droptx(const struct droptx_opts *opt, enum xdp_action action)
 
 	ret = EXIT_FAIL;
 
-	printf("%s packets on %s (ifindex %d; driver %s)\n",
-	       action == XDP_DROP ? "Dropping" : "Hairpinning (XDP_TX)",
-	       opt->iface_in.ifname, opt->iface_in.ifindex, get_driver_name(opt->iface_in.ifindex));
+	pr_info("%s packets on %s (ifindex %d; driver %s)\n",
+		action == XDP_DROP ? "Dropping" : "Hairpinning (XDP_TX)",
+		opt->iface_in.ifname, opt->iface_in.ifindex, get_driver_name(opt->iface_in.ifindex));
 
 	ret = sample_run(opt->interval, NULL, NULL);
 	if (ret < 0) {

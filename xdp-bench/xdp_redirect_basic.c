@@ -117,10 +117,9 @@ int do_redirect_basic(const void *cfg, __unused const char *pin_root_path)
 	ret = EXIT_FAIL;
 
 	safe_strncpy(str, get_driver_name(opt->iface_in.ifindex), sizeof(str));
-	printf("Redirecting from %s (ifindex %d; driver %s) to %s (ifindex %d; driver %s)\n",
-	       opt->iface_in.ifname, opt->iface_in.ifindex, str,
-	       opt->iface_out.ifname, opt->iface_out.ifindex, get_driver_name(opt->iface_out.ifindex));
-	snprintf(str, sizeof(str), "%s->%s", opt->iface_in.ifname, opt->iface_out.ifname);
+	pr_info("Redirecting from %s (ifindex %d; driver %s) to %s (ifindex %d; driver %s)\n",
+		opt->iface_in.ifname, opt->iface_in.ifindex, str,
+		opt->iface_out.ifname, opt->iface_out.ifindex, get_driver_name(opt->iface_out.ifindex));
 
 	ret = sample_run(opt->interval, NULL, NULL);
 	if (ret < 0) {
