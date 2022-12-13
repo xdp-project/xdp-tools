@@ -14,6 +14,7 @@
 #include "params.h"
 #include "logging.h"
 #include "util.h"
+#include "xdp_sample.h"
 
 
 #define PROG_NAME "test-tool"
@@ -191,6 +192,50 @@ static struct prog_option load_options[] = {
 	END_OPTIONS
 };
 
+enum probe_action {
+        PROBE_CPUMAP_PROGRAM,
+};
+
+struct enum_val probe_actions[] = {
+       {"cpumap-prog", PROBE_CPUMAP_PROGRAM},
+       {NULL, 0}
+};
+
+static const struct probeopt {
+	enum probe_action action;
+} defaults_probe = {};
+
+int do_probe(const void *cfg, __unused const char *pin_root_path)
+{
+        const struct probeopt *opt = cfg;
+        bool res = false;
+
+	switch (opt->action) {
+	case PROBE_CPUMAP_PROGRAM:
+		res = sample_probe_cpumap_compat();
+		break;
+        default:
+                return EXIT_FAILURE;
+	}
+
+        pr_debug("Probing for %s: %s\n",
+                 probe_actions[opt->action].name,
+                 res ? "Supported" : "Unsupported");
+
+        return res ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+
+static struct prog_option probe_options[] = {
+	DEFINE_OPTION("action", OPT_ENUM, struct probeopt, action,
+		      .positional = true,
+		      .metavar = "<action>",
+		      .required = true,
+                      .typearg = probe_actions,
+		      .help = "Probe for <action>"),
+	END_OPTIONS
+};
+
 
 int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 {
@@ -198,8 +243,9 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 		"Usage: test-tool COMMAND [options]\n"
 		"\n"
 		"COMMAND can be one of:\n"
-		"       load        - load an XDP program on an interface\n"
-		"       help        - show this help message\n"
+		"       load          - load an XDP program on an interface\n"
+		"       probe         - probe for kernel features\n"
+		"       help          - show this help message\n"
 		"\n"
 		"Use 'test-tool COMMAND --help' to see options for each command\n");
 	return -1;
@@ -208,6 +254,7 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 
 static const struct prog_command cmds[] = {
 	DEFINE_COMMAND(load, "Load an XDP program on an interface"),
+	DEFINE_COMMAND(probe, "Probe for kernel features"),
 	{ .name = "help", .func = do_help, .no_cfg = true },
 	END_COMMANDS
 };
@@ -215,6 +262,7 @@ static const struct prog_command cmds[] = {
 
 union all_opts {
 	struct loadopt load;
+	struct probeopt probe;
 };
 
 

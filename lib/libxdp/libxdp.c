@@ -35,6 +35,7 @@
 #include "libxdp_internal.h"
 
 #define XDP_RUN_CONFIG_SEC ".xdp_run_config"
+#define XDP_SKIP_ENVVAR "LIBXDP_SKIP_DISPATCHER"
 
 /* When cloning BPF fds, we want to make sure they don't end up as any of the
  * standard stdin, stderr, stdout descriptors: fd 0 can confuse the kernel, and
@@ -1295,6 +1296,7 @@ static int xdp_program__fill_from_fd(struct xdp_program *xdp_prog, int fd)
 		xdp_prog->btf = btf;
 	}
 
+	pr_debug("Duplicated fd %d to %d for prog %s\n", fd, prog_fd, xdp_prog->prog_name);
 	memcpy(xdp_prog->prog_tag, info.tag, BPF_TAG_SIZE);
 	xdp_prog->load_time = info.load_time;
 	xdp_prog->prog_fd = prog_fd;
@@ -1650,6 +1652,16 @@ retry:
 		return libxdp_err(xdp_program__attach_hw(progs[0], ifindex));
 	}
 
+	if (num_progs == 1) {
+		char *envval;
+
+		envval = secure_getenv(XDP_SKIP_ENVVAR);
+		if (envval && envval[0] == '1' && envval[1] == '\0') {
+			pr_debug("Skipping dispatcher due to environment setting\n");
+			return libxdp_err(xdp_program__attach_single(progs[0], ifindex, mode));
+		}
+	}
+
 	mp = xdp_multiprog__generate(progs, num_progs, ifindex, old_mp, false);
 	if (IS_ERR(mp)) {
 		err = PTR_ERR(mp);
@@ -1946,11 +1958,17 @@ int check_xdp_prog_version(const struct btf *btf, const char *name, __u32 *versi
 	return 0;
 }
 
-static int check_dispatcher_version(struct btf *btf)
+static int check_dispatcher_version(const char *prog_name, struct btf *btf)
 {
 	const char *name = "dispatcher_version";
 	__u32 version = 0;
 	int err;
+
+	if (prog_name && strcmp(prog_name, "xdp_dispatcher")) {
+		pr_debug("XDP program with name '%s' is not a dispatcher\n",
+			 prog_name);
+		return -ENOENT;
+	}
 
 	err = check_xdp_prog_version(btf, name, &version);
 	if (err)
@@ -2085,7 +2103,7 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 			goto out;
 		}
 
-		err = check_dispatcher_version(btf);
+		err = check_dispatcher_version(info.name, btf);
 		if (err) {
 			if (err != -ENOENT) {
 				pr_warn("Dispatcher version check failed for ID %d\n",
@@ -2714,7 +2732,8 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 		goto err;
 	}
 
-	err = check_dispatcher_version(dispatcher->btf);
+	err = check_dispatcher_version(bpf_program__name(dispatcher->bpf_prog),
+				       dispatcher->btf);
 	if (err) {
 		pr_warn("XDP dispatcher object version check failed: %s\n",
 			strerror(-err));
@@ -2952,12 +2971,14 @@ static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 		goto err;
 
 	if (mp)
-		pr_debug("Loaded %zu programs on ifindex '%d'%s\n",
+		pr_debug("Loaded %zu programs on ifindex %d%s\n",
 			 mp->num_links, ifindex,
 			 mode == XDP_MODE_SKB ? " in skb mode" : "");
 	else
-		pr_debug("Detached multiprog on ifindex '%d'%s\n",
-			 ifindex, mode == XDP_MODE_SKB ? " in skb mode" : "");
+		pr_debug("Detached %s on ifindex %d%s\n",
+			 old_mp->is_legacy ? "program" : "multiprog",
+			 ifindex,
+			 mode == XDP_MODE_SKB ? " in skb mode" : "");
 
 	return 0;
 err:

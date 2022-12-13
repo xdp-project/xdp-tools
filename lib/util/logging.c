@@ -11,11 +11,15 @@
 
 static enum logging_print_level log_level = LOG_INFO;
 
-static int print_func(enum logging_print_level level, const char *format,
-		      va_list args)
+static int print_func(enum logging_print_level level, int indent,
+		      const char *format, va_list args)
 {
+	int i;
 	if (level > log_level)
 		return 0;
+
+	for (i = 0; i < indent; i++)
+		fprintf(stderr, " ");
 
 	return vfprintf(stderr, format, args);
 }
@@ -23,7 +27,7 @@ static int print_func(enum logging_print_level level, const char *format,
 static int libbpf_print_func(enum libbpf_print_level level, const char *format,
 			     va_list args)
 {
-	return print_func(level + 1, format, args);
+	return print_func(level + 1, 2, format, args);
 }
 
 static int libbpf_silent_func(__unused enum libbpf_print_level level,
@@ -36,7 +40,7 @@ static int libbpf_silent_func(__unused enum libbpf_print_level level,
 static int libxdp_print_func(enum libxdp_print_level level, const char *format,
 			     va_list args)
 {
-	return print_func(level + 1, format, args);
+	return print_func(level + 1, 1, format, args);
 }
 
 static int libxdp_silent_func(__unused enum libxdp_print_level level,
@@ -54,7 +58,7 @@ __printf(2, 3) void logging_print(enum logging_print_level level,
 	va_list args;
 
 	va_start(args, format);
-	print_func(level, format, args);
+	print_func(level, 0, format, args);
 	va_end(args);
 }
 

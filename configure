@@ -39,7 +39,7 @@ find_tool()
 
     # we're looking for a binary with the same name as tool_name; try version
     # suffixes in order until we find one
-    for v in 16 15 14 13 12 11 10; do
+    for v in 16 15 14 13 12 11; do
         tool_path="${tool_name}-$v"
         if command -v "$tool_path" >/dev/null 2>&1; then
             echo $tool_path
@@ -55,6 +55,7 @@ check_toolchain()
 {
     local emacs_version
     local clang_version
+    local bpftool_version
 
     : ${PKG_CONFIG:=pkg-config}
     : ${CC=gcc}
@@ -64,12 +65,13 @@ check_toolchain()
     : ${LLC=llc}
     : ${M4=m4}
     : ${EMACS=emacs}
+    : ${BPFTOOL=bpftool}
     : ${ARCH_INCLUDES=}
 
     CLANG=$(find_tool clang "$CLANG")
     LLC=$(find_tool llc "$LLC")
 
-    for TOOL in $PKG_CONFIG $CC $LD $OBJCOPY $CLANG $LLC $M4; do
+    for TOOL in $PKG_CONFIG $CC $LD $OBJCOPY $CLANG $LLC $M4 $BPFTOOL; do
         if [ ! $(command -v ${TOOL} 2>/dev/null) ]; then
             echo "*** ERROR: Cannot find tool ${TOOL}" ;
             exit 1;
@@ -83,8 +85,8 @@ check_toolchain()
     fi
 
     echo "Found clang binary '$CLANG' with version $clang_version (from '$($CLANG --version | head -n 1)')"
-    if [ "$clang_version" -lt "10" ]; then
-        echo "*** ERROR: Need LLVM version 10+, '$CLANG' is version $clang_version"
+    if [ "$clang_version" -lt "11" ]; then
+        echo "*** ERROR: Need LLVM version 11+, '$CLANG' is version $clang_version"
         [ -n "$RELAXED_LLVM_VERSION" ] || exit 1
     fi
 
@@ -106,6 +108,14 @@ check_toolchain()
         exit 1
     fi
 
+    if $BPFTOOL gen help 2>&1 | grep 'gen help' > /dev/null; then
+        bpftool_version=$($BPFTOOL version | head -n 1)
+	echo "using $bpftool_version"
+    else
+	echo "bpftool doesn't support skeleton generation"
+        exit 1
+    fi
+
     if [ -z "$ARCH_INCLUDES" ]; then
         for dir in $(echo | $CC -Wp,-v -E - 2>&1 | grep '^ '); do
             local idir
@@ -123,6 +133,7 @@ check_toolchain()
     echo "M4:=${M4}" >>$CONFIG
     echo "EMACS:=${EMACS}" >>$CONFIG
     echo "ARCH_INCLUDES:=$ARCH_INCLUDES" >> $CONFIG
+    echo "BPFTOOL:=${BPFTOOL}" >> $CONFIG
 }
 
 check_zlib()

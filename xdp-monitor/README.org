@@ -1,0 +1,151 @@
+#+EXPORT_FILE_NAME: xdp-monitor
+#+TITLE: xdp-monitor
+#+MAN_CLASS_OPTIONS: :section-id "8\" \"DATE\" \"VERSION\" \"A simple XDP monitoring tool"
+# This file serves both as a README on github, and as the source for the man
+# page; the latter through the org-mode man page export support.
+# .
+# To export the man page, simply use the org-mode exporter; (require 'ox-man) if
+# it's not available. There's also a Makefile rule to export it.
+
+* XDP-monitor - a simple BPF-powered XDP monitoring tool
+
+XDP-monitor is a tool that monitors various XDP related statistics and events using
+BPF tracepoints infrastructure, trying to be as low overhead as possible.
+
+Note that by default, statistics for successful XDP redirect events is disabled,
+as that leads to a per-packet BPF tracing overhead, which while being low
+overhead, can lead to packet processing degradation.
+
+This tool relies on the BPF raw tracepoints infrastructure in the kernel.
+
+There is more information on the meaning of the output in both default (terse)
+and verbose output mode, in the =Output Format Description= section.
+
+** Running xdp-monitor
+The syntax for running xdp-monitor is:
+
+#+begin_src sh
+xdp-monitor [options]
+#+end_src
+
+The supported options are:
+
+** -i, --interval <SECONDS>
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
+
+** -s, --stats
+Enable statistics for successful redirection. This option comes with a per
+packet tracing overhead, for recording all successful redirections.
+
+** -e, --extended
+Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
+"terse" mode. The output mode can be switched by hitting C-\ while the program
+is running. See also the *Output Format Description* section below.
+
+** -v, --verbose
+Enable verbose logging. Supply twice to enable verbose logging from the
+underlying =libxdp= and =libbpf= libraries.
+
+** --version
+Show the application version and exit.
+
+** -h, --help
+Display a summary of the available options
+
+* Output Format Description
+
+By default, redirect success statistics are disabled, use =--stats= to enable.
+The terse output mode is default, extended output mode can be activated using
+the =--extended= command line option.
+
+SIGQUIT (Ctrl + \\) can be used to switch the mode dynamically at runtime.
+
+Terse mode displays at most the following fields:
+#+begin_src sh
+  rx/s		Number of packets received per second
+  redir/s	Number of packets successfully redirected per second
+  err,drop/s	Aggregated count of errors per second (including dropped packets)
+  xmit/s	Number of packets transmitted on the output device per second
+#+end_src
+
+Verbose output mode displays at most the following fields:
+#+begin_src sh
+ FIELD		  DESCRIPTION
+ receive	       Displays the number of packets received and errors encountered
+
+			Whenever an error or packet drop occurs, details of per CPU error
+			and drop statistics will be expanded inline in terse mode.
+					pkt/s		- Packets received per second
+					drop/s		- Packets dropped per second
+					error/s		- Errors encountered per second
+					redirect	- Displays the number of packets successfully redirected
+                        Errors encountered are expanded under redirect_err field
+                        Note that passing -s to enable it has a per packet overhead
+					redir/s		- Packets redirected successfully per second
+
+
+ redirect_err	  Displays the number of packets that failed redirection
+
+			The errno is expanded under this field with per CPU count
+                        The recognized errors are:
+					EINVAL:		Invalid redirection
+					ENETDOWN:	Device being redirected to is down
+					EMSGSIZE:	Packet length too large for device
+					EOPNOTSUPP:	Operation not supported
+					ENOSPC:		No space in ptr_ring of cpumap kthread
+
+					error/s		- Packets that failed redirection per second
+
+
+ enqueue to cpu N Displays the number of packets enqueued to bulk queue of CPU N
+                        Expands to cpu:FROM->N to display enqueue stats for each CPU enqueuing to CPU N
+                        Received packets can be associated with the CPU redirect program is enqueuing
+                        packets to.
+					pkt/s		- Packets enqueued per second from other CPU to CPU N
+					drop/s		- Packets dropped when trying to enqueue to CPU N
+					bulk-avg	- Average number of packets processed for each event
+
+
+ kthread	       Displays the number of packets processed in CPUMAP kthread for each CPU
+                        Packets consumed from ptr_ring in kthread, and its xdp_stats (after calling
+                        CPUMAP bpf prog) are expanded below this. xdp_stats are expanded as a total and
+                        then per-CPU to associate it to each CPU's pinned CPUMAP kthread.
+					pkt/s		- Packets consumed per second from ptr_ring
+					drop/s		- Packets dropped per second in kthread
+					sched		- Number of times kthread called schedule()
+
+                        xdp_stats (also expands to per-CPU counts)
+					pass/s		- XDP_PASS count for CPUMAP program execution
+					drop/s		- XDP_DROP count for CPUMAP program execution
+					redir/s		- XDP_REDIRECT count for CPUMAP program execution
+
+
+ xdp_exception	  Displays xdp_exception tracepoint events
+
+			This can occur due to internal driver errors, unrecognized
+                        XDP actions and due to explicit user trigger by use of XDP_ABORTED
+                        Each action is expanded below this field with its count
+					hit/s		- Number of times the tracepoint was hit per second
+
+
+ devmap_xmit      Displays devmap_xmit tracepoint events
+
+			This tracepoint is invoked for successful transmissions on output
+                        device but these statistics are not available for generic XDP mode,
+                        hence they will be omitted from the output when using SKB mode
+					xmit/s		- Number of packets that were transmitted per second
+					drop/s		- Number of packets that failed transmissions per second
+					drv_err/s	- Number of internal driver errors per second
+					bulk-avg	- Average number of packets processed for each event
+#+end_src
+
+* BUGS
+
+Please report any bugs on Github: https://github.com/xdp-project/xdp-tools/issues
+
+* AUTHOR
+
+The original xdp-monitor tool was written by Jesper Dangaard Brouer. It was then
+rewritten to support more features by Kumar Kartikeya Dwivedi. This man page was
+written by Kumar Kartikeya Dwivedi.

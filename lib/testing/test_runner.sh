@@ -115,6 +115,40 @@ is_multiprog_supported()
     fi
 }
 
+is_progmap_supported()
+{
+    if [[ -z "${PROGMAP_SUPPORT:-}" ]]; then
+        RESULT=$(timeout -s INT 1 $XDP_BENCH redirect-cpu "$NS" -c 0 -r drop -vv 2>&1)
+        if [[ "$RESULT" == *"Create CPU entry failed: Cannot allocate memory"* ]]; then
+            PROGMAP_SUPPORT="false"
+        else
+            PROGMAP_SUPPORT="true"
+        fi
+    fi
+
+    if [[ "$PROGMAP_SUPPORT" == "true" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+skip_if_missing_veth_rxq()
+{
+    if ! ethtool -l $NS >/dev/null 2>&1; then
+        exit "$SKIPPED_TEST"
+    fi
+}
+
+skip_if_missing_cpumap_attach()
+{
+    if ! $TEST_PROG_DIR/test-tool probe cpumap-prog; then
+        exit "$SKIPPED_TEST"
+    fi
+
+    bpftool feature list_builtins attach_types
+}
+
 skip_if_missing_kernel_symbol()
 {
     if ! grep -q "$1" /proc/kallsyms; then
@@ -457,6 +491,8 @@ check_run()
 
     "$@"
     ret=$?
+    echo "Command '$@' exited with status $ret"
+    echo ""
     if [ "$ret" -ne "0" ]; then
         exit $ret
     fi
@@ -485,7 +521,8 @@ exec_test()
         echo "FAIL"
     fi
     if [ "$ret" -ne "0" ] || [ "$VERBOSE_TESTS" -eq "1" ]; then
-        echo "$output" | sed 's/^/\t/'
+        echo "$output" | sed  's/^/          /'
+        echo "          Test $testn exited with return code: $ret"
     fi
     return $ret
 }
