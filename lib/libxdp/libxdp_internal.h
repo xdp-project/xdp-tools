@@ -87,7 +87,8 @@ static inline bool libxdp_validate_opts(const char *opts,
 		pr_warn("%s size (%zu) is too small\n", type_name, user_sz);
 		return false;
 	}
-	if (!libxdp_is_mem_zeroed(opts + opts_sz, (ssize_t)user_sz - opts_sz)) {
+	if (user_sz > opts_sz &&
+	    !libxdp_is_mem_zeroed(opts + opts_sz, (ssize_t)user_sz - opts_sz)) {
 		pr_warn("%s has non-zero extra bytes\n", type_name);
 		return false;
 	}
