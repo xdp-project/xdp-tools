@@ -248,6 +248,9 @@ static struct datarec *alloc_records(int nr_entries)
 {
 	struct datarec *array;
 
+	if (nr_entries <= 0)
+		return NULL;
+
 	array = calloc(nr_entries, sizeof(*array));
 	if (!array) {
 		pr_warn("Failed to allocate memory (nr_entries: %u)\n", nr_entries);
@@ -1188,7 +1191,7 @@ static int get_num_rxqs(const char *ifname)
 	};
 	int fd, ret;
 
-	if (!ifname)
+	if (!ifname || strlen(ifname) > sizeof(ifr.ifr_name) - 1)
 		return 0;
 
 	strcpy(ifr.ifr_name, ifname);

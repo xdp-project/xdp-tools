@@ -173,7 +173,7 @@ out:
 
 static int map_collect(int fd, __u32 map_type, __u32 key, struct record *rec)
 {
-	struct datarec value;
+	struct datarec value = {};
 	int err;
 
 	/* Get time as close as possible to reading map contents */
