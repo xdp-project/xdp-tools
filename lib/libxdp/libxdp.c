@@ -1730,11 +1730,17 @@ int check_xdp_prog_version(const struct btf *btf, const char *name, __u32 *versi
 	return 0;
 }
 
-static int check_dispatcher_version(struct btf *btf)
+static int check_dispatcher_version(const char *prog_name, struct btf *btf)
 {
 	const char *name = "dispatcher_version";
 	__u32 version = 0;
 	int err;
+
+	if (prog_name && strcmp(prog_name, "xdp_dispatcher")) {
+		pr_debug("XDP program with name '%s' is not a dispatcher\n",
+			 prog_name);
+		return -ENOENT;
+	}
 
 	err = check_xdp_prog_version(btf, name, &version);
 	if (err)
@@ -1869,7 +1875,7 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 			goto out;
 		}
 
-		err = check_dispatcher_version(btf);
+		err = check_dispatcher_version(info.name, btf);
 		if (err) {
 			if (err != -ENOENT) {
 				pr_warn("Dispatcher version check failed for ID %d\n",
@@ -2479,7 +2485,8 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 		goto err;
 	}
 
-	err = check_dispatcher_version(dispatcher->btf);
+	err = check_dispatcher_version(bpf_program__name(dispatcher->bpf_prog),
+				       dispatcher->btf);
 	if (err) {
 		pr_warn("XDP dispatcher object version check failed: %s\n",
 			strerror(-err));
