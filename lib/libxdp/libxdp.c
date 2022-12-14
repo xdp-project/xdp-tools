@@ -2748,13 +2748,24 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 		err = -ENOENT;
 		goto err;
 	}
+#define BPF_F_XDP_DEV_BOUND_ONLY	(1U << 6)
 
 	mp->config.num_progs_enabled = num_new_progs;
 	for (i = 0; i < num_new_progs; i++) {
+		int flags;
+
 		mp->config.chain_call_actions[i] =
 			(new_progs[i]->chain_call_actions |
 			 (1U << XDP_DISPATCHER_RETVAL));
 		mp->config.run_prios[i] = new_progs[i]->run_prio;
+
+		flags = bpf_program__flags(new_progs[i]->bpf_prog);
+		if (flags & BPF_F_XDP_DEV_BOUND_ONLY) {
+			bpf_program__set_flags(dispatcher->bpf_prog, BPF_F_XDP_DEV_BOUND_ONLY);
+			bpf_program__set_ifindex(dispatcher->bpf_prog, mp->ifindex);
+			bpf_program__set_flags(new_progs[i]->bpf_prog, flags & ~BPF_F_XDP_DEV_BOUND_ONLY);
+			bpf_program__set_ifindex(new_progs[i]->bpf_prog, 0);
+		}
 	}
 
 	err = bpf_map__set_initial_value(map, &mp->config, sizeof(mp->config));
