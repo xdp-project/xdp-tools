@@ -28,6 +28,7 @@
 static int mask = SAMPLE_RX_CNT | SAMPLE_EXCEPTION_CNT;
 
 DEFINE_SAMPLE_INIT(xdp_droptx);
+#define BPF_F_XDP_DEV_BOUND_ONLY	(1U << 6)
 
 const struct droptx_opts defaults_drop = { .mode = XDP_MODE_NATIVE,
 					     .interval = 2 };
@@ -67,6 +68,13 @@ static int do_droptx(const struct droptx_opts *opt, enum xdp_action action)
 		skel->rodata->read_data = true;
 	if (opt->program_mode >= DROPTX_SWAP_MACS)
 		skel->rodata->swap_macs = true;
+	if (opt->read_hw_meta) {
+		skel->rodata->read_hw_meta = true;
+		bpf_program__set_flags(skel->progs.xdp_droptx_prog,
+				       BPF_F_XDP_DEV_BOUND_ONLY);
+		bpf_program__set_ifindex(skel->progs.xdp_droptx_prog,
+					 opt->iface_in.ifindex);
+	}
 	if (opt->rxq_stats) {
 		skel->rodata->rxq_stats = true;
 		mask |= SAMPLE_RXQ_STATS;

@@ -24,6 +24,7 @@ enum droptx_program_mode {
 struct droptx_opts {
 	bool extended;
 	bool rxq_stats;
+	bool read_hw_meta;
 	__u32 interval;
 	enum xdp_attach_mode mode;
 	enum droptx_program_mode program_mode;

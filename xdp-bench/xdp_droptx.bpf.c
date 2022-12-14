@@ -19,6 +19,12 @@ const volatile bool read_data = 0;
 const volatile bool swap_macs = 0;
 const volatile bool rxq_stats = 0;
 const volatile enum xdp_action action = XDP_DROP;
+const volatile bool read_hw_meta = 0;
+
+extern int bpf_xdp_metadata_rx_timestamp(const struct xdp_md *ctx,
+					 __u64 *timestamp) __ksym;
+extern int bpf_xdp_metadata_rx_hash(const struct xdp_md *ctx,
+				    __u32 *hash) __ksym;
 
 SEC("xdp")
 int xdp_droptx_prog(struct xdp_md *ctx)
@@ -55,7 +61,18 @@ int xdp_droptx_prog(struct xdp_md *ctx)
 			swap_src_dst_mac(data);
 	}
 
-	if (action == XDP_DROP) {
+	if (read_hw_meta) {
+		volatile __u64 rx_timestamp = 0;
+		volatile __u32 rx_hash = 0;
+
+		if (!bpf_xdp_metadata_rx_timestamp(ctx, (__u64* )&rx_timestamp))
+			(void)rx_timestamp;
+
+		if (!bpf_xdp_metadata_rx_hash(ctx, (__u32 *)&rx_hash)) {
+			(void)rx_hash;
+			NO_TEAR_INC(rec->dropped);
+		}
+	} else if (action == XDP_DROP) {
 		NO_TEAR_INC(rec->dropped);
 		if (rxq_stats)
 			NO_TEAR_INC(rxq_rec->dropped);
