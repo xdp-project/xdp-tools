@@ -68,13 +68,14 @@ LIBXDP_HIDE_SYMBOL int check_xdp_prog_version(const struct btf *btf, const char 
 
 /* OPTS macros, from libbpf_internal.h */
 
-static inline bool libxdp_is_mem_zeroed(const char *p, ssize_t len)
+static inline bool libxdp_is_mem_zeroed(const char *obj,
+					size_t off_start, size_t off_end)
 {
-	while (len > 0) {
+	const char *p;
+
+	for (p = obj + off_start; p < obj + off_end; p++) {
 		if (*p)
 			return false;
-		p++;
-		len--;
 	}
 	return true;
 }
@@ -87,8 +88,7 @@ static inline bool libxdp_validate_opts(const char *opts,
 		pr_warn("%s size (%zu) is too small\n", type_name, user_sz);
 		return false;
 	}
-	if (user_sz > opts_sz &&
-	    !libxdp_is_mem_zeroed(opts + opts_sz, (ssize_t)user_sz - opts_sz)) {
+	if (!libxdp_is_mem_zeroed(opts, opts_sz, user_sz)) {
 		pr_warn("%s has non-zero extra bytes\n", type_name);
 		return false;
 	}
@@ -111,11 +111,10 @@ static inline bool libxdp_validate_opts(const char *opts,
 	} while (0)
 
 #define OPTS_ZEROED(opts, last_nonzero_field)				      \
-({									      \
-	ssize_t __off = offsetofend(typeof(*(opts)), last_nonzero_field);     \
-	!(opts) || libxdp_is_mem_zeroed((const void *)opts + __off,	      \
-					(opts)->sz - __off);		      \
-})
+	(!(opts) || libxdp_is_mem_zeroed((const void *)opts,		      \
+					 offsetofend(typeof(*(opts)),	      \
+						     last_nonzero_field),     \
+					 (opts)->sz))
 
 /* handle direct returned errors */
 static inline int libxdp_err(int ret)
