@@ -33,7 +33,7 @@ int main(int argc, char **argv)
 {
 	struct cbpf_program *cbpf_prog = NULL;
 	struct ebpf_program *ebpf_prog = NULL;
-	int rc = EXIT_FAILURE;
+	int err, rc = EXIT_FAILURE;
 
 	if (parse_cmdline_args(argc, argv, filterc_options, &cfg_filteropt,
 			       sizeof(cfg_filteropt), PROG_NAME, PROG_NAME,
@@ -58,6 +58,15 @@ int main(int argc, char **argv)
 
 	printf("\n");
 	ebpf_program_dump(ebpf_prog);
+
+	printf("\nWriting BPF object file (ELF)\n");
+	err = ebpf_program_write_elf(ebpf_prog, cfg_filteropt.output);
+	if (err) {
+		pr_warn("Failed to write BPF object in ELF format: %s\n",
+			bpfc_geterr());
+		rc = err;
+		goto out;
+	}
 
 	rc = EXIT_SUCCESS;
 

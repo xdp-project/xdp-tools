@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 
 #include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -9,7 +11,7 @@
 #include <linux/bpf.h>
 #include <linux/filter.h>
 
-#include <linux/bpf.h>
+#include <libelf.h>
 
 // We need the bpf_insn and bpf_program definitions from libpcap, but they
 // conflict with the Linux/libbpf definitions. Rename the libpcap structs to
@@ -21,6 +23,7 @@
 #undef bpf_insn
 #undef bpf_program
 
+#include "util.h"
 #include "filter.h"
 #include "bpfc.h"
 
@@ -444,6 +447,292 @@ error:
 	if (prog)
 		free(prog);
 	return NULL;
+}
+
+struct table {
+	void *data;
+	size_t len;
+};
+
+static struct table *strtab_init()
+{
+	struct table *tab = calloc(sizeof(struct table), 1);
+	if (!tab)
+		return NULL;
+
+	tab->data = calloc(sizeof(char), 1);
+	if (!tab->data) {
+		free (tab);
+		return NULL;
+	}
+
+	tab->len = 1;
+	return tab;
+}
+
+static struct table *symtab_init()
+{
+	Elf64_Sym *sym;
+
+	struct table *tab = calloc(sizeof(struct table), 1);
+	if (!tab)
+		return NULL;
+
+	sym = calloc(sizeof(*sym), 1);
+	if (!sym) {
+		free (tab);
+		return NULL;
+	}
+
+	tab->data = sym;
+	tab->len = sizeof(*sym);
+	return tab;
+}
+
+static int strtab_add(struct table *strtab, char *str)
+{
+	size_t add_len = strlen(str) + 1;
+	size_t new_len = strtab->len + add_len;
+	size_t off = strtab->len;
+	char *new_data = NULL;
+
+	new_data = realloc(strtab->data, new_len);
+	if (!new_data)
+		return -errno;
+
+	strncpy(new_data + off, str, add_len);
+	new_data[new_len - 1] = 0;
+
+	strtab->data = new_data;
+	strtab->len = new_len;
+
+	return off;
+}
+
+static void table_free(struct table *tab)
+{
+	free(tab->data);
+	free(tab);
+}
+
+static Elf_Scn *add_elf_sec(Elf *elf, struct table *strtab, char *name)
+{
+	Elf_Scn *scn;
+	Elf64_Shdr *shdr;
+	int off;
+
+	scn = elf_newscn(elf);
+	if (!scn)
+		return NULL;
+
+	shdr = elf64_getshdr(scn);
+	if (!shdr)
+		return NULL;
+
+	off = strtab_add(strtab, name);
+	if (off < 0)
+		return NULL;
+
+	shdr->sh_name = off;
+
+	return scn;
+}
+
+static Elf_Scn *add_elf_strtab(Elf *elf, struct table *strtab)
+{
+	Elf_Scn *scn;
+	Elf64_Shdr *shdr;
+
+	scn = add_elf_sec(elf, strtab, ".strtab");
+	if (!scn)
+		return NULL;
+
+	shdr = elf64_getshdr(scn);
+	if (!shdr)
+		return NULL;
+
+	shdr->sh_type = SHT_STRTAB;
+	shdr->sh_addralign = 1;
+	//shdr->sh_flags = SHF_STRINGS;
+	//shdr->sh_offset = 0;
+	//shdr->sh_link = 0;
+	//shdr->sh_info = 0;
+	//shdr->sh_entsize = 0;
+
+	return scn;
+}
+
+static int finalize_elf_strtab(Elf *elf, Elf_Scn *scn, struct table *strtab)
+{
+	Elf64_Ehdr *elf_hdr;
+	Elf64_Shdr *shdr;
+	Elf_Data *data;
+
+	shdr = elf64_getshdr(scn);
+	if (!shdr)
+		return EINVAL;
+
+	shdr->sh_size = strtab->len;
+
+	data = elf_newdata(scn);
+	if (!data)
+		return EINVAL;
+
+	data->d_align = 1;
+	data->d_off = 0LL;
+	data->d_buf = strtab->data;
+	data->d_type = ELF_T_BYTE;
+	data->d_size = strtab->len;
+
+	elf_hdr = elf64_getehdr(elf);
+	if (!elf_hdr)
+		return EINVAL;
+
+	elf_hdr->e_shstrndx = elf_ndxscn(scn);
+	return 0;
+}
+
+static Elf_Scn *add_elf_symtab(Elf *elf, struct table *strtab,
+			       struct table *symtab, int strtab_ndx)
+{
+	Elf_Scn *scn;
+	Elf64_Shdr *shdr;
+	Elf_Data *data;
+
+	scn = add_elf_sec(elf, strtab, ".symtab");
+	if (!scn)
+		return NULL;
+
+	shdr = elf64_getshdr(scn);
+	if (!shdr)
+		return NULL;
+
+	shdr->sh_type = SHT_SYMTAB;
+	shdr->sh_addralign = 8;
+	shdr->sh_size = symtab->len;
+	shdr->sh_link = strtab_ndx;
+	// sh_info should be the number of local symbols, but why? elfutils
+	// does not even have a warnign for this, just binutils.
+	//shdr->sh_info = symtab->len / sizeof(Elf64_Sym);
+	shdr->sh_entsize = sizeof(Elf64_Sym);
+
+	data = elf_newdata(scn);
+	if (!data)
+		return NULL;
+
+	data->d_align = 8;
+	data->d_off = 0LL;
+	data->d_buf = symtab->data;
+	data->d_type = ELF_T_BYTE;
+	data->d_size = symtab->len;
+
+	return scn;
+}
+
+int ebpf_program_write_elf(__unused struct ebpf_program *prog, char *filename)
+{
+	int err = 0, fd = -1;
+	Elf *elf = NULL;
+	Elf_Scn *scn, *scn_strtab;
+	Elf64_Ehdr *elf_hdr;
+	struct table *strtab = NULL, *symtab = NULL;
+
+	if (elf_version(EV_CURRENT) == EV_NONE) {
+		err = EINVAL;
+		bpfc_error("libelf initialization failed");
+		goto out;
+	}
+
+	fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+	if (fd < 0) {
+		err = errno;
+		bpfc_error("Failed to create '%s': %d", filename, err);
+		goto out;
+	}
+
+	elf = elf_begin(fd, ELF_C_WRITE, NULL);
+	if (!elf) {
+		err = EINVAL;
+		bpfc_error("Failed to create ELF object");
+		goto out;
+	}
+
+	/* ELF header */
+	elf_hdr = elf64_newehdr(elf);
+	if (!elf_hdr) {
+		err = EINVAL;
+		bpfc_error("Failed to create ELF header");
+		goto out;
+	}
+
+	elf_hdr->e_machine = EM_BPF;
+	elf_hdr->e_type = ET_REL;
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+	elf_hdr->e_ident[EI_DATA] = ELFDATA2LSB;
+#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+	elf_hdr->e_ident[EI_DATA] = ELFDATA2MSB;
+#else
+#error "Unknown __BYTE_ORDER__"
+#endif
+
+	strtab = strtab_init();
+	if (!strtab) {
+		err = EINVAL;
+		bpfc_error("Failed to initialize strtab");
+		goto out;
+	}
+	scn_strtab = add_elf_strtab(elf, strtab);
+	if (!scn_strtab) {
+		bpfc_error("Failed to add STRTAB section to ELF object");
+		goto out;
+	}
+
+	symtab = symtab_init();
+	if (!strtab) {
+		err = EINVAL;
+		bpfc_error("Failed to initialize symtab");
+		goto out;
+	}
+
+	scn = add_elf_symtab(elf, strtab, symtab, elf_ndxscn(scn_strtab));
+	if (!scn) {
+		bpfc_error("Failed to add SYMTAB section to ELF object");
+		goto out;
+	}
+
+	err = finalize_elf_strtab(elf, scn_strtab, strtab);
+	if (err) {
+		bpfc_error("Failed to finalize strtab");
+		goto out;
+	}
+
+	/* Finalize ELF layout */
+	if (elf_update(elf, ELF_C_NULL) < 0) {
+		err = EINVAL;
+		bpfc_error("Failed to finalize ELF layout: %s",
+			   elf_errmsg(elf_errno()));
+		goto out;
+	}
+
+	/* Write out final ELF contents */
+	if (elf_update(elf, ELF_C_WRITE) < 0) {
+		err = EINVAL;
+		bpfc_error("Failed to write ELF contents: %s",
+			   elf_errmsg(elf_errno()));
+		goto out;
+	}
+
+out:
+	if (strtab)
+		table_free(strtab);
+	if (symtab)
+		table_free(symtab);
+	if (elf)
+		elf_end(elf);
+	if (fd >= 0)
+		close(fd);
+
+	return err;
 }
 
 void ebpf_program_dump(struct ebpf_program *prog)

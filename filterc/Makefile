@@ -7,7 +7,7 @@ USER_GEN := $(EXTRA_BUILD)
 EXTRA_USER_DEPS := $(USER_GEN)
 
 LIB_DIR = ../lib
-USER_LIBS = $(EXTRA_BUILD) -lpcap
+USER_LIBS = $(EXTRA_BUILD) -lpcap -lelf
 
 include $(LIB_DIR)/common.mk
 
