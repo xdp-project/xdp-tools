@@ -12,6 +12,7 @@
 #include <linux/filter.h>
 
 #include <libelf.h>
+#include <bpf/btf.h>
 
 // We need the bpf_insn and bpf_program definitions from libpcap, but they
 // conflict with the Linux/libbpf definitions. Rename the libpcap structs to
@@ -23,12 +24,15 @@
 #undef bpf_insn
 #undef bpf_program
 
+#include "logging.h"
 #include "util.h"
+
 #include "filter.h"
 #include "bpfc.h"
 
 #define BPFC_DEFAULT_SNAP_LEN 262144
-#define BPFC_ERRBUFF_SZ 256
+#define BPFC_ERRBUFF_SZ 512 + STRERR_BUFSIZE
+#define BPFC_PROG_SYM_NAME "filterc_prog"
 
 static char bpfc_errbuff[BPFC_ERRBUFF_SZ + 1];
 
@@ -663,8 +667,7 @@ static Elf_Scn *add_elf_bpf_prog(Elf *elf, struct table *strtab,
 	if (!scn)
 		return NULL;
 
-
-	off = strtab_add(strtab, "filterc_prog");
+	off = strtab_add(strtab, BPFC_PROG_SYM_NAME);
 	if (off < 0)
 		return NULL;
 
@@ -698,6 +701,204 @@ static Elf_Scn *add_elf_bpf_prog(Elf *elf, struct table *strtab,
 	return scn;
 }
 
+/**
+ * Populates the load opts with the necessary BTF data to allow loading of the
+ * bare instructions. The structure of the BTF information is the same as from
+ * a plain XDP program, i.e., similar to the following (with different order):
+ *
+ * [1] PTR '(anon)' type_id=2
+ * [2] STRUCT 'xdp_md' size=24 vlen=6
+ *         'data' type_id=3 bits_offset=0
+ *         'data_end' type_id=3 bits_offset=32
+ *         'data_meta' type_id=3 bits_offset=64
+ *         'ingress_ifindex' type_id=3 bits_offset=96
+ *         'rx_queue_index' type_id=3 bits_offset=128
+ *         'egress_ifindex' type_id=3 bits_offset=160
+ * [3] TYPEDEF '__u32' type_id=4
+ * [4] INT 'unsigned int' size=4 bits_offset=0 nr_bits=32 encoding=(none)
+ * [5] FUNC_PROTO '(anon)' ret_type_id=6 vlen=1
+ *         'ctx' type_id=1
+ * [6] INT 'int' size=4 bits_offset=0 nr_bits=32 encoding=SIGNED
+ * [7] FUNC 'prog' type_id=5 linkage=global
+ */
+struct btf *build_xdp_btf()
+{
+	char errmsg[STRERR_BUFSIZE];
+	int err = 0;
+	struct btf *btf;
+
+	btf = btf__new_empty();
+	if (!btf) {
+		err = errno;
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		bpfc_error("Could not create btf structure: %s (%d)",
+			   errmsg, err);
+		goto out;
+	}
+
+	int unsig_int_id = btf__add_int(btf, "unsigned int", 4, 0);
+	if (unsig_int_id < 0) {
+		err = unsig_int_id;
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		bpfc_error("Could not create 'unsigned int' btf: %s (%d)",
+			   errmsg, err);
+		goto out;
+	}
+
+	int u32_id = btf__add_typedef(btf, "__u32", unsig_int_id);
+	if (u32_id < 0) {
+		err = u32_id;
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		bpfc_error("Could not create '__u32' btf: %s (%d)",
+			   errmsg, err);
+		goto out;
+	}
+
+	int xdp_md_id = btf__add_struct(btf, "xdp_md", 24);
+	if (xdp_md_id < 0) {
+		err = xdp_md_id;
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		bpfc_error("Could not create 'xdp_md' btf: %s (%d)",
+			   errmsg, err);
+		goto out;
+	}
+
+	err = btf__add_field(btf, "data", u32_id, 0, 32);
+	if (err < 0) {
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		bpfc_error("Could not create 'xdp_md' field 'data' btf: %s (%d)",
+			   errmsg, err);
+		goto out;
+	}
+
+	err = btf__add_field(btf, "data_end", u32_id, 32, 32);
+	if (err < 0) {
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		bpfc_error("Could not create 'xdp_md' field 'data_end' btf: %s (%d)",
+			   errmsg, err);
+		goto out;
+	}
+
+	err = btf__add_field(btf, "data_meta", u32_id, 64, 32);
+	if (err < 0) {
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		bpfc_error("Could not create 'xdp_md' field 'data_meta' btf: %s (%d)",
+			   errmsg, err);
+		goto out;
+	}
+
+	err = btf__add_field(btf, "ingress_ifindex", u32_id, 96, 32);
+	if (err < 0) {
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		bpfc_error("Could not create 'xdp_md' field 'ingress_ifindex' btf: %s (%d)",
+			   errmsg, err);
+		goto out;
+	}
+
+	err = btf__add_field(btf, "rx_queue_index", u32_id, 128, 32);
+	if (err < 0) {
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		bpfc_error("Could not create 'xdp_md' field 'rx_queue_index' btf: %s (%d)",
+			   errmsg, err);
+		goto out;
+	}
+
+	err = btf__add_field(btf, "egress_ifindex", u32_id, 160, 32);
+	if (err < 0) {
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		bpfc_error("Could not create 'xdp_md' field 'egress_ifindex' btf: %s (%d)",
+			   errmsg, err);
+		goto out;
+	}
+
+	int ptr_xdp_md_id = btf__add_ptr(btf, xdp_md_id);
+	if (ptr_xdp_md_id < 0) {
+		err = ptr_xdp_md_id;
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		bpfc_error("Could not create 'xdp_md *' btf: %s (%d)",
+			   errmsg, err);
+		goto out;
+	}
+
+	int func_return_id = btf__add_int(btf, "int", 4, BTF_INT_SIGNED);
+	if (func_return_id < 0) {
+		err = func_return_id;
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		bpfc_error("Could not create return int btf: %s (%d)",
+			   errmsg, err);
+		goto out;
+	}
+
+	int func_proto_id = btf__add_func_proto(btf, func_return_id);
+	if (func_proto_id < 0) {
+		err = func_proto_id;
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		bpfc_error("Could not create func proto btf: %s (%d)",
+			   errmsg, err);
+		goto out;
+	}
+
+	int ctx_param_id = btf__add_func_param(btf, "ctx", ptr_xdp_md_id);
+	if (ctx_param_id < 0) {
+		err = ctx_param_id;
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		bpfc_error("Could not create ctx param btf: %s (%d)",
+			   errmsg, err);
+		goto out;
+	}
+
+	int xdp_prog_func_id = btf__add_func(btf, BPFC_PROG_SYM_NAME,
+					     BTF_FUNC_GLOBAL, func_proto_id);
+	if (xdp_prog_func_id < 0) {
+		err = xdp_prog_func_id;
+		libbpf_strerror(err, errmsg, sizeof(errmsg));
+		bpfc_error("Could not create xdp func btf: %s (%d)",
+			   errmsg, err);
+		goto out;
+	}
+
+	return btf;
+
+out:
+	if (btf)
+		btf__free(btf);
+
+	return NULL;
+}
+
+static Elf_Scn *add_elf_btf(Elf *elf, struct table *strtab, struct btf *btf)
+{
+	Elf_Scn *scn;
+	Elf64_Shdr *shdr;
+	Elf_Data *data;
+	__u32 btf_size = 0;
+
+	scn = add_elf_sec(elf, strtab, ".BTF");
+	if (!scn)
+		return NULL;
+
+	shdr = elf64_getshdr(scn);
+	if (!shdr)
+		return NULL;
+
+	shdr->sh_type = SHT_PROGBITS;
+	shdr->sh_addralign = 4;
+
+	data = elf_newdata(scn);
+	if (!data)
+		return NULL;
+
+	data->d_align = 4;
+	data->d_off = 0LL;
+	data->d_buf = (void *)btf__raw_data(btf, &btf_size);
+	data->d_type = ELF_T_BYTE;
+
+	data->d_size = btf_size;
+	shdr->sh_size = btf_size;
+
+	return scn;
+}
+
 int ebpf_program_write_elf(struct ebpf_program *prog, char *filename)
 {
 	int err = 0, fd = -1;
@@ -705,6 +906,7 @@ int ebpf_program_write_elf(struct ebpf_program *prog, char *filename)
 	Elf_Scn *scn, *scn_strtab;
 	Elf64_Ehdr *elf_hdr;
 	struct table *strtab = NULL, *symtab = NULL;
+	struct btf *btf = NULL;
 
 	if (elf_version(EV_CURRENT) == EV_NONE) {
 		err = EINVAL;
@@ -770,6 +972,20 @@ int ebpf_program_write_elf(struct ebpf_program *prog, char *filename)
 		goto out;
 	}
 
+	btf = build_xdp_btf();
+	if (!btf) {
+		err = EINVAL;
+		bpfc_error("Failed to add build BTF information");
+		goto out;
+	}
+
+	scn = add_elf_btf(elf, strtab, btf);
+	if (!scn) {
+		err = EINVAL;
+		bpfc_error("Failed to add BTF section to ELF object");
+		goto out;
+	}
+
 	scn = add_elf_symtab(elf, strtab, symtab, elf_ndxscn(scn_strtab));
 	if (!scn) {
 		bpfc_error("Failed to add SYMTAB section to ELF object");
@@ -799,6 +1015,8 @@ int ebpf_program_write_elf(struct ebpf_program *prog, char *filename)
 	}
 
 out:
+	if (btf)
+		btf__free(btf);
 	if (strtab)
 		table_free(strtab);
 	if (symtab)
