@@ -509,6 +509,25 @@ static int strtab_add(struct table *strtab, char *str)
 	return off;
 }
 
+static int symtab_add(struct table *symtab, Elf64_Sym *sym)
+{
+	size_t add_len = sizeof(*sym);
+	size_t new_len = symtab->len + add_len;
+	size_t off = symtab->len;
+	char *new_data = NULL;
+
+	new_data = realloc(symtab->data, new_len);
+	if (!new_data)
+		return -errno;
+
+	memcpy(new_data + off, sym, add_len);
+
+	symtab->data = new_data;
+	symtab->len = new_len;
+
+	return 0;
+}
+
 static void table_free(struct table *tab)
 {
 	free(tab->data);
@@ -629,7 +648,57 @@ static Elf_Scn *add_elf_symtab(Elf *elf, struct table *strtab,
 	return scn;
 }
 
-int ebpf_program_write_elf(__unused struct ebpf_program *prog, char *filename)
+static Elf_Scn *add_elf_bpf_prog(Elf *elf, struct table *strtab,
+				 struct table *symtab,
+				 struct ebpf_program *prog)
+{
+	Elf_Scn *scn;
+	Elf64_Shdr *shdr;
+	Elf_Data *data;
+	Elf64_Sym sym = {0};
+	int off, err;
+	int prog_size = prog->insns_cnt * 8;
+
+	scn = add_elf_sec(elf, strtab, "xdp");
+	if (!scn)
+		return NULL;
+
+
+	off = strtab_add(strtab, "filterc_prog");
+	if (off < 0)
+		return NULL;
+
+	sym.st_name = off;
+	sym.st_info = ELF64_ST_INFO(STB_GLOBAL, STT_FUNC);
+	sym.st_shndx = elf_ndxscn(scn);
+	sym.st_size = prog_size;
+	err = symtab_add(symtab, &sym);
+	if (err)
+		return NULL;
+
+	shdr = elf64_getshdr(scn);
+	if (!shdr)
+		return NULL;
+
+	shdr->sh_type = SHT_PROGBITS;
+	shdr->sh_addralign = 8;
+	shdr->sh_size = prog_size;
+	shdr->sh_flags = SHF_ALLOC | SHF_EXECINSTR;
+
+	data = elf_newdata(scn);
+	if (!data)
+		return NULL;
+
+	data->d_align = 8;
+	data->d_off = 0LL;
+	data->d_buf = prog->insns;
+	data->d_type = ELF_T_BYTE;
+	data->d_size = prog_size;
+
+	return scn;
+}
+
+int ebpf_program_write_elf(struct ebpf_program *prog, char *filename)
 {
 	int err = 0, fd = -1;
 	Elf *elf = NULL;
@@ -691,6 +760,13 @@ int ebpf_program_write_elf(__unused struct ebpf_program *prog, char *filename)
 	if (!strtab) {
 		err = EINVAL;
 		bpfc_error("Failed to initialize symtab");
+		goto out;
+	}
+
+	scn = add_elf_bpf_prog(elf, strtab, symtab, prog);
+	if (!scn) {
+		err = EINVAL;
+		bpfc_error("Failed to add BPF program section to ELF object");
 		goto out;
 	}
 
