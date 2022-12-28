@@ -27,6 +27,8 @@ static const struct loadopt {
 	char *section_name;
 	char *prog_name;
 	enum xdp_attach_mode mode;
+	__u32 prio;
+	__u32 actions;
 } defaults_load = {
 	.mode = XDP_MODE_NATIVE
 };
@@ -39,6 +41,14 @@ struct enum_val xdp_modes[] = {
        {NULL, 0}
 };
 
+struct flag_val load_actions[] = {
+	{"XDP_ABORTED", 1U << XDP_ABORTED},
+	{"XDP_DROP", 1U << XDP_DROP},
+	{"XDP_PASS", 1U << XDP_PASS},
+	{"XDP_TX", 1U << XDP_TX},
+	{"XDP_REDIRECT", 1U << XDP_REDIRECT},
+	{}
+};
 
 static struct prog_option load_options[] = {
 	DEFINE_OPTION("mode", OPT_ENUM, struct loadopt, mode,
@@ -67,6 +77,14 @@ static struct prog_option load_options[] = {
 		      .metavar = "<filenames>",
 		      .required = true,
 		      .help = "Load programs from <filenames>"),
+	DEFINE_OPTION("prio", OPT_U32, struct loadopt, prio,
+		      .short_opt = 'P',
+		      .help = "Set run priority of program"),
+	DEFINE_OPTION("actions", OPT_FLAGS, struct loadopt, actions,
+		      .short_opt = 'A',
+		      .typearg = load_actions,
+		      .metavar = "<actions>",
+		      .help = "Chain call actions (default: XDP_PASS). e.g. XDP_PASS,XDP_DROP"),
 	END_OPTIONS
 };
 
@@ -137,6 +155,26 @@ retry:
 			pr_warn("Couldn't open file '%s': %s\n",
 				opt->filenames.strings[i], errmsg);
 			goto out;
+		}
+
+		if (opt->prio) {
+			err = xdp_program__set_run_prio(p, opt->prio);
+			if (err) {
+				pr_warn("Error setting run priority: %u\n", opt->prio);
+				goto out;
+			}
+		}
+
+		if (opt->actions) {
+			__u32 a;
+
+			for (a = XDP_ABORTED; a <= XDP_REDIRECT; a++) {
+				err = xdp_program__set_chain_call_enabled(p, a, opt->actions & (1U << a));
+				if (err) {
+					pr_warn("Error setting chain call action: %u\n", a);
+					goto out;
+				}
+			}
 		}
 
 		xdp_program__print_chain_call_actions(p, errmsg, sizeof(errmsg));
