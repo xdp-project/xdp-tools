@@ -1,5 +1,5 @@
 Name:             xdp-tools
-Version:          1.2.2
+Version:          1.2.9
 Release:          1%{?dist}
 Summary:          Utilities and example programs for use with XDP
 %global _soversion 1.2.0
@@ -112,17 +112,44 @@ make install V=1
 %{_libdir}/pkgconfig/libxdp.pc
 
 %changelog
+* Wed Dec 14 2022 Toke Høiland-Jørgensen <toke@redhat.com> 1.2.9-1
+- Upstream version bump
+
+* Thu Nov 03 2022 Jiri Olsa <jolsa@kernel.org> 1.2.8-2
+- libbpf 1.0 build
+
+* Sun Sep 18 2022 Toke Høiland-Jørgensen <toke@redhat.com> 1.2.8-1
+- Upstream version bump
+
+* Tue Aug 16 2022 Toke Høiland-Jørgensen <toke@redhat.com> 1.2.6-1
+- Upstream version bump
+
+* Mon Aug 8 2022 Toke Høiland-Jørgensen <toke@redhat.com> 1.2.5-1
+- Upstream version bump
+
+* Sat Jul 23 2022 Fedora Release Engineering <releng@fedoraproject.org> - 1.2.3-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_37_Mass_Rebuild
+
+* Thu Feb 17 2022 Toke Høiland-Jørgensen <toke@redhat.com> 1.2.3-1
+- Upstream version bump
+
 * Thu Jan 20 2022 Toke Høiland-Jørgensen <toke@redhat.com> 1.2.2-1
 - Upstream version bump
 
 * Thu Jan 13 2022 Toke Høiland-Jørgensen <toke@redhat.com> 1.2.1-1
 - Upstream version bump
 
+* Fri Jul 23 2021 Fedora Release Engineering <releng@fedoraproject.org> - 1.2.0-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_35_Mass_Rebuild
+
 * Wed Jul 7 2021 Toke Høiland-Jørgensen <toke@redhat.com> 1.2.0-1
 - Upstream version bump
 
 * Wed Feb 3 2021 Toke Høiland-Jørgensen <toke@redhat.com> 1.1.1-1
 - Upstream version bump
+
+* Wed Jan 27 2021 Fedora Release Engineering <releng@fedoraproject.org> - 1.1.0-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_34_Mass_Rebuild
 
 * Mon Jan 4 2021 Toke Høiland-Jørgensen <toke@redhat.com> 1.1.0-1
 - Upstream version bump
@@ -132,6 +159,9 @@ make install V=1
 
 * Tue Aug 18 2020 Toke Høiland-Jørgensen <toke@redhat.com> 1.0.0-1
 - Upstream version bump
+
+* Wed Jul 29 2020 Fedora Release Engineering <releng@fedoraproject.org> - 1.0.0~beta3-0.2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_33_Mass_Rebuild
 
 * Wed Jul 15 2020 Eelco Chaudron <echaudro@redhat.com> 1.0.0~beta3-0.1
 - Upstream version bump
