@@ -76,10 +76,18 @@ restart:
 
 	if (tried) {
 		tx_port_map = skel->maps.tx_port_general;
-		bpf_map__set_autocreate(skel->maps.tx_port_native, false);
 		bpf_program__set_autoload(skel->progs.xdp_redirect_devmap_egress, false);
+#ifdef HAVE_LIBBPF_BPF_MAP__SET_AUTOCREATE
+		bpf_map__set_autocreate(skel->maps.tx_port_native, false);
+#else
+		pr_warn("Libbpf is missing bpf_map__set_autocreate(), fallback won't work\n");
+		ret = EXIT_FAIL_BPF;
+		goto end_destroy;
+#endif
 	} else {
+#ifdef HAVE_LIBBPF_BPF_MAP__SET_AUTOCREATE
 		bpf_map__set_autocreate(skel->maps.tx_port_general, false);
+#endif
 		tx_port_map = skel->maps.tx_port_native;
 	}
 
