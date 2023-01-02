@@ -127,6 +127,7 @@ restart:
 			xdp_program__close(xdp_prog);
 			xdp_redirect_devmap__destroy(skel);
 			sample_teardown();
+			xdp_prog = NULL;
 			goto restart;
 		}
 		pr_warn("Failed to attach XDP program: %s\n",
