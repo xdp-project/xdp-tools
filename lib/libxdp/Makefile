@@ -18,9 +18,6 @@ MAN_PAGE := libxdp.3
 MAN_OBJ := ${MAN_PAGE:.3=.man}
 MAN_FILES := $(MAN_PAGE)
 TEST_DIR := tests
-TEST_FILE := $(TEST_DIR)/test-libxdp.sh
-TEST_CFLAGS := $(CFLAGS) -I$(realpath $(HEADER_DIR)) -L$(realpath $(OBJDIR)) -Wall -Werror $(LDFLAGS)
-TEST_LDLIBS := $(LDLIBS)
 
 SHARED_CFLAGS += -fPIC -DSHARED
 LIB_HEADERS := $(wildcard $(HEADER_DIR)/xdp/*.h)
@@ -47,6 +44,7 @@ clean:
 	$(Q)rm -f $(STATIC_LIBS) $(STATIC_OBJS) $(SHARED_LIBS) $(SHARED_OBJS) $(XDP_OBJS) $(PC_FILE) $(MAN_OBJ) $(TEMPLATED_SOURCES)
 	$(Q)for d in $(SHARED_OBJDIR) $(STATIC_OBJDIR); do \
 		[ -d "$$d" ] && rmdir "$$d"; done || true
+	$(Q)$(MAKE) -C $(TEST_DIR) clean
 
 install: all
 	$(Q)install -d -m 0755 $(DESTDIR)$(HDRDIR)
@@ -166,4 +164,4 @@ endif
 
 .PHONY: test
 test: all
-	$(Q)env CC="$(CC)" CFLAGS="$(TEST_CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDLIBS="$(TEST_LDLIBS)" V=$(V) $(TEST_DIR)/test_runner.sh $(TEST_FILE)
+	$(Q)$(MAKE) -C $(TEST_DIR) run
