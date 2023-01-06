@@ -37,6 +37,7 @@ struct enum_val xdp_modes[] = {
 struct enum_val basic_program_modes[] = {
        {"no-touch", BASIC_NO_TOUCH},
        {"read-data", BASIC_READ_DATA},
+       {"parse-ip", BASIC_PARSE_IPHDR},
        {"swap-macs", BASIC_SWAP_MACS},
        {NULL, 0}
 };

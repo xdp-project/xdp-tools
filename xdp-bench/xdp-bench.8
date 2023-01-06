@@ -75,6 +75,7 @@ following actions are available:
 .nf
 \fCno-touch		- Drop the packet without touching the packet data
 touch		- Read a field in the packet header before dropping
+parse-ip		- Parse the IP header field before dropping
 swap-macs		- Swap the source and destination MAC addresses before dropping
 \fP
 .fi
@@ -157,6 +158,7 @@ following actions are available:
 .nf
 \fCno-touch		- Pass the packet without touching the packet data
 touch		- Read a field in the packet header before passing
+parse-ip		- Parse the IP header field before passing
 swap-macs		- Swap the source and destination MAC addresses before passing
 \fP
 .fi
@@ -233,6 +235,7 @@ following actions are available:
 .nf
 \fCno-touch		- Transmit the packet without touching the packet data
 touch		- Read a field in the packet header before transmitting
+parse-ip		- Parse the IP header field before transmitting
 swap-macs		- Swap the source and destination MAC addresses before transmitting
 \fP
 .fi

@@ -22,6 +22,33 @@ const volatile enum basic_program_mode prog_mode = BASIC_NO_TOUCH;
 const volatile bool rxq_stats = 0;
 const volatile enum xdp_action action = XDP_DROP;
 
+static int parse_ip_header(struct xdp_md *ctx)
+{
+	void *data_end = (void *)(long)ctx->data_end;
+	void *data = (void *)(long)ctx->data;
+	struct hdr_cursor nh = { .pos = data };
+	struct ipv6hdr *ipv6hdr;
+	struct iphdr *iphdr;
+	struct ethhdr *eth;
+	int eth_type, ip_type;
+
+	eth_type = parse_ethhdr(&nh, data_end, &eth);
+	if (eth_type < 0)
+		return eth_type;
+
+	if (eth_type == bpf_htons(ETH_P_IP)) {
+		ip_type = parse_iphdr(&nh, data_end, &iphdr);
+		if (ip_type < 0)
+			return ip_type;
+	} else if (eth_type == bpf_htons(ETH_P_IPV6)) {
+		ip_type = parse_ip6hdr(&nh, data_end, &ipv6hdr);
+		if (ip_type < 0)
+			return ip_type;
+	}
+
+	return 0;
+}
+
 SEC("xdp")
 int xdp_basic_prog(struct xdp_md *ctx)
 {
@@ -52,6 +79,10 @@ int xdp_basic_prog(struct xdp_md *ctx)
 	switch (prog_mode) {
 	case BASIC_READ_DATA:
 		if (bpf_ntohs(eth->h_proto) < ETH_P_802_3_MIN)
+			return XDP_ABORTED;
+		break;
+	case BASIC_PARSE_IPHDR:
+		if (parse_ip_header(ctx))
 			return XDP_ABORTED;
 		break;
 	case BASIC_SWAP_MACS:

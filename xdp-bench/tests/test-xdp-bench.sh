@@ -9,6 +9,7 @@ test_basic()
     export XDP_SAMPLE_IMMEDIATE_EXIT=1
     check_run $XDP_BENCH $action $NS -vv
     check_run $XDP_BENCH $action $NS -p read-data -vv
+    check_run $XDP_BENCH $action $NS -p parse-ip -vv
     check_run $XDP_BENCH $action $NS -p swap-macs -vv
     check_run $XDP_BENCH $action $NS -m skb -vv
     check_run $XDP_BENCH $action $NS -e -vv
