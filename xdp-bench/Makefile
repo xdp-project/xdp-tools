@@ -13,7 +13,7 @@ TEST_FILE := tests/test-xdp-bench.sh
 USER_TARGETS := xdp-bench
 USER_EXTRA_C := xdp_redirect_basic.c xdp_redirect_cpumap.c xdp_redirect_devmap.c \
 		xdp_redirect_devmap_multi.c xdp_basic.c
-EXTRA_USER_DEPS := xdp-bench.h
+EXTRA_USER_DEPS := xdp-bench.h xdp_basic.shared.h
 
 LIB_DIR       = ../lib
 

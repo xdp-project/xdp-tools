@@ -16,8 +16,9 @@
 #include <xdp/xdp_sample_common.bpf.h>
 #include <xdp/parsing_helpers.h>
 
-const volatile bool read_data = 0;
-const volatile bool swap_macs = 0;
+#include "xdp_basic.shared.h"
+
+const volatile enum basic_program_mode prog_mode = BASIC_NO_TOUCH;
 const volatile bool rxq_stats = 0;
 const volatile enum xdp_action action = XDP_DROP;
 
@@ -48,12 +49,17 @@ int xdp_basic_prog(struct xdp_md *ctx)
 		NO_TEAR_INC(rxq_rec->processed);
 	}
 
-	if (read_data) {
+	switch (prog_mode) {
+	case BASIC_READ_DATA:
 		if (bpf_ntohs(eth->h_proto) < ETH_P_802_3_MIN)
 			return XDP_ABORTED;
-
-		if (swap_macs)
-			swap_src_dst_mac(data);
+		break;
+	case BASIC_SWAP_MACS:
+		swap_src_dst_mac(data);
+		break;
+	case BASIC_NO_TOUCH:
+	default:
+		break;
 	}
 
 	if (action == XDP_DROP) {

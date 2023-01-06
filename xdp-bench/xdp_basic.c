@@ -65,10 +65,7 @@ static int do_basic(const struct basic_opts *opt, enum xdp_action action)
 	if (action == XDP_DROP)
 		mask |= SAMPLE_DROP_OK;
 
-	if (opt->program_mode >= BASIC_READ_DATA)
-		skel->rodata->read_data = true;
-	if (opt->program_mode >= BASIC_SWAP_MACS)
-		skel->rodata->swap_macs = true;
+	skel->rodata->prog_mode = opt->program_mode;
 	if (opt->rxq_stats) {
 		skel->rodata->rxq_stats = true;
 		mask |= SAMPLE_RXQ_STATS;
