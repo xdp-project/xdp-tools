@@ -10,6 +10,7 @@ test_basic()
     check_run $XDP_BENCH $action $NS -vv
     check_run $XDP_BENCH $action $NS -p read-data -vv
     check_run $XDP_BENCH $action $NS -p parse-ip -vv
+    check_run $XDP_BENCH $action $NS -p parse-ip -l -vv
     check_run $XDP_BENCH $action $NS -p swap-macs -vv
     check_run $XDP_BENCH $action $NS -m skb -vv
     check_run $XDP_BENCH $action $NS -e -vv

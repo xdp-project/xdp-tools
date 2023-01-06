@@ -18,9 +18,49 @@
 
 #include "xdp_basic.shared.h"
 
+#ifndef HAVE_LIBBPF_BPF_PROGRAM__TYPE
+static long (*bpf_xdp_load_bytes)(struct xdp_md *xdp_md, __u32 offset, void *buf, __u32 len) = (void *) 189;
+#endif
+
 const volatile enum basic_program_mode prog_mode = BASIC_NO_TOUCH;
 const volatile bool rxq_stats = 0;
+const volatile bool xdp_load_bytes = 0;
 const volatile enum xdp_action action = XDP_DROP;
+
+static int parse_ip_header_load(struct xdp_md *ctx)
+{
+	int eth_type, ip_type, err, offset = 0;
+	struct ipv6hdr ipv6hdr;
+	struct iphdr iphdr;
+	struct ethhdr eth;
+
+	err = bpf_xdp_load_bytes(ctx, offset, &eth, sizeof(eth));
+	if (err)
+		return err;
+
+	eth_type = eth.h_proto;
+	offset = sizeof(eth);
+
+	if (eth_type == bpf_htons(ETH_P_IP)) {
+		err = bpf_xdp_load_bytes(ctx, offset, &iphdr, sizeof(iphdr));
+		if (err)
+			return err;
+
+		ip_type = iphdr.protocol;
+		if (ip_type < 0)
+			return ip_type;
+	} else if (eth_type == bpf_htons(ETH_P_IPV6)) {
+		err = bpf_xdp_load_bytes(ctx, offset, &ipv6hdr, sizeof(ipv6hdr));
+		if (err)
+			return err;
+
+		ip_type = ipv6hdr.nexthdr;
+		if (ip_type < 0)
+			return ip_type;
+	}
+
+	return 0;
+}
 
 static int parse_ip_header(struct xdp_md *ctx)
 {
@@ -82,8 +122,13 @@ int xdp_basic_prog(struct xdp_md *ctx)
 			return XDP_ABORTED;
 		break;
 	case BASIC_PARSE_IPHDR:
-		if (parse_ip_header(ctx))
-			return XDP_ABORTED;
+		if (xdp_load_bytes) {
+			if (parse_ip_header_load(ctx))
+				return XDP_ABORTED;
+		} else {
+			if (parse_ip_header(ctx))
+				return XDP_ABORTED;
+		}
 		break;
 	case BASIC_SWAP_MACS:
 		swap_src_dst_mac(data);
