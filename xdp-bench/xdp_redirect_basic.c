@@ -30,12 +30,12 @@ static int mask = SAMPLE_RX_CNT | SAMPLE_REDIRECT_ERR_CNT |
 
 DEFINE_SAMPLE_INIT(xdp_redirect_basic);
 
-const struct basic_opts defaults_redirect_basic = { .mode = XDP_MODE_NATIVE,
+const struct redirect_opts defaults_redirect_basic = { .mode = XDP_MODE_NATIVE,
 						    .interval = 2 };
 
 int do_redirect_basic(const void *cfg, __unused const char *pin_root_path)
 {
-	const struct basic_opts *opt = cfg;
+	const struct redirect_opts *opt = cfg;
 
 	struct xdp_program *xdp_prog = NULL, *dummy_prog = NULL;
 	DECLARE_LIBBPF_OPTS(xdp_program_opts, opts);

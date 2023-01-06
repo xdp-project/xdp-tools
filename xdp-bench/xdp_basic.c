@@ -23,31 +23,33 @@
 
 #include "xdp-bench.h"
 #include "xdp_sample.h"
-#include "xdp_droptx.skel.h"
+#include "xdp_basic.skel.h"
 
 static int mask = SAMPLE_RX_CNT | SAMPLE_EXCEPTION_CNT;
 
-DEFINE_SAMPLE_INIT(xdp_droptx);
+DEFINE_SAMPLE_INIT(xdp_basic);
 
-const struct droptx_opts defaults_drop = { .mode = XDP_MODE_NATIVE,
-					     .interval = 2 };
-const struct droptx_opts defaults_tx = { .mode = XDP_MODE_NATIVE,
+const struct basic_opts defaults_drop = { .mode = XDP_MODE_NATIVE,
+					  .interval = 2 };
+const struct basic_opts defaults_pass = { .mode = XDP_MODE_NATIVE,
+					  .interval = 2 };
+const struct basic_opts defaults_tx = { .mode = XDP_MODE_NATIVE,
 					 .interval = 2,
-					 .program_mode = DROPTX_SWAP_MACS };
+					 .program_mode = BASIC_SWAP_MACS };
 
-static int do_droptx(const struct droptx_opts *opt, enum xdp_action action)
+static int do_basic(const struct basic_opts *opt, enum xdp_action action)
 {
 	DECLARE_LIBBPF_OPTS(xdp_program_opts, opts);
 	struct xdp_program *xdp_prog = NULL;
 	int ret = EXIT_FAIL_OPTION;
-	struct xdp_droptx *skel;
+	struct xdp_basic *skel;
 
 	if (opt->extended)
 		sample_switch_mode();
 
-	skel = xdp_droptx__open();
+	skel = xdp_basic__open();
 	if (!skel) {
-		pr_warn("Failed to xdp_droptx__open: %s\n", strerror(errno));
+		pr_warn("Failed to xdp_basic__open: %s\n", strerror(errno));
 		ret = EXIT_FAIL_BPF;
 		goto end;
 	}
@@ -63,9 +65,9 @@ static int do_droptx(const struct droptx_opts *opt, enum xdp_action action)
 	if (action == XDP_DROP)
 		mask |= SAMPLE_DROP_OK;
 
-	if (opt->program_mode >= DROPTX_READ_DATA)
+	if (opt->program_mode >= BASIC_READ_DATA)
 		skel->rodata->read_data = true;
-	if (opt->program_mode >= DROPTX_SWAP_MACS)
+	if (opt->program_mode >= BASIC_SWAP_MACS)
 		skel->rodata->swap_macs = true;
 	if (opt->rxq_stats) {
 		skel->rodata->rxq_stats = true;
@@ -73,7 +75,7 @@ static int do_droptx(const struct droptx_opts *opt, enum xdp_action action)
 	}
 
 	opts.obj = skel->obj;
-	opts.prog_name = bpf_program__name(skel->progs.xdp_droptx_prog);
+	opts.prog_name = bpf_program__name(skel->progs.xdp_basic_prog);
 	xdp_prog = xdp_program__create(&opts);
 	if (!xdp_prog) {
 		ret = -errno;
@@ -112,7 +114,7 @@ static int do_droptx(const struct droptx_opts *opt, enum xdp_action action)
 end_detach:
 	xdp_program__detach(xdp_prog, opt->iface_in.ifindex, opt->mode, 0);
 end_destroy:
-	xdp_droptx__destroy(skel);
+	xdp_basic__destroy(skel);
 end:
 	sample_teardown();
 	return ret;
@@ -120,14 +122,21 @@ end:
 
 int do_drop(const void *cfg, __unused const char *pin_root_path)
 {
-	const struct droptx_opts *opt = cfg;
+	const struct basic_opts *opt = cfg;
 
-	return do_droptx(opt, XDP_DROP);
+	return do_basic(opt, XDP_DROP);
+}
+
+int do_pass(const void *cfg, __unused const char *pin_root_path)
+{
+	const struct basic_opts *opt = cfg;
+
+	return do_basic(opt, XDP_PASS);
 }
 
 int do_tx(const void *cfg, __unused const char *pin_root_path)
 {
-	const struct droptx_opts *opt = cfg;
+	const struct basic_opts *opt = cfg;
 
-	return do_droptx(opt, XDP_TX);
+	return do_basic(opt, XDP_TX);
 }

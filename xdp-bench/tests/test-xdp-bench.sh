@@ -1,25 +1,30 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 XDP_BENCH=${XDP_BENCH:-./xdp-bench}
-ALL_TESTS="test_drop test_tx test_rxq_stats test_redirect test_redirect_cpu test_redirect_map test_redirect_map_egress test_redirect_multi test_redirect_multi_egress"
+ALL_TESTS="test_drop test_pass test_tx test_rxq_stats test_redirect test_redirect_cpu test_redirect_map test_redirect_map_egress test_redirect_multi test_redirect_multi_egress"
+
+test_basic()
+{
+    action=$1
+
+    export XDP_SAMPLE_IMMEDIATE_EXIT=1
+    check_run $XDP_BENCH $action $NS -vv
+    check_run $XDP_BENCH $action $NS -p read-data -vv
+    check_run $XDP_BENCH $action $NS -p swap-macs -vv
+    check_run $XDP_BENCH $action $NS -m skb -vv
+    check_run $XDP_BENCH $action $NS -e -vv
+}
 
 test_drop()
 {
-    export XDP_SAMPLE_IMMEDIATE_EXIT=1
-    check_run $XDP_BENCH drop $NS -vv
-    check_run $XDP_BENCH drop $NS -p read-data -vv
-    check_run $XDP_BENCH drop $NS -p swap-macs -vv
-    check_run $XDP_BENCH drop $NS -m skb -vv
-    check_run $XDP_BENCH drop $NS -e -vv
+    test_basic drop
 }
-
+test_pass()
+{
+    test_basic pass
+}
 test_tx()
 {
-    export XDP_SAMPLE_IMMEDIATE_EXIT=1
-    check_run $XDP_BENCH tx $NS -vv
-    check_run $XDP_BENCH tx $NS -p read-data -vv
-    check_run $XDP_BENCH tx $NS -p swap-macs -vv
-    check_run $XDP_BENCH tx $NS -m skb -vv
-    check_run $XDP_BENCH tx $NS -e -vv
+    test_basic tx
 }
 
 test_rxq_stats()

@@ -21,7 +21,7 @@ const volatile bool rxq_stats = 0;
 const volatile enum xdp_action action = XDP_DROP;
 
 SEC("xdp")
-int xdp_droptx_prog(struct xdp_md *ctx)
+int xdp_basic_prog(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;

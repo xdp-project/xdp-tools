@@ -9,28 +9,29 @@
 #define MAX_IFACE_NUM 32
 
 int do_drop(const void *cfg, const char *pin_root_path);
+int do_pass(const void *cfg, const char *pin_root_path);
 int do_tx(const void *cfg, const char *pin_root_path);
 int do_redirect_basic(const void *cfg, const char *pin_root_path);
 int do_redirect_cpumap(const void *cfg, const char *pin_root_path);
 int do_redirect_devmap(const void *cfg, const char *pin_root_path);
 int do_redirect_devmap_multi(const void *cfg, const char *pin_root_path);
 
-enum droptx_program_mode {
-	DROPTX_NO_TOUCH,
-	DROPTX_READ_DATA,
-	DROPTX_SWAP_MACS,
+enum basic_program_mode {
+	BASIC_NO_TOUCH,
+	BASIC_READ_DATA,
+	BASIC_SWAP_MACS,
 };
 
-struct droptx_opts {
+struct basic_opts {
 	bool extended;
 	bool rxq_stats;
 	__u32 interval;
 	enum xdp_attach_mode mode;
-	enum droptx_program_mode program_mode;
+	enum basic_program_mode program_mode;
 	struct iface iface_in;
 };
 
-struct basic_opts {
+struct redirect_opts {
 	bool stats;
 	bool extended;
 	__u32 interval;
@@ -88,9 +89,10 @@ struct cpumap_opts {
 	struct iface redir_iface;
 };
 
-extern const struct droptx_opts defaults_drop;
-extern const struct droptx_opts defaults_tx;
-extern const struct basic_opts defaults_redirect_basic;
+extern const struct basic_opts defaults_drop;
+extern const struct basic_opts defaults_pass;
+extern const struct basic_opts defaults_tx;
+extern const struct redirect_opts defaults_redirect_basic;
 extern const struct cpumap_opts defaults_redirect_cpumap;
 extern const struct devmap_opts defaults_redirect_devmap;
 extern const struct devmap_multi_opts defaults_redirect_devmap_multi;

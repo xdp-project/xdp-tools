@@ -66,12 +66,72 @@ following actions are available:
 #+begin_src sh
  no-touch		- Drop the packet without touching the packet data
  touch		- Read a field in the packet header before dropping
- swap-macs		- Swap the soruce and destination MAC addresses before dropping
+ swap-macs		- Swap the source and destination MAC addresses before dropping
 #+end_src
 
 Whether to touch the packet before dropping it can have a significant
 performance impact as this requires bringing packet data into the CPU cache (and
 flushing it back out if writing).
+
+The default for this option is =no-touch=.
+
+** -r, --rxq-stats
+If set, the XDP program will also gather statistics on which receive queue index
+each packet was received on. This is displayed in the extended output mode along
+with per-CPU data (which, depending on the hardware configuration may or may not
+be equivalent).
+
+** -i, --interval <SECONDS>
+Set the polling interval for collecting all statistics and displaying them to
+the output. The unit of interval is in seconds.
+
+** -e, --extended
+Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
+"terse" mode. The output mode can be switched by hitting C-\ while the program
+is running. See also the *Output Format Description* section below.
+
+** -m, --mode
+Selects the XDP program mode (native or skb). Note that native XDP mode is the
+default, and loading the redirect program in skb manner is neither performant,
+nor recommended. However, this option is useful if the interface driver lacks
+native XDP support, or when simply testing the tool.
+
+** -v, --verbose
+Enable verbose logging. Supply twice to enable verbose logging from the
+underlying =libxdp= and =libbpf= libraries.
+
+** --version
+Show the application version and exit.
+
+** -h, --help
+Display a summary of the available options
+
+* The PASS command
+In this mode, =xdp-bench= installs an XDP program on an interface that passes
+all packets to the network stack after processing them (returning =XDP_PASS=).
+There are options to control what to do with the packet before passing it
+(touch the packet data or not), as well as which statistics to gather. This is a
+basic benchmark for the overhead of installing an XDP program on an interface
+while still running the regular network stack.
+
+The syntax for the =pass= command is:
+
+=xdp-bench pass [options] <ifname>=
+
+Where =<ifname>= is the name of the interface the XDP program should be
+installed on.
+
+The supported options are:
+
+** -p, --packet-operation <ACTION>
+Specify which operation should be taken on the packet before passing it. The
+following actions are available:
+
+#+begin_src sh
+ no-touch		- Pass the packet without touching the packet data
+ touch		- Read a field in the packet header before passing
+ swap-macs		- Swap the source and destination MAC addresses before passing
+#+end_src
 
 The default for this option is =no-touch=.
 
@@ -129,7 +189,7 @@ following actions are available:
 #+begin_src sh
  no-touch		- Transmit the packet without touching the packet data
  touch		- Read a field in the packet header before transmitting
- swap-macs		- Swap the soruce and destination MAC addresses before transmitting
+ swap-macs		- Swap the source and destination MAC addresses before transmitting
 #+end_src
 
 To allow the packet to be successfully transmitted back to the sender, the MAC

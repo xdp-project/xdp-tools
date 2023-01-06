@@ -15,6 +15,7 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 		"\n"
 		"COMMAND can be one of:\n"
 		"       drop           - Drop all packets on an interface\n"
+		"       pass           - Pass all packets to the network stack\n"
 		"       tx             - Transmit packets back out on an interface (hairpin forwarding)\n"
 		"       redirect       - XDP redirect using the bpf_redirect() helper\n"
 		"       redirect-cpu   - XDP CPU redirect using BPF_MAP_TYPE_CPUMAP\n"
@@ -33,10 +34,10 @@ struct enum_val xdp_modes[] = {
        {NULL, 0}
 };
 
-struct enum_val droptx_program_modes[] = {
-       {"no-touch", DROPTX_NO_TOUCH},
-       {"read-data", DROPTX_READ_DATA},
-       {"swap-macs", DROPTX_SWAP_MACS},
+struct enum_val basic_program_modes[] = {
+       {"no-touch", BASIC_NO_TOUCH},
+       {"read-data", BASIC_READ_DATA},
+       {"swap-macs", BASIC_SWAP_MACS},
        {NULL, 0}
 };
 
@@ -59,28 +60,28 @@ struct enum_val cpumap_program_modes[] = {
 };
 
 
-struct prog_option droptx_options[] = {
-	DEFINE_OPTION("program-mode", OPT_ENUM, struct droptx_opts, program_mode,
+struct prog_option basic_options[] = {
+	DEFINE_OPTION("program-mode", OPT_ENUM, struct basic_opts, program_mode,
 		      .short_opt = 'p',
 		      .metavar = "<mode>",
-		      .typearg = droptx_program_modes,
+		      .typearg = basic_program_modes,
 		      .help = "Action to take before dropping packet."),
-	DEFINE_OPTION("rxq-stats", OPT_BOOL, struct droptx_opts, rxq_stats,
+	DEFINE_OPTION("rxq-stats", OPT_BOOL, struct basic_opts, rxq_stats,
 		      .short_opt = 'r',
 		      .help = "Collect per-RXQ drop statistics"),
-	DEFINE_OPTION("interval", OPT_U32, struct droptx_opts, interval,
+	DEFINE_OPTION("interval", OPT_U32, struct basic_opts, interval,
 		      .short_opt = 'i',
 		      .metavar = "<seconds>",
 		      .help = "Polling interval (default 2)"),
-	DEFINE_OPTION("extended", OPT_BOOL, struct droptx_opts, extended,
+	DEFINE_OPTION("extended", OPT_BOOL, struct basic_opts, extended,
 		      .short_opt = 'e',
 		      .help = "Start running in extended output mode (C^\\ to toggle)"),
-	DEFINE_OPTION("xdp-mode", OPT_ENUM, struct droptx_opts, mode,
+	DEFINE_OPTION("xdp-mode", OPT_ENUM, struct basic_opts, mode,
 		      .short_opt = 'm',
 		      .typearg = xdp_modes,
 		      .metavar = "<mode>",
 		      .help = "Load XDP program in <mode>; default native"),
-	DEFINE_OPTION("dev", OPT_IFNAME, struct droptx_opts, iface_in,
+	DEFINE_OPTION("dev", OPT_IFNAME, struct basic_opts, iface_in,
 		      .positional = true,
 		      .metavar = "<ifname>",
 		      .required = true,
@@ -89,27 +90,27 @@ struct prog_option droptx_options[] = {
 };
 
 struct prog_option redirect_basic_options[] = {
-	DEFINE_OPTION("interval", OPT_U32, struct basic_opts, interval,
+	DEFINE_OPTION("interval", OPT_U32, struct redirect_opts, interval,
 		      .short_opt = 'i',
 		      .metavar = "<seconds>",
 		      .help = "Polling interval (default 2)"),
-	DEFINE_OPTION("stats", OPT_BOOL, struct basic_opts, stats,
+	DEFINE_OPTION("stats", OPT_BOOL, struct redirect_opts, stats,
 		      .short_opt = 's',
 		      .help = "Enable statistics for transmitted packets (not just errors)"),
-	DEFINE_OPTION("extended", OPT_BOOL, struct basic_opts, extended,
+	DEFINE_OPTION("extended", OPT_BOOL, struct redirect_opts, extended,
 		      .short_opt = 'e',
 		      .help = "Start running in extended output mode (C^\\ to toggle)"),
-	DEFINE_OPTION("mode", OPT_ENUM, struct basic_opts, mode,
+	DEFINE_OPTION("mode", OPT_ENUM, struct redirect_opts, mode,
 		      .short_opt = 'm',
 		      .typearg = xdp_modes,
 		      .metavar = "<mode>",
 		      .help = "Load XDP program in <mode>; default native"),
-	DEFINE_OPTION("dev_in", OPT_IFNAME, struct basic_opts, iface_in,
+	DEFINE_OPTION("dev_in", OPT_IFNAME, struct redirect_opts, iface_in,
 		      .positional = true,
 		      .metavar = "<ifname_in>",
 		      .required = true,
 		      .help = "Redirect from device <ifname>"),
-	DEFINE_OPTION("dev_out", OPT_IFNAME, struct basic_opts, iface_out,
+	DEFINE_OPTION("dev_out", OPT_IFNAME, struct redirect_opts, iface_out,
 		      .positional = true,
 		      .metavar = "<ifname_out>",
 		      .required = true,
@@ -231,12 +232,17 @@ struct prog_option redirect_devmap_multi_options[] = {
 static const struct prog_command cmds[] = {
 	{ .name = "drop",
 	  .func = do_drop,
-	  .options = droptx_options,
+	  .options = basic_options,
 	  .default_cfg = &defaults_drop,
 	  .doc = "Drop all packets on an interface" },
+	{ .name = "pass",
+	  .func = do_pass,
+	  .options = basic_options,
+	  .default_cfg = &defaults_pass,
+	  .doc = "Pass all packets to the network stack" },
 	{ .name = "tx",
 	  .func = do_tx,
-	  .options = droptx_options,
+	  .options = basic_options,
 	  .default_cfg = &defaults_tx,
 	  .doc = "Transmit packets back out an interface (hairpin forwarding)" },
 	DEFINE_COMMAND_NAME("redirect", redirect_basic,
