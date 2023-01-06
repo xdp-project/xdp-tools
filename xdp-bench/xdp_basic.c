@@ -66,6 +66,7 @@ static int do_basic(const struct basic_opts *opt, enum xdp_action action)
 		mask |= SAMPLE_DROP_OK;
 
 	skel->rodata->prog_mode = opt->program_mode;
+	skel->rodata->xdp_load_bytes = opt->load_bytes;
 	if (opt->rxq_stats) {
 		skel->rodata->rxq_stats = true;
 		mask |= SAMPLE_RXQ_STATS;

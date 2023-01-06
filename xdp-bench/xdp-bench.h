@@ -21,6 +21,7 @@ int do_redirect_devmap_multi(const void *cfg, const char *pin_root_path);
 struct basic_opts {
 	bool extended;
 	bool rxq_stats;
+	bool load_bytes;
 	__u32 interval;
 	enum xdp_attach_mode mode;
 	enum basic_program_mode program_mode;
