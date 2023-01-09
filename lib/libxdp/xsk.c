@@ -741,13 +741,15 @@ static int xsk_update_prog_refcnt(int refcnt_map_fd, int delta)
 	if (ret)
 		return ret;
 
-	value_data = malloc(map_info.value_size);
+	value_data = calloc(1, map_info.value_size);
 	if (!value_data)
 		return -ENOMEM;
 
 	lock_fd = xdp_lock_acquire();
-	if (lock_fd < 0)
-		return lock_fd;
+	if (lock_fd < 0) {
+		ret = lock_fd;
+		goto out;
+	}
 
 	/* Note, if other global variables are added before the refcnt,
 	 * this changes map's value type, not number of elements,
@@ -769,6 +771,7 @@ static int xsk_update_prog_refcnt(int refcnt_map_fd, int delta)
 	ret = *value_data;
 unlock:
 	xdp_lock_release(lock_fd);
+out:
 	free(value_data);
 	return ret;
 }
