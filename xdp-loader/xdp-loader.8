@@ -1,4 +1,4 @@
-.TH "xdp-loader" "8" "NOVEMBER 29, 2022" "V1.2.2" "XDP program loader" 
+.TH "xdp-loader" "8" "JANUARY  9, 2023" "V1.2.2" "XDP program loader" 
 
 .SH "NAME"
 xdp-loader \- an XDP program loader
@@ -84,6 +84,21 @@ Specify which BPF program with the name to load the XDP program(s) from in each
 file. The default is to use the first program in each file. Only one of
 --section and --prog-name may be specified. If this option is set, it applies to
 all programs being loaded.
+
+.SS "-P, --prio <priority>"
+.PP
+Specify the priority to load the XDP program(s) with (this affects the order of
+programs running on the interface). The default is to use the value from the metadata
+in the program ELF file, or a value of 50 if the program has no such metadata.
+If this option is set, it applies to all programs being loaded.
+
+.SS "-A, --actions <actions>"
+.PP
+Specify the "chain call actions" of the loaded XDP program(s). These are the XDP
+actions that will cause the next program loaded on the interface to be called,
+instead of returning immediately. The default is to use the value set in the metadata
+in the program ELF file, or XDP_PASS if no such metadata is set. If this option is set,
+it applies to all programs being loaded.
 
 .SS "-v, --verbose"
 .PP
