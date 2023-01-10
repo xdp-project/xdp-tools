@@ -388,12 +388,10 @@ static int xsk_init_xsk_struct(struct xsk_socket *xsk, int ifindex)
 	return 0;
 }
 
-#define XDP_FLAGS_SUPPORTED (XDP_FLAGS_SKB_MODE | XDP_FLAGS_DRV_MODE | XDP_FLAGS_HW_MODE)
-
 static enum xdp_attach_mode xsk_convert_xdp_flags(__u32 xdp_flags)
 {
-	if (xdp_flags & ~XDP_FLAGS_SUPPORTED)
-		pr_warn("XDP flag not supported by libxdp.\n");
+	if (xdp_flags & ~XDP_FLAGS_MASK)
+		pr_warn("XDP flag: 0x%x contains flags not supported by libxdp.\n", xdp_flags);
 
 	if (xdp_flags & XDP_FLAGS_SKB_MODE)
 		return XDP_MODE_SKB;
