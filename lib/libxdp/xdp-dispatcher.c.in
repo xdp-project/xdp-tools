@@ -33,7 +33,7 @@ static volatile const struct xdp_dispatcher_config conf = {};
  * invalidate the packet data pointer.
  */
 forloop(`i', `0', NUM_PROGS,
-`__attribute__ ((noinline))
+`__attribute__ ((__noinline__))
 int format(`prog%d', i)(struct xdp_md *ctx) {
         volatile int ret = XDP_DISPATCHER_RETVAL;
 
@@ -45,7 +45,7 @@ int format(`prog%d', i)(struct xdp_md *ctx) {
 }
 ')
 
-__attribute__ ((noinline))
+__attribute__ ((__noinline__))
 int compat_test(struct xdp_md *ctx) {
         volatile int ret = XDP_DISPATCHER_RETVAL;
 

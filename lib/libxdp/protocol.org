@@ -59,7 +59,7 @@ static volatile const struct xdp_dispatcher_config conf = {};
 /* The volatile return value prevents the compiler from assuming it knows the
  * return value and optimising based on that.
  */
-__attribute__ ((noinline))
+__attribute__ ((__noinline__))
 int prog0(struct xdp_md *ctx) {
         volatile int ret = XDP_DISPATCHER_RETVAL;
 
