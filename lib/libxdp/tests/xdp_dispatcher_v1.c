@@ -13,7 +13,7 @@
 
 static volatile const struct xdp_dispatcher_config_v1 conf = {};
 
-__attribute__ ((noinline))
+__attribute__ ((__noinline__))
 int prog0(struct xdp_md *ctx) {
         volatile int ret = XDP_DISPATCHER_RETVAL;
 
@@ -21,7 +21,7 @@ int prog0(struct xdp_md *ctx) {
           return XDP_ABORTED;
         return ret;
 }
-__attribute__ ((noinline))
+__attribute__ ((__noinline__))
 
 SEC("xdp")
 int xdp_dispatcher(struct xdp_md *ctx)
