@@ -16,6 +16,8 @@ TEST_PROG_DIR="${TEST_PROG_DIR:-$(dirname "${BASH_SOURCE[0]}")}"
 ALL_TESTS=""
 VERBOSE_TESTS=${V:-0}
 
+export VERBOSE_TESTS
+
 TMPDIR=$(mktemp --tmpdir -d config.XXXXXX)
 trap 'status=$?; rm -rf $TMPDIR; exit $status' EXIT HUP INT QUIT TERM
 
