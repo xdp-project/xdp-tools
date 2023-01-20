@@ -98,6 +98,11 @@ if [ "$EUID" -ne "0" ]; then
     else
         die "Tests must be run as root"
     fi
+else
+    if [ "${DID_UNSHARE:-0}" -ne "1" ]; then
+        echo "Executing tests in separate net- and mount namespaces" >&2
+        exec env DID_UNSHARE=1 unshare -n -m "$0" "$@"
+    fi
 fi
 
 TEST_DEFINITIONS="${1:-}"
