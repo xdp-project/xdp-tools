@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 
-XDP_TARGETS  := xdp-trafficgen.kern
+XDP_TARGETS  := xdp_trafficgen.bpf
+BPF_SKEL_TARGETS := $(XDP_TARGETS)
 
 TOOL_NAME := xdp-trafficgen
 USER_TARGETS := xdp-trafficgen
