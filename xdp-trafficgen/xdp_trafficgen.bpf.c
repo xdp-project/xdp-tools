@@ -17,8 +17,15 @@
 
 char _license[] SEC("license") = "GPL";
 
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(max_entries, 1);
+	__type(key, __u32);
+	__type(value, struct trafficgen_state);
+} state_map SEC(".maps");
+
+
 const volatile struct trafficgen_config config;
-struct trafficgen_state state;
 
 static void update_checksum(__u16 *sum, __u32 diff)
 {
@@ -49,22 +56,28 @@ int xdp_redirect_update_port(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
+	struct trafficgen_state *state;
 	__u16 cur_port, port_diff;
 	int action = XDP_ABORTED;
 	struct udphdr *hdr;
+	__u32 key = 0;
 
 	hdr = data + (sizeof(struct ethhdr) + sizeof(struct ipv6hdr));
 	if (hdr + 1 > data_end)
 		goto out;
 
+	state = bpf_map_lookup_elem(&state_map, &key);
+	if (!state)
+		goto out;
+
 	cur_port = bpf_ntohs(hdr->dest);
-	port_diff = state.next_port - cur_port;
+	port_diff = state->next_port - cur_port;
 	if (port_diff) {
 		update_checksum(&hdr->check, port_diff);
-		hdr->dest = bpf_htons(state.next_port);
+		hdr->dest = bpf_htons(state->next_port);
 	}
-	if (state.next_port++ >= config.port_start + config.port_range - 1)
-		state.next_port = config.port_start;
+	if (state->next_port++ >= config.port_start + config.port_range - 1)
+		state->next_port = config.port_start;
 
 	action = bpf_redirect(config.ifindex_out, 0);
 out:
@@ -115,6 +128,7 @@ int xdp_handle_tcp_recv(struct xdp_md *ctx)
 	struct tcp_flowstate *fstate, new_fstate = {};
 	void *data = (void *)(long)ctx->data;
 	struct hdr_cursor nh = { .pos = data };
+	struct trafficgen_state *state;
 	struct tcp_flowkey key = {};
 	int eth_type, ip_type, err;
 	struct ipv6hdr *ipv6hdr;
@@ -136,11 +150,15 @@ int xdp_handle_tcp_recv(struct xdp_md *ctx)
 	if (parse_tcphdr(&nh, data_end, &tcphdr) < 0)
 		goto out;
 
+	state = bpf_map_lookup_elem(&state_map, &key);
+	if (!state)
+		goto out;
+
 	/* swap dst and src for received packet */
 	key.dst_ip = ipv6hdr->saddr;
 	key.dst_port = tcphdr->source;
 
-	new_match = !cmp_ipaddr(&key.dst_ip, &state.flow_key.dst_ip) && key.dst_port == state.flow_key.dst_port;
+	new_match = !cmp_ipaddr(&key.dst_ip, &state->flow_key.dst_ip) && key.dst_port == state->flow_key.dst_port;
 
 	key.src_ip = ipv6hdr->daddr;
 	key.src_port = tcphdr->dest;
@@ -204,6 +222,7 @@ int xdp_redirect_send_tcp(struct xdp_md *ctx)
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
 	__u32 new_seq, ack_seq, window;
+	struct trafficgen_state *state;
 	struct tcp_flowstate *fstate;
 	int action = XDP_ABORTED;
 	struct ipv6hdr *ipv6hdr;
@@ -213,6 +232,7 @@ int xdp_redirect_send_tcp(struct xdp_md *ctx)
 	__u8 print = 0;
 #endif
 	__u16 pkt_len;
+	__u32 key = 0;
 	__u64 now;
 
 	ipv6hdr = data + sizeof(struct ethhdr);
@@ -222,7 +242,11 @@ int xdp_redirect_send_tcp(struct xdp_md *ctx)
 
 	pkt_len = bpf_ntohs(ipv6hdr->payload_len) - sizeof(*tcphdr);
 
-	fstate = bpf_map_lookup_elem(&flow_state_map, (const void *)&state.flow_key);
+	state = bpf_map_lookup_elem(&state_map, &key);
+	if (!state)
+		goto out;
+
+	fstate = bpf_map_lookup_elem(&flow_state_map, (const void *)&state->flow_key);
 	if (!fstate)
 		goto out;
 

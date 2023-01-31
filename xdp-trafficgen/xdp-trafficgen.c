@@ -38,6 +38,8 @@
 #include "stats.h"
 #include "xdp-trafficgen.h"
 
+#include "xdp_trafficgen.skel.h"
+
 #define PROG_NAME "xdp-trafficgen"
 
 #ifndef BPF_F_TEST_XDP_LIVE_FRAMES
@@ -149,18 +151,27 @@ static void *run_traffic(void *arg)
 
 static int probe_kernel_support(void)
 {
-	DECLARE_LIBXDP_OPTS(xdp_program_opts, opts,
-			    .find_filename = "xdp-trafficgen.kern.o",
-			    .prog_name = "xdp_drop");
+	DECLARE_LIBXDP_OPTS(xdp_program_opts, opts);
+	struct xdp_trafficgen *skel;
 	struct xdp_program *prog;
 	int data = 0, err;
 	bool status = 0;
+
+	skel = xdp_trafficgen__open();
+	if (!skel) {
+		err = -errno;
+		pr_warn("Couldn't open XDP program: %s\n", strerror(-err));
+		return err;
+	}
+
+	opts.obj = skel->obj;
+	opts.prog_name = "xdp_drop";
 
 	prog = xdp_program__create(&opts);
 	if (!prog) {
 		err = -errno;
 		pr_warn("Couldn't load XDP program: %s\n", strerror(-err));
-		return err;
+		goto out;
 	}
 
 	const struct thread_config cfg = {
@@ -179,6 +190,8 @@ static int probe_kernel_support(void)
 		pr_warn("Error probing kernel support: %s\n", strerror(-err));
 
 	xdp_program__close(prog);
+out:
+	xdp_trafficgen__destroy(skel);
 	return err;
 }
 
@@ -337,60 +350,6 @@ static int prepare_udp_pkt(const struct udpopt *cfg)
 	return 0;
 }
 
-static int set_bpf_config(struct bpf_object *obj,
-			  struct trafficgen_config *config,
-			  struct trafficgen_state *state)
-{
-	int err = -ENOENT, set_maps = 0;
-	struct bpf_map *map;
-	const void *initval;
-	char buf[1024];
-	size_t val_sz;
-
-	bpf_object__for_each_map(map, obj) {
-		if (!bpf_map__is_internal(map))
-			continue;
-
-		if (strstr(bpf_map__name(map), ".rodata")) {
-			initval = bpf_map__initial_value(map, &val_sz);
-			if (val_sz > sizeof(buf)) {
-				pr_warn(".rodata too big!\n");
-				err = -E2BIG;
-				goto out;
-			}
-
-			memcpy(buf, initval, val_sz);
-			memcpy(buf, config, sizeof(*config));
-			err = bpf_map__set_initial_value(map, buf, val_sz);
-			if (err) {
-				pr_warn("Couldn't set program .rodata: %s\n",
-					strerror(-err));
-				goto out;
-			}
-			set_maps++;
-		}
-
-		if (strstr(bpf_map__name(map), ".bss")) {
-			err = bpf_map__set_initial_value(map, state,
-							 sizeof(*state));
-			if (err) {
-				pr_warn("Couldn't set program .bss: %s\n",
-					strerror(-err));
-				goto out;
-			}
-			set_maps++;
-		}
-	}
-
-	if (set_maps < 2) {
-		pr_warn("Couldn't find rodata and bss maps\n");
-	} else {
-		err = 0;
-	}
-out:
-	return err;
-}
-
 static struct prog_option udp_options[] = {
 	DEFINE_OPTION("dst-mac", OPT_MACADDR, struct udpopt, dst_mac,
 		      .short_opt = 'm',
@@ -444,27 +403,20 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 {
 	const struct udpopt *cfg = opt;
 
-	DECLARE_LIBXDP_OPTS(xdp_program_opts, opts,
-			    .find_filename = "xdp-trafficgen.kern.o");
+	DECLARE_LIBXDP_OPTS(xdp_program_opts, opts);
 	struct thread_config *t = NULL, tcfg = {
 		.pkt = &pkt_udp,
 		.pkt_size = sizeof(pkt_udp),
 		.num_pkts = cfg->num_pkts,
 	};
-	struct trafficgen_config bpf_config = {
-		.port_start = cfg->dst_port,
-		.port_range = cfg->dyn_ports,
-		.ifindex_out = cfg->iface.ifindex,
-	};
-	struct trafficgen_state bpf_state = {
-		.next_port = cfg->dst_port,
-	};
+	struct trafficgen_state bpf_state = {};
+	struct xdp_trafficgen *skel = NULL;
 	pthread_t *runner_threads = NULL;
 	struct xdp_program *prog = NULL;
 	struct bpf_map *stats_map;
-	struct bpf_object *obj;
 	int err = 0, i;
 	char buf[100];
+	__u32 key = 0;
 
 	err = probe_kernel_support();
 	if (err)
@@ -474,10 +426,23 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 	if (err)
 		goto out;
 
+	skel = xdp_trafficgen__open();
+	if (!skel) {
+		err = -errno;
+		pr_warn("Couldn't open XDP program: %s\n", strerror(-err));
+		goto out;
+	}
+
+	skel->rodata->config.port_start = cfg->dst_port;
+	skel->rodata->config.port_range = cfg->dyn_ports;
+	skel->rodata->config.ifindex_out = cfg->iface.ifindex;
+	bpf_state.next_port = cfg->dst_port;
+
 	if (cfg->dyn_ports)
 		opts.prog_name = "xdp_redirect_update_port";
 	else
 		opts.prog_name = "xdp_redirect_notouch";
+	opts.obj = skel->obj;
 
 	prog = xdp_program__create(&opts);
 	if (!prog) {
@@ -487,12 +452,7 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 		goto out;
 	}
 
-	obj = xdp_program__bpf_obj(prog);
-	err = set_bpf_config(obj, &bpf_config, &bpf_state);
-	if (err)
-		goto out;
-
-	stats_map = bpf_object__find_map_by_name(obj, textify(XDP_STATS_MAP_NAME));
+	stats_map = skel->maps.xdp_stats_map;
 	if (!stats_map) {
 		pr_warn("Couldn't find stats map\n");
 		err = -ENOENT;
@@ -501,9 +461,17 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 	/* don't pin the map */
 	bpf_map__set_pin_path(stats_map, NULL);
 
-	err = bpf_object__load(obj);
+	err = xdp_trafficgen__load(skel);
 	if (err)
 		goto out;
+
+	err = bpf_map_update_elem(bpf_map__fd(skel->maps.state_map),
+				  &key, &bpf_state, BPF_EXIST);
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't set initial state map value: %s\n", strerror(-err));
+		goto out;
+	}
 
 	err = create_runners(&runner_threads, &t, cfg->threads, &tcfg, prog);
 	if (err)
@@ -522,6 +490,7 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 
 out:
 	xdp_program__close(prog);
+	xdp_trafficgen__destroy(skel);
 	free(runner_threads);
 	free(t);
         return err;
@@ -680,9 +649,8 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 		.ai_protocol = IPPROTO_TCP,
 	};
 	struct ip_addr local_addr = { .af = AF_INET6 }, remote_addr = { .af = AF_INET6 };
-	struct bpf_map *state_map = NULL, *fstate_map, *stats_map, *map;
+	struct bpf_map *state_map = NULL, *fstate_map, *stats_map;
 	DECLARE_LIBXDP_OPTS(xdp_program_opts, opts,
-			    .find_filename = "xdp-trafficgen.kern.o",
 			    .prog_name = "xdp_handle_tcp_recv");
 	struct xdp_program *ifindex_prog = NULL, *test_prog = NULL;
 	struct sockaddr_in6 local_saddr = {}, *addr6;
@@ -691,10 +659,8 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 		.pkt_size = sizeof(pkt_tcp),
 		.num_pkts = cfg->num_pkts,
 	};
-	struct trafficgen_config bpf_config = {
-		.ifindex_out = cfg->iface.ifindex,
-	};
 	struct trafficgen_state bpf_state = {};
+	struct xdp_trafficgen *skel = NULL;
 	char buf_local[50], buf_remote[50];
 	pthread_t *runner_threads = NULL;
 	socklen_t sockaddr_sz, tcpi_sz;
@@ -705,7 +671,6 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 		.tv_sec = cfg->timeout,
 	};
 	struct tcp_info tcpi = {};
-	struct bpf_object *obj;
 	bool attached = false;
 	__u16 num_threads = 1;
 	__u32 key = 0;
@@ -715,6 +680,16 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 	err = probe_kernel_support();
 	if (err)
 		return err;
+
+	skel = xdp_trafficgen__open();
+	if (!skel) {
+		err = -errno;
+		pr_warn("Couldn't open XDP program: %s\n", strerror(-err));
+		goto out;
+	}
+
+	opts.obj = skel->obj;
+	skel->rodata->config.ifindex_out = cfg->iface.ifindex;
 
 	snprintf(port, sizeof(port), "%d", cfg->dst_port);
 
@@ -739,11 +714,8 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 		pr_warn("Couldn't open XDP program: %s\n", strerror(-err));
 		goto out;
 	}
-	obj = xdp_program__bpf_obj(ifindex_prog);
 
 	opts.prog_name = "xdp_redirect_send_tcp";
-	opts.obj = obj;
-	opts.find_filename = NULL;
 	test_prog = xdp_program__create(&opts);
 	if (!test_prog) {
 		err = -errno;
@@ -751,15 +723,9 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 		goto out;
 	}
 
-	bpf_object__for_each_map(map, obj) {
-		if (strstr(bpf_map__name(map), ".bss")) {
-			state_map = map;
-			break;
-		}
-	}
-
-	fstate_map = bpf_object__find_map_by_name(obj, "flow_state_map");
-	stats_map = bpf_object__find_map_by_name(obj, textify(XDP_STATS_MAP_NAME));
+	state_map = skel->maps.state_map;
+	fstate_map = skel->maps.flow_state_map;
+	stats_map = skel->maps.xdp_stats_map;
 
 	if (!state_map || !fstate_map || !stats_map) {
 		pr_warn("Couldn't find BPF maps\n");
@@ -769,10 +735,6 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 	/* don't pin the map */
 	bpf_map__set_pin_path(stats_map, NULL);
 
-	err = set_bpf_config(obj, &bpf_config, &bpf_state);
-	if (err)
-		goto out;
-
 	err = xdp_program__attach(ifindex_prog, cfg->iface.ifindex, cfg->mode, 0);
 	if (err) {
 		err = -errno;
@@ -781,6 +743,15 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 		goto out;
 	}
 	attached = true;
+
+	err = bpf_map_update_elem(bpf_map__fd(state_map),
+				  &key, &bpf_state, BPF_EXIST);
+
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't set initial state map value: %s\n", strerror(-err));
+		goto out;
+	}
 
 	sock = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
 	if (sock < 0) {
@@ -931,6 +902,8 @@ out:
 
 	xdp_program__close(ifindex_prog);
 	xdp_program__close(test_prog);
+
+	xdp_trafficgen__destroy(skel);
 
 	free(runner_threads);
 	free(t);
