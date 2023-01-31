@@ -14,15 +14,19 @@ jobs:
         include:
          - KERNEL_VERSION: 5.16.8
            KERNEL_PATCH_VERSION: 200.fc35
+           DID_UNSHARE: 0
          - KERNEL_VERSION: 5.11.0
            KERNEL_PATCH_VERSION: 156.fc34
+           DID_UNSHARE: 1
          - KERNEL_VERSION: 5.6.19
            KERNEL_PATCH_VERSION: 300.fc32
+           DID_UNSHARE: 1
       fail-fast: false
 
     env:
       KERNEL_VERSION: ${{ matrix.KERNEL_VERSION }}
       KERNEL_PATCH_VERSION: ${{ matrix.KERNEL_PATCH_VERSION }}
+      DID_UNSHARE: ${{ matrix.DID_UNSHARE }}
       CLANG: clang-11
       LLC: llc-11
 

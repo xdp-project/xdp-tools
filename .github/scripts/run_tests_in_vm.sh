@@ -1,5 +1,13 @@
 #!/bin/bash
 
+ENVVARS="KERNEL_VERSION KERNEL_PATCH_VERSION DID_UNSHARE CLANG LLC"
+
+touch ENVVARS
+for v in $ENVVARS; do
+    val=$(eval echo '$'$v)
+    echo "$v=$val" >> ENVVARS
+done
+
 touch TEST_OUTPUT
 tail -f TEST_OUTPUT &
 
