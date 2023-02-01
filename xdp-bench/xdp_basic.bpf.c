@@ -14,6 +14,7 @@
 #include <xdp/xdp_sample_shared.h>
 #include <xdp/xdp_sample.bpf.h>
 #include <xdp/xdp_sample_common.bpf.h>
+#include <xdp/parsing_helpers.h>
 
 const volatile bool read_data = 0;
 const volatile bool swap_macs = 0;
@@ -25,10 +26,10 @@ int xdp_basic_prog(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
-	u32 key = bpf_get_smp_processor_id();
+	__u32 key = bpf_get_smp_processor_id();
 	struct datarec *rec, *rxq_rec;
 	struct ethhdr *eth = data;
-	u64 nh_off;
+	__u64 nh_off;
 
 	nh_off = sizeof(*eth);
 	if (data + nh_off > data_end)

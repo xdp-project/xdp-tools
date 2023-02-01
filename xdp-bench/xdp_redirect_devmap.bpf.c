@@ -13,6 +13,7 @@
 #include <xdp/xdp_sample_shared.h>
 #include <xdp/xdp_sample.bpf.h>
 #include <xdp/xdp_sample_common.bpf.h>
+#include <xdp/parsing_helpers.h>
 
 /* The 2nd xdp prog on egress does not support skb mode, so we define two
  * maps, tx_port_general and tx_port_native.
@@ -38,10 +39,10 @@ static __always_inline int xdp_redirect_devmap(struct xdp_md *ctx, void *redirec
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
-	u32 key = bpf_get_smp_processor_id();
+	__u32 key = bpf_get_smp_processor_id();
 	struct ethhdr *eth = data;
 	struct datarec *rec;
-	u64 nh_off;
+	__u64 nh_off;
 
 	nh_off = sizeof(*eth);
 	if (data + nh_off > data_end)
@@ -73,7 +74,7 @@ int xdp_redirect_devmap_egress(struct xdp_md *ctx)
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
 	struct ethhdr *eth = data;
-	u64 nh_off;
+	__u64 nh_off;
 
 	nh_off = sizeof(*eth);
 	if (data + nh_off > data_end)

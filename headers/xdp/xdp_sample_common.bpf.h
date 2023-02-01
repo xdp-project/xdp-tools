@@ -5,6 +5,9 @@
 
 #include "xdp_sample.bpf.h"
 
+#include <bpf/vmlinux.h>
+#include <stddef.h>
+#include <stdbool.h>
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_helpers.h>
@@ -20,7 +23,7 @@ array_map rxq_cnt SEC(".maps");
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_HASH);
 	__uint(max_entries, 32 * 32);
-	__type(key, u64);
+	__type(key, __u64);
 	__type(value, struct datarec);
 } devmap_xmit_cnt_multi SEC(".maps");
 
@@ -69,10 +72,10 @@ static __always_inline __u32 xdp_get_err_key(int err)
 
 static __always_inline int xdp_redirect_collect_stat(int from, int err)
 {
-	u32 cpu = bpf_get_smp_processor_id();
-	u32 key = XDP_REDIRECT_ERROR;
+	__u32 cpu = bpf_get_smp_processor_id();
+	__u32 key = XDP_REDIRECT_ERROR;
 	struct datarec *rec;
-	u32 idx;
+	__u32 idx;
 
 	if (!IN_SET(from_match, from))
 		return 0;
@@ -99,7 +102,7 @@ static __always_inline int xdp_redirect_collect_stat(int from, int err)
 SEC("tp_btf/xdp_redirect_err")
 int BPF_PROG(tp_xdp_redirect_err, const struct net_device *dev,
 	     const struct bpf_prog *xdp, const void *tgt, int err,
-	     const struct bpf_map *map, u32 index)
+	     const struct bpf_map *map, __u32 index)
 {
 	return xdp_redirect_collect_stat(dev->ifindex, err);
 }
@@ -107,7 +110,7 @@ int BPF_PROG(tp_xdp_redirect_err, const struct net_device *dev,
 SEC("tp_btf/xdp_redirect_map_err")
 int BPF_PROG(tp_xdp_redirect_map_err, const struct net_device *dev,
 	     const struct bpf_prog *xdp, const void *tgt, int err,
-	     const struct bpf_map *map, u32 index)
+	     const struct bpf_map *map, __u32 index)
 {
 	return xdp_redirect_collect_stat(dev->ifindex, err);
 }
@@ -115,7 +118,7 @@ int BPF_PROG(tp_xdp_redirect_map_err, const struct net_device *dev,
 SEC("tp_btf/xdp_redirect")
 int BPF_PROG(tp_xdp_redirect, const struct net_device *dev,
 	     const struct bpf_prog *xdp, const void *tgt, int err,
-	     const struct bpf_map *map, u32 index)
+	     const struct bpf_map *map, __u32 index)
 {
 	return xdp_redirect_collect_stat(dev->ifindex, err);
 }
@@ -123,7 +126,7 @@ int BPF_PROG(tp_xdp_redirect, const struct net_device *dev,
 SEC("tp_btf/xdp_redirect_map")
 int BPF_PROG(tp_xdp_redirect_map, const struct net_device *dev,
 	     const struct bpf_prog *xdp, const void *tgt, int err,
-	     const struct bpf_map *map, u32 index)
+	     const struct bpf_map *map, __u32 index)
 {
 	return xdp_redirect_collect_stat(dev->ifindex, err);
 }
@@ -132,9 +135,9 @@ SEC("tp_btf/xdp_cpumap_enqueue")
 int BPF_PROG(tp_xdp_cpumap_enqueue, int map_id, unsigned int processed,
 	     unsigned int drops, int to_cpu)
 {
-	u32 cpu = bpf_get_smp_processor_id();
+	__u32 cpu = bpf_get_smp_processor_id();
 	struct datarec *rec;
-	u32 idx;
+	__u32 idx;
 
 	if (cpumap_map_id && cpumap_map_id != map_id)
 		return 0;
@@ -161,7 +164,7 @@ int BPF_PROG(tp_xdp_cpumap_kthread, int map_id, unsigned int processed,
 	     unsigned int drops, int sched, struct xdp_cpumap_stats *xdp_stats)
 {
 	struct datarec *rec;
-	u32 cpu;
+	__u32 cpu;
 
 	if (cpumap_map_id && cpumap_map_id != map_id)
 		return 0;
@@ -186,7 +189,7 @@ int BPF_PROG(tp_xdp_cpumap_compat, int map_id, unsigned int processed,
 	     unsigned int drops, int sched)
 {
 	struct datarec *rec;
-	u32 cpu;
+	__u32 cpu;
 
 	if (cpumap_map_id && cpumap_map_id != map_id)
 		return 0;
@@ -205,11 +208,11 @@ int BPF_PROG(tp_xdp_cpumap_compat, int map_id, unsigned int processed,
 
 SEC("tp_btf/xdp_exception")
 int BPF_PROG(tp_xdp_exception, const struct net_device *dev,
-	     const struct bpf_prog *xdp, u32 act)
+	     const struct bpf_prog *xdp, __u32 act)
 {
-	u32 cpu = bpf_get_smp_processor_id();
+	__u32 cpu = bpf_get_smp_processor_id();
 	struct datarec *rec;
-	u32 key = act, idx;
+	__u32 key = act, idx;
 
 	if (!IN_SET(from_match, dev->ifindex))
 		return 0;
@@ -234,7 +237,7 @@ int BPF_PROG(tp_xdp_devmap_xmit, const struct net_device *from_dev,
 {
 	struct datarec *rec;
 	int idx_in, idx_out;
-	u32 cpu;
+	__u32 cpu;
 
 	idx_in = from_dev->ifindex;
 	idx_out = to_dev->ifindex;
@@ -266,7 +269,7 @@ int BPF_PROG(tp_xdp_devmap_xmit_multi, const struct net_device *from_dev,
 	struct datarec empty = {};
 	struct datarec *rec;
 	int idx_in, idx_out;
-	u64 idx;
+	__u64 idx;
 
 	idx_in = from_dev->ifindex;
 	idx_out = to_dev->ifindex;
