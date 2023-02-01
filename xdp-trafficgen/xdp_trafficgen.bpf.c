@@ -11,8 +11,9 @@
 #include <linux/if_ether.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
-#include <xdp/xdp_stats_kern_user.h>
-#include <xdp/xdp_stats_kern.h>
+#include <xdp/xdp_sample_shared.h>
+#include <xdp/xdp_sample.bpf.h>
+#include <xdp/xdp_sample_common.bpf.h>
 #include <xdp/parsing_helpers.h>
 
 char _license[] SEC("license") = "GPL";
@@ -48,7 +49,16 @@ static __u16 csum_fold_helper(__u32 csum) {
 SEC("xdp")
 int xdp_redirect_notouch(struct xdp_md *ctx)
 {
-	return xdp_stats_record_action(ctx, bpf_redirect(config.ifindex_out, 0));
+	__u32 key = bpf_get_smp_processor_id();;
+	struct datarec *rec;
+
+	rec = bpf_map_lookup_elem(&rx_cnt, &key);
+	if (!rec)
+		return XDP_ABORTED;
+
+	NO_TEAR_INC(rec->xdp_redirect);
+
+	return bpf_redirect(config.ifindex_out, 0);
 }
 
 SEC("xdp")
@@ -59,6 +69,7 @@ int xdp_redirect_update_port(struct xdp_md *ctx)
 	struct trafficgen_state *state;
 	__u16 cur_port, port_diff;
 	int action = XDP_ABORTED;
+	struct datarec *rec;
 	struct udphdr *hdr;
 	__u32 key = 0;
 
@@ -68,6 +79,11 @@ int xdp_redirect_update_port(struct xdp_md *ctx)
 
 	state = bpf_map_lookup_elem(&state_map, &key);
 	if (!state)
+		goto out;
+
+	key = bpf_get_smp_processor_id();
+	rec = bpf_map_lookup_elem(&rx_cnt, &key);
+	if (!rec)
 		goto out;
 
 	cur_port = bpf_ntohs(hdr->dest);
@@ -80,8 +96,9 @@ int xdp_redirect_update_port(struct xdp_md *ctx)
 		state->next_port = config.port_start;
 
 	action = bpf_redirect(config.ifindex_out, 0);
+	NO_TEAR_INC(rec->processed);
 out:
-	return xdp_stats_record_action(ctx, action);
+	return action;
 }
 
 SEC("xdp")
@@ -227,6 +244,7 @@ int xdp_redirect_send_tcp(struct xdp_md *ctx)
 	int action = XDP_ABORTED;
 	struct ipv6hdr *ipv6hdr;
 	struct tcphdr *tcphdr;
+	struct datarec *rec;
 	__u8 resend = 0;
 #ifdef DEBUG
 	__u8 print = 0;
@@ -238,13 +256,18 @@ int xdp_redirect_send_tcp(struct xdp_md *ctx)
 	ipv6hdr = data + sizeof(struct ethhdr);
 	tcphdr = data + (sizeof(struct ethhdr) + sizeof(struct ipv6hdr));
 	if (tcphdr + 1 > data_end || ipv6hdr + 1 > data_end)
-		goto out;
+		goto ret;
 
 	pkt_len = bpf_ntohs(ipv6hdr->payload_len) - sizeof(*tcphdr);
 
 	state = bpf_map_lookup_elem(&state_map, &key);
 	if (!state)
-		goto out;
+		goto ret;
+
+	key = bpf_get_smp_processor_id();
+	rec = bpf_map_lookup_elem(&rx_cnt, &key);
+	if (!rec)
+		goto ret;
 
 	fstate = bpf_map_lookup_elem(&flow_state_map, (const void *)&state->flow_key);
 	if (!fstate)
@@ -314,6 +337,12 @@ int xdp_redirect_send_tcp(struct xdp_md *ctx)
 out:
 	/* record retransmissions as XDP_TX return codes until we get better stats */
 	if (resend)
-		xdp_stats_record_action(ctx, XDP_TX);
-	return xdp_stats_record_action(ctx, action);
+		NO_TEAR_INC(rec->issue);
+
+	if (action == XDP_REDIRECT)
+		NO_TEAR_INC(rec->xdp_redirect);
+	else
+		NO_TEAR_INC(rec->dropped);
+ret:
+	return action;
 }

@@ -35,7 +35,7 @@
 #include "params.h"
 #include "logging.h"
 #include "util.h"
-#include "stats.h"
+#include "xdp_sample.h"
 #include "xdp-trafficgen.h"
 
 #include "xdp_trafficgen.skel.h"
@@ -46,27 +46,14 @@
 #define BPF_F_TEST_XDP_LIVE_FRAMES	(1U << 1)
 #endif
 
+#define IFINDEX_LO 1
+
+static int mask = SAMPLE_DEVMAP_XMIT_CNT_MULTI | SAMPLE_DROP_OK;
+
+DEFINE_SAMPLE_INIT(xdp_trafficgen);
+
 static bool status_exited = false;
 static bool runners_exited = false;
-
-void handle_signal(__unused int sig)
-{
-	status_exited = true;
-	signal(SIGINT, SIG_DFL);
-}
-
-static int run_status(struct bpf_map *stats_map, __u16 interval)
-{
-	int ret;
-	signal(SIGINT, &handle_signal);
-
-	ret = stats_poll(bpf_map__fd(stats_map), interval, &runners_exited, NULL, NULL);
-	if (ret)
-		pr_warn("Status poll failed: %s\n", strerror(-ret));
-	status_exited = true;
-
-	return ret;
-}
 
 struct udp_packet {
 	struct ethhdr eth;
@@ -162,6 +149,12 @@ static int probe_kernel_support(void)
 		err = -errno;
 		pr_warn("Couldn't open XDP program: %s\n", strerror(-err));
 		return err;
+	}
+
+	err = sample_init_pre_load(skel, "lo");
+	if (err < 0) {
+		pr_warn("Failed to sample_init_pre_load: %s\n", strerror(-err));
+		goto out;
 	}
 
 	opts.obj = skel->obj;
@@ -269,32 +262,6 @@ static __be16 calc_udp_cksum(const struct udp_packet *pkt)
 	return bpf_htons(~chksum);
 }
 
-static int get_mac_addr(const char *ifname, struct mac_addr *mac_addr)
-{
-	struct ifreq ifr = {};
-	int fd, r;
-
-	fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (fd < 0)
-		return -errno;
-
-	strncpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
-	ifr.ifr_name[IFNAMSIZ-1] = '\0';
-
-	r = ioctl(fd, SIOCGIFHWADDR, &ifr);
-	if (r) {
-		r = -errno;
-		goto end;
-	}
-
-	memcpy(mac_addr, ifr.ifr_hwaddr.sa_data, sizeof(*mac_addr));
-
-end:
-	close(fd);
-	return r;
-}
-
-
 static const struct udpopt {
 	__u32 num_pkts;
 	struct iface iface;
@@ -308,7 +275,7 @@ static const struct udpopt {
 	__u16 threads;
 	__u16 interval;
 } defaults_udp = {
-	.interval = 1000,
+	.interval = 1,
 	.threads = 1,
 };
 
@@ -318,7 +285,7 @@ static int prepare_udp_pkt(const struct udpopt *cfg)
 	int err;
 
 	if (macaddr_is_null(&src_mac)) {
-		err = get_mac_addr(cfg->iface.ifname, &src_mac);
+		err = get_mac_addr(cfg->iface.ifindex, &src_mac);
 		if (err)
 			return err;
 	}
@@ -413,7 +380,6 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 	struct xdp_trafficgen *skel = NULL;
 	pthread_t *runner_threads = NULL;
 	struct xdp_program *prog = NULL;
-	struct bpf_map *stats_map;
 	int err = 0, i;
 	char buf[100];
 	__u32 key = 0;
@@ -430,6 +396,12 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 	if (!skel) {
 		err = -errno;
 		pr_warn("Couldn't open XDP program: %s\n", strerror(-err));
+		goto out;
+	}
+
+	err = sample_init_pre_load(skel, cfg->iface.ifname);
+	if (err < 0) {
+		pr_warn("Failed to sample_init_pre_load: %s\n", strerror(-err));
 		goto out;
 	}
 
@@ -452,15 +424,6 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 		goto out;
 	}
 
-	stats_map = skel->maps.xdp_stats_map;
-	if (!stats_map) {
-		pr_warn("Couldn't find stats map\n");
-		err = -ENOENT;
-		goto out;
-	}
-	/* don't pin the map */
-	bpf_map__set_pin_path(stats_map, NULL);
-
 	err = xdp_trafficgen__load(skel);
 	if (err)
 		goto out;
@@ -473,6 +436,12 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 		goto out;
 	}
 
+	err = sample_init(skel, mask, IFINDEX_LO, cfg->iface.ifindex);
+	if (err < 0) {
+		pr_warn("Failed to initialize sample: %s\n", strerror(-err));
+		goto out;
+	}
+
 	err = create_runners(&runner_threads, &t, cfg->threads, &tcfg, prog);
 	if (err)
 		goto out;
@@ -480,7 +449,7 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 	pr_info("Transmitting on %s (ifindex %d)\n",
 	       cfg->iface.ifname, cfg->iface.ifindex);
 
-	err = run_status(stats_map, cfg->interval);
+	err = sample_run(cfg->interval, NULL, NULL);
 	status_exited = true;
 
 	for (i = 0; i < cfg->threads; i++) {
@@ -598,7 +567,7 @@ static const struct tcpopt {
 	__u16 timeout;
 	enum xdp_attach_mode mode;
 } defaults_tcp = {
-	.interval = 1000,
+	.interval = 1,
 	.dst_port = 10000,
 	.timeout = 2,
 	.mode = XDP_MODE_NATIVE,
@@ -649,7 +618,7 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 		.ai_protocol = IPPROTO_TCP,
 	};
 	struct ip_addr local_addr = { .af = AF_INET6 }, remote_addr = { .af = AF_INET6 };
-	struct bpf_map *state_map = NULL, *fstate_map, *stats_map;
+	struct bpf_map *state_map = NULL, *fstate_map;
 	DECLARE_LIBXDP_OPTS(xdp_program_opts, opts,
 			    .prog_name = "xdp_handle_tcp_recv");
 	struct xdp_program *ifindex_prog = NULL, *test_prog = NULL;
@@ -685,6 +654,12 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 	if (!skel) {
 		err = -errno;
 		pr_warn("Couldn't open XDP program: %s\n", strerror(-err));
+		goto out;
+	}
+
+	err = sample_init_pre_load(skel, cfg->iface.ifname);
+	if (err < 0) {
+		pr_warn("Failed to sample_init_pre_load: %s\n", strerror(-err));
 		goto out;
 	}
 
@@ -725,15 +700,11 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 
 	state_map = skel->maps.state_map;
 	fstate_map = skel->maps.flow_state_map;
-	stats_map = skel->maps.xdp_stats_map;
 
-	if (!state_map || !fstate_map || !stats_map) {
+	if (!fstate_map) {
 		pr_warn("Couldn't find BPF maps\n");
 		goto out;
 	}
-
-	/* don't pin the map */
-	bpf_map__set_pin_path(stats_map, NULL);
 
 	err = xdp_program__attach(ifindex_prog, cfg->iface.ifindex, cfg->mode, 0);
 	if (err) {
@@ -750,6 +721,12 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 	if (err) {
 		err = -errno;
 		pr_warn("Couldn't set initial state map value: %s\n", strerror(-err));
+		goto out;
+	}
+
+	err = sample_init(skel, mask, IFINDEX_LO, cfg->iface.ifindex);
+	if (err < 0) {
+		pr_warn("Failed to initialize sample: %s\n", strerror(-err));
 		goto out;
 	}
 
@@ -872,7 +849,8 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 	if (err)
 		goto out;
 
-	err = run_status(stats_map, cfg->interval);
+	err = sample_run(cfg->interval, NULL, NULL);
+	status_exited = true;
 	for (i = 0; i < num_threads; i++) {
 		pthread_join(runner_threads[i], NULL);
 		xdp_program__close(t[i].prog);
