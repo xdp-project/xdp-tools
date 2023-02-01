@@ -6,12 +6,13 @@
 #include <xdp/xdp_sample_shared.h>
 #include <xdp/xdp_sample.bpf.h>
 #include <xdp/xdp_sample_common.bpf.h>
+#include <xdp/parsing_helpers.h>
 #include "hash_func01.h"
 
 /* Special map type that can XDP_REDIRECT frames to another CPU */
 struct {
 	__uint(type, BPF_MAP_TYPE_CPUMAP);
-	__uint(key_size, sizeof(u32));
+	__uint(key_size, sizeof(__u32));
 	__uint(value_size, sizeof(struct bpf_cpumap_val));
 } cpu_map SEC(".maps");
 
@@ -20,21 +21,21 @@ struct {
  */
 struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
-	__type(key, u32);
-	__type(value, u32);
+	__type(key, __u32);
+	__type(value, __u32);
 } cpus_available SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
-	__type(key, u32);
-	__type(value, u32);
+	__type(key, __u32);
+	__type(value, __u32);
 	__uint(max_entries, 1);
 } cpus_count SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-	__type(key, u32);
-	__type(value, u32);
+	__type(key, __u32);
+	__type(value, __u32);
 	__uint(max_entries, 1);
 } cpus_iterator SEC(".maps");
 
@@ -51,10 +52,10 @@ char tx_mac_addr[ETH_ALEN];
 
 static __always_inline
 bool parse_eth(struct ethhdr *eth, void *data_end,
-	       u16 *eth_proto, u64 *l3_offset)
+	       __u16 *eth_proto, __u64 *l3_offset)
 {
-	u16 eth_type;
-	u64 offset;
+	__u16 eth_type;
+	__u64 offset;
 
 	offset = sizeof(*eth);
 	if ((void *)eth + offset > data_end)
@@ -95,7 +96,7 @@ bool parse_eth(struct ethhdr *eth, void *data_end,
 }
 
 static __always_inline
-u16 get_dest_port_ipv4_udp(struct xdp_md *ctx, u64 nh_off)
+__u16 get_dest_port_ipv4_udp(struct xdp_md *ctx, __u64 nh_off)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
@@ -115,7 +116,7 @@ u16 get_dest_port_ipv4_udp(struct xdp_md *ctx, u64 nh_off)
 }
 
 static __always_inline
-int get_proto_ipv4(struct xdp_md *ctx, u64 nh_off)
+int get_proto_ipv4(struct xdp_md *ctx, __u64 nh_off)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
@@ -127,7 +128,7 @@ int get_proto_ipv4(struct xdp_md *ctx, u64 nh_off)
 }
 
 static __always_inline
-int get_proto_ipv6(struct xdp_md *ctx, u64 nh_off)
+int get_proto_ipv6(struct xdp_md *ctx, __u64 nh_off)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
@@ -141,11 +142,11 @@ int get_proto_ipv6(struct xdp_md *ctx, u64 nh_off)
 SEC("xdp")
 int  cpumap_no_touch(struct xdp_md *ctx)
 {
-	u32 key = bpf_get_smp_processor_id();
+	__u32 key = bpf_get_smp_processor_id();
 	struct datarec *rec;
-	u32 *cpu_selected;
-	u32 cpu_dest = 0;
-	u32 key0 = 0;
+	__u32 *cpu_selected;
+	__u32 cpu_dest = 0;
+	__u32 key0 = 0;
 
 	/* Only use first entry in cpus_available */
 	cpu_selected = bpf_map_lookup_elem(&cpus_available, &key0);
@@ -170,13 +171,13 @@ int  cpumap_touch_data(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
-	u32 key = bpf_get_smp_processor_id();
+	__u32 key = bpf_get_smp_processor_id();
 	struct ethhdr *eth = data;
 	struct datarec *rec;
-	u32 *cpu_selected;
-	u32 cpu_dest = 0;
-	u32 key0 = 0;
-	u16 eth_type;
+	__u32 *cpu_selected;
+	__u32 cpu_dest = 0;
+	__u32 key0 = 0;
+	__u16 eth_type;
 
 	/* Only use first entry in cpus_available */
 	cpu_selected = bpf_map_lookup_elem(&cpus_available, &key0);
@@ -210,15 +211,15 @@ int  cpumap_touch_data(struct xdp_md *ctx)
 SEC("xdp")
 int  cpumap_round_robin(struct xdp_md *ctx)
 {
-	u32 key = bpf_get_smp_processor_id();
+	__u32 key = bpf_get_smp_processor_id();
 	struct datarec *rec;
-	u32 cpu_dest = 0;
-	u32 key0 = 0;
+	__u32 cpu_dest = 0;
+	__u32 key0 = 0;
 
-	u32 *cpu_selected;
-	u32 *cpu_iterator;
-	u32 *cpu_max;
-	u32 cpu_idx;
+	__u32 *cpu_selected;
+	__u32 *cpu_iterator;
+	__u32 *cpu_max;
+	__u32 cpu_idx;
 
 	cpu_max = bpf_map_lookup_elem(&cpus_count, &key0);
 	if (!cpu_max)
@@ -255,15 +256,15 @@ int  cpumap_l4_proto(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
-	u32 key = bpf_get_smp_processor_id();
+	__u32 key = bpf_get_smp_processor_id();
 	struct ethhdr *eth = data;
-	u8 ip_proto = IPPROTO_UDP;
+	__u8 ip_proto = IPPROTO_UDP;
 	struct datarec *rec;
-	u16 eth_proto = 0;
-	u64 l3_offset = 0;
-	u32 cpu_dest = 0;
-	u32 *cpu_lookup;
-	u32 cpu_idx = 0;
+	__u16 eth_proto = 0;
+	__u64 l3_offset = 0;
+	__u32 cpu_dest = 0;
+	__u32 *cpu_lookup;
+	__u32 cpu_idx = 0;
 
 	rec = bpf_map_lookup_elem(&rx_cnt, &key);
 	if (!rec)
@@ -321,16 +322,16 @@ int  cpumap_l4_filter(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
-	u32 key = bpf_get_smp_processor_id();
+	__u32 key = bpf_get_smp_processor_id();
 	struct ethhdr *eth = data;
-	u8 ip_proto = IPPROTO_UDP;
+	__u8 ip_proto = IPPROTO_UDP;
 	struct datarec *rec;
-	u16 eth_proto = 0;
-	u64 l3_offset = 0;
-	u32 cpu_dest = 0;
-	u32 *cpu_lookup;
-	u32 cpu_idx = 0;
-	u16 dest_port;
+	__u16 eth_proto = 0;
+	__u64 l3_offset = 0;
+	__u32 cpu_dest = 0;
+	__u32 *cpu_lookup;
+	__u32 cpu_idx = 0;
+	__u16 dest_port;
 
 	rec = bpf_map_lookup_elem(&rx_cnt, &key);
 	if (!rec)
@@ -393,12 +394,12 @@ int  cpumap_l4_filter(struct xdp_md *ctx)
 #define INITVAL 15485863
 
 static __always_inline
-u32 get_ipv4_hash_ip_pair(struct xdp_md *ctx, u64 nh_off)
+__u32 get_ipv4_hash_ip_pair(struct xdp_md *ctx, __u64 nh_off)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
 	struct iphdr *iph = data + nh_off;
-	u32 cpu_hash;
+	__u32 cpu_hash;
 
 	if (iph + 1 > data_end)
 		return 0;
@@ -410,12 +411,12 @@ u32 get_ipv4_hash_ip_pair(struct xdp_md *ctx, u64 nh_off)
 }
 
 static __always_inline
-u32 get_ipv6_hash_ip_pair(struct xdp_md *ctx, u64 nh_off)
+__u32 get_ipv6_hash_ip_pair(struct xdp_md *ctx, __u64 nh_off)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
 	struct ipv6hdr *ip6h = data + nh_off;
-	u32 cpu_hash;
+	__u32 cpu_hash;
 
 	if (ip6h + 1 > data_end)
 		return 0;
@@ -438,17 +439,17 @@ int  cpumap_l4_hash(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
-	u32 key = bpf_get_smp_processor_id();
+	__u32 key = bpf_get_smp_processor_id();
 	struct ethhdr *eth = data;
 	struct datarec *rec;
-	u16 eth_proto = 0;
-	u64 l3_offset = 0;
-	u32 cpu_dest = 0;
-	u32 cpu_idx = 0;
-	u32 *cpu_lookup;
-	u32 key0 = 0;
-	u32 *cpu_max;
-	u32 cpu_hash;
+	__u16 eth_proto = 0;
+	__u64 l3_offset = 0;
+	__u32 cpu_dest = 0;
+	__u32 cpu_idx = 0;
+	__u32 *cpu_lookup;
+	__u32 key0 = 0;
+	__u32 *cpu_max;
+	__u32 cpu_hash;
 
 	rec = bpf_map_lookup_elem(&rx_cnt, &key);
 	if (!rec)
@@ -496,7 +497,7 @@ int cpumap_redirect(struct xdp_md *ctx)
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
 	struct ethhdr *eth = data;
-	u64 nh_off;
+	__u64 nh_off;
 
 	nh_off = sizeof(*eth);
 	if (data + nh_off > data_end)
@@ -524,7 +525,7 @@ int redirect_egress_prog(struct xdp_md *ctx)
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
 	struct ethhdr *eth = data;
-	u64 nh_off;
+	__u64 nh_off;
 
 	nh_off = sizeof(*eth);
 	if (data + nh_off > data_end)

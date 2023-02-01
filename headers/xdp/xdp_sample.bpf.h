@@ -2,10 +2,11 @@
 #ifndef _XDP_SAMPLE_BPF_H
 #define _XDP_SAMPLE_BPF_H
 
-#include <bpf/vmlinux.h>
+#include <linux/bpf.h>
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
 
 #include "xdp_sample_shared.h"
 
@@ -54,18 +55,6 @@ static __always_inline void swap_src_dst_mac(void *data)
 	p[4] = dst[1];
 	p[5] = dst[2];
 }
-
-#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
-	__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-#define bpf_ntohs(x)		__builtin_bswap16(x)
-#define bpf_htons(x)		__builtin_bswap16(x)
-#elif defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
-	__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#define bpf_ntohs(x)		(x)
-#define bpf_htons(x)		(x)
-#else
-# error "Endianness detection needs to be set up for your compiler?!"
-#endif
 
 /*
  * Note: including linux/compiler.h or linux/kernel.h for the macros below

@@ -2,6 +2,8 @@
 #ifndef _XDP_SAMPLE_SHARED_H
 #define _XDP_SAMPLE_SHARED_H
 
+#include <stddef.h>
+
 struct datarec {
 	size_t processed;
 	size_t dropped;

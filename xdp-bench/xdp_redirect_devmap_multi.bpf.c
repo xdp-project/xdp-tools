@@ -3,6 +3,7 @@
 #include <xdp/xdp_sample_shared.h>
 #include <xdp/xdp_sample.bpf.h>
 #include <xdp/xdp_sample_common.bpf.h>
+#include <xdp/parsing_helpers.h>
 
 struct {
 	__uint(type, BPF_MAP_TYPE_DEVMAP_HASH);
@@ -21,14 +22,14 @@ struct {
 /* map to store egress interfaces mac addresses */
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
-	__type(key, u32);
+	__type(key, __u32);
 	__type(value, __be64);
 	__uint(max_entries, 32);
 } mac_map SEC(".maps");
 
 static int xdp_redirect_devmap_multi(struct xdp_md *ctx, void *forward_map)
 {
-	u32 key = bpf_get_smp_processor_id();
+	__u32 key = bpf_get_smp_processor_id();
 	struct datarec *rec;
 
 	rec = bpf_map_lookup_elem(&rx_cnt, &key);
@@ -57,10 +58,10 @@ int xdp_devmap_prog(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
-	u32 key = ctx->egress_ifindex;
+	__u32 key = ctx->egress_ifindex;
 	struct ethhdr *eth = data;
 	__be64 *mac;
-	u64 nh_off;
+	__u64 nh_off;
 
 	nh_off = sizeof(*eth);
 	if (data + nh_off > data_end)
