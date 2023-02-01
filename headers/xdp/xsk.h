@@ -25,6 +25,8 @@ extern "C" {
 #define XDP_ALWAYS_INLINE inline __attribute__((__always_inline__))
 #elif __GNUC_GNU_INLINE__
 #define XDP_ALWAYS_INLINE static inline __attribute__((__always_inline__))
+#else
+#define XDP_ALWAYS_INLINE static inline
 #endif
 
 /* Do not access these members directly. Use the functions below. */
