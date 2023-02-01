@@ -23,6 +23,13 @@ trap 'status=$?; rm -rf $TMPDIR; exit $status' EXIT HUP INT QUIT TERM
 # Odd return value for skipping, as only 0-255 is valid.
 SKIPPED_TEST=249
 
+skip_if_missing_libxdp_compat()
+{
+    if ! $TEST_PROG_DIR/check_kern_compat; then
+        exit "$SKIPPED_TEST"
+    fi
+}
+
 is_func()
 {
     type "$1" 2>/dev/null | grep -q 'is a function'

@@ -50,6 +50,8 @@
 /* Max number of times we retry attachment */
 #define MAX_RETRY 10
 
+#define IFINDEX_LO 1
+
 static const char *dispatcher_feature_err =
 	"This means that the kernel does not support the features needed\n"
 	"by the multiprog dispatcher, either because it is too old entirely,\n"
@@ -201,6 +203,12 @@ __printf(2, 3) void libxdp_print(enum libxdp_print_level level, const char *form
 	__libxdp_pr(level, format, args);
 	va_end(args);
 }
+
+static enum {
+	COMPAT_UNKNOWN,
+	COMPAT_SUPPORTED,
+	COMPAT_UNSUPPORTED
+} kernel_compat = COMPAT_UNKNOWN;
 
 static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 				 struct xdp_multiprog *mp,
@@ -2423,24 +2431,31 @@ retry:
 	return mp;
 }
 
-static int xdp_multiprog__check_compat(struct xdp_multiprog *mp)
+int libxdp_check_kern_compat(void)
 {
-	struct xdp_program *test_prog;
+	struct xdp_program *tgt_prog = NULL, *test_prog = NULL;
 	const char *bpffs_dir;
 	char buf[PATH_MAX];
 	int lock_fd;
 	int err;
-
-	if (mp->checked_compat)
-		return 0;
-
-	pr_debug("Checking dispatcher compatibility\n");
 
 	bpffs_dir = get_bpffs_dir();
 	if (IS_ERR(bpffs_dir)) {
 		err = PTR_ERR(bpffs_dir);
 		pr_warn("Can't use dispatcher without a working bpffs\n");
 		return -EOPNOTSUPP;
+	}
+
+	if (kernel_compat > COMPAT_UNKNOWN)
+		goto skip;
+
+	pr_debug("Checking dispatcher compatibility\n");
+
+	tgt_prog = __xdp_program__find_file("xdp-dispatcher.o", NULL, "xdp_pass", NULL);
+	if (IS_ERR(tgt_prog)) {
+		err = PTR_ERR(tgt_prog);
+		pr_warn("Couldn't open BPF file xdp-dispatcher.o\n");
+		return err;
 	}
 
 	test_prog = __xdp_program__find_file("xdp-dispatcher.o", NULL, "xdp_pass", NULL);
@@ -2450,9 +2465,15 @@ static int xdp_multiprog__check_compat(struct xdp_multiprog *mp)
 		return err;
 	}
 
+	err = xdp_program__load(tgt_prog);
+	if (err) {
+		pr_debug("Couldn't load XDP program: %s\n", strerror(-err));
+		goto out;
+	}
+
 	err = bpf_program__set_attach_target(test_prog->bpf_prog,
-					     mp->main_prog->prog_fd,
-					     "compat_test");
+					     tgt_prog->prog_fd,
+					     "xdp_pass");
 	if (err) {
 		pr_debug("Failed to set attach target: %s\n", strerror(-err));
 		goto out;
@@ -2478,7 +2499,7 @@ static int xdp_multiprog__check_compat(struct xdp_multiprog *mp)
 	}
 
 	err = try_snprintf(buf, sizeof(buf), "%s/prog-test-link-%i-%i",
-			   bpffs_dir, mp->ifindex, test_prog->prog_id);
+			   bpffs_dir, IFINDEX_LO, test_prog->prog_id);
 	if (err)
 		goto out;
 
@@ -2501,19 +2522,19 @@ static int xdp_multiprog__check_compat(struct xdp_multiprog *mp)
 		goto out_locked;
 	}
 
-	mp->checked_compat = true;
+	kernel_compat = COMPAT_SUPPORTED;
 out_locked:
 	xdp_lock_release(lock_fd);
 out:
 	xdp_program__close(test_prog);
-
+	xdp_program__close(tgt_prog);
 	if (err) {
 		pr_info("Compatibility check for dispatcher program failed: %s\n",
 			strerror(-err));
-		return -EOPNOTSUPP;
+		kernel_compat = COMPAT_UNSUPPORTED;
 	}
-
-	return 0;
+skip:
+	return kernel_compat == COMPAT_SUPPORTED ? 0 : -EOPNOTSUPP;
 }
 
 static int find_prog_btf_id(const char *name, __u32 attach_prog_fd)
@@ -2561,7 +2582,7 @@ static int xdp_multiprog__link_prog(struct xdp_multiprog *mp,
 	    mp->num_links >= mp->config.num_progs_enabled)
 		return -EINVAL;
 
-	err = xdp_multiprog__check_compat(mp);
+	err = libxdp_check_kern_compat();
 	if (err)
 		return err;
 
