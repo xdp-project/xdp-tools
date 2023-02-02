@@ -7,7 +7,7 @@
 # To export the man page, simply use the org-mode exporter; (require 'ox-man) if
 # it's not available. There's also a Makefile rule to export it.
 
-* XDP-bench - a XDP simple benchmarking tool
+* XDP-bench - a simple XDP benchmarking tool
 
 XDP-bench is a benchmarking utility for exercising the different operation modes
 of XDP. It is intended to be a simple program demonstrating the various
