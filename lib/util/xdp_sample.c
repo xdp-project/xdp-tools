@@ -1053,7 +1053,7 @@ static void stats_get_devmap_xmit_multi(struct stats_record *stats_rec,
 			 tstr ?: "?");
 		/* Skip idle streams of redirection */
 		if (pps || drop || err) {
-			print_err(drop,
+			print_err(drop * !(sample_mask & SAMPLE_DROP_OK),
 				  "  %-20s " FMT_COLUMNf FMT_COLUMNf FMT_COLUMNf
 				  __COLUMN(".2f") "\n", str, XMIT(pps), DROP(drop),
 				  err, "drv_err/s", info, "bulk-avg");
@@ -1097,7 +1097,7 @@ static void stats_print(const char *prefix, int mask, struct stats_record *r,
 	if (mask & SAMPLE_REDIRECT_CNT)
 		print_always(FMT_COLUMNl, REDIR(out->totals.redir));
 	printf(FMT_COLUMNl,
-	       out->totals.err + out->totals.drop_xmit + (out->totals.drop * !(mask & SAMPLE_DROP_OK)),
+	       out->totals.err + ((out->totals.drop_xmit + out->totals.drop) * !(mask & SAMPLE_DROP_OK)),
 	       (mask & SAMPLE_DROP_OK) ? "err/s" : "err,drop/s");
 	if (mask & SAMPLE_DEVMAP_XMIT_CNT ||
 	    mask & SAMPLE_DEVMAP_XMIT_CNT_MULTI)
