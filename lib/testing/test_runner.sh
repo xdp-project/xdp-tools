@@ -203,11 +203,15 @@ stop_background()
     local PID=$1
 
     local OUTPUT_FILE="${STATEDIR}/proc/${PID}"
-    kill -SIGINT "-$PID"
-    sleep 2 # Wait to make sure the buffer is flushed after the shutdown
-    kill -SIGTERM "-$PID" && sleep 1 # just in case SIGINT was not enough
-    cat "$OUTPUT_FILE"
-    rm "$OUTPUT_FILE" >& /dev/null
+    if kill -SIGINT "-$PID" 2>/dev/null; then
+       sleep 2 # Wait to make sure the buffer is flushed after the shutdown
+       kill -SIGTERM "-$PID" 2>/dev/null && sleep 1 # just in case SIGINT was not enough
+    fi
+
+    if [ -f "$OUTPUT_FILE" ]; then
+        cat "$OUTPUT_FILE"
+        rm "$OUTPUT_FILE" >& /dev/null
+    fi
 }
 
 check_prereq()
