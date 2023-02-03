@@ -28,14 +28,19 @@ the following:
 
 #+begin_src C
 #define XDP_METADATA_SECTION "xdp_metadata"
-#define XDP_DISPATCHER_VERSION 1
+#define XDP_DISPATCHER_VERSION 2
+#define XDP_DISPATCHER_MAGIC 236
 #define XDP_DISPATCHER_RETVAL 31
 #define MAX_DISPATCHER_ACTIONS 10
 
 struct xdp_dispatcher_config {
-	__u8 num_progs_enabled;
+	__u8 magic;                         /* Set to XDP_DISPATCHER_MAGIC */
+	__u8 dispatcher_version;            /* Set to XDP_DISPATCHER_VERSION */
+	__u8 num_progs_enabled;             /* Number of active program slots */
+	__u8 is_xdp_frags;                  /* Whether this dispatcher is loaded with XDP frags support */
 	__u32 chain_call_actions[MAX_DISPATCHER_ACTIONS];
 	__u32 run_prios[MAX_DISPATCHER_ACTIONS];
+	__u32 program_flags[MAX_DISPATCHER_ACTIONS];
 };
 
 /* While 'const volatile' sounds a little like an oxymoron, there's reason
@@ -100,15 +105,26 @@ configuration struct is populated before the object is loaded. As a forward
 compatibility measure, =libxdp= will also check for the presence of the
 =dispatcher_version= field in the =xdp_metadata= section (encoded like the
 program metadata described in "Processing program metadata" below), and if it
-doesn't match the expected version (currently only version 1 exists), will abort
-any action.
+doesn't match the expected version (currently version 2), will abort any action.
 
 
 *** Populating the dispatcher configuration map
 On loading, the dispatcher configuration map is populated as follows:
 
+- The =magic= field is set to the =XDP_DISPATCHER_MAGIC= value (236). This field
+  is here to make it possible to check if a program is a dispatcher without
+  looking at the program BTF in the future.
+
+- The =dispatcher_version= field is set to the current dispatcher version (2).
+  This is redundant with the BTF-encoded version in the metadata field, but must
+  be checked so that the BTF metadata version can be removed in the future. See
+  the section on old dispatcher versions below.
+
 - The =num_progs_enabled= member is simply set to the number of active programs
   that will be attached to this dispatcher.
+
+- The =is_xdp_frags= variable is set to 1 if dispatcher is loaded with XDP frags
+  support (see section below), or 0 otherwise.
 
 The two other fields contain per-component program metadata, which is read from
 the component programs as explained in the "Processing program metadata" section
@@ -131,6 +147,11 @@ below.
   the configuration array so it can be carried forward when the dispatcher is
   replaced. Component programs are expected to be sorted in order of their run
   priority (as explained below in "Loading and attaching component programs").
+
+- The =program_flags= is used to store the flags that an XDP program was loaded
+  with. This is populated with the value of the =BPF_F_XDP_HAS_FRAGS= flag if
+  the component program in this slot had that flag set (see the section on XDP
+  frags support below), and is 0 otherwise.
 
 **** Processing program metadata
 As explained above, each component program must specify one or more chain call
@@ -192,12 +213,44 @@ runtime. These overridden values will be the ones used when determining program
 order, and will be preserved in the dispatcher configuration map for subsequent
 operations.
 
+*** Old versions of the XDP dispatcher
+This document currently describes version 2 of the dispatcher and protocol. This
+differs from version 1 in the following respects:
+
+- The dispatcher configuration map has gained the =magic= and
+  =dispatcher_version= fields for identifying the dispatcher and its version..
+
+- The protocol now supports propagating the value of the =BPF_F_XDP_HAS_FRAGS=
+  field for supporting XDP frags programs for higher MTU. The dispatcher
+  configuration map has gained the =is_xdp_frags= and =program_flags= fields for
+  use with this feature. The protocol for propagating the frags field is
+  described below, and an implementation of this protocol that recognises
+  version 2 of the dispatcher MUST implement this protocol.
+
+Older versions of libxdp will check the dispatcher version field of any
+dispatcher loaded in the kernel, and refuse to operate on a dispatcher with a
+higher version than the library version implements. This means that if a newer
+dispatcher is loaded, old versions of the library will be locked out of
+modifying that dispatcher. This is by design: old library versions don't
+recognise the semantics of new features added in subsequent versions, and so
+would introduce bugs if it attempted to operate on newer versions.
+
+Newer versions of libxdp will, however, recognise older dispatcher versions. If
+a newer version of libxdp loads a new program and finds an old dispatcher
+version already loaded on an interface, it will display the programs attached to
+it, but will refuse to replace it with a newer version so as not to lock out the
+program that loaded the program(s) already attached. Manually unloading the
+loaded programs will be required to load a new dispatcher version on the
+interface.
+
 *** Loading and attaching component programs
 When loading one or more XDP programs onto an interface (assuming no existing
 program is found on the interface; for adding programs, see below), =libxdp=
 first prepares a dispatcher program with the right number of slots, by
 populating the configuration struct as described above. Then, this dispatcher
-program is loaded into the kernel.
+program is loaded into the kernel, with the =BPF_F_XDP_HAS_FRAGS= flag set if
+all component programs have that flag set (see the section on supporting XDP
+frags below).
 
 Having loaded the dispatcher program, =libxdp= then loads each of the component
 programs. To do this, first the list of component programs is sorted by their
@@ -212,7 +265,8 @@ deterministic, order (see =cmp_xdp_programs()= [[https://github.com/xdp-project/
 - By load time
 
 Before loading, each component program type is reset to =BPF_PROG_TYPE_EXT= with
-an expected attach type of 0. Then, the attachment target is set to the
+an expected attach type of 0, and the =BPF_F_XDP_HAS_FRAGS= is unset (see the
+section on supporting frags below). Then, the attachment target is set to the
 dispatcher file descriptor and the BTF ID of the stub function to replace (i.e.,
 the first component program has =prog0()= as its target, and so on). Then the
 program is loaded, at which point the kernel will verify the component program's
@@ -261,6 +315,60 @@ flag is set to prevent accidentally overriding any concurrent modifications. If
 this fails, the whole operation starts over, turning the load into a
 modification as described below.
 
+*** Supporting XDP programs with frags support (BPF_F_XDP_HAS_FRAGS flag)
+Linux kernel 5.18 added support for a new API that allows XDP programs to access
+packet data that spans more than a single page, allowing XDP programs to be
+loaded on interfaces with bigger MTUs. Such packets will not have all their
+packet data accessible by the traditional "direct packet access"; instead, only
+the first fragment will be available this way, and the rest of the packet data
+has to be accessed via the new =bpf_xdp_load_bytes()= helper.
+
+Existing XDP programs are written with the assumption that they can see the
+whole packet data using direct packet access, which means they can subtly
+malfunction if some of the packet data is suddenly invisible (for instance,
+counting packet lengths is no longer accurate). Whether a given XDP program
+supports the frags API or not is a semantic issue, and it's not possible for the
+kernel to auto-detect this. For this reason, programs have to opt in to XDP
+frags support at load time, by setting the =BPF_F_XDP_HAS_FRAGS= flag as they
+are loaded into the kernel. Programs that are not loaded with this flag will be
+rejected from attaching to network devices that use packet fragment (i.e., those
+with a large MTU).
+
+This has implications for the XDP dispatcher, as its purpose is for multiple
+programs to be loaded at the same time. Since the =BPF_F_XDP_HAS_FRAGS= cannot
+be set for individual component programs, it has to be set for the dispatcher as
+a whole. However, as described above, programs can subtly malfunction if they
+are exposed to packets with fragments without being ready to do so. This means
+that it's only safe to set the =BPF_F_XDP_HAS_FRAGS= on the dispatcher itself if
+*all* component programs have the flag set.
+
+To properly propagate the flags even when adding new programs to an existing
+dispatcher, the dispatcher itself needs to keep track of which of its component
+programs had the =BPF_F_XDP_HAS_FRAGS= flag set when they were added. The
+dispatcher configuration map users the =program_flags= array for this: for each
+component program, this field is set to the value of the =BPF_F_XDP_HAS_FRAGS=
+flag if that component program has the flag set, and to 0 otherwise. An
+additional field, =is_xdp_frags=, is set if the dispatcher itself is loaded with
+the frags field set (which may not be the case if the kernel doesn't support the
+flag).
+
+When generating a dispatcher for a set of programs, libxdp simply tracks if all
+component programs support the =BPF_F_XDP_HAS_FRAGS=, and if they do, the
+dispatcher is loaded with this flag set. If any program attached to the
+dispatcher does not support the flag, the dispatcher is loaded without this flag
+set (and the =is_xdp_frags= field in the dispatcher configuration is set
+accordingly). If libxdp determines that the running kernel does not support the
+=BPF_F_XDP_HAS_FRAGS=, the dispatcher is loaded without the flag regardless of
+the value of the component programs.
+
+When adding a program to an existing dispatcher, this may result in a
+"downgrade", i.e., loading a new dispatcher without the frags flag to replace an
+existing dispatcher that does have the flag set. This will result in the
+replacement dispatcher being rejected by the kernel at attach time, but only if
+the interface being attached to actually requires the frags flag (i.e., if it
+has a large MTU). If the attachment is rejected, the old dispatcher will stay in
+place, leading to no loss of functionality.
+
 ** Adding or removing programs from an existing dispatcher
 The sections above explain how to generate a dispatcher and attach it to an
 interface, assuming no existing program is attached. When one or more programs
@@ -306,7 +414,10 @@ populating the component program structure in memory, the chain call actions and
 run priority from the dispatcher configuration map is used instead of parsing
 the BTF metadata of each program: This ensures that any modified values
 specified at load time will be retained in stead of being reverted to the
-values compiled into the BTF metadata.
+values compiled into the BTF metadata. Similarly, the =program_flags= array of
+the in-kernel dispatcher is used to determine which of the existing component
+programs support the =BPF_F_XDP_HAS_FRAGS= flag (see the section on frags
+support above).
 
 *** Generating a new dispatcher
 Having obtained a reference to the existing dispatcher, =libxdp= takes that and
