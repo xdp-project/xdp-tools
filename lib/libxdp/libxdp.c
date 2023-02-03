@@ -2681,6 +2681,12 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 		struct xdp_program *prog;
 		size_t j;
 
+		if (xdp_multiprog__is_legacy(old_mp)) {
+			pr_warn("Existing program is not using a dispatcher, can't replace; unload first\n");
+			xdp_multiprog__close(mp);
+			return ERR_PTR(-EBUSY);
+		}
+
 		new_progs = calloc(num_new_progs, sizeof(*new_progs));
 		if (!new_progs) {
 			xdp_multiprog__close(mp);
