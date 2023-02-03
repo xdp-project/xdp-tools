@@ -12,6 +12,9 @@ jobs:
     strategy:
       matrix:
         include:
+         - KERNEL_VERSION: 6.1.9
+           KERNEL_PATCH_VERSION: 200.fc37
+           DID_UNSHARE: 0
          - KERNEL_VERSION: 5.16.8
            KERNEL_PATCH_VERSION: 200.fc35
            DID_UNSHARE: 0
