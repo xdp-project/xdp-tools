@@ -1,5 +1,5 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
-ALL_TESTS="test_load test_section test_prog_name test_load_multi test_load_incremental"
+ALL_TESTS="test_load test_section test_prog_name test_load_multi test_load_incremental test_load_clobber"
 
 test_load()
 {
@@ -72,6 +72,24 @@ test_load_incremental()
     fi
     return $ret
 }
+
+test_load_clobber()
+{
+    skip_if_legacy_fallback
+
+    check_run env LIBXDP_SKIP_DISPATCHER=1 $XDP_LOADER load $NS $TEST_PROG_DIR/xdp_drop.o  -vv
+    check_progs_loaded $NS 0 # legacy prog so should show up as 0
+    $XDP_LOADER load $NS $TEST_PROG_DIR/xdp_pass.o -vv
+    ret=$?
+
+    if [ "$ret" -eq "0" ]; then
+        echo "Should not have been able to load prog with legacy prog loaded"
+        return 1
+    fi
+    check_progs_loaded $NS 0
+    check_run $XDP_LOADER unload $NS --all -vv
+}
+
 
 cleanup_tests()
 {
