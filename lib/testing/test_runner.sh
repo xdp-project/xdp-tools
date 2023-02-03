@@ -198,6 +198,19 @@ start_background_no_stderr()
     echo "$PID"
 }
 
+start_background_ns_devnull()
+{
+    get_nsname && ensure_nsname "$NS"
+
+    local TMP_FILE="${STATEDIR}/tmp_proc_$$_$RANDOM"
+    setsid ip netns exec "$NS" env TESTENV_NAME="$NS" "$SETUP_SCRIPT" bash -c "$*" 1>/dev/null 2>${TMP_FILE} &
+    local PID=$!
+    sleep 2 # Wait to make sure the command is executed in the background
+
+    mv "$TMP_FILE" "${STATEDIR}/proc/${PID}" >& /dev/null
+    echo $PID
+}
+
 stop_background()
 {
     local PID=$1
