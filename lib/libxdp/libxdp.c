@@ -1790,7 +1790,7 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 		goto out;
 	}
 
-	if (mp->is_legacy) {
+	if (xdp_multiprog__is_legacy(mp)) {
 		err = xdp_multiprog__attach(mp, NULL, mode);
 		goto out;
 	}
@@ -1922,7 +1922,7 @@ static int xdp_multiprog__load(struct xdp_multiprog *mp)
 	char buf[100];
 	int err = 0;
 
-	if (!mp || !mp->main_prog || mp->is_loaded || mp->is_legacy)
+	if (!mp || !mp->main_prog || mp->is_loaded || xdp_multiprog__is_legacy(mp))
 		return -EINVAL;
 
 	pr_debug("Loading multiprog dispatcher for %d programs\n",
@@ -2160,7 +2160,7 @@ legacy:
 
 		mp->main_prog = prog;
 
-		if (!mp->is_legacy) {
+		if (!xdp_multiprog__is_legacy(mp)) {
 			err = xdp_multiprog__link_pinned_progs(mp);
 			if (err) {
 				pr_warn("Unable to read pinned progs: %s\n", strerror(-err));
@@ -2170,8 +2170,8 @@ legacy:
 		}
 
 		pr_debug("Found %s with id %d and %zu component progs\n",
-			mp->is_legacy ? "legacy program" : "multiprog",
-			mp->main_prog->prog_id, mp->num_links);
+			 xdp_multiprog__is_legacy(mp) ? "legacy program" : "multiprog",
+			 mp->main_prog->prog_id, mp->num_links);
 	}
 
 	if (hw_fd > 0) {
@@ -2798,7 +2798,7 @@ static int xdp_multiprog__pin(struct xdp_multiprog *mp)
 	const char *bpffs_dir;
 	int err = 0, lock_fd;
 
-	if (!mp || mp->is_legacy)
+	if (!mp || xdp_multiprog__is_legacy(mp))
 		return -EINVAL;
 
 	bpffs_dir = get_bpffs_dir();
@@ -2882,7 +2882,7 @@ static int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 	const char *bpffs_dir;
 	int err = 0, lock_fd;
 
-	if (!mp || mp->is_legacy)
+	if (!mp || xdp_multiprog__is_legacy(mp))
 		return -EINVAL;
 
 	bpffs_dir = get_bpffs_dir();
@@ -2982,7 +2982,7 @@ static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 			 mode == XDP_MODE_SKB ? " in skb mode" : "");
 	else
 		pr_debug("Detached %s on ifindex %d%s\n",
-			 old_mp->is_legacy ? "program" : "multiprog",
+			 xdp_multiprog__is_legacy(old_mp) ? "program" : "multiprog",
 			 ifindex,
 			 mode == XDP_MODE_SKB ? " in skb mode" : "");
 
@@ -3009,7 +3009,7 @@ int xdp_multiprog__detach(struct xdp_multiprog *mp)
 		if (err)
 			return libxdp_err(err);
 
-		if (!mp->is_legacy)
+		if (!xdp_multiprog__is_legacy(mp))
 			err = xdp_multiprog__unpin(mp);
 	}
 	return libxdp_err(err);
@@ -3018,7 +3018,7 @@ int xdp_multiprog__detach(struct xdp_multiprog *mp)
 struct xdp_program *xdp_multiprog__next_prog(const struct xdp_program *prog,
 					     const struct xdp_multiprog *mp)
 {
-	if (!mp || mp->is_legacy)
+	if (!mp || xdp_multiprog__is_legacy(mp))
 		return libxdp_err_ptr(0, true);
 
 	if (prog)
