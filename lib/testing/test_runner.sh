@@ -145,8 +145,6 @@ skip_if_missing_cpumap_attach()
     if ! $TEST_PROG_DIR/test-tool probe cpumap-prog; then
         exit "$SKIPPED_TEST"
     fi
-
-    bpftool feature list_builtins attach_types
 }
 
 skip_if_missing_kernel_symbol()
