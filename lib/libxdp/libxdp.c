@@ -1757,7 +1757,7 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 			      int ifindex, enum xdp_attach_mode mode,
 			      unsigned int flags)
 {
-	struct xdp_multiprog *new_mp = NULL, *mp = NULL;
+	struct xdp_multiprog *new_mp, *mp;
 	int err = 0, retry_counter = 0;
 	size_t i;
 
@@ -1765,6 +1765,7 @@ int xdp_program__detach_multi(struct xdp_program **progs, size_t num_progs,
 		return libxdp_err(-EINVAL);
 
  retry:
+	new_mp = NULL;
 	mp = xdp_multiprog__get_from_ifindex(ifindex);
 	if (IS_ERR_OR_NULL(mp)) {
 		pr_warn("No XDP dispatcher found on ifindex %d\n", ifindex);
