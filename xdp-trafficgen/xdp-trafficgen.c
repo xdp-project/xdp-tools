@@ -737,7 +737,8 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 		goto out;
 	}
 
-	err = setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, cfg->iface.ifname, sizeof(cfg->iface.ifname));
+	err = setsockopt(sock, SOL_SOCKET, SO_BINDTOIFINDEX,
+			 &cfg->iface.ifindex, sizeof(cfg->iface.ifindex));
 	if (err) {
 		err = -errno;
 		pr_warn("Couldn't bind to device '%s': %s\n", cfg->iface.ifname, strerror(-err));
