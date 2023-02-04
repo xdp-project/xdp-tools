@@ -546,8 +546,8 @@ static int do_xdp_attach(int ifindex, int prog_fd, int old_fd, __u32 xdp_flags)
 #endif
 }
 
-static int xdp_attach_fd(int prog_fd, int old_fd, int ifindex,
-			 enum xdp_attach_mode mode)
+int xdp_attach_fd(int prog_fd, int old_fd, int ifindex,
+		  enum xdp_attach_mode mode)
 {
 	int err = 0, xdp_flags = 0;
 

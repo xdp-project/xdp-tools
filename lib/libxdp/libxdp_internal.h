@@ -140,5 +140,7 @@ static inline void *libxdp_err_ptr(int err, bool ret_null)
 
 LIBXDP_HIDE_SYMBOL int xdp_lock_acquire(void);
 LIBXDP_HIDE_SYMBOL int xdp_lock_release(int lock_fd);
+LIBXDP_HIDE_SYMBOL int xdp_attach_fd(int prog_fd, int old_fd, int ifindex,
+				     enum xdp_attach_mode mode);
 
 #endif /* __LIBXDP_LIBXDP_INTERNAL_H */
