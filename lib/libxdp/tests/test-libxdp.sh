@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 
-ALL_TESTS="test_link_so test_link_a test_xdp_frags test_xsk_prog_refcnt_bpffs test_xsk_prog_refcnt_legacy"
+ALL_TESTS="test_link_so test_link_a test_old_dispatcher test_xdp_frags test_xsk_prog_refcnt_bpffs test_xsk_prog_refcnt_legacy"
 
 TESTS_DIR=$(dirname "${BASH_SOURCE[0]}")
 
@@ -71,6 +71,16 @@ test_xdp_frags()
         check_run $TESTS_DIR/test_xdp_frags xdp_veth_big0 xdp_veth_small0 2>&1
         ip link delete xdp_veth_big0
         ip link delete xdp_veth_small0
+}
+
+test_old_dispatcher()
+{
+        skip_if_missing_libxdp_compat
+
+        check_mount_bpffs || return 1
+        ip link add xdp_veth0 type veth peer name xdp_veth1
+        check_run $TESTS_DIR/test_dispatcher_versions xdp_veth0
+        ip link delete xdp_veth0
 }
 
 cleanup_tests()

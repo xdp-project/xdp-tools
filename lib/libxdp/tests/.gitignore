@@ -1,3 +1,4 @@
 test_xsk_refcnt
 check_kern_compat
 test_xdp_frags
+test_dispatcher_versions

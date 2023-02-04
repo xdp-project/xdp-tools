@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 
-USER_TARGETS := test_xsk_refcnt check_kern_compat test_xdp_frags
+USER_TARGETS := test_xsk_refcnt check_kern_compat test_xdp_frags test_dispatcher_versions
+BPF_TARGETS := xdp_dispatcher_v1 xdp_pass
 USER_LIBS := -lpthread
 
-EXTRA_DEPS +=
+EXTRA_DEPS += xdp_dispatcher_v1.h
 EXTRA_USER_DEPS += test_utils.h
 
 TEST_FILE := ./test-libxdp.sh
@@ -11,6 +12,7 @@ TEST_RUNNER := ./test_runner.sh
 
 USER_C := ${USER_TARGETS:=.c}
 USER_OBJ := ${USER_C:.c=.o}
+BPF_OBJS := $(BPF_TARGETS:=.o)
 
 LIB_DIR := ../..
 LDLIBS += $(USER_LIBS)
@@ -37,7 +39,7 @@ CFLAGS += -I$(HEADER_DIR)
 
 BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(wildcard $(HEADER_DIR)/xdp/*.h)
 
-all: $(USER_TARGETS)
+all: $(USER_TARGETS) $(BPF_OBJS)
 
 .PHONY: clean
 clean::
@@ -61,5 +63,18 @@ $(ALL_EXEC_TARGETS): %: %.c  $(OBJECT_LIBBPF) $(OBJECT_LIBXDP) $(LIBMK) $(LIB_OB
 	$(QUIET_CC)$(CC) -Wall $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -o $@ $(LIB_OBJS) \
 	 $< $(LDLIBS)
 
+$(BPF_OBJS): %.o: %.c $(BPF_HEADERS) $(LIBMK) $(EXTRA_DEPS)
+	$(QUIET_CLANG)$(CLANG) -S \
+	    -target $(BPF_TARGET) \
+	    -D __BPF_TRACING__ \
+	    $(BPF_CFLAGS) \
+	    -Wall \
+	    -Wno-unused-value \
+	    -Wno-pointer-sign \
+	    -Wno-compare-distinct-pointer-types \
+	    -Werror \
+	    -O2 -emit-llvm -c -g -o ${@:.o=.ll} $<
+	$(QUIET_LLC)$(LLC) -march=$(BPF_TARGET) -filetype=obj -o $@ ${@:.o=.ll}
+
 run: all
-	$(Q)env CC="$(CC)" CFLAGS="$(CFLAGS) $(LDFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDLIBS="$(LDLIBS)" V=$(V) $(TEST_RUNNER) $(TEST_FILE)
+	$(Q)env CC="$(CC)" CFLAGS="$(CFLAGS) $(LDFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDLIBS="$(LDLIBS)" V=$(V) $(TEST_RUNNER) $(TEST_FILE) $(RUN_TESTS)
