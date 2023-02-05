@@ -2312,7 +2312,6 @@ static int xdp_multiprog__fill_from_fd(struct xdp_multiprog *mp,
 	__u32 info_len, map_id = 0;
 	struct xdp_program *prog;
 	struct btf *btf = NULL;
-	int map_fd = -1;
 	int err = 0;
 
 	if (IS_ERR_OR_NULL(mp))
@@ -2396,8 +2395,6 @@ legacy:
 	mp->is_loaded = true;
 
 out:
-	if (map_fd >= 0)
-		close(map_fd);
 	btf__free(btf);
 	return err;
 }
