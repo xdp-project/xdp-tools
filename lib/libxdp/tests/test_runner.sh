@@ -18,10 +18,6 @@ VERBOSE_TESTS=${V:-0}
 
 export VERBOSE_TESTS
 
-TMPDIR=$(mktemp --tmpdir -d config.XXXXXX)
-trap 'status=$?; rm -rf $TMPDIR; exit $status' EXIT HUP INT QUIT TERM
-
-
 # Odd return value for skipping, as only 0-255 is valid.
 SKIPPED_TEST=249
 
