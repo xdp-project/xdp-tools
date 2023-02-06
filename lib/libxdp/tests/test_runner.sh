@@ -16,10 +16,6 @@ TEST_PROG_DIR="${TEST_PROG_DIR:-$(dirname "${BASH_SOURCE[0]}")}"
 ALL_TESTS=""
 VERBOSE_TESTS=${V:-0}
 
-TMPDIR=$(mktemp --tmpdir -d config.XXXXXX)
-trap 'status=$?; rm -rf $TMPDIR; exit $status' EXIT HUP INT QUIT TERM
-
-
 # Odd return value for skipping, as only 0-255 is valid.
 SKIPPED_TEST=249
 
