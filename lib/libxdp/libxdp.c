@@ -2186,6 +2186,7 @@ static int check_dispatcher_version(struct xdp_multiprog *mp,
 
 	switch (version) {
 	case XDP_DISPATCHER_VERSION_V1:
+	{
 		struct xdp_dispatcher_config_v1 *config = (void *)buf;
 
 		for (i = 0; i < MAX_DISPATCHER_ACTIONS; i++) {
@@ -2194,7 +2195,7 @@ static int check_dispatcher_version(struct xdp_multiprog *mp,
 		}
 		mp->config.num_progs_enabled = config->num_progs_enabled;
 		break;
-
+	}
 	case XDP_DISPATCHER_VERSION:
 		if (map_info.value_size != sizeof(mp->config)) {
 			pr_warn("Dispatcher version matches, but map size %u != expected %zu\n",
