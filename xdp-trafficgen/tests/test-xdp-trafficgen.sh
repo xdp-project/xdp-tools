@@ -1,5 +1,5 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
-XDP_TRAFFICGEN=${XDP_BENCH:-./xdp-trafficgen}
+XDP_TRAFFICGEN=${XDP_TRAFFICGEN:-./xdp-trafficgen}
 ALL_TESTS="test_udp test_tcp"
 
 PIDS=""
