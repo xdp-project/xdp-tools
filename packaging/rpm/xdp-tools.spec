@@ -1,8 +1,8 @@
 Name:             xdp-tools
-Version:          1.2.2
+Version:          1.3.0
 Release:          1%{?dist}
 Summary:          Utilities and example programs for use with XDP
-%global _soversion 1.2.0
+%global _soversion 1.3.0
 
 License:          GPLv2
 URL:              https://github.com/xdp-project/%{name}
@@ -20,6 +20,9 @@ BuildRequires:    pkgconfig
 BuildRequires:    m4
 BuildRequires:    emacs-nox
 BuildRequires:    wireshark-cli
+BuildRequires:    bpftool
+
+ExcludeArch:      i386 i686
 
 # Always keep xdp-tools and libxdp packages in sync
 Requires:         libxdp = %{version}-%{release}
@@ -89,6 +92,9 @@ make install V=1
 %{_sbindir}/xdp-filter
 %{_sbindir}/xdp-loader
 %{_sbindir}/xdpdump
+%{_sbindir}/xdp-bench
+%{_sbindir}/xdp-monitor
+%{_sbindir}/xdp-trafficgen
 %{_mandir}/man8/*
 %{_libdir}/bpf/xdpfilt_*.o
 %{_libdir}/bpf/xdpdump_*.o
@@ -112,6 +118,9 @@ make install V=1
 %{_libdir}/pkgconfig/libxdp.pc
 
 %changelog
+* Tue Feb 7 2023 Toke Høiland-Jørgensen <toke@redhat.com> 1.3.0-1
+- Upstream version bump
+
 * Thu Jan 20 2022 Toke Høiland-Jørgensen <toke@redhat.com> 1.2.2-1
 - Upstream version bump
 
