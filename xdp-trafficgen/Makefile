@@ -3,6 +3,9 @@
 XDP_TARGETS  := xdp_trafficgen.bpf
 BPF_SKEL_TARGETS := $(XDP_TARGETS)
 
+# Don't install skeleton object files
+XDP_OBJ_INSTALL :=
+
 TOOL_NAME := xdp-trafficgen
 USER_TARGETS := xdp-trafficgen
 MAN_PAGE := xdp-trafficgen.8
