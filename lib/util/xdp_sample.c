@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <bpf/bpf.h>
 #include <stdbool.h>
+#include <inttypes.h>
 #include <sys/mman.h>
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
@@ -56,7 +57,7 @@
 #define __COLUMN(x) "%'10" x " %-13s"
 #define FMT_COLUMNf __COLUMN(".0f")
 #define FMT_COLUMNd __COLUMN("d")
-#define FMT_COLUMNl __COLUMN("llu")
+#define FMT_COLUMNl __COLUMN(PRIu64)
 #define RX(rx) rx, "rx/s"
 #define PPS(pps) pps, "pkt/s"
 #define DROP(drop) drop, "drop/s"
@@ -117,32 +118,32 @@ struct stats_record {
 
 struct sample_output {
 	struct {
-		__u64 rx;
-		__u64 redir;
-		__u64 drop;
-		__u64 drop_xmit;
-		__u64 err;
-		__u64 xmit;
+		uint64_t rx;
+		uint64_t redir;
+		uint64_t drop;
+		uint64_t drop_xmit;
+		uint64_t err;
+		uint64_t xmit;
 	} totals;
 	struct {
 		union {
-			__u64 pps;
-			__u64 num;
+			uint64_t pps;
+			uint64_t num;
 		};
-		__u64 drop;
-		__u64 err;
+		uint64_t drop;
+		uint64_t err;
 	} rx_cnt;
 	struct {
-		__u64 suc;
-		__u64 err;
+		uint64_t suc;
+		uint64_t err;
 	} redir_cnt;
 	struct {
-		__u64 hits;
+		uint64_t hits;
 	} except_cnt;
 	struct {
-		__u64 pps;
-		__u64 drop;
-		__u64 err;
+		uint64_t pps;
+		uint64_t drop;
+		uint64_t err;
 		double bavg;
 	} xmit_cnt;
 };
@@ -1164,7 +1165,7 @@ static void stats_print(const char *prefix, int mask, struct stats_record *r,
 			  "  %-20s " FMT_COLUMNl FMT_COLUMNl FMT_COLUMNl
 				  __COLUMN(".2f") "\n",
 			  str, XMIT(out->xmit_cnt.pps),
-			  DROP(out->xmit_cnt.drop), out->xmit_cnt.err,
+			  DROP(out->xmit_cnt.drop), (uint64_t)out->xmit_cnt.err,
 			  "drv_err/s", out->xmit_cnt.bavg, "bulk-avg");
 
 		stats_get_devmap_xmit(r, p, nr_cpus, NULL);
@@ -1305,32 +1306,32 @@ static void sample_summary_print(void)
 	if (sample_out.totals.rx) {
 		double pkts = sample_out.totals.rx;
 
-		print_always("  Packets received    : %'-10llu\n",
-			     sample_out.totals.rx);
+		print_always("  Packets received    : %'-10" PRIu64 "\n",
+			     (uint64_t)sample_out.totals.rx);
 		print_always("  Average packets/s   : %'-10.0f\n",
 			     sample_round(pkts / num));
 	}
 	if (sample_out.totals.redir) {
 		double pkts = sample_out.totals.redir;
 
-		print_always("  Packets redirected  : %'-10llu\n",
+		print_always("  Packets redirected  : %'-10" PRIu64 "\n",
 			     sample_out.totals.redir);
 		print_always("  Average redir/s     : %'-10.0f\n",
 			     sample_round(pkts / num));
 	}
 	if (sample_out.totals.drop)
-		print_always("  Rx dropped          : %'-10llu\n",
-			     sample_out.totals.drop);
+		print_always("  Rx dropped          : %'-10" PRIu64 "\n",
+			    sample_out.totals.drop);
 	if (sample_out.totals.drop_xmit)
-		print_always("  Tx dropped          : %'-10llu\n",
+		print_always("  Tx dropped          : %'-10" PRIu64 "\n",
 			     sample_out.totals.drop_xmit);
 	if (sample_out.totals.err)
-		print_always("  Errors recorded     : %'-10llu\n",
+		print_always("  Errors recorded     : %'-10" PRIu64 "\n",
 			     sample_out.totals.err);
 	if (sample_out.totals.xmit) {
 		double pkts = sample_out.totals.xmit;
 
-		print_always("  Packets transmitted : %'-10llu\n",
+		print_always("  Packets transmitted : %'-10" PRIu64 "\n",
 			     sample_out.totals.xmit);
 		print_always("  Average transmit/s  : %'-10.0f\n",
 			     sample_round(pkts / num));
