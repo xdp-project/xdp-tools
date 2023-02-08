@@ -1,5 +1,5 @@
 Name:             xdp-tools
-Version:          1.2.9
+Version:          1.2.10
 Release:          1%{?dist}
 Summary:          Utilities and example programs for use with XDP
 %global _soversion 1.2.0
@@ -112,6 +112,9 @@ make install V=1
 %{_libdir}/pkgconfig/libxdp.pc
 
 %changelog
+* Wed Feb 8 2023 Toke Høiland-Jørgensen <toke@redhat.com> 1.2.10-1
+- Upstream version bump
+
 * Wed Dec 14 2022 Toke Høiland-Jørgensen <toke@redhat.com> 1.2.9-1
 - Upstream version bump
 
