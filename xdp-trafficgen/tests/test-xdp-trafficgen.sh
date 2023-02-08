@@ -6,7 +6,13 @@ PIDS=""
 
 skip_if_missing_kernel_support()
 {
-    $XDP_TRAFFICGEN probe || exit $SKIPPED_TEST
+    $XDP_TRAFFICGEN probe
+    ret=$?
+    if [ "$ret" -eq "161" ]; then
+        exit $SKIPPED_TEST
+    elif [ "$ret" -ne "0" ]; then
+        exit 1
+    fi
 }
 
 test_udp()

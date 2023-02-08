@@ -175,12 +175,14 @@ static int probe_kernel_support(void)
 		.prog = prog
 	};
 	err = run_prog(&cfg, &status);
-	if (err == -EOPNOTSUPP)
+	if (err == -EOPNOTSUPP) {
 		pr_warn("BPF_PROG_RUN with batch size support is missing from libbpf.\n");
-	else if (err == -EINVAL)
+	}  else if (err == -EINVAL) {
+		err = -EOPNOTSUPP;
 		pr_warn("Kernel doesn't support live packet mode for XDP BPF_PROG_RUN.\n");
-	else if (err)
+	} else if (err) {
 		pr_warn("Error probing kernel support: %s\n", strerror(-err));
+	}
 
 	xdp_program__close(prog);
 out:
