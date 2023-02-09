@@ -205,10 +205,14 @@ int do_probe(const void *cfg, __unused const char *pin_root_path)
 
 	switch (opt->action) {
 	case PROBE_CPUMAP_PROGRAM:
+#ifdef HAVE_BPFTOOL
 		res = sample_probe_cpumap_compat();
+#endif
 		break;
 	case PROBE_XDP_LOAD_BYTES:
+#ifdef HAVE_BPFTOOL
 		res = sample_probe_xdp_load_bytes();
+#endif
 		break;
         default:
                 return EXIT_FAILURE;

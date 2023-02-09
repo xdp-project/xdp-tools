@@ -73,7 +73,7 @@ check_toolchain()
     CLANG=$(find_tool clang "$CLANG")
     LLC=$(find_tool llc "$LLC")
 
-    for TOOL in $PKG_CONFIG $CC $LD $OBJCOPY $CLANG $LLC $M4 $BPFTOOL $READELF; do
+    for TOOL in $PKG_CONFIG $CC $LD $OBJCOPY $CLANG $LLC $M4 $READELF; do
         if [ ! $(command -v ${TOOL} 2>/dev/null) ]; then
             echo "*** ERROR: Cannot find tool ${TOOL}" ;
             exit 1;
@@ -112,12 +112,12 @@ check_toolchain()
         exit 1
     fi
 
-    if $BPFTOOL gen help 2>&1 | grep 'gen skeleton.*name' > /dev/null; then
+    if command -v $BPFTOOL &>/dev/null && $BPFTOOL gen help 2>&1 | grep 'gen skeleton.*name' > /dev/null; then
         bpftool_version=$($BPFTOOL version | head -n 1)
 	echo "using $bpftool_version"
     else
-	echo "bpftool doesn't support skeleton generation"
-        exit 1
+	echo "bpftool not found or doesn't support skeleton generation; not building all tools"
+        BPFTOOL=
     fi
 
     if [ -z "$ARCH_INCLUDES" ] && [ -n "$ARCH_NAME" ]; then
@@ -137,8 +137,9 @@ check_toolchain()
     echo "M4:=${M4}" >>$CONFIG
     echo "EMACS:=${EMACS}" >>$CONFIG
     echo "ARCH_INCLUDES:=$ARCH_INCLUDES" >> $CONFIG
-    echo "BPFTOOL:=${BPFTOOL}" >> $CONFIG
     echo "READELF:=${READELF}" >> $CONFIG
+    echo "BPFTOOL:=${BPFTOOL}" >> $CONFIG
+    [ -n "$BPFTOOL" ] && echo "HAVE_FEATURES+=BPFTOOL" >>"$CONFIG"
 }
 
 check_zlib()

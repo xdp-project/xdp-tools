@@ -14,8 +14,14 @@ MAKEFLAGS += --no-print-directory
 endif
 
 include version.mk
+include config.mk
 
-UTILS := xdp-filter xdp-loader xdp-dump xdp-bench xdp-monitor xdp-trafficgen
+UTILS := xdp-filter xdp-loader xdp-dump
+
+ifneq ($(BPFTOOL),)
+UTILS += xdp-bench xdp-monitor xdp-trafficgen
+endif
+
 SUBDIRS := lib $(UTILS)
 .PHONY: check_submodule help clobber distclean clean install test libxdp $(SUBDIRS)
 
