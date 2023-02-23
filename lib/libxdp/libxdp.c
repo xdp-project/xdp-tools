@@ -3064,7 +3064,7 @@ static int xdp_multiprog__pin(struct xdp_multiprog *mp)
 	for (prog = mp->first_prog; prog; prog = prog->next) {
 		if (prog->link_fd < 0) {
 			err = -EINVAL;
-			pr_warn("Prog %s not linked\n", xdp_program__name(prog));
+			pr_warn("Prog %s not linked\n", prog->prog_name);
 			goto err_unpin;
 		}
 
@@ -3079,8 +3079,7 @@ static int xdp_multiprog__pin(struct xdp_multiprog *mp)
 			pr_warn("Couldn't pin link FD at %s: %s\n", buf, strerror(-err));
 			goto err_unpin;
 		}
-		pr_debug("Pinned link for prog %s at %s\n",
-			 xdp_program__name(prog), buf);
+		pr_debug("Pinned link for prog %s at %s\n", prog->prog_name, buf);
 
 		err = try_snprintf(buf, sizeof(buf), "%s/%s-prog",
 				   pin_path, prog->attach_name);
@@ -3094,7 +3093,7 @@ static int xdp_multiprog__pin(struct xdp_multiprog *mp)
 			goto err_unpin;
 		}
 
-		pr_debug("Pinned prog %s at %s\n", xdp_program__name(prog), buf);
+		pr_debug("Pinned prog %s at %s\n", prog->prog_name, buf);
 	}
 out:
 	xdp_lock_release(lock_fd);
@@ -3153,7 +3152,7 @@ static int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 			goto out;
 		}
 		pr_debug("Unpinned link for prog %s from %s\n",
-			 xdp_program__name(prog), buf);
+			 prog->prog_name, buf);
 
 		err = try_snprintf(buf, sizeof(buf), "%s/%s-prog",
 				   pin_path, prog->attach_name);
@@ -3168,8 +3167,7 @@ static int xdp_multiprog__unpin(struct xdp_multiprog *mp)
 			goto out;
 		}
 
-		pr_debug("Unpinned prog %s from %s\n",
-			 xdp_program__name(prog), buf);
+		pr_debug("Unpinned prog %s from %s\n", prog->prog_name, buf);
 	}
 
 	err = rmdir(pin_path);
