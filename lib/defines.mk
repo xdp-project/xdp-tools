@@ -1,5 +1,5 @@
 CFLAGS ?= -O2 -g
-BPF_CFLAGS ?= -Wno-visibility
+BPF_CFLAGS ?= -Wno-visibility -fno-stack-protector
 BPF_TARGET ?= bpf
 
 HAVE_FEATURES :=
