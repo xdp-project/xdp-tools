@@ -312,6 +312,13 @@ static size_t bpf_program__insn_cnt(const struct bpf_program *prog)
 }
 #endif
 
+#ifndef HAVE_LIBBPF_BPF_PROGRAM__TYPE
+static inline enum bpf_prog_type bpf_program__type(const struct bpf_program *prog)
+{
+	return bpf_program__get_type((struct bpf_program *)prog);
+}
+#endif
+
 /* This function has been deprecated in libbpf, but we expose an API that uses
  * section names, so we reimplement it to keep compatibility
  */
