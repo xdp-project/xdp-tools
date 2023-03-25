@@ -319,6 +319,18 @@ static inline enum bpf_prog_type bpf_program__type(const struct bpf_program *pro
 }
 #endif
 
+#ifndef HAVE_LIBBPF_BPF_PROGRAM__FLAGS
+static __u32 bpf_program__flags(__unused const struct bpf_program *prog)
+{
+	/* When libbpf doesn't support this we can't get the real value.
+	 * Returning 0 works because the callers check for the presence of a
+	 * specific flag (BPF_F_XDP_HAS_FRAGS), and having it always-off
+	 * disables the frags functionality which is what we want.
+	 */
+	return 0;
+}
+#endif
+
 /* This function has been deprecated in libbpf, but we expose an API that uses
  * section names, so we reimplement it to keep compatibility
  */
@@ -715,6 +727,12 @@ bool xdp_program__xdp_frags_support(const struct xdp_program *prog)
 	return !!(bpf_program__flags(prog->bpf_prog) & BPF_F_XDP_HAS_FRAGS);
 }
 
+#ifndef HAVE_LIBBPF_BPF_PROGRAM__FLAGS
+int xdp_program__set_xdp_frags_support(__unused struct xdp_program *prog, __unused bool frags)
+{
+	return libxdp_err(-EOPNOTSUPP);
+}
+#else
 int xdp_program__set_xdp_frags_support(struct xdp_program *prog, bool frags)
 {
 	__u32 prog_flags;
@@ -736,6 +754,7 @@ int xdp_program__set_xdp_frags_support(struct xdp_program *prog, bool frags)
 
 	return ret;
 }
+#endif // HAVE_LIBBPF_BPF_PROGRAM__FLAGS
 
 const char *xdp_program__name(const struct xdp_program *prog)
 {
@@ -1591,9 +1610,11 @@ static int xdp_program__load(struct xdp_program *prog)
 		 */
 		prog->is_frags = xdp_program__xdp_frags_support(prog);
 
+#ifdef HAVE_LIBBPF_BPF_PROGRAM__FLAGS
 		if (bpf_program__type(prog->bpf_prog) == BPF_PROG_TYPE_EXT)
 			bpf_program__set_flags(prog->bpf_prog,
 					       bpf_program__flags(prog->bpf_prog) & ~BPF_F_XDP_HAS_FRAGS);
+#endif
 
 		err = bpf_object__load(prog->bpf_obj);
 		if (err)
@@ -2026,6 +2047,13 @@ int xdp_program__test_run(struct xdp_program *prog, struct bpf_test_run_opts *op
 	return libxdp_err(err);
 }
 
+#ifndef HAVE_LIBBPF_BPF_PROGRAM__FLAGS
+static int xdp_multiprog__check_kernel_frags_support(__unused struct xdp_multiprog *mp)
+{
+	pr_debug("Can't support frags with old version of libbpf that doesn't support setting program flags.\n");
+	return 0;
+}
+#else
 static int xdp_multiprog__check_kernel_frags_support(struct xdp_multiprog *mp)
 {
 	struct xdp_program *test_prog;
@@ -2048,9 +2076,9 @@ static int xdp_multiprog__check_kernel_frags_support(struct xdp_multiprog *mp)
 		pr_debug("Kernel DOES NOT support XDP programs with frags\n");
 	}
 	xdp_program__close(test_prog);
-
 	return 0;
 }
+#endif // HAVE_LIBBPF_BPF_PROGRAM__FLAGS
 
 void xdp_multiprog__close(struct xdp_multiprog *mp)
 {
