@@ -22,6 +22,7 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <dirent.h>
+#include <limits.h>
 
 #include <linux/err.h> /* ERR_PTR */
 #include <linux/if_link.h>
