@@ -108,7 +108,7 @@ check_toolchain()
         exit 1
     fi
 
-    if $BPFTOOL gen help 2>&1 | grep 'gen help' > /dev/null; then
+    if $BPFTOOL gen help 2>&1 | grep 'gen skeleton.*name' > /dev/null; then
         bpftool_version=$($BPFTOOL version | head -n 1)
 	echo "using $bpftool_version"
     else
