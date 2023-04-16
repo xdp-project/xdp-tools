@@ -33,6 +33,7 @@ Usage: xdp-bench COMMAND [options]
 
 COMMAND can be one of:
        drop           - Drop all packets on an interface
+       pass           - Pass all packets to the network stack
        tx             - Transmit packets back out on an interface (hairpin forwarding)
        redirect       - XDP redirect using the bpf_redirect() helper
        redirect-cpu   - XDP CPU redirect using BPF_MAP_TYPE_CPUMAP
