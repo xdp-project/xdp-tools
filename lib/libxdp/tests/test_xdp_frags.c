@@ -298,6 +298,13 @@ int main(int argc, char **argv)
 {
 	struct rlimit r = {RLIM_INFINITY, RLIM_INFINITY};
 	int ifindex_bigmtu, ifindex_smallmtu, ret;
+
+	if (setrlimit(RLIMIT_MEMLOCK, &r)) {
+		fprintf(stderr, "ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n",
+			strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
         char *envval;
 
         envval = secure_getenv("VERBOSE_TESTS");
@@ -307,8 +314,6 @@ int main(int argc, char **argv)
                 verbose_libxdp_logging();
         else
                 silence_libxdp_logging();
-
-        kern_compat = check_frags_compat();
 
 	if (argc != 3)
                 usage(argv[0]);
@@ -320,11 +325,7 @@ int main(int argc, char **argv)
                 usage(argv[0]);
 	}
 
-	if (setrlimit(RLIMIT_MEMLOCK, &r)) {
-		fprintf(stderr, "ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n",
-			strerror(errno));
-		exit(EXIT_FAILURE);
-	}
+        kern_compat = check_frags_compat();
 
         ret = check_load_frags(kern_compat ? ifindex_bigmtu : 0, ifindex_smallmtu);
         ret = check_load_nofrags_success(ifindex_smallmtu) || ret;
