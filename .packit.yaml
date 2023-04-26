@@ -1,5 +1,6 @@
 summary:
-    Run configure script and make with selftests
+    Run configure script and make with selftests using the Packit CI
+    form more info on this tool see https://packit.dev/
 jobs:
 - job: tests
   trigger: pull_request
