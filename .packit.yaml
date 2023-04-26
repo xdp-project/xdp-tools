@@ -6,6 +6,7 @@ jobs:
   targets:
     epel-9-x86_64:
       distros: [centos-9]
+    skip_build: true
 prepare:
   - name: packages
     how: install
