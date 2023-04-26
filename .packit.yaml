@@ -1,0 +1,34 @@
+summary:
+    Run configure script and make with selftests
+jobs:
+- job: tests
+  trigger: pull_request
+  targets:
+    epel-9-x86_64:
+      distros: [centos-9]
+prepare:
+  - name: packages
+    how: install
+    package:
+    # ~Minimum dependecies for configure script and makefile selftests
+    - bpftool
+    - clang
+    - elfutils-libelf
+    - elfutils-libelf-devel
+    - libbpf
+    - libbpf-devel
+    - llvm
+    - libpcap
+    - libpcap-devel
+    - m4
+    - sqlite-devel
+    - zlib-devel
+    - git
+execute:
+    script:
+      - git clone https://github.com/xdp-project/xdp-tools/
+      - cd xdp-tools
+      - export FORCE_SYSTEM_LIBBPF=1
+      # Run configure script and make with selftests
+      - ./configure
+      - make
