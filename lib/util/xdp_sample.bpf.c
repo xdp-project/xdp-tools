@@ -6,6 +6,11 @@
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_helpers.h>
 
+#ifndef HAVE_LIBBPF_BPF_PROGRAM__FLAGS
+/* bpf_trace_vprintk() appeared in the same libbpf version as bpf_program__flags() */
+static long (*bpf_trace_vprintk)(const char *fmt, __u32 fmt_size, const void *data, __u32 data_len) = (void *) 177;
+#endif
+
 SEC("tp_btf/xdp_cpumap_kthread")
 int BPF_PROG(tp_xdp_cpumap_kthread, int map_id, unsigned int processed,
 	     unsigned int drops, int sched, struct xdp_cpumap_stats *xdp_stats)
