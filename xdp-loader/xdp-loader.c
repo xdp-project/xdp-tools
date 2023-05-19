@@ -272,6 +272,13 @@ int do_unload(const void *cfg, __unused const char *pin_root_path)
 		goto out;
 	}
 
+	/* The feature probing done by libxdp makes libbpf output confusing
+	 * error messages even on unload. Silence the logging so we can provide
+	 * our own messages instead; this is a noop if verbose logging is
+	 * enabled.
+	 */
+	silence_libbpf_logging();
+
 	mp = xdp_multiprog__get_from_ifindex(opt->iface.ifindex);
 	if (IS_ERR_OR_NULL(mp)) {
 		pr_warn("No XDP program loaded on %s\n", opt->iface.ifname);
