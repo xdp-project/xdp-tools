@@ -1,5 +1,5 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
-ALL_TESTS="test_load test_section test_prog_name test_load_multi test_load_incremental test_load_clobber"
+ALL_TESTS="test_load test_section test_prog_name test_load_multi test_load_incremental test_load_clobber test_features"
 
 test_load()
 {
@@ -90,6 +90,32 @@ test_load_clobber()
     check_run $XDP_LOADER unload $NS --all -vv
 }
 
+check_xdp_feature()
+{
+    check_run ip link add dev v0 type veth peer name v1
+
+    $XDP_LOADER features v0 | grep "$1" | grep -q "$2"
+    ret=$?
+
+    ip link del dev v0
+
+    [ $ret -eq 1 ] && exit 1
+}
+
+test_features()
+{
+    skip_if_missing_kernel_symbol xdp_set_features_flag
+
+    check_xdp_feature NETDEV_XDP_ACT_BASIC yes
+    check_xdp_feature NETDEV_XDP_ACT_REDIRECT yes
+    check_xdp_feature NETDEV_XDP_ACT_NDO_XMIT no
+    check_xdp_feature NETDEV_XDP_ACT_XSK_ZEROCOPY no
+    check_xdp_feature NETDEV_XDP_ACT_HW_OFFLOAD no
+    check_xdp_feature NETDEV_XDP_ACT_RX_SG yes
+    check_xdp_feature NETDEV_XDP_ACT_NDO_XMIT_SG no
+
+    return 0
+}
 
 cleanup_tests()
 {
