@@ -1,4 +1,4 @@
-.TH "xdp-loader" "8" "JANUARY  9, 2023" "V1.3.1" "XDP program loader" 
+.TH "xdp-loader" "8" "JUNE  7, 2023" "V1.3.1" "XDP program loader"
 
 .SH "NAME"
 xdp-loader \- an XDP program loader
@@ -21,6 +21,7 @@ Where COMMAND can be one of:
        load        - load an XDP program on an interface
        unload      - unload an XDP program from an interface
        status      - show current XDP program status
+       features    - show XDP features supported by the NIC
        clean       - clean up detached program links in XDP bpffs directory
        help        - show the list of available commands
 \fP
@@ -159,6 +160,47 @@ Enable debug logging. Specify twice for even more verbosity.
 .SS "-h, --help"
 .PP
 Display a summary of the available options
+
+.SH "The FEATURES command"
+.PP
+The \fIfeatures\fP command displays the XDP features supported by the NIC.
+
+.PP
+Currently supported XDP features are:
+
+.SS "NETDEV_XDP_ACT_BASIC"
+.PP
+The networking device has basic support for running XDP programs, and can
+handle the base set of return codes (XDP_ABORTED, XDP_DROP, XDP_PASS, XDP_TX).
+
+.SS "NETDEV_XDP_ACT_REDIRECT"
+.PP
+The network device supports handling the XDP_REDIRECT return code. This means
+packets can be redirected from this device by XDP.
+
+.SS "NETDEV_XDP_ACT_NDO_XMIT"
+.PP
+The networking interfaces implements the ndo_xdp_xmit callback. This means
+packets can be redirected to this device by XDP.
+
+.SS "NETDEV_XDP_ACT_XSK_ZEROCOPY"
+.PP
+The networking device supports AF_XDP in zero copy mode.
+
+.SS "NETDEV_XDP_ACT_HW_OFFLOAD"
+.PP
+The networking device supports XDP hw offloading.
+
+.SS "NETDEV_XDP_ACT_RX_SG"
+.PP
+The networking device supports non-linear XDP frames on the receive side.
+This means XDP can be used with big MTUs on this device (if the XDP program
+is compiled with fragments support)
+
+.SS "NETDEV_XDP_ACT_NDO_XMIT_SG"
+.PP
+The networking device supports non-linear XDP frames on the transmit side. This
+means non-linear frames can be redirected to this device.
 
 .SH "The CLEAN command"
 .PP

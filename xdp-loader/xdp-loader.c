@@ -12,6 +12,7 @@
 #include <bpf/libbpf.h>
 #include <xdp/libxdp.h>
 #include <linux/err.h>
+#include <linux/netdev.h>
 
 #include "params.h"
 #include "logging.h"
@@ -370,6 +371,70 @@ int do_clean(const void *cfg, __unused const char *pin_root_path)
 	return libxdp_clean_references(opt->iface.ifindex);
 }
 
+static const struct featuresopt {
+	struct iface iface;
+} defaults_features = {};
+
+static struct prog_option features_options[] = {
+	DEFINE_OPTION("dev", OPT_IFNAME, struct featuresopt, iface,
+		      .positional = true,
+		      .metavar = "<ifname>",
+		      .required = true,
+		      .help = "Show XDP features for device <ifname>"),
+	END_OPTIONS
+};
+
+#define CHECK_XDP_FEATURE(f)	(opts.feature_flags & (f) ? "yes" : "no")
+static int iface_print_xdp_features(const struct iface *iface)
+{
+#ifdef HAVE_LIBBPF_BPF_XDP_QUERY
+	LIBBPF_OPTS(bpf_xdp_query_opts, opts);
+	int err;
+
+	err = bpf_xdp_query(iface->ifindex, 0, &opts);
+	if (err) {
+		pr_warn("The running kernel doesn't support querying XDP features (%d).\n", err);
+		return err;
+	}
+
+	/* NETDEV_XDP features are defined in <linux/netdev.h> kernel header */
+	printf("NETDEV_XDP_ACT_BASIC:\t\t%s\n",
+	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_BASIC));
+	printf("NETDEV_XDP_ACT_REDIRECT:\t%s\n",
+	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_REDIRECT));
+	printf("NETDEV_XDP_ACT_NDO_XMIT:\t%s\n",
+	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_NDO_XMIT));
+	printf("NETDEV_XDP_ACT_XSK_ZEROCOPY:\t%s\n",
+	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_XSK_ZEROCOPY));
+	printf("NETDEV_XDP_ACT_HW_OFFLOAD:\t%s\n",
+	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_HW_OFFLOAD));
+	printf("NETDEV_XDP_ACT_RX_SG:\t\t%s\n",
+	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_RX_SG));
+	printf("NETDEV_XDP_ACT_NDO_XMIT_SG:\t%s\n",
+	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_NDO_XMIT_SG));
+
+	if (opts.feature_flags & ~NETDEV_XDP_ACT_MASK)
+		pr_debug("unknown reported xdp features: 0x%llx\n",
+			 opts.feature_flags & ~NETDEV_XDP_ACT_MASK);
+
+	return 0;
+#else
+	__unused const void *i = iface;
+
+	pr_warn("Cannot display features, because xdp-loader was compiled against an "
+		"old version of libbpf without support for querying features.\n");
+
+	return -EOPNOTSUPP;
+#endif
+}
+
+int do_features(const void *cfg, __unused const char *pin_root_path)
+{
+	const struct featuresopt *opt = cfg;
+
+	return iface_print_xdp_features(&opt->iface);
+}
+
 int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 {
 	fprintf(stderr,
@@ -380,6 +445,7 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 		"       unload      - unload an XDP program from an interface\n"
 		"       status      - show current XDP program status\n"
 		"       clean       - clean up detached program links in XDP bpffs directory\n"
+		"       features    - show XDP features supported by the NIC\n"
 		"       help        - show this help message\n"
 		"\n"
 		"Use 'xdp-loader COMMAND --help' to see options for each command\n");
@@ -391,6 +457,7 @@ static const struct prog_command cmds[] = {
 	DEFINE_COMMAND(unload, "Unload an XDP program from an interface"),
 	DEFINE_COMMAND(clean, "Clean up detached program links in XDP bpffs directory"),
 	DEFINE_COMMAND(status, "Show XDP program status"),
+	DEFINE_COMMAND(features, "Show NIC XDP features"),
 	{ .name = "help", .func = do_help, .no_cfg = true },
 	END_COMMANDS
 };
@@ -399,6 +466,7 @@ union all_opts {
 	struct loadopt load;
 	struct unloadopt unload;
 	struct statusopt status;
+	struct featuresopt features;
 };
 
 int main(int argc, char **argv)
