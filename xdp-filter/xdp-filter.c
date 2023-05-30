@@ -255,11 +255,11 @@ int do_load(const void *cfg, const char *pin_root_path)
 {
 	char errmsg[STRERR_BUFSIZE], featbuf[100];
 	const struct loadopt *opt = cfg;
+	int err = EXIT_SUCCESS, lock_fd;
 	struct xdp_program *p = NULL;
-	int err = EXIT_SUCCESS;
 	unsigned int features;
+	char *filename = NULL;
 	__u32 used_feats;
-	char *filename;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
 	DECLARE_LIBXDP_OPTS(xdp_program_opts, xdp_opts, 0);
@@ -269,22 +269,28 @@ int do_load(const void *cfg, const char *pin_root_path)
 		return EXIT_FAILURE;
 	}
 
+	lock_fd = prog_lock_acquire(pin_root_path);
+	if (lock_fd < 0)
+		return lock_fd;
+
 	err = get_used_features(pin_root_path, &used_feats);
 	if (err) {
 		pr_warn("Error getting list of loaded programs: %s\n",
 			strerror(-err));
-		return err;
+		goto out;
 	}
+
+	err = EXIT_FAILURE;
 
 	features = opt->features;
 	if (opt->policy_mode == FEAT_DENY && used_feats & FEAT_ALLOW) {
 		pr_warn("xdp-filter is already loaded in allow policy mode. "
 			"Unload before loading in deny mode.\n");
-		return EXIT_FAILURE;
+		goto out;
 	} else if (opt->policy_mode == FEAT_ALLOW && used_feats & FEAT_DENY) {
 		pr_warn("xdp-filter is already loaded in deny policy mode. "
 			"Unload before loading in allow mode.\n");
-		return EXIT_FAILURE;
+		goto out;
 	}
 	features |= opt->policy_mode;
 
@@ -292,7 +298,7 @@ int do_load(const void *cfg, const char *pin_root_path)
 	if (!err) {
 		pr_warn("xdp-filter is already loaded on %s\n", opt->iface.ifname);
 		xdp_program__close(p);
-		return EXIT_FAILURE;
+		goto out;
 	}
 
 	print_flags(featbuf, sizeof(featbuf), print_features, features);
@@ -301,7 +307,7 @@ int do_load(const void *cfg, const char *pin_root_path)
 	filename = find_prog_file(features);
 	if (!filename) {
 		pr_warn("Couldn't find an eBPF program with the requested feature set!\n");
-		return EXIT_FAILURE;
+		goto out;
 	}
 
 	pr_debug("Found prog '%s' matching feature set to be loaded on interface '%s'.\n",
@@ -343,9 +349,9 @@ retry:
 	}
 
 out:
-	if (p)
-		xdp_program__close(p);
+	xdp_program__close(p);
 	free(filename);
+	prog_lock_release(lock_fd);
 	return err;
 }
 
@@ -479,13 +485,17 @@ static struct prog_option unload_options[] = {
 int do_unload(const void *cfg, const char *pin_root_path)
 {
 	const struct unloadopt *opt = cfg;
+	int err = EXIT_SUCCESS, lock_fd;
 	enum xdp_attach_mode mode;
 	struct xdp_program *prog;
-	int err = EXIT_SUCCESS;
 	char buf[100];
 	__u32 feats;
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, opts,
 			    .pin_root_path = pin_root_path);
+
+	lock_fd = prog_lock_acquire(pin_root_path);
+	if (lock_fd < 0)
+		return lock_fd;
 
 	if (opt->all) {
 		pr_debug("Removing xdp-filter from all interfaces\n");
@@ -534,6 +544,7 @@ clean_maps:
 		goto out;
 
 out:
+	prog_lock_release(lock_fd);
 	return err;
 }
 
@@ -598,7 +609,7 @@ static struct prog_option port_options[] = {
 
 int do_port(const void *cfg, const char *pin_root_path)
 {
-	int map_fd = -1, err = EXIT_SUCCESS;
+	int map_fd = -1, err = EXIT_SUCCESS, lock_fd;
 	char modestr[100], protostr[100];
 	const struct portopt *opt = cfg;
 	unsigned int proto = opt->proto;
@@ -607,6 +618,10 @@ int do_port(const void *cfg, const char *pin_root_path)
 	__u8 flags = 0;
 	__u64 counter;
 	__u32 map_key;
+
+	lock_fd = prog_lock_acquire(pin_root_path);
+	if (lock_fd < 0)
+		return lock_fd;
 
 	map_fd = get_pinned_map_fd(pin_root_path, textify(MAP_NAME_PORTS), &info);
 	if (map_fd < 0) {
@@ -661,6 +676,7 @@ int do_port(const void *cfg, const char *pin_root_path)
 out:
 	if (map_fd >= 0)
 		close(map_fd);
+	prog_lock_release(lock_fd);
 	return err;
 }
 
@@ -792,11 +808,15 @@ static struct prog_option ip_options[] = {
 
 static int do_ip(const void *cfg, const char *pin_root_path)
 {
-	int map_fd = -1, err = EXIT_SUCCESS;
+	int map_fd = -1, err = EXIT_SUCCESS, lock_fd;
 	char modestr[100], addrstr[100];
 	const struct ipopt *opt = cfg;
 	struct ip_addr addr = opt->addr;
 	bool v6;
+
+	lock_fd = prog_lock_acquire(pin_root_path);
+	if (lock_fd < 0)
+		return lock_fd;
 
 	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt->mode);
 	print_addr(addrstr, sizeof(addrstr), &opt->addr);
@@ -823,6 +843,7 @@ static int do_ip(const void *cfg, const char *pin_root_path)
 out:
 	if (map_fd >= 0)
 		close(map_fd);
+	prog_lock_release(lock_fd);
 	return err;
 }
 
@@ -883,10 +904,14 @@ static struct prog_option ether_options[] = {
 
 static int do_ether(const void *cfg, const char *pin_root_path)
 {
-	int err = EXIT_SUCCESS, map_fd = -1;
+	int err = EXIT_SUCCESS, map_fd = -1, lock_fd;
 	const struct etheropt *opt = cfg;
 	struct mac_addr addr = opt->addr;
 	char modestr[100], addrstr[100];
+
+	lock_fd = prog_lock_acquire(pin_root_path);
+	if (lock_fd < 0)
+		return lock_fd;
 
 	print_flags(modestr, sizeof(modestr), map_flags_srcdst, opt->mode);
 	print_macaddr(addrstr, sizeof(addrstr), &opt->addr);
@@ -909,6 +934,7 @@ static int do_ether(const void *cfg, const char *pin_root_path)
 out:
 	if (map_fd >= 0)
 		close(map_fd);
+	prog_lock_release(lock_fd);
 	return err;
 }
 
@@ -939,9 +965,13 @@ int print_iface_status(const struct iface *iface, struct xdp_program *prog,
 
 int do_status(__unused const void *cfg, const char *pin_root_path)
 {
-	int err = EXIT_SUCCESS, map_fd = -1;
+	int err = EXIT_SUCCESS, map_fd = -1, lock_fd;
 	struct bpf_map_info info = {};
 	struct stats_record rec = {};
+
+	lock_fd = prog_lock_acquire(pin_root_path);
+	if (lock_fd < 0)
+		return lock_fd;
 
 	map_fd = get_pinned_map_fd(pin_root_path, textify(XDP_STATS_MAP_NAME), &info);
 	if (map_fd < 0) {
@@ -1001,6 +1031,7 @@ int do_status(__unused const void *cfg, const char *pin_root_path)
 out:
 	if (map_fd >= 0)
 		close(map_fd);
+	prog_lock_release(lock_fd);
 	return err;
 }
 
@@ -1018,7 +1049,7 @@ static struct prog_option poll_options[] = {
 
 int do_poll(const void *cfg, const char *pin_root_path)
 {
-	int err = 0, map_fd = -1;
+	int err = 0, map_fd = -1, lock_fd;
 	const struct pollopt *opt = cfg;
 	bool exit = false;
 
@@ -1028,14 +1059,19 @@ int do_poll(const void *cfg, const char *pin_root_path)
 		goto out;
 	}
 
+	lock_fd = prog_lock_acquire(pin_root_path);
+	if (lock_fd < 0)
+		return lock_fd;
+
 	map_fd = get_pinned_map_fd(pin_root_path, textify(XDP_STATS_MAP_NAME), NULL);
 	if (map_fd < 0) {
 		err = map_fd;
 		pr_warn("Couldn't find stats map. Maybe xdp-filter is not loaded?\n");
-		goto out;
+		prog_lock_release(lock_fd);
+		return EXIT_FAILURE;
 	}
 
-	prog_lock_release(0);
+	prog_lock_release(lock_fd);
 	err = stats_poll(map_fd, opt->interval, &exit,
 			 pin_root_path, textify(XDP_STATS_MAP_NAME));
 	if (err) {

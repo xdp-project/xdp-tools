@@ -6,6 +6,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/file.h>
 #include <sys/types.h>
 #include <sys/resource.h>
 #include <sys/vfs.h>
@@ -711,139 +712,46 @@ int check_bpf_environ(void)
 	return 0;
 }
 
-static const char *lock_dir = RUNDIR;
-static char *prog_lock_file = NULL;
-static int prog_lock_fd = -1;
-static pid_t prog_pid = 0;
 
-void prog_lock_release(int signal)
+int prog_lock_acquire(const char *dir)
 {
-	struct sigaction sigact = { .sa_flags = SA_RESETHAND };
-	int err;
+	int lock_fd, err = 0;
+retry:
+	lock_fd = open(dir, O_DIRECTORY);
+	if (lock_fd < 0) {
+		if (errno == ENOENT && !mkdir(dir, S_IRWXU))
+			goto retry;
 
-	if (prog_lock_fd < 0 || !prog_lock_file)
-		return;
+		err = -errno;
+		pr_warn("Couldn't open lock directory at %s: %s\n",
+			dir, strerror(-err));
+		return err;
+	}
 
-	sigaction(SIGHUP, &sigact, NULL);
-	sigaction(SIGINT, &sigact, NULL);
-	sigaction(SIGSEGV, &sigact, NULL);
-	sigaction(SIGFPE, &sigact, NULL);
-	sigaction(SIGTERM, &sigact, NULL);
-
-	err = unlink(prog_lock_file);
+	err = flock(lock_fd, LOCK_EX);
 	if (err) {
 		err = -errno;
-		pr_warn("Unable to unlink lock file: %s\n", strerror(-err));
-		goto out;
+		pr_warn("Couldn't flock fd %d: %s\n", lock_fd, strerror(-err));
+		close(lock_fd);
+		return err;
 	}
 
-	close(prog_lock_fd);
-	free(prog_lock_file);
-	prog_lock_fd = -1;
-	prog_lock_file = NULL;
-
-out:
-	if (signal) {
-		pr_debug("Exiting on signal %d\n", signal);
-		if (prog_pid)
-			kill(prog_pid, signal);
-		else
-			exit(signal);
-	}
+	pr_debug("Acquired lock from %s with fd %d\n", dir, lock_fd);
+	return lock_fd;
 }
 
-int prog_lock_get(const char *progname)
+int prog_lock_release(int lock_fd)
 {
-	char buf[PATH_MAX];
 	int err;
-	struct sigaction sigact = { .sa_handler = prog_lock_release };
 
-	if (prog_lock_fd >= 0) {
-		pr_warn("Attempt to get prog_lock twice.\n");
-		return -EFAULT;
-	}
-
-	if (!prog_lock_file) {
-		err = try_snprintf(buf, sizeof(buf), "%s/%s.lck", lock_dir,
-				   progname);
-		if (err)
-			return err;
-
-		prog_lock_file = strdup(buf);
-		if (!prog_lock_file)
-			return -ENOMEM;
-	}
-
-	prog_pid = getpid();
-
-	if (sigaction(SIGHUP, &sigact, NULL) ||
-	    sigaction(SIGINT, &sigact, NULL) ||
-	    sigaction(SIGSEGV, &sigact, NULL) ||
-	    sigaction(SIGFPE, &sigact, NULL) ||
-	    sigaction(SIGTERM, &sigact, NULL)) {
-		err = -errno;
-		pr_warn("Unable to install signal handler: %s\n", strerror(-err));
-		return err;
-	}
-
-	prog_lock_fd = open(prog_lock_file, O_WRONLY | O_CREAT | O_EXCL, 0644);
-	if (prog_lock_fd < 0) {
-		err = -errno;
-		if (err == -EEXIST) {
-			pid_t pid = 0;
-			char buf[100];
-			ssize_t len;
-			int fd;
-
-			fd = open(prog_lock_file, O_RDONLY);
-			if (fd < 0) {
-				err = -errno;
-				pr_warn("Unable to open lockfile for reading: %s\n",
-					strerror(-err));
-				return err;
-			}
-
-			len = read(fd, buf, sizeof(buf) - 1);
-			err = -errno;
-			close(fd);
-			if (len > 0) {
-				buf[len] = '\0';
-				pid = strtoul(buf, NULL, 10);
-			}
-			if (!pid || err) {
-				pr_warn("Unable to read PID from lockfile: %s\n",
-					strerror(-err));
-				return err;
-			}
-			pr_warn("Unable to get program lock: Already held by pid %d\n",
-				pid);
-		} else {
-			pr_warn("Unable to get program lock: %s\n", strerror(-err));
-		}
-		return err;
-	}
-
-	err = dprintf(prog_lock_fd, "%d\n", prog_pid);
-	if (err < 0) {
-		err = -errno;
-		pr_warn("Unable to write pid to lock file: %s\n", strerror(-err));
-		goto out_err;
-	}
-
-	err = fsync(prog_lock_fd);
+	err = flock(lock_fd, LOCK_UN);
 	if (err) {
 		err = -errno;
-		pr_warn("Unable fsync() lock file: %s\n", strerror(-err));
-		goto out_err;
+		pr_warn("Couldn't unlock fd %d: %s\n", lock_fd, strerror(-err));
+	} else {
+		pr_debug("Released lock fd %d\n", lock_fd);
 	}
-
-	return 0;
-out_err:
-	unlink(prog_lock_file);
-	close(prog_lock_fd);
-	free(prog_lock_file);
-	prog_lock_file = NULL;
-	prog_lock_fd = -1;
+	close(lock_fd);
 	return err;
 }
 
