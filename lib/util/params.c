@@ -797,11 +797,7 @@ int dispatch_commands(const char *argv0, int argc, char **argv,
 	if (err)
 		goto out;
 
-	if (prog_lock_get(prog_name))
-		goto out;
-
 	ret = cmd->func(cfg, pin_root_path);
-	prog_lock_release(0);
 out:
 	free(cfg);
 	return ret;

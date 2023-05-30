@@ -88,8 +88,8 @@ int unlink_pinned_map(int dir_fd, const char *map_name);
 
 const char *action2str(__u32 action);
 
-int prog_lock_get(const char *progname);
-void prog_lock_release(int signal);
+int prog_lock_acquire(const char *directory);
+int prog_lock_release(int lock_fd);
 
 const char *get_libbpf_version(void);
 int iface_print_status(const struct iface *iface);
