@@ -83,6 +83,19 @@ int do_redirect_basic(const void *cfg, __unused const char *pin_root_path)
 		goto end_destroy;
 	}
 
+	/* We always set the frags support bit: nothing the program does is
+	 * incompatible with multibuf, and it's perfectly fine to load a program
+	 * with frags support on an interface with a small MTU. We don't risk
+	 * setting any flags the kernel will balk at, either, since libxdp will
+	 * do the feature probing for us and skip the flag if the kernel doesn't
+	 * support it.
+	 *
+	 * The function below returns EOPNOTSUPP it libbpf is too old to support
+	 * setting the flags, but we just ignore that, since in such a case the
+	 * best we can do is just attempt to run without the frags support.
+	 */
+	xdp_program__set_xdp_frags_support(xdp_prog, true);
+
 	ret = xdp_program__attach(xdp_prog, opt->iface_in.ifindex, opt->mode, 0);
 	if (ret < 0) {
 		pr_warn("Failed to attach XDP program: %s\n", strerror(-ret));
