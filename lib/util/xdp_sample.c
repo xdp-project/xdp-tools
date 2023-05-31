@@ -36,6 +36,7 @@
 #include "logging.h"
 
 #include "xdp_sample.skel.h"
+#include "xdp_load_bytes.skel.h"
 
 #define __sample_print(fmt, cond, ...)                                         \
 	({                                                                     \
@@ -180,6 +181,18 @@ bool sample_probe_cpumap_compat(void)
 	skel = xdp_sample__open_and_load();
 	res = !!skel;
 	xdp_sample__destroy(skel);
+
+	return res;
+}
+
+bool sample_probe_xdp_load_bytes(void)
+{
+	struct xdp_load_bytes *skel;
+	bool res;
+
+	skel = xdp_load_bytes__open_and_load();
+	res = !!skel;
+	xdp_load_bytes__destroy(skel);
 
 	return res;
 }

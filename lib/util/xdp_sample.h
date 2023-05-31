@@ -45,6 +45,7 @@ void sample_teardown(void);
 int sample_run(int interval, void (*post_cb)(void *), void *ctx);
 bool sample_is_compat(enum sample_compat compat_value);
 bool sample_probe_cpumap_compat(void);
+bool sample_probe_xdp_load_bytes(void);
 void sample_check_cpumap_compat(struct bpf_program *prog,
 				struct bpf_program *prog_compat);
 
