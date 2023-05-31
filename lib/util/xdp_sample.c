@@ -1224,9 +1224,9 @@ static int get_num_rxqs(const char *ifname)
 	}
 
 	ret = ch.rx_count + ch.combined_count;
+	pr_debug("Got %d queues for ifname %s\n", ret, ifname);
 out:
 	close(fd);
-	pr_debug("Got %d queues for ifname %s\n", ret, ifname);
 	return ret;
 }
 
