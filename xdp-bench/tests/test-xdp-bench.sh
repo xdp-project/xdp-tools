@@ -1,6 +1,6 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 XDP_BENCH=${XDP_BENCH:-./xdp-bench}
-ALL_TESTS="test_drop test_pass test_tx test_rxq_stats test_redirect test_redirect_cpu test_redirect_map test_redirect_map_egress test_redirect_multi test_redirect_multi_egress"
+ALL_TESTS="test_drop test_pass test_tx test_xdp_load_bytes test_rxq_stats test_redirect test_redirect_cpu test_redirect_map test_redirect_map_egress test_redirect_multi test_redirect_multi_egress"
 
 test_basic()
 {
@@ -10,7 +10,6 @@ test_basic()
     check_run $XDP_BENCH $action $NS -vv
     check_run $XDP_BENCH $action $NS -p read-data -vv
     check_run $XDP_BENCH $action $NS -p parse-ip -vv
-    check_run $XDP_BENCH $action $NS -p parse-ip -l -vv
     check_run $XDP_BENCH $action $NS -p swap-macs -vv
     check_run $XDP_BENCH $action $NS -m skb -vv
     check_run $XDP_BENCH $action $NS -e -vv
@@ -27,6 +26,17 @@ test_pass()
 test_tx()
 {
     test_basic tx
+}
+
+test_xdp_load_bytes()
+{
+    skip_if_missing_xdp_load_bytes
+
+    export XDP_SAMPLE_IMMEDIATE_EXIT=1
+
+    for action in drop pass tx; do
+        check_run $XDP_BENCH $action $NS -p parse-ip -l -vv
+    done
 }
 
 test_rxq_stats()

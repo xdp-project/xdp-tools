@@ -185,10 +185,12 @@ static struct prog_option load_options[] = {
 
 enum probe_action {
         PROBE_CPUMAP_PROGRAM,
+        PROBE_XDP_LOAD_BYTES,
 };
 
 struct enum_val probe_actions[] = {
        {"cpumap-prog", PROBE_CPUMAP_PROGRAM},
+       {"xdp-load-bytes", PROBE_XDP_LOAD_BYTES},
        {NULL, 0}
 };
 
@@ -204,6 +206,9 @@ int do_probe(const void *cfg, __unused const char *pin_root_path)
 	switch (opt->action) {
 	case PROBE_CPUMAP_PROGRAM:
 		res = sample_probe_cpumap_compat();
+		break;
+	case PROBE_XDP_LOAD_BYTES:
+		res = sample_probe_xdp_load_bytes();
 		break;
         default:
                 return EXIT_FAILURE;

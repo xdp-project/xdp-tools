@@ -147,6 +147,13 @@ skip_if_missing_cpumap_attach()
     fi
 }
 
+skip_if_missing_xdp_load_bytes()
+{
+    if ! $TEST_PROG_DIR/test-tool probe xdp-load-bytes; then
+        exit "$SKIPPED_TEST"
+    fi
+}
+
 skip_if_missing_kernel_symbol()
 {
     if ! grep -q "$1" /proc/kallsyms; then
