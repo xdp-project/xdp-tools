@@ -15,19 +15,10 @@
 #include "logging.h"
 #include "util.h"
 #include "xdp_sample.h"
+#include "compat.h"
 
 
 #define PROG_NAME "test-tool"
-
-
-#ifndef HAVE_LIBBPF_BPF_OBJECT__NEXT_PROGRAM
-static struct bpf_program *bpf_object__next_program(const struct bpf_object *obj,
-  						    struct bpf_program *prog)
-{
-  	return bpf_program__next(prog, obj);
-}
-#endif
-
 
 struct enum_val xdp_modes[] = {
        {"native", XDP_MODE_NATIVE},
