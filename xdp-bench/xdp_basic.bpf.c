@@ -11,20 +11,17 @@
  * General Public License for more details.
  */
 #include <bpf/vmlinux.h>
+#include <linux/bpf.h>
 #include <xdp/xdp_sample_shared.h>
 #include <xdp/xdp_sample.bpf.h>
 #include <xdp/xdp_sample_common.bpf.h>
 #include <xdp/parsing_helpers.h>
 
-#include "xdp_basic.shared.h"
-
 #ifndef HAVE_LIBBPF_BPF_PROGRAM__TYPE
 static long (*bpf_xdp_load_bytes)(struct xdp_md *xdp_md, __u32 offset, void *buf, __u32 len) = (void *) 189;
 #endif
 
-const volatile enum basic_program_mode prog_mode = BASIC_NO_TOUCH;
 const volatile bool rxq_stats = 0;
-const volatile bool xdp_load_bytes = 0;
 const volatile enum xdp_action action = XDP_DROP;
 
 static int parse_ip_header_load(struct xdp_md *ctx)
@@ -89,62 +86,138 @@ static int parse_ip_header(struct xdp_md *ctx)
 	return 0;
 }
 
+static int record_stats(__u32 rxq_idx, bool success)
+{
+	__u32 key = bpf_get_smp_processor_id();
+	struct datarec *rec;
+
+	rec = bpf_map_lookup_elem(&rx_cnt, &key);
+	if (!rec)
+		return -1;
+
+	NO_TEAR_INC(rec->processed);
+	if (action == XDP_DROP && success)
+		NO_TEAR_INC(rec->dropped);
+
+	if (rxq_stats) {
+		struct datarec *rxq_rec;
+
+		rxq_rec = bpf_map_lookup_elem(&rxq_cnt, &rxq_idx);
+		if (!rxq_rec)
+			return -1;
+
+		NO_TEAR_INC(rxq_rec->processed);
+
+		if (action == XDP_DROP && success)
+			NO_TEAR_INC(rxq_rec->dropped);
+	}
+
+	return 0;
+}
+
+
 SEC("xdp")
 int xdp_basic_prog(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
-	__u32 key = bpf_get_smp_processor_id();
-	struct datarec *rec, *rxq_rec;
 	struct ethhdr *eth = data;
 	__u64 nh_off;
 
 	nh_off = sizeof(*eth);
 	if (data + nh_off > data_end)
-		return XDP_DROP;
+		return XDP_ABORTED;
 
-	rec = bpf_map_lookup_elem(&rx_cnt, &key);
-	if (!rec)
-		return XDP_PASS;
-	NO_TEAR_INC(rec->processed);
-
-	if (rxq_stats) {
-		key = ctx->rx_queue_index;
-		rxq_rec = bpf_map_lookup_elem(&rxq_cnt, &key);
-		if (!rxq_rec)
-			return XDP_PASS;
-		NO_TEAR_INC(rxq_rec->processed);
-	}
-
-	switch (prog_mode) {
-	case BASIC_READ_DATA:
-		if (bpf_ntohs(eth->h_proto) < ETH_P_802_3_MIN)
-			return XDP_ABORTED;
-		break;
-	case BASIC_PARSE_IPHDR:
-		if (xdp_load_bytes) {
-			if (parse_ip_header_load(ctx))
-				return XDP_ABORTED;
-		} else {
-			if (parse_ip_header(ctx))
-				return XDP_ABORTED;
-		}
-		break;
-	case BASIC_SWAP_MACS:
-		swap_src_dst_mac(data);
-		break;
-	case BASIC_NO_TOUCH:
-	default:
-		break;
-	}
-
-	if (action == XDP_DROP) {
-		NO_TEAR_INC(rec->dropped);
-		if (rxq_stats)
-			NO_TEAR_INC(rxq_rec->dropped);
-	}
+	if (record_stats(ctx->rx_queue_index, true))
+		return XDP_ABORTED;
 
 	return action;
+}
+
+SEC("xdp")
+int xdp_read_data_prog(struct xdp_md *ctx)
+{
+	void *data_end = (void *)(long)ctx->data_end;
+	void *data = (void *)(long)ctx->data;
+	struct ethhdr *eth = data;
+	int ret = action;
+	__u64 nh_off;
+
+	nh_off = sizeof(*eth);
+	if (data + nh_off > data_end)
+		return XDP_ABORTED;
+
+	if (bpf_ntohs(eth->h_proto) < ETH_P_802_3_MIN)
+		ret = XDP_ABORTED;
+
+	if (record_stats(ctx->rx_queue_index, ret==action))
+		return XDP_ABORTED;
+
+	return ret;
+}
+
+SEC("xdp")
+int xdp_swap_macs_prog(struct xdp_md *ctx)
+{
+	void *data_end = (void *)(long)ctx->data_end;
+	void *data = (void *)(long)ctx->data;
+	struct ethhdr *eth = data;
+	__u64 nh_off;
+
+	nh_off = sizeof(*eth);
+	if (data + nh_off > data_end)
+		return XDP_ABORTED;
+
+	swap_src_dst_mac(data);
+
+	if (record_stats(ctx->rx_queue_index, true))
+		return XDP_ABORTED;
+
+	return action;
+}
+
+SEC("xdp")
+int xdp_parse_prog(struct xdp_md *ctx)
+{
+	void *data_end = (void *)(long)ctx->data_end;
+	void *data = (void *)(long)ctx->data;
+	struct ethhdr *eth = data;
+	int ret = action;
+	__u64 nh_off;
+
+	nh_off = sizeof(*eth);
+	if (data + nh_off > data_end)
+		return XDP_ABORTED;
+
+	if (parse_ip_header(ctx))
+		ret = XDP_ABORTED;
+
+	if (record_stats(ctx->rx_queue_index, ret==action))
+		return XDP_ABORTED;
+
+	return ret;
+}
+
+SEC("xdp")
+int xdp_parse_load_bytes_prog(struct xdp_md *ctx)
+{
+	void *data_end = (void *)(long)ctx->data_end;
+	void *data = (void *)(long)ctx->data;
+	struct ethhdr *eth = data;
+	int ret = action;
+	__u64 nh_off;
+
+	nh_off = sizeof(*eth);
+	if (data + nh_off > data_end)
+		return XDP_ABORTED;
+
+	if (parse_ip_header_load(ctx))
+		ret = XDP_ABORTED;
+
+	if (record_stats(ctx->rx_queue_index, ret==action))
+		return XDP_ABORTED;
+
+	return ret;
 }
 
 char _license[] SEC("license") = "GPL";

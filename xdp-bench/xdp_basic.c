@@ -41,6 +41,7 @@ static int do_basic(const struct basic_opts *opt, enum xdp_action action)
 {
 	DECLARE_LIBBPF_OPTS(xdp_program_opts, opts);
 	struct xdp_program *xdp_prog = NULL;
+	struct bpf_program *prog = NULL;
 	int ret = EXIT_FAIL_OPTION;
 	struct xdp_basic *skel;
 
@@ -65,15 +66,33 @@ static int do_basic(const struct basic_opts *opt, enum xdp_action action)
 	if (action == XDP_DROP)
 		mask |= SAMPLE_DROP_OK;
 
-	skel->rodata->prog_mode = opt->program_mode;
-	skel->rodata->xdp_load_bytes = opt->load_bytes;
 	if (opt->rxq_stats) {
 		skel->rodata->rxq_stats = true;
 		mask |= SAMPLE_RXQ_STATS;
 	}
 
+	/* Make sure we only load the one XDP program we are interested in */
+	while ((prog = bpf_object__next_program(skel->obj, prog)) != NULL)
+		if (bpf_program__type(prog) == BPF_PROG_TYPE_XDP &&
+		    bpf_program__expected_attach_type(prog) == BPF_XDP)
+			bpf_program__set_autoload(prog, false);
+
+	switch (opt->program_mode) {
+	case BASIC_NO_TOUCH:
+		opts.prog_name = "xdp_basic_prog";
+		break;
+	case BASIC_READ_DATA:
+		opts.prog_name = "xdp_read_data_prog";
+		break;
+	case BASIC_PARSE_IPHDR:
+		opts.prog_name = opt->load_bytes ? "xdp_parse_load_bytes_prog" : "xdp_parse_prog";
+		break;
+	case BASIC_SWAP_MACS:
+		opts.prog_name = "xdp_swap_macs_prog";
+		break;
+	}
+
 	opts.obj = skel->obj;
-	opts.prog_name = bpf_program__name(skel->progs.xdp_basic_prog);
 	xdp_prog = xdp_program__create(&opts);
 	if (!xdp_prog) {
 		ret = -errno;

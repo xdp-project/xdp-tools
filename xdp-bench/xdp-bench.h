@@ -6,8 +6,6 @@
 #include "params.h"
 #include "util.h"
 
-#include "xdp_basic.shared.h"
-
 #define MAX_IFACE_NUM 32
 
 int do_drop(const void *cfg, const char *pin_root_path);
@@ -17,6 +15,13 @@ int do_redirect_basic(const void *cfg, const char *pin_root_path);
 int do_redirect_cpumap(const void *cfg, const char *pin_root_path);
 int do_redirect_devmap(const void *cfg, const char *pin_root_path);
 int do_redirect_devmap_multi(const void *cfg, const char *pin_root_path);
+
+enum basic_program_mode {
+	BASIC_NO_TOUCH,
+	BASIC_READ_DATA,
+	BASIC_PARSE_IPHDR,
+	BASIC_SWAP_MACS,
+};
 
 struct basic_opts {
 	bool extended;
