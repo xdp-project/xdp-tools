@@ -1645,6 +1645,39 @@ struct xdp_program *xdp_program__clone(struct xdp_program *prog, unsigned int fl
 					    prog->prog_name, true);
 }
 
+#ifndef HAVE_LIBBPF_BPF_PROGRAM__FLAGS
+static bool kernel_has_frags_support(void)
+{
+	pr_debug("Can't support frags with old version of libbpf that doesn't support setting program flags.\n");
+	return false;
+}
+#else
+static bool kernel_has_frags_support(void)
+{
+	struct xdp_program *test_prog;
+	bool ret = false;
+	int err;
+
+	pr_debug("Checking for kernel frags support\n");
+	test_prog = __xdp_program__find_file("xdp-dispatcher.o", NULL, "xdp_pass", NULL);
+	if (IS_ERR(test_prog)) {
+		err = PTR_ERR(test_prog);
+		pr_warn("Couldn't open BPF file xdp-dispatcher.o\n");
+		return false;
+	}
+
+	bpf_program__set_flags(test_prog->bpf_prog, BPF_F_XDP_HAS_FRAGS);
+	err = xdp_program__load(test_prog);
+	if (!err) {
+		pr_debug("Kernel supports XDP programs with frags\n");
+		ret = true;
+	} else {
+		pr_debug("Kernel DOES NOT support XDP programs with frags\n");
+	}
+	xdp_program__close(test_prog);
+	return ret;
+}
+#endif // HAVE_LIBBPF_BPF_PROGRAM__FLAGS
 
 static int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
 				      enum xdp_attach_mode mode)
@@ -1652,6 +1685,9 @@ static int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
 	int err;
 
 	if (prog->prog_fd < 0) {
+		if (!kernel_has_frags_support())
+			xdp_program__set_xdp_frags_support(prog, false);
+
 		bpf_program__set_type(prog->bpf_prog, BPF_PROG_TYPE_XDP);
 		err = xdp_program__load(prog);
 		if (err)
@@ -2046,39 +2082,6 @@ int xdp_program__test_run(struct xdp_program *prog, struct bpf_test_run_opts *op
 
 	return libxdp_err(err);
 }
-
-#ifndef HAVE_LIBBPF_BPF_PROGRAM__FLAGS
-static int xdp_multiprog__check_kernel_frags_support(__unused struct xdp_multiprog *mp)
-{
-	pr_debug("Can't support frags with old version of libbpf that doesn't support setting program flags.\n");
-	return 0;
-}
-#else
-static int xdp_multiprog__check_kernel_frags_support(struct xdp_multiprog *mp)
-{
-	struct xdp_program *test_prog;
-	int err;
-
-	pr_debug("Checking for kernel frags support\n");
-	test_prog = __xdp_program__find_file("xdp-dispatcher.o", NULL, "xdp_pass", NULL);
-	if (IS_ERR(test_prog)) {
-		err = PTR_ERR(test_prog);
-		pr_warn("Couldn't open BPF file xdp-dispatcher.o\n");
-		return err;
-	}
-
-	bpf_program__set_flags(test_prog->bpf_prog, BPF_F_XDP_HAS_FRAGS);
-	err = xdp_program__load(test_prog);
-	if (!err) {
-		pr_debug("Kernel supports XDP programs with frags\n");
-		mp->kernel_frags_support = true;
-	} else {
-		pr_debug("Kernel DOES NOT support XDP programs with frags\n");
-	}
-	xdp_program__close(test_prog);
-	return 0;
-}
-#endif // HAVE_LIBBPF_BPF_PROGRAM__FLAGS
 
 void xdp_multiprog__close(struct xdp_multiprog *mp)
 {
@@ -2928,9 +2931,7 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	if (IS_ERR(mp))
 		return mp;
 
-	err = xdp_multiprog__check_kernel_frags_support(mp);
-	if (err)
-		goto err;
+	mp->kernel_frags_support = kernel_has_frags_support();
 
 	if (old_mp) {
 		struct xdp_program *prog;
