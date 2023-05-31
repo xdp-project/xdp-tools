@@ -278,6 +278,7 @@ check_libbpf_functions()
     check_libbpf_function "bpf_program__insn_cnt" "(NULL)" "" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
     check_libbpf_function "bpf_program__type" "(NULL)" "" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
     check_libbpf_function "bpf_program__flags" "(NULL)" "" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
+    check_libbpf_function "bpf_program__expected_attach_type" "(NULL)" "" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
     check_libbpf_function "bpf_map_create" "(0, NULL, 0, 0, 0, NULL)" "" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
     check_libbpf_function "perf_buffer__new_raw" "(0, 0, NULL, NULL, NULL, NULL)" "" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
     check_libbpf_function "bpf_xdp_attach" "(0, 0, 0, NULL)" "" "$LIBBPF_CFLAGS" "$LIBBPF_LDLIBS"
