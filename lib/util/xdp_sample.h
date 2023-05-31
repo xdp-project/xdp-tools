@@ -6,6 +6,7 @@
 #include <getopt.h>
 
 #include <xdp/xdp_sample_shared.h>
+#include "compat.h"
 
 enum stats_mask {
 	_SAMPLE_REDIRECT_MAP         = 1U << 0,
