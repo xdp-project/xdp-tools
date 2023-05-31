@@ -16,6 +16,16 @@
 #include <xdp/xdp_sample_common.bpf.h>
 #include <xdp/parsing_helpers.h>
 
+#if defined(HAVE_LIBBPF_BPF_PROGRAM__FLAGS) && defined(DEBUG)
+/* We use the many-argument version of bpf_printk() for debugging, so only
+ * enable it if we have the libbpf helper that selects the vprintf version. This
+ * was introduced in libbpf 0.6.0, which is the same versionn as the
+ * bpf_program__flags() method, so use that as an indicator since we don't
+ * feature detect on the BPF helpers themselves.
+ */
+#define TCP_DEBUG
+#endif
+
 char _license[] SEC("license") = "GPL";
 
 struct {
@@ -202,7 +212,7 @@ int xdp_handle_tcp_recv(struct xdp_md *ctx)
 	}
 
 	ack_seq = bpf_ntohl(tcphdr->ack_seq);
-#ifdef DEBUG
+#ifdef TCP_DEBUG
 	bpf_printk("Got state seq %u ack_seq %u new %u seq %u new %u window %u\n",
 		   fstate->seq,
 		   fstate->ack_seq, ack_seq,
@@ -246,7 +256,7 @@ int xdp_redirect_send_tcp(struct xdp_md *ctx)
 	struct tcphdr *tcphdr;
 	struct datarec *rec;
 	__u8 resend = 0;
-#ifdef DEBUG
+#ifdef TCP_DEBUG
 	__u8 print = 0;
 #endif
 	__u16 pkt_len;
@@ -292,7 +302,7 @@ int xdp_redirect_send_tcp(struct xdp_md *ctx)
 	new_seq = fstate->seq;
 	ack_seq = fstate->ack_seq;
 	window = fstate->window << fstate->wscale;
-#ifdef DEBUG
+#ifdef TCP_DEBUG
 	if (fstate->last_print != fstate->seq) {
 		fstate->last_print = fstate->seq;
 		print = 1;
@@ -305,7 +315,7 @@ int xdp_redirect_send_tcp(struct xdp_md *ctx)
 		 */
 		action = XDP_DROP;
 		bpf_spin_unlock(&fstate->lock);
-#ifdef DEBUG
+#ifdef TCP_DEBUG
 		if (print)
 			bpf_printk("Dropping because %u isn't before %u (ack_seq %u wnd %u)",
 				   new_seq + pkt_len, ack_seq + window, ack_seq, window);
