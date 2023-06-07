@@ -65,7 +65,7 @@ int main(int argc, char **argv)
 	struct monitoropt cfg = {};
 	struct xdp_monitor *skel;
 
-	if (parse_cmdline_args(argc, argv, xdpmonitor_options, &cfg,
+	if (parse_cmdline_args(argc, argv, xdpmonitor_options, &cfg, sizeof(cfg),
 			       PROG_NAME, PROG_NAME, __doc__,
 			       &defaults_monitoropt) != 0)
 		return ret;
