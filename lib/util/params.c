@@ -667,8 +667,8 @@ static int set_pos_opt(void *cfg, struct prog_option *all_opts, char *optarg)
 }
 
 int parse_cmdline_args(int argc, char **argv, struct prog_option *poptions,
-		       void *cfg, const char *prog, const char *usage_cmd,
-		       const char *doc, const void *defaults)
+		       void *cfg, size_t cfg_size, const char *prog,
+		       const char *usage_cmd, const char *doc, const void *defaults)
 {
 	struct prog_option *opt_iter;
 	struct option *long_options;
@@ -681,6 +681,9 @@ int parse_cmdline_args(int argc, char **argv, struct prog_option *poptions,
 		pr_warn("Unable to malloc()\n");
 		return -ENOMEM;
 	}
+
+	if (defaults)
+		memcpy(cfg, defaults, cfg_size);
 
 	/* Parse commands line args */
 	while ((opt = getopt_long(argc, argv, optstring,
@@ -733,11 +736,6 @@ int parse_cmdline_args(int argc, char **argv, struct prog_option *poptions,
 			usage(prog, doc, poptions, full_help);
 			err = EXIT_FAILURE;
 			goto out;
-		} else if (defaults) {
-			void *dst = cfg + opt_iter->cfg_offset;
-			const void *src = defaults + opt_iter->cfg_offset;
-
-			memcpy(dst, src, opt_iter->opt_size);
 		}
 	}
 out:
@@ -783,7 +781,7 @@ int dispatch_commands(const char *argv0, int argc, char **argv,
 	if (len < 0 || (size_t)len >= sizeof(usagebuf))
 		goto out;
 
-	err = parse_cmdline_args(argc, argv, cmd->options, cfg, prog_name, usagebuf,
+	err = parse_cmdline_args(argc, argv, cmd->options, cfg, cfg_size, prog_name, usagebuf,
 				 cmd->doc, cmd->default_cfg);
 	if (err)
 		goto out;

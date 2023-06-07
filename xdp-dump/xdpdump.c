@@ -1902,7 +1902,8 @@ static void signal_handler(__unused int signo)
  *****************************************************************************/
 int main(int argc, char **argv)
 {
-	if (parse_cmdline_args(argc, argv, xdpdump_options, &cfg_dumpopt,
+	if (parse_cmdline_args(argc, argv, xdpdump_options,
+			       &cfg_dumpopt, sizeof(cfg_dumpopt),
 			       PROG_NAME, PROG_NAME,
 			       "XDPDump tool to dump network traffic",
 			       &defaults_dumpopt) != 0)
