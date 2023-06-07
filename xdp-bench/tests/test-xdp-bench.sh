@@ -35,7 +35,7 @@ test_xdp_load_bytes()
     export XDP_SAMPLE_IMMEDIATE_EXIT=1
 
     for action in drop pass tx; do
-        check_run $XDP_BENCH $action $NS -p parse-ip -l -vv
+        check_run $XDP_BENCH $action $NS -p parse-ip -l load-bytes -vv
     done
 }
 
