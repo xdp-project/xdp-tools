@@ -40,6 +40,7 @@ struct prog_option {
 	void *typearg;
 	bool required;
 	bool positional;
+	bool hidden;
 	unsigned int min_num;
 	unsigned int max_num;
 	unsigned int num_set;
