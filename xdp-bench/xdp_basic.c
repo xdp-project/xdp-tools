@@ -85,7 +85,7 @@ static int do_basic(const struct basic_opts *opt, enum xdp_action action)
 		opts.prog_name = "xdp_read_data_prog";
 		break;
 	case BASIC_PARSE_IPHDR:
-		opts.prog_name = opt->load_bytes ? "xdp_parse_load_bytes_prog" : "xdp_parse_prog";
+		opts.prog_name = (opt->load_mode == BASIC_LOAD_BYTES) ? "xdp_parse_load_bytes_prog" : "xdp_parse_prog";
 		break;
 	case BASIC_SWAP_MACS:
 		opts.prog_name = "xdp_swap_macs_prog";

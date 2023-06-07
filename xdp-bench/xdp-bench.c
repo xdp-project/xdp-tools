@@ -42,6 +42,12 @@ struct enum_val basic_program_modes[] = {
        {NULL, 0}
 };
 
+struct enum_val basic_load_modes[] = {
+       {"dpa", BASIC_LOAD_DPA},
+       {"load-bytes", BASIC_LOAD_BYTES},
+       {NULL, 0}
+};
+
 struct enum_val cpumap_remote_actions[] = {
        {"disabled", ACTION_DISABLED},
        {"drop", ACTION_DROP},
@@ -70,12 +76,14 @@ struct prog_option basic_options[] = {
 	DEFINE_OPTION("program-mode", OPT_ENUM, struct basic_opts, program_mode,
 		      .typearg = basic_program_modes,
 		      .hidden = true),
+	DEFINE_OPTION("load-mode", OPT_ENUM, struct basic_opts, load_mode,
+		      .short_opt = 'l',
+                      .metavar = "<mode>",
+                      .typearg = basic_load_modes,
+		      .help = "How to load data when parsing IP header (with -p parse-ip; default dpa)"),
 	DEFINE_OPTION("rxq-stats", OPT_BOOL, struct basic_opts, rxq_stats,
 		      .short_opt = 'r',
 		      .help = "Collect per-RXQ drop statistics"),
-	DEFINE_OPTION("load-bytes", OPT_BOOL, struct basic_opts, load_bytes,
-		      .short_opt = 'l',
-		      .help = "Use xdp_load_bytes() helper when parsing IP header"),
 	DEFINE_OPTION("interval", OPT_U32, struct basic_opts, interval,
 		      .short_opt = 'i',
 		      .metavar = "<seconds>",
