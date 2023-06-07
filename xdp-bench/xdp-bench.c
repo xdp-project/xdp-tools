@@ -62,11 +62,14 @@ struct enum_val cpumap_program_modes[] = {
 
 
 struct prog_option basic_options[] = {
-	DEFINE_OPTION("program-mode", OPT_ENUM, struct basic_opts, program_mode,
+	DEFINE_OPTION("packet-operation", OPT_ENUM, struct basic_opts, program_mode,
 		      .short_opt = 'p',
-		      .metavar = "<mode>",
+		      .metavar = "<action>",
 		      .typearg = basic_program_modes,
 		      .help = "Action to take before dropping packet."),
+	DEFINE_OPTION("program-mode", OPT_ENUM, struct basic_opts, program_mode,
+		      .typearg = basic_program_modes,
+		      .hidden = true),
 	DEFINE_OPTION("rxq-stats", OPT_BOOL, struct basic_opts, rxq_stats,
 		      .short_opt = 'r',
 		      .help = "Collect per-RXQ drop statistics"),

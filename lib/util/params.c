@@ -456,7 +456,7 @@ static void _print_options(const struct prog_option *poptions, bool required)
 	const struct prog_option *opt;
 
 	FOR_EACH_OPTION (poptions, opt) {
-		if (opt->required != required)
+		if (opt->required != required || opt->hidden)
 			continue;
 
 		if (opt->positional) {
