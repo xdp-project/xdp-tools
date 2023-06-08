@@ -73,7 +73,7 @@ install: all install_local
 	install -m 0755 -d $(DESTDIR)$(SBINDIR)
 	install -m 0755 -d $(DESTDIR)$(BPF_OBJECT_DIR)
 	$(if $(USER_TARGETS),install -m 0755 $(USER_TARGETS) $(DESTDIR)$(SBINDIR))
-	$(if $(XDP_OBJ_INSTALL),install -m 0755 $(XDP_OBJ_INSTALL) $(DESTDIR)$(BPF_OBJECT_DIR))
+	$(if $(XDP_OBJ_INSTALL),install -m 0644 $(XDP_OBJ_INSTALL) $(DESTDIR)$(BPF_OBJECT_DIR))
 	$(if $(MAN_FILES),install -m 0755 -d $(DESTDIR)$(MANDIR)/man8)
 	$(if $(MAN_FILES),install -m 0644 $(MAN_FILES) $(DESTDIR)$(MANDIR)/man8)
 	$(if $(SCRIPTS_FILES),install -m 0755 -d $(DESTDIR)$(SCRIPTSDIR))
