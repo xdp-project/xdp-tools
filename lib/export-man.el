@@ -58,6 +58,7 @@
       (replace-regexp-in-buffer "VERSION" version)
       (replace-regexp-in-buffer "^.SH \"\\([^\"]+\\) - \\([^\"]+\\)\""
                                 ".SH \"NAME\"\n\\1 \\\\- \\2\n.SH \"SYNOPSIS\"")
+      (delete-trailing-whitespace)
       (save-buffer))))
 
 (defun export-man-page (outfile infile enabled-features version)

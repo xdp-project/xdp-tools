@@ -1,4 +1,4 @@
-.TH "xdpdump" "8" "JANUARY 13, 2021" "V1.3.1" "a simple tcpdump like tool for capturing packets at the XDP layer" 
+.TH "xdpdump" "8" "JANUARY 13, 2021" "V1.3.1" "a simple tcpdump like tool for capturing packets at the XDP layer"
 
 .SH "NAME"
 xdpdump \- a simple tcpdump like tool for capturing packets at the XDP layer
@@ -146,7 +146,7 @@ actual filtering:
 Interface        Prio  Program name      Mode     ID   Tag               Chain actions
 --------------------------------------------------------------------------------------
 lo                     <No XDP program loaded!>
-eth0                   xdp_dispatcher    skb      10651 d51e469e988d81da 
+eth0                   xdp_dispatcher    skb      10651 d51e469e988d81da
  =>              10     xdpfilt_alw_all           10669 0b394f43ab24501c  XDP_PASS
 \fP
 .fi
@@ -217,7 +217,7 @@ One final example capturing specific XDP programs loaded on the interface:
 Interface        Prio  Program name      Mode     ID   Tag               Chain actions
 --------------------------------------------------------------------------------------
 lo                     <No XDP program loaded!>
-eth0                   xdp_dispatcher    skb      10558 d51e469e988d81da 
+eth0                   xdp_dispatcher    skb      10558 d51e469e988d81da
  =>              5      xdp_test_prog_w           10576 b5a46c6e9935298c  XDP_PASS
  =>              10     xdp_pass                  10582 3b185187f1855c4c  XDP_PASS
  =>              10     xdp_pass                  10587 3b185187f1855c4c  XDP_PASS
