@@ -54,7 +54,7 @@ const char *get_driver_name(int ifindex);
 int get_mac_addr(int ifindex, void *mac_addr);
 
 #pragma GCC diagnostic push
-#ifndef __clang__
+#if !defined(__clang__) && (__GNUC__ > 7)
 #pragma GCC diagnostic ignored "-Wstringop-truncation"
 #endif
 __attribute__((unused))
