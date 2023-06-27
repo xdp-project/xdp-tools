@@ -298,6 +298,12 @@ libxdp_flags field (also called libbpf_flags for compatibility
 reasons). This will make libxdp not load any XDP program or set and
 BPF maps which is a must if users want to add their own XDP program.
 
+.PP
+If there is already a socket created with socket(AF_XDP, SOCK_RAW, 0)
+not bound and not tied to any umem, file descriptor of this socket can
+be used in an xsk_umem__create_with_fd() variant of the umem creation
+function.
+
 .RS
 .nf
 \fCint xsk_umem__create(struct xsk_umem **umem,
@@ -355,6 +361,13 @@ int xsk_socket__update_xskmap(struct xsk_socket *xsk, int xsks_map_fd);
 \fP
 .fi
 .RE
+
+.PP
+To further reduce required level of privileges, an AF_XDP socket can be created
+beforehand with socket(AF_XDP, SOCK_RAW, 0) and passed to a non-privileged
+process.  This socket can be used in xsk_umem__create_with_fd() and later
+in xsk_socket__create() with created umem.  xsk_socket__create_shared() would
+still require privileges for AF_XDP socket creation.
 
 .SS "Data path"
 .PP
