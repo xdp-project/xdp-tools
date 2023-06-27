@@ -76,3 +76,7 @@ LIBXDP_1.3.0 {
 		xdp_program__test_run;
 		xdp_program__xdp_frags_support;
 } LIBXDP_1.2.0;
+
+LIBXDP_1.4.0 {
+		xsk_umem__create_with_fd;
+} LIBXDP_1.3.0;

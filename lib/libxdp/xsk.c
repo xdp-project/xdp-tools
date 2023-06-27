@@ -306,10 +306,11 @@ out_mmap:
 	return err;
 }
 
-int xsk_umem__create(struct xsk_umem **umem_ptr, void *umem_area,
-		     __u64 size, struct xsk_ring_prod *fill,
-		     struct xsk_ring_cons *comp,
-		     const struct xsk_umem_config *usr_config)
+int xsk_umem__create_with_fd(struct xsk_umem **umem_ptr, int fd,
+			     void *umem_area, __u64 size,
+			     struct xsk_ring_prod *fill,
+			     struct xsk_ring_cons *comp,
+			     const struct xsk_umem_config *usr_config)
 {
 	struct xdp_umem_reg mr;
 	struct xsk_umem *umem;
@@ -324,7 +325,7 @@ int xsk_umem__create(struct xsk_umem **umem_ptr, void *umem_area,
 	if (!umem)
 		return -ENOMEM;
 
-	umem->fd = socket(AF_XDP, SOCK_RAW, 0);
+	umem->fd = fd < 0 ? socket(AF_XDP, SOCK_RAW, 0) : fd;
 	if (umem->fd < 0) {
 		err = -errno;
 		goto out_umem_alloc;
@@ -361,6 +362,15 @@ out_socket:
 out_umem_alloc:
 	free(umem);
 	return err;
+}
+
+int xsk_umem__create(struct xsk_umem **umem_ptr, void *umem_area,
+		     __u64 size, struct xsk_ring_prod *fill,
+		     struct xsk_ring_cons *comp,
+		     const struct xsk_umem_config *usr_config)
+{
+	return xsk_umem__create_with_fd(umem_ptr, -1, umem_area, size,
+					fill, comp, usr_config);
 }
 
 static int xsk_init_xsk_struct(struct xsk_socket *xsk, int ifindex)
