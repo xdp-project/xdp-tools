@@ -71,6 +71,12 @@ static int do_basic(const struct basic_opts *opt, enum xdp_action action)
 		mask |= SAMPLE_RXQ_STATS;
 	}
 
+	if (opt->load_mode == BASIC_LOAD_BYTES && opt->program_mode != BASIC_PARSE_IPHDR) {
+		pr_warn("Setting '-l load-bytes' only works with '-p parse-ip'\n");
+		ret = EXIT_FAIL_BPF;
+		goto end_destroy;
+	}
+
 	/* Make sure we only load the one XDP program we are interested in */
 	while ((prog = bpf_object__next_program(skel->obj, prog)) != NULL)
 		if (bpf_program__type(prog) == BPF_PROG_TYPE_XDP &&
