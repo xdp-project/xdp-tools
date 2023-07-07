@@ -197,6 +197,18 @@ EOF
     fi
 }
 
+check_cap_ng()
+{
+    if ${PKG_CONFIG} libcap-ng --exists; then
+        echo "HAVE_CAP_NG:=y" >>$CONFIG
+        echo "yes"
+
+        echo 'CAP_NG_CFLAGS:='`${PKG_CONFIG} libcap-ng --cflags` >> $CONFIG
+        echo 'CAP_NG_LDLIBS:='`${PKG_CONFIG} libcap-ng --libs` >>$CONFIG
+    else
+        echo "no"
+    fi
+}
 
 check_libbpf_function()
 {
@@ -451,6 +463,9 @@ check_libbpf
 
 echo -n "secure_getenv support: "
 check_secure_getenv
+
+echo -n "cap-ng support: "
+check_cap_ng
 
 if [ -n "$KERNEL_HEADERS" ]; then
     echo "kernel headers: $KERNEL_HEADERS"

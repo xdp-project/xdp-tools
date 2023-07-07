@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 
-ALL_TESTS="test_link_so test_link_a test_old_dispatcher test_xdp_frags test_xsk_prog_refcnt_bpffs test_xsk_prog_refcnt_legacy"
+ALL_TESTS="test_link_so test_link_a test_old_dispatcher test_xdp_frags test_xsk_prog_refcnt_bpffs test_xsk_prog_refcnt_legacy test_xsk_non_privileged"
 
 TESTS_DIR=$(dirname "${BASH_SOURCE[0]}")
 
@@ -89,6 +89,17 @@ test_old_dispatcher()
         ip link add xdp_veth0 type veth peer name xdp_veth1
         check_run $TESTS_DIR/test_dispatcher_versions xdp_veth0
         ip link delete xdp_veth0
+}
+
+test_xsk_non_privileged()
+{
+	if test ! -f $TEST_PROG_DIR/test_xsk_non_privileged; then
+		exit "$SKIPPED_TEST"
+	fi
+
+	ip link add xdp_veth0 type veth peer name xdp_veth1
+	check_run $TESTS_DIR/test_xsk_non_privileged xdp_veth0 xdp_veth1
+	ip link delete xdp_veth0
 }
 
 cleanup_tests()
