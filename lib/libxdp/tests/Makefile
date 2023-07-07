@@ -10,14 +10,20 @@ EXTRA_USER_DEPS += test_utils.h
 TEST_FILE := ./test-libxdp.sh
 TEST_RUNNER := ./test_runner.sh
 
-USER_C := ${USER_TARGETS:=.c}
-USER_OBJ := ${USER_C:.c=.o}
-BPF_OBJS := $(BPF_TARGETS:=.o)
-
 LIB_DIR := ../..
 LDLIBS += $(USER_LIBS)
 
 include $(LIB_DIR)/defines.mk
+
+ifeq ($(HAVE_CAP_NG),y)
+	USER_TARGETS += test_xsk_non_privileged
+	CFLAGS += $(CAP_NG_CFLAGS)
+	LDLIBS += $(CAP_NG_LDLIBS)
+endif
+
+USER_C := ${USER_TARGETS:=.c}
+USER_OBJ := ${USER_C:.c=.o}
+BPF_OBJS := $(BPF_TARGETS:=.o)
 
 LDFLAGS+=-L$(LIBXDP_DIR)
 ifeq ($(DYNAMIC_LIBXDP),1)
