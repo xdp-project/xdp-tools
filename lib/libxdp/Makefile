@@ -93,12 +93,12 @@ $(SHARED_OBJDIR)/%.o: %.c $(EXTRA_LIB_DEPS) | $(SHARED_OBJDIR)
 
 XDP_IN_SHARED	:= $(SHARED_OBJDIR)/libxdp.o $(SHARED_OBJDIR)/xsk.o
 
-GLOBAL_SYM_COUNT = $(shell readelf -s --wide $(XDP_IN_SHARED) | \
+GLOBAL_SYM_COUNT = $(shell $(READELF) -s --wide $(XDP_IN_SHARED) | \
 			   cut -d "@" -f1 | sed 's/_v[0-9]_[0-9]_[0-9].*//' | \
 			   sed 's/\[.*\]//' | \
 			   awk '/GLOBAL/ && /DEFAULT/ && !/UND/ {print $$NF}' | \
 			   sort -u | wc -l)
-VERSIONED_SYM_COUNT = $(shell readelf --dyn-syms --wide $(OBJDIR)/libxdp.so | \
+VERSIONED_SYM_COUNT = $(shell $(READELF) --dyn-syms --wide $(OBJDIR)/libxdp.so | \
 			      grep -Eo '[^ ]+@LIBXDP_' | cut -d@ -f1 | sort -u | wc -l)
 
 check: $(CHECK_RULES)
@@ -110,12 +110,12 @@ check_abi: $(OBJDIR)/libxdp.so
 		     "versioned symbols in $^ ($(VERSIONED_SYM_COUNT))." \
 		     "Please make sure all symbols are"	 \
 		     "versioned in $(VERSION_SCRIPT)." >&2;		 \
-		readelf -s --wide $(XDP_IN_SHARED) |			 \
+		$(READELF) -s --wide $(XDP_IN_SHARED) |			 \
 		    cut -d "@" -f1 | sed 's/_v[0-9]_[0-9]_[0-9].*//' |	 \
 		    sed 's/\[.*\]//' |					 \
 		    awk '/GLOBAL/ && /DEFAULT/ && !/UND/ {print $$NF}'|  \
 		    sort -u > $(OUTPUT)libxdp_global_syms.tmp;		 \
-		readelf --dyn-syms --wide $(OUTPUT)libxdp.so |		 \
+		$(READELF) --dyn-syms --wide $(OUTPUT)libxdp.so |		 \
 		    grep -Eo '[^ ]+@LIBXDP_' | cut -d@ -f1 |		 \
 		    sort -u > $(OUTPUT)libxdp_versioned_syms.tmp; 	 \
 		diff -u $(OUTPUT)libxdp_global_syms.tmp			 \
