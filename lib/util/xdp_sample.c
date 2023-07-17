@@ -1192,6 +1192,10 @@ static void stats_print(const char *prefix, int mask, struct stats_record *r,
 		sample_err_exp = false;
 		printf("\n");
 	}
+
+	fflush(stdout);
+	fflush(stderr);
+	// Flushing both outputs to "bypass" buffering
 }
 
 static int get_num_rxqs(const char *ifname)
