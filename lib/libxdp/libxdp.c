@@ -1433,9 +1433,10 @@ struct xdp_program *xdp_program__from_id(__u32 id)
 	}
 
 	prog = xdp_program__from_fd(fd);
+	// duplicated fd already in prog, close original
+	close(fd);
 	if (IS_ERR(prog)) {
 		err = errno;
-		close(fd);
 		errno = err;
 	}
 	return prog;
@@ -1455,9 +1456,10 @@ struct xdp_program *xdp_program__from_pin(const char *pin_path)
 	}
 
 	prog = xdp_program__from_fd(fd);
+	// duplicated fd already in prog, close original
+	close(fd);
 	if (IS_ERR(prog)) {
 		err = errno;
-		close(fd);
 		errno = err;
 	}
 	return prog;
@@ -2491,6 +2493,11 @@ static struct xdp_multiprog *xdp_multiprog__from_id(__u32 id, __u32 hw_id,
 		err = PTR_ERR(mp);
 		goto err;
 	}
+	// duplicated fd/hw_fd already in prog, close originals
+	if (fd > 0)
+		close(fd);
+	if (hw_fd > 0)
+		close(hw_fd);
 	return mp;
 err:
 	if (fd > 0)
