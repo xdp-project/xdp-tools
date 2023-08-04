@@ -32,6 +32,7 @@ static struct prog_option filterc_options[] = {
 int main(int argc, char **argv)
 {
 	struct cbpf_program *cbpf_prog = NULL;
+	struct ebpf_program *ebpf_prog = NULL;
 	int rc = EXIT_FAILURE;
 
 	if (parse_cmdline_args(argc, argv, filterc_options, &cfg_filteropt,
@@ -47,10 +48,18 @@ int main(int argc, char **argv)
 	}
 
 	cbpf_program_dump(cbpf_prog);
+	printf("\n");
+
+	ebpf_prog = ebpf_program_from_cbpf(cbpf_prog);
+
+	printf("\n");
+	ebpf_program_dump(ebpf_prog);
 
 	rc = EXIT_SUCCESS;
 
 out:
+	if (ebpf_prog)
+		ebpf_program_free(ebpf_prog);
 	if (cbpf_prog)
 		cbpf_program_free(cbpf_prog);
 	return rc;
