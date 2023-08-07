@@ -790,7 +790,7 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 	}
 
 	sockaddr_sz = sizeof(local_saddr);
-	err = getsockname(sock, &local_saddr, &sockaddr_sz);
+	err = getsockname(sock, (struct sockaddr *)&local_saddr, &sockaddr_sz);
 	if (err) {
 		err = -errno;
 		pr_warn("Couldn't get local address: %s\n", strerror(-err));
