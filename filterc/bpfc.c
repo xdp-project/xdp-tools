@@ -84,8 +84,12 @@ out:
 
 void cbpf_program_dump(struct cbpf_program *prog)
 {
-	printf("cBPF program (insn cnt = %d)\n", prog->bf_len);
-	bpf_dump(prog, 1);
+	unsigned int i;
+
+	pr_info("Compiled cBPF program (insn cnt = %d)\n", prog->bf_len);
+	for(i = 0; i < prog->bf_len; i++)
+		pr_debug("%s\n", bpf_image(&prog->bf_insns[i], i));
+	pr_debug("\n");
 }
 
 void cbpf_program_free(struct cbpf_program *prog)
@@ -1033,15 +1037,16 @@ void ebpf_program_dump(struct ebpf_program *prog)
 {
 	size_t i;
 
-	printf("eBPF program (insn cnt = %lu)\n", prog->insns_cnt);
+	pr_info("Compiled eBPF program (insn cnt = %lu)\n", prog->insns_cnt);
 	for (i = 0; i < prog->insns_cnt; i++) {
 		struct bpf_insn insn = prog->insns[i];
-		printf("(%03lu) code:0x%02x (m:%02x|s:%02x|c:%02x) dst:0x%01x "
-		       "src:0x%01x off:0x%04x imm:0x%08x\n", i, insn.code,
-		       BPF_MODE(insn.code), BPF_SIZE(insn.code),
-		       BPF_CLASS(insn.code), insn.dst_reg, insn.src_reg,
-		       insn.off, insn.imm);
+		pr_debug("(%03lu) code:0x%02x (m:%02x|s:%02x|c:%02x) dst:0x%01x "
+			 "src:0x%01x off:0x%04x imm:0x%08x\n", i, insn.code,
+			 BPF_MODE(insn.code), BPF_SIZE(insn.code),
+			 BPF_CLASS(insn.code), insn.dst_reg, insn.src_reg,
+			 insn.off, insn.imm);
 	}
+	pr_debug("\n");
 }
 
 void ebpf_program_free(struct ebpf_program *prog)

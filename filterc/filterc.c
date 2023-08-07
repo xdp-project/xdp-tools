@@ -48,7 +48,6 @@ int main(int argc, char **argv)
 	}
 
 	cbpf_program_dump(cbpf_prog);
-	printf("\n");
 
 	ebpf_prog = ebpf_program_from_cbpf(cbpf_prog);
 	if (!ebpf_prog) {
@@ -56,10 +55,9 @@ int main(int argc, char **argv)
 		goto out;
 	}
 
-	printf("\n");
 	ebpf_program_dump(ebpf_prog);
 
-	printf("\nWriting BPF object file (ELF)\n");
+	pr_info("Writing BPF object file (ELF)\n");
 	err = ebpf_program_write_elf(ebpf_prog, cfg_filteropt.output);
 	if (err) {
 		pr_warn("Failed to write BPF object in ELF format: %s\n",
