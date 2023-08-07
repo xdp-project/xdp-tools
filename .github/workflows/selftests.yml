@@ -30,8 +30,8 @@ jobs:
       KERNEL_VERSION: ${{ matrix.KERNEL_VERSION }}
       KERNEL_PATCH_VERSION: ${{ matrix.KERNEL_PATCH_VERSION }}
       DID_UNSHARE: ${{ matrix.DID_UNSHARE }}
-      CLANG: clang-11
-      LLC: llc-11
+      CLANG: clang-16
+      LLC: llc-16
 
     steps:
       - name: Check out repository code
@@ -45,13 +45,13 @@ jobs:
       - name: Prepare Clang
         run: |
           wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-11 main" | sudo tee -a /etc/apt/sources.list
+          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-16 main" | sudo tee -a /etc/apt/sources.list
           sudo apt-get -qq update
-          sudo apt-get -qq -y install clang-11 lld-11 llvm-11
+          sudo apt-get -qq -y install clang-16 lld-16 llvm-16
       - name: Install latest bpftool
         run: |
           git clone --depth=1 --recurse-submodules https://github.com/libbpf/bpftool bpftool
-          make LLVM_STRIP=llvm-strip-11 -C bpftool/src
+          make LLVM_STRIP=llvm-strip-16 -C bpftool/src
           sudo make install -C bpftool/src prefix=/usr
       - name: Compile
         run: make
