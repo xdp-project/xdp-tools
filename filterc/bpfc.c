@@ -667,7 +667,7 @@ static Elf_Scn *add_elf_bpf_prog(Elf *elf, struct table *strtab,
 	int off, err;
 	int prog_size = prog->insns_cnt * 8;
 
-	scn = add_elf_sec(elf, strtab, "xdp");
+	scn = add_elf_sec(elf, strtab, opts->secname);
 	if (!scn)
 		return NULL;
 
@@ -903,6 +903,147 @@ static Elf_Scn *add_elf_btf(Elf *elf, struct table *strtab, struct btf *btf)
 	return scn;
 }
 
+/* Header definitions from libbpf_internal.h */
+struct btf_ext_header {
+	__u16	magic;
+	__u8	version;
+	__u8	flags;
+	__u32	hdr_len;
+
+	/* All offsets are in bytes relative to the end of this header */
+	__u32	func_info_off;
+	__u32	func_info_len;
+	__u32	line_info_off;
+	__u32	line_info_len;
+};
+
+struct btf_ext_info_sec {
+	__u32	sec_name_off;
+	__u32	num_info;
+	/* Followed by num_info * record_size number of bytes */
+	__u8	data[];
+};
+
+static Elf_Scn *add_elf_btf_ext(Elf *elf, struct table *strtab, struct btf *btf,
+				struct elf_write_opts *opts)
+{
+	Elf_Scn *scn;
+	Elf64_Shdr *shdr;
+	Elf_Data *data;
+	__u32 size, fi_size, li_size;
+	void *buf;
+	char errmsg[STRERR_BUFSIZE];
+	int sec_name_off;
+
+	struct btf_ext_header *hdr;
+	__u32 *rec_size;
+	struct btf_ext_info_sec *func_info_sec, *line_info_sec;
+	struct bpf_func_info *func_info;
+	struct bpf_line_info *line_info;
+
+	fi_size = sizeof(__u32) /* record size for func_info */
+		  + sizeof(*func_info_sec) /* BTF.ext info for one section */
+		  + sizeof(*func_info); /* one record of func_info */
+	li_size = sizeof(__u32) /* record size for line_info */
+		  + sizeof(*line_info_sec) /* BTF.ext info for one section */
+		  + sizeof(*line_info); /* one record of line_info */
+	size = sizeof(*hdr) /* BTF.ext header */
+	       + fi_size /* size of func_info */
+	       + li_size; /* size of line_info */
+	buf = calloc(size, 1);
+	if (!buf)
+		goto err_out;
+
+	hdr = buf;
+	hdr->magic = BTF_MAGIC;
+	hdr->version = 0x01;
+	hdr->flags = 0x00;
+	hdr->hdr_len = sizeof(*hdr);
+	hdr->func_info_off = 0;
+	hdr->func_info_len = fi_size;
+	hdr->line_info_off = fi_size;
+	hdr->line_info_len = li_size;
+
+	/* func_info section */
+	rec_size = (__u32*) (hdr + 1);
+	*rec_size = sizeof(*func_info);
+
+	// Add section name as string
+	sec_name_off = btf__add_str(btf, opts->secname);
+	if (sec_name_off < 0) {
+		libbpf_strerror(sec_name_off, errmsg, sizeof(errmsg));
+		bpfc_error("Could not add section name to BTF: %s (%d)", errmsg,
+			   sec_name_off);
+		goto err_out;
+	}
+
+	func_info_sec = (struct btf_ext_info_sec*) (rec_size + 1);
+	func_info_sec->sec_name_off = sec_name_off;
+	func_info_sec->num_info = 1;
+
+	int type_id = btf__find_by_name_kind(btf, opts->progname, BTF_KIND_FUNC);
+	if (type_id < 0) {
+		libbpf_strerror(type_id, errmsg, sizeof(errmsg));
+		bpfc_error("Could not find type of prog in BTF: %s (%d)",
+			   errmsg, type_id);
+		goto err_out;
+	}
+
+	func_info = (struct bpf_func_info*) func_info_sec->data;
+	func_info->insn_off = 0;
+	func_info->type_id = type_id;
+
+	/* line_info section */
+	rec_size = (__u32*) (func_info + 1);
+	*rec_size = sizeof(*line_info);
+
+	line_info_sec = (struct btf_ext_info_sec*) (rec_size + 1);
+	line_info_sec->sec_name_off = sec_name_off;
+	line_info_sec->num_info = 1;
+
+	// Add section name as string
+	int dummy_str_off = btf__add_str(btf, "<compiled by bpfc>");
+	if (dummy_str_off < 0) {
+		libbpf_strerror(dummy_str_off, errmsg, sizeof(errmsg));
+		bpfc_error("Could not add dummy line to BTF: %s (%d)", errmsg,
+			   dummy_str_off);
+		goto err_out;
+	}
+
+	line_info = (struct bpf_line_info*) line_info_sec->data;
+	line_info->file_name_off = dummy_str_off;
+	line_info->line_off = dummy_str_off;
+
+	scn = add_elf_sec(elf, strtab, ".BTF.ext");
+	if (!scn)
+		goto err_out;
+
+	shdr = elf64_getshdr(scn);
+	if (!shdr)
+		goto err_out;
+
+	shdr->sh_type = SHT_PROGBITS;
+	shdr->sh_addralign = 4;
+
+	data = elf_newdata(scn);
+	if (!data)
+		goto err_out;
+
+	data->d_align = 4;
+	data->d_off = 0LL;
+	data->d_buf = buf;
+	data->d_type = ELF_T_BYTE;
+
+	data->d_size = size;
+	shdr->sh_size = size;
+
+	return scn;
+err_out:
+	if (buf)
+		free(buf);
+	return NULL;
+}
+
 int _ebpf_program_write_elf(struct ebpf_program *prog, int fd,
 			    struct elf_write_opts *opts)
 {
@@ -974,6 +1115,13 @@ int _ebpf_program_write_elf(struct ebpf_program *prog, int fd,
 	if (!btf) {
 		err = EINVAL;
 		bpfc_error("Failed to add build BTF information");
+		goto out;
+	}
+
+	scn = add_elf_btf_ext(elf, strtab, btf, opts);
+	if (!scn) {
+		err = EINVAL;
+		bpfc_error("Failed to add BTF.ext section to ELF object");
 		goto out;
 	}
 
@@ -1057,6 +1205,11 @@ int ebpf_program_write_elf(struct ebpf_program *prog,
 
 	if (!opts->progname)
 		opts->progname = BPFC_PROG_SYM_NAME;
+
+	if (!opts->secname && opts->mode == MODE_STANDALONE)
+		opts->secname = "xdp";
+	else if (!opts->secname && opts->mode == MODE_LINKABLE)
+		opts->secname = ".text";
 
 	err = _ebpf_program_write_elf(prog, fd, opts);
 

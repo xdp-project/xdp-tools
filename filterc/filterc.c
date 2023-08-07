@@ -11,6 +11,7 @@
 static const struct filteropt {
 	char *output;
 	char *progname;
+	bool linkable;
 	char *filter;
 } filteropt_defaults = {
 };
@@ -27,6 +28,9 @@ static struct prog_option filterc_options[] = {
 		      .metavar = "<name>",
 		      .help = "Name of the program in the BPF object file "\
 			      "(default: " BPFC_PROG_SYM_NAME ")"),
+	DEFINE_OPTION("linkable", OPT_BOOL, struct filteropt, linkable,
+		      .short_opt = 'l',
+		      .help = "BPF object file should be linkable with other programs"),
 	DEFINE_OPTION("filter", OPT_STRING, struct filteropt, filter,
 		      .required = true,
 		      .positional = true,
@@ -39,6 +43,7 @@ int main(int argc, char **argv)
 {
 	struct cbpf_program *cbpf_prog = NULL;
 	struct ebpf_program *ebpf_prog = NULL;
+	enum object_mode mode;
 	int err, rc = EXIT_FAILURE;
 
 	if (parse_cmdline_args(argc, argv, filterc_options, &cfg_filteropt,
@@ -64,9 +69,11 @@ int main(int argc, char **argv)
 	ebpf_program_dump(ebpf_prog);
 
 	pr_info("Writing BPF object file (ELF)\n");
+	mode = cfg_filteropt.linkable ? MODE_LINKABLE : MODE_STANDALONE;
 	LIBBPF_OPTS(elf_write_opts, write_opts,
 		    .progname = cfg_filteropt.progname,
-		    .path = cfg_filteropt.output);
+		    .path = cfg_filteropt.output,
+		    .mode = mode);
 	err = ebpf_program_write_elf(ebpf_prog, &write_opts);
 	if (err) {
 		pr_warn("Failed to write BPF object in ELF format: %s\n",

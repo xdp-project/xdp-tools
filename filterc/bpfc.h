@@ -10,11 +10,18 @@ struct cbpf_insn;
 struct cbpf_program;
 struct ebpf_program;
 
+enum object_mode {
+	MODE_STANDALONE = 0,
+	MODE_LINKABLE,
+};
+
 struct elf_write_opts {
 	size_t sz;
 	int fd;
 	char *path;
 	char *progname;
+	char *secname;
+	enum object_mode mode;
 };
 
 char *bpfc_geterr();
