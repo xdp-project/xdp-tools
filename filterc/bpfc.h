@@ -4,6 +4,8 @@
 #ifndef _BPFC_H_
 #define _BPFC_H_
 
+#define BPFC_PROG_SYM_NAME "filterc_prog"
+
 struct cbpf_insn;
 struct cbpf_program;
 struct ebpf_program;
@@ -12,6 +14,7 @@ struct elf_write_opts {
 	size_t sz;
 	int fd;
 	char *path;
+	char *progname;
 };
 
 char *bpfc_geterr();

@@ -32,7 +32,6 @@
 
 #define BPFC_DEFAULT_SNAP_LEN 262144
 #define BPFC_ERRBUFF_SZ 512 + STRERR_BUFSIZE
-#define BPFC_PROG_SYM_NAME "filterc_prog"
 
 static char bpfc_errbuff[BPFC_ERRBUFF_SZ + 1];
 
@@ -658,7 +657,8 @@ static Elf_Scn *add_elf_symtab(Elf *elf, struct table *strtab,
 
 static Elf_Scn *add_elf_bpf_prog(Elf *elf, struct table *strtab,
 				 struct table *symtab,
-				 struct ebpf_program *prog)
+				 struct ebpf_program *prog,
+				 struct elf_write_opts *opts)
 {
 	Elf_Scn *scn;
 	Elf64_Shdr *shdr;
@@ -671,7 +671,7 @@ static Elf_Scn *add_elf_bpf_prog(Elf *elf, struct table *strtab,
 	if (!scn)
 		return NULL;
 
-	off = strtab_add(strtab, BPFC_PROG_SYM_NAME);
+	off = strtab_add(strtab, opts->progname);
 	if (off < 0)
 		return NULL;
 
@@ -725,7 +725,7 @@ static Elf_Scn *add_elf_bpf_prog(Elf *elf, struct table *strtab,
  * [6] INT 'int' size=4 bits_offset=0 nr_bits=32 encoding=SIGNED
  * [7] FUNC 'prog' type_id=5 linkage=global
  */
-struct btf *build_xdp_btf()
+struct btf *build_xdp_btf(struct elf_write_opts *opts)
 {
 	char errmsg[STRERR_BUFSIZE];
 	int err = 0;
@@ -851,8 +851,8 @@ struct btf *build_xdp_btf()
 		goto out;
 	}
 
-	int xdp_prog_func_id = btf__add_func(btf, BPFC_PROG_SYM_NAME,
-					     BTF_FUNC_GLOBAL, func_proto_id);
+	int xdp_prog_func_id = btf__add_func(btf, opts->progname, BTF_FUNC_GLOBAL,
+					     func_proto_id);
 	if (xdp_prog_func_id < 0) {
 		err = xdp_prog_func_id;
 		libbpf_strerror(err, errmsg, sizeof(errmsg));
@@ -903,7 +903,8 @@ static Elf_Scn *add_elf_btf(Elf *elf, struct table *strtab, struct btf *btf)
 	return scn;
 }
 
-int _ebpf_program_write_elf(struct ebpf_program *prog, int fd)
+int _ebpf_program_write_elf(struct ebpf_program *prog, int fd,
+			    struct elf_write_opts *opts)
 {
 	int err = 0;
 	Elf *elf = NULL;
@@ -962,14 +963,14 @@ int _ebpf_program_write_elf(struct ebpf_program *prog, int fd)
 		goto out;
 	}
 
-	scn = add_elf_bpf_prog(elf, strtab, symtab, prog);
+	scn = add_elf_bpf_prog(elf, strtab, symtab, prog, opts);
 	if (!scn) {
 		err = EINVAL;
 		bpfc_error("Failed to add BPF program section to ELF object");
 		goto out;
 	}
 
-	btf = build_xdp_btf();
+	btf = build_xdp_btf(opts);
 	if (!btf) {
 		err = EINVAL;
 		bpfc_error("Failed to add build BTF information");
@@ -1054,7 +1055,10 @@ int ebpf_program_write_elf(struct ebpf_program *prog,
 		goto out;
 	}
 
-	err = _ebpf_program_write_elf(prog, fd);
+	if (!opts->progname)
+		opts->progname = BPFC_PROG_SYM_NAME;
+
+	err = _ebpf_program_write_elf(prog, fd, opts);
 
 out:
 	if (opts->path && fd >= 0)

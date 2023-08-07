@@ -23,6 +23,7 @@
 	int do_test_##_tn(__unused const void *cfg, __unused const char *pin_root_path)
 
 #define TMP_SUFFIX ".bpf.o"
+#define TEST_PROG_NAME "filterc_test_prog"
 
 static struct bpf_object *compile_filter(char *filter)
 {
@@ -52,7 +53,8 @@ static struct bpf_object *compile_filter(char *filter)
 	}
 
 	LIBBPF_OPTS(elf_write_opts, write_opts,
-		    .fd = fd);
+		    .fd = fd,
+		    .progname = TEST_PROG_NAME);
 	err = ebpf_program_write_elf(ebpf_prog, &write_opts);
 	if (err) {
 		printf("Failed to write BPF object in ELF format: %s\n",
@@ -117,7 +119,7 @@ TEST_FUNC(standalone)
 		return 1;
 	}
 
-	bpf_prog = bpf_object__find_program_by_name(bpf_obj, "filterc_prog");
+	bpf_prog = bpf_object__find_program_by_name(bpf_obj, TEST_PROG_NAME);
 	if (!bpf_prog) {
 		printf("Failed to find bpf program in object\n");
 		return 1;

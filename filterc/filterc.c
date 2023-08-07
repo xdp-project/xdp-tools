@@ -10,6 +10,7 @@
 
 static const struct filteropt {
 	char *output;
+	char *progname;
 	char *filter;
 } filteropt_defaults = {
 };
@@ -21,6 +22,11 @@ static struct prog_option filterc_options[] = {
 		      .required = true,
 		      .metavar = "<file>",
 		      .help = "Output compiled object to <file>"),
+	DEFINE_OPTION("program-name", OPT_STRING, struct filteropt, progname,
+		      .short_opt = 'n',
+		      .metavar = "<name>",
+		      .help = "Name of the program in the BPF object file "\
+			      "(default: " BPFC_PROG_SYM_NAME ")"),
 	DEFINE_OPTION("filter", OPT_STRING, struct filteropt, filter,
 		      .required = true,
 		      .positional = true,
@@ -59,6 +65,7 @@ int main(int argc, char **argv)
 
 	pr_info("Writing BPF object file (ELF)\n");
 	LIBBPF_OPTS(elf_write_opts, write_opts,
+		    .progname = cfg_filteropt.progname,
 		    .path = cfg_filteropt.output);
 	err = ebpf_program_write_elf(ebpf_prog, &write_opts);
 	if (err) {
