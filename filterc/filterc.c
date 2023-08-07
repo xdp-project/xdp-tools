@@ -58,7 +58,9 @@ int main(int argc, char **argv)
 	ebpf_program_dump(ebpf_prog);
 
 	pr_info("Writing BPF object file (ELF)\n");
-	err = ebpf_program_write_elf(ebpf_prog, cfg_filteropt.output);
+	LIBBPF_OPTS(elf_write_opts, write_opts,
+		    .path = cfg_filteropt.output);
+	err = ebpf_program_write_elf(ebpf_prog, &write_opts);
 	if (err) {
 		pr_warn("Failed to write BPF object in ELF format: %s\n",
 			bpfc_geterr());

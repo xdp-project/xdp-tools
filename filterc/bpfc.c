@@ -903,9 +903,9 @@ static Elf_Scn *add_elf_btf(Elf *elf, struct table *strtab, struct btf *btf)
 	return scn;
 }
 
-int ebpf_program_write_elf(struct ebpf_program *prog, char *filename)
+int _ebpf_program_write_elf(struct ebpf_program *prog, int fd)
 {
-	int err = 0, fd = -1;
+	int err = 0;
 	Elf *elf = NULL;
 	Elf_Scn *scn, *scn_strtab;
 	Elf64_Ehdr *elf_hdr;
@@ -915,13 +915,6 @@ int ebpf_program_write_elf(struct ebpf_program *prog, char *filename)
 	if (elf_version(EV_CURRENT) == EV_NONE) {
 		err = EINVAL;
 		bpfc_error("libelf initialization failed");
-		goto out;
-	}
-
-	fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
-	if (fd < 0) {
-		err = errno;
-		bpfc_error("Failed to create '%s': %d", filename, err);
 		goto out;
 	}
 
@@ -1027,9 +1020,45 @@ out:
 		table_free(symtab);
 	if (elf)
 		elf_end(elf);
-	if (fd >= 0)
-		close(fd);
 
+	return err;
+}
+
+int ebpf_program_write_elf(struct ebpf_program *prog,
+			   struct elf_write_opts *opts)
+{
+	int err, fd = -1;
+
+	if (!opts) {
+		err = EINVAL;
+		goto out;
+	}
+
+	if (opts->fd && opts->path) {
+		err = EINVAL;
+		bpfc_error("Output path and fd both set, set only one of them");
+		goto out;
+	} else if (opts->fd) {
+		fd = opts->fd;
+	} else if (opts->path) {
+		fd = open(opts->path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
+			  0644);
+		if (fd < 0) {
+			err = errno;
+			bpfc_error("Failed to create '%s': %d", opts->path, err);
+			goto out;
+		}
+	} else {
+		err = EINVAL;
+		bpfc_error("None of output path or fd set");
+		goto out;
+	}
+
+	err = _ebpf_program_write_elf(prog, fd);
+
+out:
+	if (opts->path && fd >= 0)
+		close(fd);
 	return err;
 }
 
