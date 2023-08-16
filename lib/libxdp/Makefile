@@ -27,7 +27,7 @@ PC_FILE := $(OBJDIR)/libxdp.pc
 TEMPLATED_SOURCES := xdp-dispatcher.c
 
 CFLAGS += -I$(HEADER_DIR)
-BPF_CFLAGS += -I$(HEADER_DIR)
+BPF_CFLAGS += -I$(HEADER_DIR) $(ARCH_INCLUDES)
 
 
 ifndef BUILD_STATIC_ONLY
@@ -135,7 +135,6 @@ $(EMBEDDED_XDP_OBJS): %.embed.o: %.o
 
 $(XDP_OBJS): %.o: %.c $(BPF_HEADERS) $(LIBMK)
 	$(QUIET_CLANG)$(CLANG) -S \
-	    -target $(BPF_TARGET) \
 	    -D __BPF_TRACING__ \
 	    $(BPF_CFLAGS) \
 	    -Wall \
@@ -144,7 +143,7 @@ $(XDP_OBJS): %.o: %.c $(BPF_HEADERS) $(LIBMK)
 	    -Wno-compare-distinct-pointer-types \
 	    -Werror \
 	    -O2 -emit-llvm -c -g -o ${@:.o=.ll} $<
-	$(QUIET_LLC)$(LLC) -march=$(BPF_TARGET) -filetype=obj -o $@ ${@:.o=.ll}
+	$(QUIET_LLC)$(LLC) -o $@ ${@:.o=.ll}
 
 .PHONY: man
 ifeq ($(EMACS),)

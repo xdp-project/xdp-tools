@@ -1,5 +1,5 @@
 CFLAGS ?= -O2 -g
-BPF_CFLAGS ?= -Wno-visibility -fno-stack-protector
+BPF_CFLAGS ?= -Wno-visibility -fno-stack-protector -D BPF_NO_PRESERVE_ACCESS_INDEX -gbtf -mco-re
 BPF_TARGET ?= bpf
 
 HAVE_FEATURES :=

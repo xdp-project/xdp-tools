@@ -7,8 +7,9 @@
 #define get16bits(d) (*((const __u16 *) (d)))
 
 static __always_inline
-__u32 SuperFastHash(const char *data, int len, __u32 initval) {
+__u32 SuperFastHash4(const char *data, __u32 initval) {
 	__u32 hash = initval;
+	int len = 4;
 	__u32 tmp;
 	int rem;
 
@@ -18,7 +19,7 @@ __u32 SuperFastHash(const char *data, int len, __u32 initval) {
 	len >>= 2;
 
 	/* Main loop */
-#pragma clang loop unroll(full)
+#pragma GCC unroll 4
 	for (;len > 0; len--) {
 		hash  += get16bits (data);
 		tmp    = (get16bits (data+2) << 11) ^ hash;

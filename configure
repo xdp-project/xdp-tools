@@ -78,18 +78,6 @@ check_toolchain()
         fi;
     done
 
-    clang_version=$($CLANG --version | grep -Po '(?<=clang version )[[:digit:]]+')
-    if [ "$?" -ne "0" ]; then
-        echo "*** ERROR: Couldn't execute '$CLANG --version'"
-        exit 1
-    fi
-
-    echo "Found clang binary '$CLANG' with version $clang_version (from '$($CLANG --version | head -n 1)')"
-    if [ "$clang_version" -lt "11" ]; then
-        echo "*** ERROR: Need LLVM version 11+, '$CLANG' is version $clang_version"
-        [ -n "$RELAXED_LLVM_VERSION" ] || exit 1
-    fi
-
     if ! command -v $EMACS >/dev/null 2>&1; then
         EMACS=""
     else
