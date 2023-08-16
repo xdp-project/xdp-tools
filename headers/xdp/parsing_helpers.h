@@ -82,7 +82,7 @@ static __always_inline int parse_ethhdr(struct hdr_cursor *nh, void *data_end,
 	__u16 h_proto;
 	int i;
 
-	if (eth + 1 > data_end)
+	if ((void*)(eth + 1) > data_end)
 		return -1;
 
 	nh->pos = eth + 1;
@@ -93,12 +93,12 @@ static __always_inline int parse_ethhdr(struct hdr_cursor *nh, void *data_end,
 	/* Use loop unrolling to avoid the verifier restriction on loops;
 	 * support up to VLAN_MAX_DEPTH layers of VLAN encapsulation.
 	 */
-	#pragma unroll
+	#pragma GCC unroll 4
 	for (i = 0; i < VLAN_MAX_DEPTH; i++) {
 		if (!proto_is_vlan(h_proto))
 			break;
 
-		if (vlh + 1 > data_end)
+		if ((void*)(vlh + 1) > data_end)
 			break;
 
 		h_proto = vlh->h_vlan_encapsulated_proto;
@@ -116,7 +116,7 @@ static __always_inline int skip_ip6hdrext(struct hdr_cursor *nh,
 	for (int i = 0; i < IPV6_EXT_MAX_CHAIN; ++i) {
 		struct ipv6_opt_hdr *hdr = nh->pos;
 
-		if (hdr + 1 > data_end)
+		if ((void*)(hdr + 1) > data_end)
 			return -1;
 
 		switch (next_hdr_type) {
@@ -154,7 +154,7 @@ static __always_inline int parse_ip6hdr(struct hdr_cursor *nh,
 	 * thing being pointed to. We will be using this style in the remainder
 	 * of the tutorial.
 	 */
-	if (ip6h + 1 > data_end)
+	if ((void*)(ip6h + 1) > data_end)
 		return -1;
 
 	nh->pos = ip6h + 1;
@@ -170,13 +170,13 @@ static __always_inline int parse_iphdr(struct hdr_cursor *nh,
 	struct iphdr *iph = nh->pos;
 	int hdrsize;
 
-	if (iph + 1 > data_end)
+	if ((void*)(iph + 1) > data_end)
 		return -1;
 
 	hdrsize = iph->ihl * 4;
 
 	/* Variable-length IPv4 header, need to use byte-based arithmetic */
-	if (nh->pos + hdrsize > data_end)
+	if ((void*)(nh->pos + hdrsize) > data_end)
 		return -1;
 
 	nh->pos += hdrsize;
@@ -191,7 +191,7 @@ static __always_inline int parse_icmp6hdr(struct hdr_cursor *nh,
 {
 	struct icmp6hdr *icmp6h = nh->pos;
 
-	if (icmp6h + 1 > data_end)
+	if ((void*)(icmp6h + 1) > data_end)
 		return -1;
 
 	nh->pos   = icmp6h + 1;
@@ -206,7 +206,7 @@ static __always_inline int parse_icmphdr(struct hdr_cursor *nh,
 {
 	struct icmphdr *icmph = nh->pos;
 
-	if (icmph + 1 > data_end)
+	if ((void*)(icmph + 1) > data_end)
 		return -1;
 
 	nh->pos  = icmph + 1;
@@ -221,7 +221,7 @@ static __always_inline int parse_icmphdr_common(struct hdr_cursor *nh,
 {
 	struct icmphdr_common *h = nh->pos;
 
-	if (h + 1 > data_end)
+	if ((void*)(h + 1) > data_end)
 		return -1;
 
 	nh->pos  = h + 1;
@@ -240,7 +240,7 @@ static __always_inline int parse_udphdr(struct hdr_cursor *nh,
 	int len;
 	struct udphdr *h = nh->pos;
 
-	if (h + 1 > data_end)
+	if ((void*)(h + 1) > data_end)
 		return -1;
 
 	nh->pos  = h + 1;
@@ -263,11 +263,11 @@ static __always_inline int parse_tcphdr(struct hdr_cursor *nh,
 	int len;
 	struct tcphdr *h = nh->pos;
 
-	if (h + 1 > data_end)
+	if ((void*)(h + 1) > data_end)
 		return -1;
 
 	len = h->doff * 4;
-	if ((void *) h + len > data_end)
+	if ((void *)h + len > data_end)
 		return -1;
 
 	nh->pos  = h + 1;

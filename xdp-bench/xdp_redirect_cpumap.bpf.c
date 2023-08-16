@@ -103,13 +103,13 @@ __u16 get_dest_port_ipv4_udp(struct xdp_md *ctx, __u64 nh_off)
 	struct iphdr *iph = data + nh_off;
 	struct udphdr *udph;
 
-	if (iph + 1 > data_end)
+	if ((void*)(iph + 1) > data_end)
 		return 0;
 	if (!(iph->protocol == IPPROTO_UDP))
 		return 0;
 
 	udph = (void *)(iph + 1);
-	if (udph + 1 > data_end)
+	if ((void*)(udph + 1) > data_end)
 		return 0;
 
 	return bpf_ntohs(udph->dest);
@@ -122,7 +122,7 @@ int get_proto_ipv4(struct xdp_md *ctx, __u64 nh_off)
 	void *data     = (void *)(long)ctx->data;
 	struct iphdr *iph = data + nh_off;
 
-	if (iph + 1 > data_end)
+	if ((void*)(iph + 1) > data_end)
 		return 0;
 	return iph->protocol;
 }
@@ -134,7 +134,7 @@ int get_proto_ipv6(struct xdp_md *ctx, __u64 nh_off)
 	void *data     = (void *)(long)ctx->data;
 	struct ipv6hdr *ip6h = data + nh_off;
 
-	if (ip6h + 1 > data_end)
+	if ((void*)(ip6h + 1) > data_end)
 		return 0;
 	return ip6h->nexthdr;
 }
@@ -186,7 +186,7 @@ int  cpumap_touch_data(struct xdp_md *ctx)
 	cpu_dest = *cpu_selected;
 
 	/* Validate packet length is minimum Eth header size */
-	if (eth + 1 > data_end)
+	if ((void*)(eth + 1) > data_end)
 		return XDP_ABORTED;
 
 	rec = bpf_map_lookup_elem(&rx_cnt, &key);
@@ -401,11 +401,11 @@ __u32 get_ipv4_hash_ip_pair(struct xdp_md *ctx, __u64 nh_off)
 	struct iphdr *iph = data + nh_off;
 	__u32 cpu_hash;
 
-	if (iph + 1 > data_end)
+	if ((void*)(iph + 1) > data_end)
 		return 0;
 
 	cpu_hash = iph->saddr + iph->daddr;
-	cpu_hash = SuperFastHash((char *)&cpu_hash, 4, INITVAL + iph->protocol);
+	cpu_hash = SuperFastHash4((char *)&cpu_hash, INITVAL + iph->protocol);
 
 	return cpu_hash;
 }
@@ -418,14 +418,14 @@ __u32 get_ipv6_hash_ip_pair(struct xdp_md *ctx, __u64 nh_off)
 	struct ipv6hdr *ip6h = data + nh_off;
 	__u32 cpu_hash;
 
-	if (ip6h + 1 > data_end)
+	if ((void*)(ip6h + 1) > data_end)
 		return 0;
 
 	cpu_hash  = ip6h->saddr.in6_u.u6_addr32[0] + ip6h->daddr.in6_u.u6_addr32[0];
 	cpu_hash += ip6h->saddr.in6_u.u6_addr32[1] + ip6h->daddr.in6_u.u6_addr32[1];
 	cpu_hash += ip6h->saddr.in6_u.u6_addr32[2] + ip6h->daddr.in6_u.u6_addr32[2];
 	cpu_hash += ip6h->saddr.in6_u.u6_addr32[3] + ip6h->daddr.in6_u.u6_addr32[3];
-	cpu_hash = SuperFastHash((char *)&cpu_hash, 4, INITVAL + ip6h->nexthdr);
+	cpu_hash = SuperFastHash4((char *)&cpu_hash, INITVAL + ip6h->nexthdr);
 
 	return cpu_hash;
 }

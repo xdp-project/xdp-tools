@@ -84,7 +84,7 @@ int xdp_redirect_update_port(struct xdp_md *ctx)
 	__u32 key = 0;
 
 	hdr = data + (sizeof(struct ethhdr) + sizeof(struct ipv6hdr));
-	if (hdr + 1 > data_end)
+	if ((void*)(hdr + 1) > data_end)
 		goto out;
 
 	state = bpf_map_lookup_elem(&state_map, &key);
@@ -265,7 +265,7 @@ int xdp_redirect_send_tcp(struct xdp_md *ctx)
 
 	ipv6hdr = data + sizeof(struct ethhdr);
 	tcphdr = data + (sizeof(struct ethhdr) + sizeof(struct ipv6hdr));
-	if (tcphdr + 1 > data_end || ipv6hdr + 1 > data_end)
+	if ((void*)(tcphdr + 1) > data_end || (void*)(ipv6hdr + 1) > data_end)
 		goto ret;
 
 	pkt_len = bpf_ntohs(ipv6hdr->payload_len) - sizeof(*tcphdr);
