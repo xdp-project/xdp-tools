@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 
 #include <linux/bpf.h>
@@ -98,7 +99,27 @@ struct ebpf_program {
  *   (1) convert to check the resulting length and calculate jump offsets
  *   (2) do the conversion again and store the result with the correct jump
  *       offsets.
+ *
+ * The resulting program uses the following registers (defined here and in
+ * filter.h):
+ *   r0: Register A of cBPF, return value
+ *   r1: Register X of cBPF
+ *   r2: Temporary register for calculations
+ *   r3: Keeps xdp_md.data for guards
+ *   r4: Keeps xdp_md.data_end for guards
+ *
+ * We can freely use any register (caller-saved and callee-saved) right now.
+ * Caller-saved registers (r0-r5) can be used because we are not calling into
+ * any other functions; callee-saved registers (r6-r9) can be used because the
+ * JIT will take of saving them for us. If we start calling other functions, we
+ * need to have X, data and data_end in callee-saved registers to persist them
+ * across calls.
  */
+
+#undef BPF_REG_X /* already defined differently in filter.h */
+#define BPF_REG_X	BPF_REG_1
+#define BPF_REG_DP	BPF_REG_3	/* data ptr  */
+#define BPF_REG_DEP	BPF_REG_4	/* data end ptr */
 
 static int convert_cbpf(struct cbpf_program *cbpf_prog,
 			struct ebpf_program *prog)
@@ -110,6 +131,7 @@ static int convert_cbpf(struct cbpf_program *cbpf_prog,
 	size_t insns_cnt = 0;
 	u_int i;
 	int code, target, imm, src_reg, dst_reg, bpf_src, stack_off, err = 0;
+	int match_insn = -1, nomatch_insn = -1;
 
 	addrs = calloc(sizeof(*addrs), cbpf_prog->bf_len);
 	if (!addrs) {
@@ -123,13 +145,13 @@ do_pass:
 	fp = cbpf_prog->bf_insns;
 
 	if (first_insn) {
-		/* All programs must keep CTX in callee saved BPF_REG_CTX.
-		 * In eBPF case it's done by the compiler, here we need to
-		 * do this ourself. Initial CTX is present in BPF_REG_ARG1.
-		 */
-		*new_insn++ = BPF_MOV64_REG(BPF_REG_CTX, BPF_REG_ARG1);
+		/* Load data and data_end into registers */
+		*new_insn++ = BPF_LDX_MEM(BPF_W, BPF_REG_DP, BPF_REG_ARG1,
+					  offsetof(struct xdp_md, data));
+		*new_insn++ = BPF_LDX_MEM(BPF_W, BPF_REG_DEP, BPF_REG_ARG1,
+					  offsetof(struct xdp_md, data_end));
 	} else {
-		new_insn += 1;
+		new_insn += 2;
 	}
 
 	for (i = 0; i < cbpf_prog->bf_len; fp++, i++) {
@@ -184,8 +206,9 @@ do_pass:
 #define BPF_JMP_INSN(insn_code, dst, src, immv, target) ({		\
 		int32_t off;						\
 									\
-		if (target >= (int)cbpf_prog->bf_len || target < 0) {	\
-			bpfc_error("insn %d: Invalid jump target", i);\
+		if (target >= (int)cbpf_prog->bf_len ||			\
+		    (first_insn && target < 0)) {			\
+			bpfc_error("insn %d: Invalid jump target", i);	\
 			err = EINVAL;					\
 			goto out;					\
 		}							\
@@ -260,10 +283,63 @@ do_pass:
 		 */
 		case BPF_RET | BPF_A:
 		case BPF_RET | BPF_K:
-			if (BPF_RVAL(fp->code) == BPF_K)
-				*insn++ = BPF_MOV32_IMM(BPF_REG_0, fp->k);
+			if (BPF_RVAL(fp->code) == BPF_K) {
+				if (fp->k == 0) {
+					nomatch_insn = i;
+					imm = XDP_DROP;
+				} else {
+					match_insn = i;
+					imm = XDP_PASS;
+				}
+				*insn++ = BPF_MOV32_IMM(BPF_REG_0, imm);
+			}
 
 			*insn++ = BPF_EXIT_INSN();
+			break;
+
+		case BPF_LD | BPF_ABS | BPF_W:
+		case BPF_LD | BPF_ABS | BPF_H:
+		case BPF_LD | BPF_ABS | BPF_B:
+		case BPF_LD | BPF_IND | BPF_W:
+		case BPF_LD | BPF_IND | BPF_H:
+		case BPF_LD | BPF_IND | BPF_B:
+		//case ldxb 4*([]&0xf)
+		case BPF_LDX | BPF_MSH | BPF_B:
+			dst_reg = 0;
+
+			if (BPF_CLASS(fp->code) == BPF_LDX)
+				dst_reg = BPF_REG_X;
+			else
+				dst_reg = BPF_REG_A;
+
+			*insn++ = BPF_MOV64_REG(dst_reg, BPF_REG_DP);
+			if (BPF_MODE(fp->code) == BPF_IND)
+				*insn++ = BPF_ALU64_REG(BPF_ADD, dst_reg, BPF_REG_X);
+
+			// Guard packet access
+			int sz = 0;
+			if (BPF_SIZE(fp->code) == BPF_B)
+				sz = 1;
+			else if (BPF_SIZE(fp->code) == BPF_H)
+				sz = 2;
+			else if (BPF_SIZE(fp->code) == BPF_W)
+				sz = 4;
+			*insn++ = BPF_MOV64_REG(BPF_REG_TMP, dst_reg);
+			*insn++ = BPF_ALU64_IMM(BPF_ADD, BPF_REG_TMP, fp->k + sz);
+			*insn++ = BPF_JMP_INSN(BPF_JMP | BPF_X | BPF_JGT,
+					       BPF_REG_TMP, BPF_REG_DEP, 0,
+					       (nomatch_insn != -1 ? nomatch_insn : 0));
+
+			*insn++ = BPF_LDX_MEM(BPF_SIZE(fp->code), dst_reg, dst_reg, fp->k);
+			if (sz > 1)
+				*insn++ = BPF_ENDIAN(BPF_FROM_BE, dst_reg, sz * 8);
+
+			if (BPF_MODE(fp->code) == BPF_MSH) {
+				/* dst &= 0xf */
+				*insn++ = BPF_ALU32_IMM(BPF_AND, dst_reg, 0xf);
+				/* dst <<= 2 */
+				*insn++ = BPF_ALU32_IMM(BPF_LSH, dst_reg, 2);
+			}
 			break;
 
 		/* Store to stack. */
@@ -318,6 +394,15 @@ do_pass:
 
 	insns_cnt = new_insn - first_insn;
 	if (!first_insn) {
+		// Checking prerequisites for second pass
+		if (match_insn == -1 || nomatch_insn == -1) {
+			bpfc_error("Failed to detect match and no match return" \
+				   " instructions. Most likely, the cBPF code" \
+				   " does not return both as immediate values.");
+			err = -EINVAL;
+			goto out;
+		}
+
 		first_insn = calloc(sizeof(*first_insn), insns_cnt);
 		if (!new_insn) {
 			bpfc_error("Failed to allocate memory for eBPF instructions");
