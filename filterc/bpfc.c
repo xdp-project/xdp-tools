@@ -1040,11 +1040,25 @@ void ebpf_program_dump(struct ebpf_program *prog)
 	pr_info("Compiled eBPF program (insn cnt = %lu)\n", prog->insns_cnt);
 	for (i = 0; i < prog->insns_cnt; i++) {
 		struct bpf_insn insn = prog->insns[i];
-		pr_debug("(%03lu) code:0x%02x (m:%02x|s:%02x|c:%02x) dst:0x%01x "
-			 "src:0x%01x off:0x%04x imm:0x%08x\n", i, insn.code,
-			 BPF_MODE(insn.code), BPF_SIZE(insn.code),
-			 BPF_CLASS(insn.code), insn.dst_reg, insn.src_reg,
-			 insn.off, insn.imm);
+		pr_debug("(%03lu) code:0x%02x", i, insn.code);
+		if (BPF_CLASS(insn.code) == BPF_ALU ||
+		    BPF_CLASS(insn.code) == BPF_ALU64 ||
+		    BPF_CLASS(insn.code) == BPF_JMP ||
+		    BPF_CLASS(insn.code) == BPF_JMP32) {
+			pr_debug(" (o:%02x|s:%01x|c:%02x)",
+				 BPF_OP(insn.code), BPF_SRC(insn.code),
+				 BPF_CLASS(insn.code));
+		}
+		if (BPF_CLASS(insn.code) == BPF_LD ||
+		    BPF_CLASS(insn.code) == BPF_LDX ||
+		    BPF_CLASS(insn.code) == BPF_ST ||
+		    BPF_CLASS(insn.code) == BPF_STX) {
+			pr_debug(" (m:%02x|s:%02x|c:%02x)",
+				 BPF_MODE(insn.code), BPF_SIZE(insn.code),
+				 BPF_CLASS(insn.code));
+		}
+		pr_debug(" dst:0x%01x src:0x%01x off:0x%04x imm:0x%08x\n",
+			 insn.dst_reg, insn.src_reg, insn.off, insn.imm);
 	}
 	pr_debug("\n");
 }
