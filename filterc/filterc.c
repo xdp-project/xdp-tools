@@ -51,6 +51,10 @@ int main(int argc, char **argv)
 	printf("\n");
 
 	ebpf_prog = ebpf_program_from_cbpf(cbpf_prog);
+	if (!ebpf_prog) {
+		pr_warn("Failed to convert cBPF to eBPF: %s\n", bpfc_geterr());
+		goto out;
+	}
 
 	printf("\n");
 	ebpf_program_dump(ebpf_prog);
