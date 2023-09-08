@@ -278,6 +278,36 @@ do_pass:
 				src_reg = bpf_src == BPF_X ? BPF_REG_X : 0;
 			}
 
+			// Only emit one jump if jump_false is next insn
+			if (fp->jf == 0) {
+				code = BPF_JMP | BPF_OP(fp->code) | bpf_src;
+				target = i + fp->jt + 1;
+				*insn++ = BPF_JMP_INSN(code, dst_reg, src_reg, imm, target);
+				break;
+			}
+
+			// Invert conditons where possible if jump_true is next insn
+			if (fp->jt == 0) {
+				switch (BPF_OP(fp->code)) {
+				case BPF_JEQ:
+					code = BPF_JMP | BPF_JNE | bpf_src;
+					break;
+				case BPF_JGT:
+					code = BPF_JMP | BPF_JLE | bpf_src;
+					break;
+				case BPF_JGE:
+					code = BPF_JMP | BPF_JLT | bpf_src;
+					break;
+				default:
+					goto jmp_rest;
+				}
+
+				target = i + fp->jf + 1;
+				*insn++ = BPF_JMP_INSN(code, dst_reg, src_reg, imm, target);
+				break;
+			}
+
+jmp_rest:
 			/* Other jumps are mapped into two insns: Jxx and JA. */
 			code = BPF_JMP | BPF_OP(fp->code) | bpf_src;
 			target = i + fp->jt + 1;
