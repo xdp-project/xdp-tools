@@ -168,24 +168,63 @@ static struct bpf_object *link_filter(char *filter)
 	return bpf_obj;
 }
 
-int build_udp_packet(void *pkt, int len, int dst_port)
+void *insert_eth(void *pkt, int proto)
 {
 	struct ethhdr *eh = pkt;
-	struct iphdr *iph = (struct iphdr *)(eh + 1);
-	struct udphdr *udph = (struct udphdr *)(iph + 1);
+	eh->h_proto = htons(proto);
 
-	memset(pkt, 0, len);
+	return (void *)(eh + 1);
+}
 
-	eh->h_proto = htons(ETH_P_IP);
+struct vlan_hdr {
+	__be16 h_vlan_TCI;
+	__be16 h_vlan_encapsulated_proto;
+};
 
-	iph->protocol = IPPROTO_UDP;
+void *insert_vlan(void *pkt, int vlan_id, int proto)
+{
+	struct vlan_hdr *vlanh = pkt;
+	vlanh->h_vlan_TCI = htons(vlan_id);
+	vlanh->h_vlan_encapsulated_proto = htons(proto);
+
+	return (vlanh + 1);
+}
+
+void *insert_ipv4(void *pkt, int proto)
+{
+	struct iphdr *iph = pkt;
+	iph->protocol = proto;
 	iph->ihl = 5;
 
+	return (iph + 1);
+}
+
+void *insert_udp(void *pkt, int dst_port)
+{
+	struct udphdr *udph = pkt;
 	udph->source = htons(54321);
 	udph->dest = htons(dst_port);
-
-	return 0;
+	return (udph + 1);
 }
+
+void build_vlan_udp_packet(void *pkt, int len, int vlan_id, int dst_port)
+{
+	memset(pkt, 0, len);
+	pkt = insert_eth(pkt, ETH_P_8021Q);
+	pkt = insert_vlan(pkt, vlan_id, ETH_P_IP);
+	pkt = insert_ipv4(pkt, IPPROTO_UDP);
+	insert_udp(pkt, dst_port);
+}
+
+void build_udp_packet(void *pkt, int len, int dst_port)
+{
+	memset(pkt, 0, len);
+	pkt = insert_eth(pkt, ETH_P_IP);
+	pkt = insert_ipv4(pkt, IPPROTO_UDP);
+	insert_udp(pkt, dst_port);
+}
+
+
 
 TEST_FUNC(standalone)
 {
@@ -214,11 +253,8 @@ TEST_FUNC(standalone)
 	}
 	prog_fd = bpf_program__fd(bpf_prog);
 
-	err = build_udp_packet(pkt, len, 53);
-	if (err) {
-		printf("Failed to build packet (%d)\n", err);
-		return 1;
-	}
+	build_udp_packet(pkt, len, 53);
+
 	DECLARE_LIBBPF_OPTS(bpf_test_run_opts, test_opts,
 			    .data_in = pkt,
 			    .data_size_in = len);
@@ -233,11 +269,8 @@ TEST_FUNC(standalone)
 		return 1;
 	}
 
-	err = build_udp_packet(pkt, len, 123);
-	if (err) {
-		printf("Failed to build packet (%d)\n", err);
-		return 1;
-	}
+	build_udp_packet(pkt, len, 123);
+
 	err = bpf_prog_test_run_opts(prog_fd, &test_opts);
 	if (err) {
 		printf("Failed to run bpf prog (%d)\n", err);
@@ -280,11 +313,8 @@ TEST_FUNC(linked)
 	}
 	prog_fd = bpf_program__fd(bpf_prog);
 
-	err = build_udp_packet(pkt, len, 53);
-	if (err) {
-		printf("Failed to build packet (%d)\n", err);
-		return 1;
-	}
+	build_udp_packet(pkt, len, 53);
+
 	DECLARE_LIBBPF_OPTS(bpf_test_run_opts, test_opts,
 			    .data_in = pkt,
 			    .data_size_in = len);
@@ -299,11 +329,8 @@ TEST_FUNC(linked)
 		return 1;
 	}
 
-	err = build_udp_packet(pkt, len, 123);
-	if (err) {
-		printf("Failed to build packet (%d)\n", err);
-		return 1;
-	}
+	build_udp_packet(pkt, len, 123);
+
 	err = bpf_prog_test_run_opts(prog_fd, &test_opts);
 	if (err) {
 		printf("Failed to run bpf prog (%d)\n", err);
@@ -319,9 +346,109 @@ TEST_FUNC(linked)
 	return 0;
 }
 
+typedef void (*pkt_func)(void *, int);
+#define PKT_FUNC(fn) void pkt_##fn(void *pkt, int len)
+
+PKT_FUNC(udp53) {
+	build_udp_packet(pkt, len, 53);
+}
+
+PKT_FUNC(udp123) {
+	build_udp_packet(pkt, len, 123);
+}
+
+PKT_FUNC(vlan42_udp53) {
+	build_vlan_udp_packet(pkt, len, 42, 53);
+}
+
+PKT_FUNC(vlan42_udp123) {
+	build_vlan_udp_packet(pkt, len, 42, 123);
+}
+
+PKT_FUNC(vlan100_udp53) {
+	build_vlan_udp_packet(pkt, len, 100, 53);
+}
+
+struct test_filter {
+	char *filter;
+	pkt_func good_pkt;
+	pkt_func bad_pkt;
+} test_filters[] = {
+	{"udp port 53", pkt_udp53, pkt_udp123},
+	{"vlan 42 and udp port 53", pkt_vlan42_udp53, pkt_vlan100_udp53},
+	{"vlan 42 and udp port 53", pkt_vlan42_udp53, pkt_udp53},
+	{"udp port 53 or (vlan and udp port 53)", pkt_udp53, pkt_udp123},
+	{"udp port 53 or (vlan and udp port 53)", pkt_vlan42_udp53, pkt_vlan42_udp123},
+	{NULL, NULL, NULL},
+};
+
+TEST_FUNC(filters)
+{
+	struct bpf_object *bpf_obj;
+	struct bpf_program *bpf_prog;
+	struct test_filter *test;
+	int err, prog_fd, i = 0, len = 256;
+	void *pkt = malloc(len);
+	DECLARE_LIBBPF_OPTS(bpf_test_run_opts, test_opts,
+			    .data_in = pkt,
+			    .data_size_in = len);
+
+	while (test_filters[i].filter) {
+		test = &test_filters[i];
+		bpf_obj = compile_filter(test->filter);
+		if (!bpf_obj) {
+			printf("%d: Failed to compile and open filter'\n", i);
+			return 1;
+		}
+
+		err = bpf_object__load(bpf_obj);
+		if (err) {
+			printf("%d: Failed to load bpf object\n", i);
+			return 1;
+		}
+
+		bpf_prog = bpf_object__find_program_by_name(bpf_obj, TEST_PROG_NAME);
+		if (!bpf_prog) {
+			printf("%d: Failed to find bpf program in object\n", i);
+			return 1;
+		}
+		prog_fd = bpf_program__fd(bpf_prog);
+
+		test->good_pkt(pkt, len);
+		err = bpf_prog_test_run_opts(prog_fd, &test_opts);
+		if (err) {
+			printf("%d: Failed to run bpf prog (%d)\n", i, err);
+			return 1;
+		}
+		if (test_opts.retval != XDP_PASS) {
+			printf("%d: Unexpected return value %d, expected XDP_PASS\n",
+			       i, test_opts.retval);
+			return 1;
+		}
+
+		test->bad_pkt(pkt, len);
+		err = bpf_prog_test_run_opts(prog_fd, &test_opts);
+		if (err) {
+			printf("%d: Failed to run bpf prog (%d)\n", i, err);
+			return 1;
+		}
+		if (test_opts.retval != XDP_DROP) {
+			printf("%d: Unexpected return value %d, expected XDP_DROP\n",
+			       i, test_opts.retval);
+			return 1;
+		}
+
+		i++;
+	}
+
+	free(pkt);
+	return 0;
+}
+
 static const struct prog_command cmds[] = {
 	TEST(standalone),
 	TEST(linked),
+	TEST(filters),
 	END_COMMANDS
 };
 
