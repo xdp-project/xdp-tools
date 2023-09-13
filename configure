@@ -67,6 +67,7 @@ check_toolchain()
     : ${EMACS=emacs}
     : ${BPFTOOL=bpftool}
     : ${ARCH_INCLUDES=}
+    : ${ARCH_NAME=}
 
     CLANG=$(find_tool clang "$CLANG")
     LLC=$(find_tool llc "$LLC")
@@ -77,6 +78,8 @@ check_toolchain()
             exit 1;
         fi;
     done
+
+    ARCH_NAME=$($CC -print-multiarch 2>/dev/null)
 
     clang_version=$($CLANG --version | grep -Po '(?<=clang version )[[:digit:]]+')
     if [ "$?" -ne "0" ]; then
@@ -116,10 +119,10 @@ check_toolchain()
         exit 1
     fi
 
-    if [ -z "$ARCH_INCLUDES" ]; then
+    if [ -z "$ARCH_INCLUDES" ] && [ -n "$ARCH_NAME" ]; then
         for dir in $(echo | $CC -Wp,-v -E - 2>&1 | grep '^ '); do
             local idir
-            idir="${dir}/$(uname -m)-linux-gnu/"
+            idir="${dir}/${ARCH_NAME}/"
             [ -d "$idir" ] && ARCH_INCLUDES="-I${idir} $ARCH_INCLUDES"
         done
     fi
