@@ -66,12 +66,13 @@ check_toolchain()
     : ${M4=m4}
     : ${EMACS=emacs}
     : ${BPFTOOL=bpftool}
+    : ${READELF=readelf}
     : ${ARCH_INCLUDES=}
 
     CLANG=$(find_tool clang "$CLANG")
     LLC=$(find_tool llc "$LLC")
 
-    for TOOL in $PKG_CONFIG $CC $LD $OBJCOPY $CLANG $LLC $M4 $BPFTOOL; do
+    for TOOL in $PKG_CONFIG $CC $LD $OBJCOPY $CLANG $LLC $M4 $BPFTOOL $READELF; do
         if [ ! $(command -v ${TOOL} 2>/dev/null) ]; then
             echo "*** ERROR: Cannot find tool ${TOOL}" ;
             exit 1;
@@ -134,6 +135,7 @@ check_toolchain()
     echo "EMACS:=${EMACS}" >>$CONFIG
     echo "ARCH_INCLUDES:=$ARCH_INCLUDES" >> $CONFIG
     echo "BPFTOOL:=${BPFTOOL}" >> $CONFIG
+    echo "READELF:=${READELF}" >> $CONFIG
 }
 
 check_zlib()
