@@ -3223,6 +3223,51 @@ out:
 	return err;
 }
 
+static int xdp_detach_link(__u32 ifindex, __u32 prog_id) {
+	struct bpf_link_info link_info;
+	__u32 link_info_len, id = 0;
+	int err, fd;
+
+	while (true) {
+		err = bpf_link_get_next_id(id, &id);
+		if (err) {
+			err = -errno;
+			pr_debug("Can't get next link for id %u: %s", id, strerror(errno));
+			return err;
+		}
+
+		fd = bpf_link_get_fd_by_id(id);
+		if (fd < 0) {
+			err = -errno;
+			pr_debug("Can't get link by id %u: %s", id, strerror(errno));
+			return err;
+		}
+
+		memset(&link_info, 0, sizeof(link_info));
+		link_info_len = sizeof(link_info);
+
+		err = bpf_obj_get_info_by_fd(fd, &link_info, &link_info_len);
+		if (err) {
+			err = -errno;
+			pr_debug("Can't get link info for %u: %s", id, strerror(errno));
+			break;
+		}
+
+		if (link_info.type == BPF_LINK_TYPE_XDP && link_info.xdp.ifindex == ifindex && link_info.prog_id == prog_id) {
+			pr_debug("Detach link for id %u for prog %u on interface %u", id, prog_id, ifindex);
+			err = bpf_link_detach(fd);
+			if (err) {
+				err = -errno;
+				pr_warn("Can't detach link %u: %s", id, strerror(errno));
+			}
+			break;
+		}
+		close(fd);
+	}
+	close(fd);
+	return err;
+}
+
 static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 				 struct xdp_multiprog *mp,
 				 enum xdp_attach_mode mode)
@@ -3253,8 +3298,13 @@ static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 
 
 	err = xdp_attach_fd(prog_fd, old_fd, ifindex, mode);
-	if (err < 0)
+	if (err < 0) {
+		if (errno == EBUSY && !mp && mode == XDP_MODE_NATIVE) {
+			pr_debug("Detaching link on ifindex %d\n", ifindex);
+			return xdp_detach_link(ifindex, xdp_multiprog__main_id(old_mp));
+		}
 		goto err;
+	}
 
 	if (mp)
 		pr_debug("Loaded %zu programs on ifindex %d%s\n",
