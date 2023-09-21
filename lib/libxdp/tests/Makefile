@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 
-USER_TARGETS := test_xsk_refcnt check_kern_compat test_xdp_frags test_dispatcher_versions
+USER_TARGETS := test_xsk_refcnt check_kern_compat test_xdp_frags test_dispatcher_versions test_link_detach
 BPF_TARGETS := xdp_dispatcher_v1 xdp_pass
 USER_LIBS := -lpthread
 

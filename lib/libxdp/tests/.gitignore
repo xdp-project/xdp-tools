@@ -3,3 +3,4 @@ check_kern_compat
 test_xdp_frags
 test_dispatcher_versions
 test_xsk_non_privileged
+test_link_detach
