@@ -11,7 +11,7 @@
 #include <string.h>
 #include <sys/resource.h>
 #include <unistd.h>
-
+#include <linux/if_link.h>
 #include "test_utils.h"
 
 #include <xdp/libxdp.h>
@@ -25,12 +25,12 @@ static void usage(char *progname)
 	exit(EXIT_FAILURE);
 }
 
-static int check_link_detach(int ifindex) {
+static int check_link_detach(int ifindex, enum xdp_attach_mode mode) {
+	DECLARE_LIBBPF_OPTS(bpf_link_create_opts, opts);
 	struct bpf_object *obj_prog = NULL;
 	struct bpf_program *prog;
 	struct xdp_multiprog *mp = NULL;
-	struct bpf_link *link = NULL;
-	int ret;
+	int ret, prog_fd, link_fd =0;
 
 	if (!ifindex)
 		return -EINVAL;
@@ -47,7 +47,6 @@ static int check_link_detach(int ifindex) {
 		goto out;
 	}
 
-
 	ret = bpf_object__load(obj_prog);
 	if (ret) {
 		ret = -errno;
@@ -55,8 +54,17 @@ static int check_link_detach(int ifindex) {
 		goto out;
 	}
 
-	link = bpf_program__attach_xdp(prog, ifindex);
-	if (!link) {
+	prog_fd = bpf_program__fd(prog);
+	if (prog_fd < 0) {
+		ret = -errno;
+		fprintf(stderr, "Couldn't get prog fd: %s\n", strerror(-ret));
+		goto out;
+	}
+	if (mode == XDP_MODE_SKB)
+		opts.flags = XDP_FLAGS_SKB_MODE;
+
+	link_fd = bpf_link_create(prog_fd, ifindex, BPF_XDP, &opts);
+	if (link_fd < 0) {
 		ret = SKIPPED_TEST;
 		fprintf(stderr, "Couldn't attach XDP prog to ifindex %d: %s\n", ifindex, strerror(errno));
 		goto out;
@@ -72,7 +80,8 @@ static int check_link_detach(int ifindex) {
 
 	ret = xdp_multiprog__detach(mp);
 out:
-	bpf_link__destroy(link);
+	if (link_fd > 0)
+		close(link_fd);
 	xdp_multiprog__close(mp);
 	bpf_object__close(obj_prog);
 	return ret;
@@ -81,7 +90,7 @@ out:
 int main(int argc, char **argv)
 {
 	struct rlimit r = {RLIM_INFINITY, RLIM_INFINITY};
-	int ifindex;
+	int ifindex, ret;
 
 	if (setrlimit(RLIMIT_MEMLOCK, &r)) {
 		fprintf(stderr, "ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n",
@@ -108,5 +117,16 @@ int main(int argc, char **argv)
 		usage(argv[0]);
 	}
 
-	return check_link_detach(ifindex);
+	ret = check_link_detach(ifindex, XDP_MODE_SKB);
+	if (ret) {
+		fprintf(stderr, "Failed to detach XDP prog from ifindex %d mode %s: %s\n", 
+			ifindex, "XDP_MODE_SKB", strerror(-ret));
+		return ret;
+	}
+	ret = check_link_detach(ifindex, XDP_MODE_NATIVE);
+	if (ret) {
+		fprintf(stderr, "Failed to detach XDP prog from ifindex %d mode %s: %s\n",
+			ifindex, "XDP_MODE_NATIVE", strerror(-ret));
+	}
+	return ret;
 }

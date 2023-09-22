@@ -3299,7 +3299,7 @@ static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 
 	err = xdp_attach_fd(prog_fd, old_fd, ifindex, mode);
 	if (err < 0) {
-		if (errno == EBUSY && !mp && mode == XDP_MODE_NATIVE) {
+		if (errno == EBUSY && !mp) {
 			pr_debug("Detaching link on ifindex %d\n", ifindex);
 			return xdp_detach_link(ifindex, xdp_multiprog__main_id(old_mp));
 		}
