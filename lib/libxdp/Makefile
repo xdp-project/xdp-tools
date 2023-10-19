@@ -20,6 +20,7 @@ MAN_FILES := $(MAN_PAGE)
 TEST_DIR := tests
 
 SHARED_CFLAGS += -fPIC -DSHARED
+STATIC_CFLAGS += -D LIBXDP_STATIC=1
 LIB_HEADERS := $(wildcard $(HEADER_DIR)/xdp/*.h)
 BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(wildcard $(HEADER_DIR)/xdp/*.h)
 EXTRA_LIB_DEPS := $(OBJECT_LIBBPF) $(LIBMK) $(LIB_OBJS) $(LIB_HEADERS) compat.h libxdp_internal.h xsk_def_xdp_prog.h bpf_instr.h
@@ -86,7 +87,7 @@ $(SHARED_OBJDIR):
 	$(Q)mkdir -p $(SHARED_OBJDIR)
 
 $(STATIC_OBJDIR)/%.o: %.c $(EXTRA_LIB_DEPS) | $(STATIC_OBJDIR)
-	$(QUIET_CC)$(CC) $(CFLAGS) $(CPPFLAGS) -D LIBXDP_STATIC=1 -Wall -I../../headers -c $< -o $@
+	$(QUIET_CC)$(CC) $(CFLAGS) $(CPPFLAGS) $(STATIC_CFLAGS) -Wall -I../../headers -c $< -o $@
 
 $(SHARED_OBJDIR)/%.o: %.c $(EXTRA_LIB_DEPS) | $(SHARED_OBJDIR)
 	$(QUIET_CC)$(CC) $(CFLAGS) $(CPPFLAGS) $(SHARED_CFLAGS) -Wall -I../../headers -c $< -o $@
