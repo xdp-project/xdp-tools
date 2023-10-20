@@ -1,7 +1,7 @@
 #!/bin/bash
 
-VERSION="$1"
 WORKDIR=$(dirname "${BASH_SOURCE[0]}")
+VERSION="${1:-$(make -f $WORKDIR/version.mk)}"
 OUTFILE="$WORKDIR/xdp-tools-$VERSION.tar.gz"
 PREFIX=xdp-tools-$VERSION
 TMPDIR=$(mktemp -d)
