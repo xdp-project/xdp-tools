@@ -63,6 +63,8 @@ struct enum_val cpumap_program_modes[] = {
        {"l4-proto", CPUMAP_CPU_L4_PROTO},
        {"l4-filter", CPUMAP_CPU_L4_PROTO_FILTER},
        {"l4-hash", CPUMAP_CPU_L4_HASH},
+       {"l4-sport", CPUMAP_CPU_L4_SPORT},
+       {"l4-dport", CPUMAP_CPU_L4_DPORT},
        {NULL, 0}
 };
 

@@ -96,7 +96,7 @@ bool parse_eth(struct ethhdr *eth, void *data_end,
 }
 
 static __always_inline
-__u16 get_dest_port_ipv4_udp(struct xdp_md *ctx, __u64 nh_off)
+__u16 get_port_ipv4_udp(struct xdp_md *ctx, __u64 nh_off, bool src)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
@@ -112,8 +112,81 @@ __u16 get_dest_port_ipv4_udp(struct xdp_md *ctx, __u64 nh_off)
 	if (udph + 1 > data_end)
 		return 0;
 
-	return bpf_ntohs(udph->dest);
+	if (src)
+		return bpf_ntohs(udph->source);
+	else
+		return bpf_ntohs(udph->dest);
 }
+
+static __always_inline
+__u16 get_port_ipv6_udp(struct xdp_md *ctx, __u64 nh_off, bool src)
+{
+	void *data_end = (void *)(long)ctx->data_end;
+	void *data     = (void *)(long)ctx->data;
+	struct ipv6hdr *ip6h = data + nh_off;
+	struct udphdr *udph;
+
+	if (ip6h + 1 > data_end)
+		return 0;
+	if (!(ip6h->nexthdr == IPPROTO_UDP))
+		return 0;
+
+	udph = (void *)(ip6h + 1);
+	if (udph + 1 > data_end)
+		return 0;
+
+	if (src)
+		return bpf_ntohs(udph->source);
+	else
+		return bpf_ntohs(udph->dest);
+}
+
+static __always_inline
+__u16 get_port_ipv4_tcp(struct xdp_md *ctx, __u64 nh_off, bool src)
+{
+	void *data_end = (void *)(long)ctx->data_end;
+	void *data     = (void *)(long)ctx->data;
+	struct iphdr *iph = data + nh_off;
+	struct tcphdr *tcph;
+
+	if (iph + 1 > data_end)
+		return 0;
+	if (!(iph->protocol == IPPROTO_TCP))
+		return 0;
+
+	tcph = (void *)(iph + 1);
+	if (tcph + 1 > data_end)
+		return 0;
+
+	if (src)
+		return bpf_ntohs(tcph->source);
+	else
+		return bpf_ntohs(tcph->dest);
+}
+
+static __always_inline
+__u16 get_port_ipv6_tcp(struct xdp_md *ctx, __u64 nh_off, bool src)
+{
+	void *data_end = (void *)(long)ctx->data_end;
+	void *data     = (void *)(long)ctx->data;
+	struct ipv6hdr *ip6h = data + nh_off;
+	struct tcphdr *tcph;
+
+	if (ip6h + 1 > data_end)
+		return 0;
+	if (!(ip6h->nexthdr == IPPROTO_UDP))
+		return 0;
+
+	tcph = (void *)(ip6h + 1);
+	if (tcph + 1 > data_end)
+		return 0;
+
+	if (src)
+		return bpf_ntohs(tcph->source);
+	else
+		return bpf_ntohs(tcph->dest);
+}
+
 
 static __always_inline
 int get_proto_ipv4(struct xdp_md *ctx, __u64 nh_off)
@@ -368,7 +441,7 @@ int  cpumap_l4_filter(struct xdp_md *ctx)
 	case IPPROTO_UDP:
 		cpu_idx = 1;
 		/* DDoS filter UDP port 9 (pktgen) */
-		dest_port = get_dest_port_ipv4_udp(ctx, l3_offset);
+		dest_port = get_port_ipv4_udp(ctx, l3_offset, false);
 		if (dest_port == 9) {
 			NO_TEAR_INC(rec->dropped);
 			return XDP_DROP;
@@ -489,6 +562,94 @@ int  cpumap_l4_hash(struct xdp_md *ctx)
 		return XDP_ABORTED;
 	}
 	return bpf_redirect_map(&cpu_map, cpu_dest, 0);
+}
+
+static __always_inline
+int cpumap_l4_port(struct xdp_md *ctx, bool src)
+{
+	void *data_end = (void *)(long)ctx->data_end;
+	void *data     = (void *)(long)ctx->data;
+	__u32 key = bpf_get_smp_processor_id();
+	struct ethhdr *eth = data;
+	__u8 ip_proto = IPPROTO_UDP;
+	struct datarec *rec;
+	__u16 eth_proto = 0;
+	__u64 l3_offset = 0;
+	__u32 cpu_dest = 0;
+	__u32 *cpu_lookup;
+	__u32 cpu_idx = 0;
+	__u32 *cpu_max;
+	__u32 key0 = 0;
+	__u16 port;
+
+	rec = bpf_map_lookup_elem(&rx_cnt, &key);
+	if (!rec)
+		return XDP_PASS;
+	NO_TEAR_INC(rec->processed);
+
+	cpu_max = bpf_map_lookup_elem(&cpus_count, &key0);
+	if (!cpu_max)
+		return XDP_ABORTED;
+
+	if (!(parse_eth(eth, data_end, &eth_proto, &l3_offset)))
+		return XDP_PASS; /* Just skip */
+
+	/* Extract L4 source port */
+	switch (eth_proto) {
+	case ETH_P_IP:
+		ip_proto = get_proto_ipv4(ctx, l3_offset);
+		switch (ip_proto) {
+		case IPPROTO_TCP:
+			port = get_port_ipv4_tcp(ctx, l3_offset, src);
+			break;
+		case IPPROTO_UDP:
+			port = get_port_ipv4_udp(ctx, l3_offset, src);
+			break;
+		default:
+			port = 0;
+		}
+		break;
+	case ETH_P_IPV6:
+		ip_proto = get_proto_ipv6(ctx, l3_offset);
+		switch (ip_proto) {
+		case IPPROTO_TCP:
+			port = get_port_ipv6_tcp(ctx, l3_offset, src);
+			break;
+		case IPPROTO_UDP:
+			port = get_port_ipv6_udp(ctx, l3_offset, src);
+			break;
+		default:
+			port = 0;
+		}
+		break;
+	default:
+		port = 0;
+	}
+
+	cpu_idx = port % *cpu_max;
+
+	cpu_lookup = bpf_map_lookup_elem(&cpus_available, &cpu_idx);
+	if (!cpu_lookup)
+		return XDP_ABORTED;
+	cpu_dest = *cpu_lookup;
+
+	if (cpu_dest >= nr_cpus) {
+		NO_TEAR_INC(rec->issue);
+		return XDP_ABORTED;
+	}
+	return bpf_redirect_map(&cpu_map, cpu_dest, 0);
+}
+
+SEC("xdp")
+int cpumap_l4_sport(struct xdp_md *ctx)
+{
+	return cpumap_l4_port(ctx, true);
+}
+
+SEC("xdp")
+int cpumap_l4_dport(struct xdp_md *ctx)
+{
+	return cpumap_l4_port(ctx, false);
 }
 
 SEC("xdp/cpumap")

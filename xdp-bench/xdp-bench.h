@@ -80,6 +80,8 @@ enum cpumap_program_mode {
 	CPUMAP_CPU_L4_PROTO,
 	CPUMAP_CPU_L4_PROTO_FILTER,
 	CPUMAP_CPU_L4_HASH,
+	CPUMAP_CPU_L4_SPORT,
+	CPUMAP_CPU_L4_DPORT,
 };
 
 struct cpumap_opts {
