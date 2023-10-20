@@ -683,70 +683,70 @@ Extended output mode displays at most the following fields:
 \fCFIELD		  DESCRIPTION
 receive	       Displays the number of packets received and errors encountered
 
-		       Whenever an error or packet drop occurs, details of per CPU error
-		       and drop statistics will be expanded inline in terse mode.
-				       pkt/s		- Packets received per second
-				       drop/s		- Packets dropped per second
-				       error/s		- Errors encountered per second
-				       redirect	- Displays the number of packets successfully redirected
-		       Errors encountered are expanded under redirect_err field
-		       Note that passing -s to enable it has a per packet overhead
-				       redir/s		- Packets redirected successfully per second
+                       Whenever an error or packet drop occurs, details of per CPU error
+                       and drop statistics will be expanded inline in terse mode.
+                                       pkt/s		- Packets received per second
+                                       drop/s		- Packets dropped per second
+                                       error/s		- Errors encountered per second
+                                       redirect	- Displays the number of packets successfully redirected
+                       Errors encountered are expanded under redirect_err field
+                       Note that passing -s to enable it has a per packet overhead
+                                       redir/s		- Packets redirected successfully per second
 
 
 redirect_err	  Displays the number of packets that failed redirection
 
-		       The errno is expanded under this field with per CPU count
-		       The recognized errors are:
-				       EINVAL:		Invalid redirection
-				       ENETDOWN:	Device being redirected to is down
-				       EMSGSIZE:	Packet length too large for device
-				       EOPNOTSUPP:	Operation not supported
-				       ENOSPC:		No space in ptr_ring of cpumap kthread
+                       The errno is expanded under this field with per CPU count
+                       The recognized errors are:
+                                       EINVAL:		Invalid redirection
+                                       ENETDOWN:	Device being redirected to is down
+                                       EMSGSIZE:	Packet length too large for device
+                                       EOPNOTSUPP:	Operation not supported
+                                       ENOSPC:		No space in ptr_ring of cpumap kthread
 
-				       error/s		- Packets that failed redirection per second
+                                       error/s		- Packets that failed redirection per second
 
 
 enqueue to cpu N Displays the number of packets enqueued to bulk queue of CPU N
-		       Expands to cpu:FROM->N to display enqueue stats for each CPU enqueuing to CPU N
-		       Received packets can be associated with the CPU redirect program is enqueuing
-		       packets to.
-				       pkt/s		- Packets enqueued per second from other CPU to CPU N
-				       drop/s		- Packets dropped when trying to enqueue to CPU N
-				       bulk-avg	- Average number of packets processed for each event
+                       Expands to cpu:FROM->N to display enqueue stats for each CPU enqueuing to CPU N
+                       Received packets can be associated with the CPU redirect program is enqueuing
+                       packets to.
+                                       pkt/s		- Packets enqueued per second from other CPU to CPU N
+                                       drop/s		- Packets dropped when trying to enqueue to CPU N
+                                       bulk-avg	- Average number of packets processed for each event
 
 
 kthread	       Displays the number of packets processed in CPUMAP kthread for each CPU
-		       Packets consumed from ptr_ring in kthread, and its xdp_stats (after calling
-		       CPUMAP bpf prog) are expanded below this. xdp_stats are expanded as a total and
-		       then per-CPU to associate it to each CPU's pinned CPUMAP kthread.
-				       pkt/s		- Packets consumed per second from ptr_ring
-				       drop/s		- Packets dropped per second in kthread
-				       sched		- Number of times kthread called schedule()
+                       Packets consumed from ptr_ring in kthread, and its xdp_stats (after calling
+                       CPUMAP bpf prog) are expanded below this. xdp_stats are expanded as a total and
+                       then per-CPU to associate it to each CPU's pinned CPUMAP kthread.
+                                       pkt/s		- Packets consumed per second from ptr_ring
+                                       drop/s		- Packets dropped per second in kthread
+                                       sched		- Number of times kthread called schedule()
 
-		       xdp_stats (also expands to per-CPU counts)
-				       pass/s		- XDP_PASS count for CPUMAP program execution
-				       drop/s		- XDP_DROP count for CPUMAP program execution
-				       redir/s		- XDP_REDIRECT count for CPUMAP program execution
+                       xdp_stats (also expands to per-CPU counts)
+                                       pass/s		- XDP_PASS count for CPUMAP program execution
+                                       drop/s		- XDP_DROP count for CPUMAP program execution
+                                       redir/s		- XDP_REDIRECT count for CPUMAP program execution
 
 
 xdp_exception	  Displays xdp_exception tracepoint events
 
-		       This can occur due to internal driver errors, unrecognized
-		       XDP actions and due to explicit user trigger by use of XDP_ABORTED
-		       Each action is expanded below this field with its count
-				       hit/s		- Number of times the tracepoint was hit per second
+                       This can occur due to internal driver errors, unrecognized
+                       XDP actions and due to explicit user trigger by use of XDP_ABORTED
+                       Each action is expanded below this field with its count
+                                       hit/s		- Number of times the tracepoint was hit per second
 
 
 devmap_xmit      Displays devmap_xmit tracepoint events
 
-		       This tracepoint is invoked for successful transmissions on output
-		       device but these statistics are not available for generic XDP mode,
-		       hence they will be omitted from the output when using SKB mode
-				       xmit/s		- Number of packets that were transmitted per second
-				       drop/s		- Number of packets that failed transmissions per second
-				       drv_err/s	- Number of internal driver errors per second
-				       bulk-avg	- Average number of packets processed for each event
+                       This tracepoint is invoked for successful transmissions on output
+                       device but these statistics are not available for generic XDP mode,
+                       hence they will be omitted from the output when using SKB mode
+                                       xmit/s		- Number of packets that were transmitted per second
+                                       drop/s		- Number of packets that failed transmissions per second
+                                       drv_err/s	- Number of internal driver errors per second
+                                       bulk-avg	- Average number of packets processed for each event
 \fP
 .fi
 .RE

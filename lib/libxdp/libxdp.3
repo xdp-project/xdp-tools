@@ -55,13 +55,13 @@ program that is already loaded into the kernel:
 .RS
 .nf
 \fCstruct xdp_program *xdp_program__from_bpf_obj(struct bpf_object *obj,
-					      const char *section_name);
+                                              const char *section_name);
 struct xdp_program *xdp_program__find_file(const char *filename,
-					   const char *section_name,
-					   struct bpf_object_open_opts *opts);
+                                           const char *section_name,
+                                           struct bpf_object_open_opts *opts);
 struct xdp_program *xdp_program__open_file(const char *filename,
-					   const char *section_name,
-					   struct bpf_object_open_opts *opts);
+                                           const char *section_name,
+                                           struct bpf_object_open_opts *opts);
 struct xdp_program *xdp_program__from_fd(int fd);
 struct xdp_program *xdp_program__from_id(__u32 prog_id);
 struct xdp_program *xdp_program__from_pin(const char *pin_path);
@@ -139,9 +139,9 @@ follows:
 #include <xdp/xdp_helpers.h>
 
 struct {
-	__uint(priority, 10);
-	__uint(XDP_PASS, 1);
-	__uint(XDP_DROP, 1);
+        __uint(priority, 10);
+        __uint(XDP_PASS, 1);
+        __uint(XDP_DROP, 1);
 } XDP_RUN_CONFIG(my_xdp_func);
 \fP
 .fi
@@ -167,15 +167,15 @@ attachment.
 .nf
 \fCunsigned int xdp_program__run_prio(const struct xdp_program *xdp_prog);
 int xdp_program__set_run_prio(struct xdp_program *xdp_prog,
-			      unsigned int run_prio);
+                              unsigned int run_prio);
 bool xdp_program__chain_call_enabled(const struct xdp_program *xdp_prog,
-				     enum xdp_action action);
+                                     enum xdp_action action);
 int xdp_program__set_chain_call_enabled(struct xdp_program *prog,
-					unsigned int action,
-					bool enabled);
+                                        unsigned int action,
+                                        bool enabled);
 int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
-					  char *buf,
-					  size_t buf_len);
+                                          char *buf,
+                                          size_t buf_len);
 \fP
 .fi
 .RE
@@ -204,7 +204,7 @@ looks like this:
 .nf
 \fCstruct xdp_multiprog *xdp_multiprog__get_from_ifindex(int ifindex);
 struct xdp_program *xdp_multiprog__next_prog(const struct xdp_program *prog,
-					     const struct xdp_multiprog *mp);
+                                             const struct xdp_multiprog *mp);
 void xdp_multiprog__close(struct xdp_multiprog *mp);
 int xdp_multiprog__detach(struct xdp_multiprog *mp, int ifindex);
 enum xdp_attach_mode xdp_multiprog__attach_mode(const struct xdp_multiprog *mp);
@@ -307,29 +307,29 @@ function.
 .RS
 .nf
 \fCint xsk_umem__create(struct xsk_umem **umem,
-		     void *umem_area, __u64 size,
-		     struct xsk_ring_prod *fill,
-		     struct xsk_ring_cons *comp,
-		     const struct xsk_umem_config *config);
+                     void *umem_area, __u64 size,
+                     struct xsk_ring_prod *fill,
+                     struct xsk_ring_cons *comp,
+                     const struct xsk_umem_config *config);
 int xsk_umem__create_with_fd(struct xsk_umem **umem,
-			     int fd, void *umem_area, __u64 size,
-			     struct xsk_ring_prod *fill,
-			     struct xsk_ring_cons *comp,
-			     const struct xsk_umem_config *config);
+                             int fd, void *umem_area, __u64 size,
+                             struct xsk_ring_prod *fill,
+                             struct xsk_ring_cons *comp,
+                             const struct xsk_umem_config *config);
 int xsk_socket__create(struct xsk_socket **xsk,
-		       const char *ifname, __u32 queue_id,
-		       struct xsk_umem *umem,
-		       struct xsk_ring_cons *rx,
-		       struct xsk_ring_prod *tx,
-		       const struct xsk_socket_config *config);
+                       const char *ifname, __u32 queue_id,
+                       struct xsk_umem *umem,
+                       struct xsk_ring_cons *rx,
+                       struct xsk_ring_prod *tx,
+                       const struct xsk_socket_config *config);
 int xsk_socket__create_shared(struct xsk_socket **xsk_ptr,
-			      const char *ifname,
-			      __u32 queue_id, struct xsk_umem *umem,
-			      struct xsk_ring_cons *rx,
-			      struct xsk_ring_prod *tx,
-			      struct xsk_ring_prod *fill,
-			      struct xsk_ring_cons *comp,
-			      const struct xsk_socket_config *config);
+                              const char *ifname,
+                              __u32 queue_id, struct xsk_umem *umem,
+                              struct xsk_ring_cons *rx,
+                              struct xsk_ring_prod *tx,
+                              struct xsk_ring_prod *fill,
+                              struct xsk_ring_cons *comp,
+                              const struct xsk_socket_config *config);
 int xsk_umem__delete(struct xsk_umem *umem);
 void xsk_socket__delete(struct xsk_socket *xsk);
 \fP
