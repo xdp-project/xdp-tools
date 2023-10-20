@@ -421,8 +421,8 @@ static int iface_print_xdp_features(const struct iface *iface)
 	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_NDO_XMIT_SG));
 
 	if (opts.feature_flags & ~NETDEV_XDP_ACT_MASK)
-		pr_debug("unknown reported xdp features: 0x%llx\n",
-			 opts.feature_flags & ~NETDEV_XDP_ACT_MASK);
+		pr_debug("unknown reported xdp features: 0x%lx\n",
+			 (unsigned long)opts.feature_flags & ~NETDEV_XDP_ACT_MASK);
 
 	return 0;
 #else
