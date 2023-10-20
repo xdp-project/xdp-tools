@@ -19,7 +19,7 @@ jobs:
 
       - name: "Create source archive"
         run: |
-          make archive
+          ./mkarchive.sh
 
       - uses: "marvinpinto/action-automatic-releases@v1.2.1"
         with:
