@@ -978,6 +978,7 @@ static struct xsk_ctx *xsk_create_ctx(struct xsk_socket *xsk,
 
 static void xsk_destroy_xsk_struct(struct xsk_socket *xsk)
 {
+	xdp_program__close(xsk->ctx->xdp_prog);
 	free(xsk->ctx);
 	free(xsk);
 }
