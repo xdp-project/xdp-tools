@@ -39,7 +39,7 @@ find_tool()
 
     # we're looking for a binary with the same name as tool_name; try version
     # suffixes in order until we find one
-    for v in 16 15 14 13 12 11; do
+    for v in 17 16 15 14 13 12 11; do
         tool_path="${tool_name}-$v"
         if command -v "$tool_path" >/dev/null 2>&1; then
             echo $tool_path
