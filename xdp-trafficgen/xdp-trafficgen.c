@@ -891,6 +891,42 @@ out:
 	return err;
 }
 
+struct gtpu_packet {
+	// TODO: define struct
+}
+
+static __unused struct gtpu_packet pkt_gtpu = {
+	// TODO: declare struct
+}
+
+static __be16 calc_gtpu_cksum() // TODO: define arguments
+{
+	// TODO: implement function
+
+	return 0;
+}
+
+static void prepare_gtpu_pkt() // TODO: define arguments
+{
+	// TODO: implement function
+}
+static const struct gtpuopt {
+	// TODO: declare struct
+}
+
+static struct prog_option gtpu_options[] = {
+	// TODO: define options
+}
+
+int do_gtpu(const void *opt, __unused const char *pin_root_path)
+{
+
+	int err = -EINVAL;
+
+	// TODO: implement function
+
+	return err;
+}
 static const struct probeopt {
 } defaults_probe = {};
 
