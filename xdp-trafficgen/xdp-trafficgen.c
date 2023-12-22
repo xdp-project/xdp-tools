@@ -39,6 +39,10 @@
 #include "xdp-trafficgen.h"
 
 #include "xdp_trafficgen.skel.h"
+#include "gtpu.h"
+#include <arpa/inet.h>
+#include <linux/ip.h>
+#include <linux/bpf.h>
 
 #define PROG_NAME "xdp-trafficgen"
 
@@ -55,6 +59,16 @@ DEFINE_SAMPLE_INIT(xdp_trafficgen);
 static bool status_exited = false;
 static bool runners_exited = false;
 
+void print_packet(const unsigned char *packet, int length) {
+    for (int i = 0; i < length; i++) {
+        printf("%02x ", packet[i]);
+        if ((i + 1) % 16 == 0) {
+            printf("\n"); // separate lines every 16 bytes
+        }
+    }
+    printf("\n");
+}
+
 struct udp_packet {
 	struct ethhdr eth;
 	struct ipv6hdr iph;
@@ -69,7 +83,7 @@ static struct udp_packet pkt_udp = {
 	.iph.nexthdr = IPPROTO_UDP,
 	.iph.payload_len = bpf_htons(sizeof(struct udp_packet)
 				     - offsetof(struct udp_packet, udp)),
-	.iph.hop_limit = 1,
+	.iph.hop_limit = 64,
 	.iph.saddr.s6_addr16 = {bpf_htons(0xfe80), 0, 0, 0, 0, 0, 0, bpf_htons(1)},
 	.iph.daddr.s6_addr16 = {bpf_htons(0xfe80), 0, 0, 0, 0, 0, 0, bpf_htons(2)},
 	.udp.source = bpf_htons(1),
@@ -451,9 +465,13 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 	pr_info("Transmitting on %s (ifindex %d)\n",
 	       cfg->iface.ifname, cfg->iface.ifindex);
 
+	char buffer[INET6_ADDRSTRLEN];
+	const char* result = inet_ntop(AF_INET6, &cfg->dst_ip, buffer, INET6_ADDRSTRLEN);
+	pr_info("\nAddress %s\n", result);
 	err = sample_run(cfg->interval, NULL, NULL);
 	status_exited = true;
 
+	print_packet((unsigned char *)&pkt_udp, sizeof(pkt_udp));
 	for (i = 0; i < cfg->threads; i++) {
 		pthread_join(runner_threads[i], NULL);
 		xdp_program__close(t[i].prog);
@@ -892,41 +910,285 @@ out:
 }
 
 struct gtpu_packet {
-	// TODO: define struct
+    struct ethhdr eth;
+    struct ipv6hdr iph;
+    struct udphdr udp;
+    struct gtpuhdr gtpu;
+	struct gtpu_hdr_ext gtpu_hdr_ext;
+	struct gtp_pdu_session_container pdu;
+	struct iphdr piph;
+	struct udphdr pudp;
+	__u8 payload[64 - sizeof(struct udphdr)
+		     - sizeof(struct ethhdr) - sizeof(struct ipv6hdr)];
+} __attribute__((__packed__));
+
+static struct gtpu_packet pkt_gtpu = {
+	.eth.h_proto = __bpf_constant_htons(ETH_P_IPV6),
+	.iph.version = 6,
+	.iph.nexthdr = IPPROTO_UDP,
+	.iph.payload_len = bpf_htons(sizeof(struct gtpu_packet)
+				     - offsetof(struct gtpu_packet, udp)),
+	.iph.hop_limit = 64,
+	.iph.saddr.s6_addr16 = {bpf_htons(0xfe80), 0, 0, 0, 0, 0, 0, bpf_htons(1)},
+	.iph.daddr.s6_addr16 = {bpf_htons(0xfe80), 0, 0, 0, 0, 0, 0, bpf_htons(2)},
+	.udp.source = bpf_htons(2152),
+	.udp.dest = bpf_htons(2152),
+	.udp.len = bpf_htons(sizeof(struct gtpu_packet)
+			     - offsetof(struct gtpu_packet, udp)),
+	.gtpu.version = 1,
+	.gtpu.pt = 1,
+	.gtpu.e = 1,
+	.gtpu.message_length = bpf_htons(sizeof(struct gtpu_packet)
+			     - offsetof(struct gtpu_packet, gtpu_hdr_ext)),
+	.gtpu.message_type = GTPU_G_PDU,
+	.gtpu_hdr_ext.sqn = 0,
+	.gtpu_hdr_ext.npdu = 0,
+	.gtpu_hdr_ext.next_ext = GTPU_EXT_TYPE_PDU_SESSION_CONTAINER,
+	.pdu.length = 1,
+	.pdu.pdu_type = PDU_SESSION_CONTAINER_PDU_TYPE_UL_PSU,
+	.pdu.next_ext = 0,
+	.piph.version = 4,
+	.piph.ihl = 5,
+	.piph.ttl = 64,
+	.piph.protocol = IPPROTO_UDP,
+	.piph.tot_len = bpf_htons(sizeof(struct gtpu_packet)
+				     - offsetof(struct gtpu_packet, piph)),
+	.pudp.source = bpf_htons(3451),
+	.pudp.dest = bpf_htons(3541),
+	.pudp.len = bpf_htons(sizeof(struct gtpu_packet)
+			     - offsetof(struct gtpu_packet, pudp)),
+};
+
+static __be16 checksum(char *data, size_t len) {
+    __u32 sum = 0;
+    while (len > 1) {
+        sum += *(unsigned short*) data++;
+        len -= 2;
+    }
+    if (len > 0)
+        sum += *((unsigned char*) data);
+    while (sum >> 16) {
+        sum = (sum & 0xFFFF) + (sum >> 16);
+	}
+	return bpf_htons(~sum);
 }
 
-static __unused struct gtpu_packet pkt_gtpu = {
-	// TODO: declare struct
-}
+static const struct gtpuopt {
+	__u32 num_pkts;
+	struct iface iface;
+	struct mac_addr dst_mac;
+	struct mac_addr src_mac;
+	struct ip_addr dst_ip;
+	struct ip_addr src_ip;
+	struct ip_addr inner_dst_ip;
+	struct ip_addr inner_src_ip;
+	__u32 teid;
+	__u32 qfi;
+	__u16 threads;
+	__u16 interval;
+} defaults_gtpu = {
+	.teid = 1,
+	.qfi = 9,
+	.interval = 1,
+	.threads = 1,
+};
 
-static __be16 calc_gtpu_cksum() // TODO: define arguments
+static int prepare_gtpu_pkt(const struct gtpuopt *cfg) // TODO: define arguments
 {
-	// TODO: implement function
+	int err;
+	struct mac_addr src_mac = cfg->src_mac;
 
+	if (macaddr_is_null(&src_mac)) {
+		err = get_mac_addr(cfg->iface.ifindex, &src_mac);
+		if (err)
+			return err;
+	}
+	memcpy(pkt_gtpu.eth.h_source, &src_mac, sizeof(src_mac));
+	if (!macaddr_is_null(&cfg->dst_mac))
+		memcpy(pkt_gtpu.eth.h_dest, &cfg->dst_mac, sizeof(cfg->dst_mac));
+
+	if (!ipaddr_is_null(&cfg->src_ip)) {
+		if (cfg->src_ip.af != AF_INET6) {
+			pr_warn("Only IPv6 is supported\n");
+			return 1;
+		}
+		pkt_gtpu.iph.saddr = cfg->src_ip.addr.addr6;
+	}
+
+	if (!ipaddr_is_null(&cfg->dst_ip)) {
+		if (cfg->dst_ip.af != AF_INET6) {
+			pr_warn("Only IPv6 is supported\n");
+			return 1;
+		}
+		pkt_gtpu.iph.daddr = cfg->dst_ip.addr.addr6;
+	}
+
+	if (cfg->teid)
+		pkt_gtpu.gtpu.teid = bpf_htonl(cfg->teid);
+	if (cfg->qfi)
+		pkt_gtpu.pdu.qfi = (__u8) cfg->qfi;
+
+	pkt_gtpu.udp.check = calc_udp_cksum((const struct udp_packet *)&pkt_gtpu);
+	struct sockaddr_in sa;
+	const char* addr_str = "192.168.0.1";
+	inet_pton(AF_INET, addr_str, &(sa.sin_addr));
+
+	pkt_gtpu.piph.saddr = sa.sin_addr.s_addr;
+	const char* daddr_str = "192.168.0.5";
+	inet_pton(AF_INET, daddr_str, &(sa.sin_addr));
+
+	pkt_gtpu.piph.daddr = sa.sin_addr.s_addr;
+	// Calculate csum for inner IP
+	pkt_gtpu.piph.check = checksum((char *)&pkt_gtpu.piph, sizeof(pkt_gtpu.piph));
 	return 0;
 }
 
-static void prepare_gtpu_pkt() // TODO: define arguments
-{
-	// TODO: implement function
-}
-static const struct gtpuopt {
-	// TODO: declare struct
-}
-
 static struct prog_option gtpu_options[] = {
-	// TODO: define options
-}
+	DEFINE_OPTION("dst-mac", OPT_MACADDR, struct gtpuopt, dst_mac,
+		      .short_opt = 'm',
+		      .metavar = "<mac addr>",
+		      .help = "Destination MAC address of generated packets"),
+	DEFINE_OPTION("src-mac", OPT_MACADDR, struct gtpuopt, src_mac,
+		      .short_opt = 'M',
+		      .metavar = "<mac addr>",
+		      .help = "Source MAC address of generated packets"),
+	DEFINE_OPTION("dst-addr", OPT_IPADDR, struct gtpuopt, dst_ip,
+		      .short_opt = 'a',
+		      .metavar = "<addr>",
+		      .help = "Destination IP address of generated packets"),
+	DEFINE_OPTION("src-addr", OPT_IPADDR, struct gtpuopt, src_ip,
+		      .short_opt = 'A',
+		      .metavar = "<addr>",
+		      .help = "Source IP address of generated packets"),
+	DEFINE_OPTION("inner-dst-addr", OPT_IPADDR, struct gtpuopt, inner_dst_ip,
+		      .short_opt = 'd',
+		      .metavar = "<addr>",
+		      .help = "Destination IP address of generated packets"),
+	DEFINE_OPTION("inner-src-addr", OPT_IPADDR, struct gtpuopt, inner_src_ip,
+		      .short_opt = 'D',
+		      .metavar = "<addr>",
+		      .help = "Source IP address of generated packets"),
+	DEFINE_OPTION("num-packets", OPT_U32, struct gtpuopt, num_pkts,
+		      .short_opt = 'n',
+		      .metavar = "<port>",
+		      .help = "Number of packets to send"),
+	DEFINE_OPTION("threads", OPT_U16, struct gtpuopt, threads,
+		      .short_opt = 't',
+		      .metavar = "<threads>",
+		      .help = "Number of simultaneous threads to transmit from"),
+	DEFINE_OPTION("interval", OPT_U16, struct gtpuopt, interval,
+		      .short_opt = 'I',
+		      .metavar = "<s>",
+		      .help = "Output statistics with this interval"),
+	DEFINE_OPTION("interface", OPT_IFNAME, struct gtpuopt, iface,
+		      .positional = true,
+		      .metavar = "<ifname>",
+		      .required = true,
+		      .help = "Load on device <ifname>"),
+	END_OPTIONS
+};
 
 int do_gtpu(const void *opt, __unused const char *pin_root_path)
 {
-
 	int err = -EINVAL;
+	
+	const struct gtpuopt *cfg = opt;
+	DECLARE_LIBXDP_OPTS(xdp_program_opts, opts);
+	struct thread_config *t = NULL, tcfg = {
+		.pkt = &pkt_gtpu,
+		.pkt_size = sizeof(pkt_gtpu),
+		.num_pkts = cfg->num_pkts,
+	};
+	struct trafficgen_state bpf_state = {};
+	struct xdp_trafficgen *skel = NULL;
+	pthread_t *runner_threads = NULL;
+	struct xdp_program *prog = NULL;
+	int i;
+	char buf[100];
+	__u32 key = 0;
 
-	// TODO: implement function
+	err = probe_kernel_support();
+	if (err)
+		return err;
 
-	return err;
+	err = prepare_gtpu_pkt(cfg);
+	if (err)
+		goto out;
+
+	skel = xdp_trafficgen__open();
+	if (!skel) {
+		err = -errno;
+		pr_warn("Couldn't open XDP program: %s\n", strerror(-err));
+		goto out;
+	}
+
+	err = sample_init_pre_load(skel, cfg->iface.ifname);
+	if (err < 0) {
+		pr_warn("Failed to sample_init_pre_load: %s\n", strerror(-err));
+		goto out;
+	}
+
+	skel->rodata->config.ifindex_out = cfg->iface.ifindex;
+	opts.prog_name = "xdp_redirect_notouch";
+	opts.obj = skel->obj;
+
+	prog = xdp_program__create(&opts);
+	if (!prog) {
+		err = -errno;
+		libxdp_strerror(err, buf, sizeof(buf));
+		pr_warn("Couldn't open BPF file: %s\n", buf);
+		goto out;
+	}
+
+	err = xdp_trafficgen__load(skel);
+	if (err)
+		goto out;
+
+	err = bpf_map_update_elem(bpf_map__fd(skel->maps.state_map),
+				  &key, &bpf_state, BPF_EXIST);
+
+	if (err) {
+		err = -errno;
+		pr_warn("Couldn't set initial state map value: %s\n", strerror(-err));
+		goto out;
+	}
+	
+	err = sample_init(skel, mask, IFINDEX_LO, cfg->iface.ifindex);
+	if (err < 0) {
+		pr_warn("Failed to initialize sample: %s\n", strerror(-err));
+		goto out;
+	}
+
+	err = create_runners(&runner_threads, &t, cfg->threads, &tcfg, prog);
+	if (err)
+		goto out;
+
+	pr_info("Transmitting on %s (ifindex %d)\n",
+	       cfg->iface.ifname, cfg->iface.ifindex);
+	pr_info("Interval is %d and threads %d", cfg->interval, cfg->threads);
+	char buffer[INET6_ADDRSTRLEN];
+	const char* result = inet_ntop(AF_INET6, &cfg->dst_ip, buffer, INET6_ADDRSTRLEN);
+	pr_info("\nAddress %s\n", result);
+	pr_info("\nSize of gtpu_pkt %ld, offset to first %ld, offset to first udp %ld, offset to second ip %ld", sizeof(struct gtpu_packet), offsetof(struct gtpu_packet, iph),  offsetof(struct gtpu_packet, udp), offsetof(struct gtpu_packet, pudp));
+	err = sample_run(cfg->interval, NULL, NULL);
+	status_exited = true;
+
+	print_packet((unsigned char *)&pkt_gtpu, sizeof(pkt_gtpu));
+	for (i = 0; i < cfg->threads; i++) {
+		pthread_join(runner_threads[i], NULL);
+		xdp_program__close(t[i].prog);
+	}
+
+	err = 0;
+
+out:
+	xdp_program__close(prog);
+	xdp_trafficgen__destroy(skel);
+	free(runner_threads);
+	free(t);
+    return err;
 }
+
 static const struct probeopt {
 } defaults_probe = {};
 
@@ -949,6 +1211,7 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 		"COMMAND can be one of:\n"
 		"       udp         - run in UDP mode\n"
 		"       tcp         - run in TCP mode\n"
+		"       gtpu        - run in GTPU mode\n"
 		"       help        - show this help message\n"
 		"\n"
 		"Use 'xdp-trafficgen COMMAND --help' to see options for each command\n");
@@ -958,6 +1221,7 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 static const struct prog_command cmds[] = {
 	DEFINE_COMMAND(udp, "Run in UDP mode"),
 	DEFINE_COMMAND(tcp, "Run in TCP mode"),
+	DEFINE_COMMAND(gtpu, "Run in GTPU mode"),
 	DEFINE_COMMAND(probe, "Probe kernel support"),
 	{ .name = "help", .func = do_help, .no_cfg = true },
 	END_COMMANDS
@@ -965,6 +1229,7 @@ static const struct prog_command cmds[] = {
 
 union all_opts {
 	struct udpopt udp;
+	struct gtpuopt gtpu;
 };
 
 int main(int argc, char **argv)
