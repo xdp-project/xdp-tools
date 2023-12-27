@@ -916,7 +916,7 @@ struct gtpu_packet {
     struct gtpuhdr gtpu;
 	struct gtpu_hdr_ext gtpu_hdr_ext;
 	struct gtp_pdu_session_container pdu;
-	struct iphdr piph;
+	struct ipv6hdr piph;
 	struct udphdr pudp;
 	__u8 payload[64 - sizeof(struct udphdr)
 		     - sizeof(struct ethhdr) - sizeof(struct ipv6hdr)];
@@ -947,31 +947,20 @@ static struct gtpu_packet pkt_gtpu = {
 	.pdu.length = 1,
 	.pdu.pdu_type = PDU_SESSION_CONTAINER_PDU_TYPE_UL_PSU,
 	.pdu.next_ext = 0,
-	.piph.version = 4,
-	.piph.ihl = 5,
-	.piph.ttl = 64,
-	.piph.protocol = IPPROTO_UDP,
-	.piph.tot_len = bpf_htons(sizeof(struct gtpu_packet)
-				     - offsetof(struct gtpu_packet, piph)),
+
+	.piph.version = 6,
+	.piph.nexthdr = IPPROTO_UDP,
+	.piph.payload_len = bpf_htons(sizeof(struct gtpu_packet)
+				     - offsetof(struct gtpu_packet, udp)),
+	.piph.hop_limit = 64,
+	.piph.saddr.s6_addr16 = {bpf_htons(0xfe80), 0, 0, 0, 0, 0, 0, bpf_htons(1)},
+	.piph.daddr.s6_addr16 = {bpf_htons(0xfe80), 0, 0, 0, 0, 0, 0, bpf_htons(2)},
+
 	.pudp.source = bpf_htons(3451),
 	.pudp.dest = bpf_htons(3541),
 	.pudp.len = bpf_htons(sizeof(struct gtpu_packet)
 			     - offsetof(struct gtpu_packet, pudp)),
 };
-
-static __be16 checksum(char *data, size_t len) {
-    __u32 sum = 0;
-    while (len > 1) {
-        sum += *(unsigned short*) data++;
-        len -= 2;
-    }
-    if (len > 0)
-        sum += *((unsigned char*) data);
-    while (sum >> 16) {
-        sum = (sum & 0xFFFF) + (sum >> 16);
-	}
-	return bpf_htons(~sum);
-}
 
 static const struct gtpuopt {
 	__u32 num_pkts;
@@ -1028,18 +1017,8 @@ static int prepare_gtpu_pkt(const struct gtpuopt *cfg) // TODO: define arguments
 	if (cfg->qfi)
 		pkt_gtpu.pdu.qfi = (__u8) cfg->qfi;
 
-	pkt_gtpu.udp.check = calc_udp_cksum((const struct udp_packet *)&pkt_gtpu);
-	struct sockaddr_in sa;
-	const char* addr_str = "192.168.0.1";
-	inet_pton(AF_INET, addr_str, &(sa.sin_addr));
+	pkt_gtpu.udp.check =  0; // calc_udp_cksum((const struct udp_packet *)&pkt_gtpu);
 
-	pkt_gtpu.piph.saddr = sa.sin_addr.s_addr;
-	const char* daddr_str = "192.168.0.5";
-	inet_pton(AF_INET, daddr_str, &(sa.sin_addr));
-
-	pkt_gtpu.piph.daddr = sa.sin_addr.s_addr;
-	// Calculate csum for inner IP
-	pkt_gtpu.piph.check = checksum((char *)&pkt_gtpu.piph, sizeof(pkt_gtpu.piph));
 	return 0;
 }
 
