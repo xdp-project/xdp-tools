@@ -278,6 +278,54 @@ static __be16 calc_udp_cksum(const struct udp_packet *pkt)
 	return bpf_htons(~chksum);
 }
 
+static __be16 calc_ipv4_cksum(__u16 *addr, __u32 count) {
+	__be32 chksum = 0;
+	while (count > 1) {
+		chksum += * addr++;
+		count -= 2;
+	}
+
+	if(count > 0) {
+		chksum += ((*addr) & bpf_htons(0xFF00));
+	}
+
+	while (chksum >> 16) {
+		chksum = (chksum & 0xFFFF) + (chksum >> 16);
+	}
+
+	return ((__be16)~chksum);
+}
+
+static __be16 calc_ipv4_udp_cksum(struct iphdr *pIph, unsigned short *ipPayload) {
+    __be32 chksum = 0;
+    struct udphdr *udphdrp = (struct udphdr*)(ipPayload);
+    __be16 udpLen = bpf_htons(udphdrp->len);
+
+    chksum += (pIph->saddr>>16) & 0xFFFF;
+    chksum += (pIph->saddr) & 0xFFFF;
+
+    chksum += (pIph->daddr>>16) & 0xFFFF;
+    chksum += (pIph->daddr) & 0xFFFF;
+
+    chksum += bpf_htons(IPPROTO_UDP);
+    chksum += udphdrp->len;
+ 
+    while (udpLen > 1) {
+        chksum += * ipPayload++;
+        udpLen -= 2;
+    }
+
+    if(udpLen > 0) {
+        chksum += ((*ipPayload) & bpf_htons(0xFF00));
+    }
+
+	while (chksum >> 16) {
+		chksum = (chksum & 0xFFFF) + (chksum >> 16);
+	}
+
+	return ((__be16)~chksum);
+}
+
 static const struct udpopt {
 	__u32 num_pkts;
 	struct iface iface;
@@ -916,7 +964,7 @@ struct gtpu_packet {
     struct gtpuhdr gtpu;
 	struct gtpu_hdr_ext gtpu_hdr_ext;
 	struct gtp_pdu_session_container pdu;
-	struct ipv6hdr piph;
+	struct iphdr piph;
 	struct udphdr pudp;
 	__u8 payload[64 - sizeof(struct udphdr)
 		     - sizeof(struct ethhdr) - sizeof(struct ipv6hdr)];
@@ -948,13 +996,12 @@ static struct gtpu_packet pkt_gtpu = {
 	.pdu.pdu_type = PDU_SESSION_CONTAINER_PDU_TYPE_UL_PSU,
 	.pdu.next_ext = 0,
 
-	.piph.version = 6,
-	.piph.nexthdr = IPPROTO_UDP,
-	.piph.payload_len = bpf_htons(sizeof(struct gtpu_packet)
-				     - offsetof(struct gtpu_packet, udp)),
-	.piph.hop_limit = 64,
-	.piph.saddr.s6_addr16 = {bpf_htons(0xfe80), 0, 0, 0, 0, 0, 0, bpf_htons(1)},
-	.piph.daddr.s6_addr16 = {bpf_htons(0xfe80), 0, 0, 0, 0, 0, 0, bpf_htons(2)},
+	.piph.version = 4,
+	.piph.ihl = 5,
+	.piph.ttl = 64,
+	.piph.protocol = IPPROTO_UDP,
+	.piph.tot_len = bpf_htons(sizeof(struct gtpu_packet)
+					- offsetof(struct gtpu_packet, piph)),
 
 	.pudp.source = bpf_htons(3451),
 	.pudp.dest = bpf_htons(3541),
@@ -971,6 +1018,8 @@ static const struct gtpuopt {
 	struct ip_addr src_ip;
 	struct ip_addr inner_dst_ip;
 	struct ip_addr inner_src_ip;
+	__u16 inner_dst_port;
+	__u16 inner_src_port;
 	__u32 teid;
 	__u32 qfi;
 	__u16 threads;
@@ -1017,7 +1066,38 @@ static int prepare_gtpu_pkt(const struct gtpuopt *cfg) // TODO: define arguments
 	if (cfg->qfi)
 		pkt_gtpu.pdu.qfi = (__u8) cfg->qfi;
 
-	pkt_gtpu.udp.check =  0; // calc_udp_cksum((const struct udp_packet *)&pkt_gtpu);
+	if (!ipaddr_is_null(&cfg->inner_src_ip)) {
+		if (cfg->inner_src_ip.af != AF_INET) {
+			pr_warn("Only IPv4 is supported for encapsulated packet\n");
+			return 1;
+		}
+		memcpy(&pkt_gtpu.piph.saddr, &cfg->inner_src_ip.addr.addr4, sizeof(__be32));
+	}
+
+	if (!ipaddr_is_null(&cfg->inner_dst_ip)) {
+		if (cfg->inner_dst_ip.af != AF_INET) {
+			pr_warn("Only IPv4 is supported for encapsulated packet\n");
+			return 1;
+		}
+		memcpy(&pkt_gtpu.piph.daddr, &cfg->inner_dst_ip.addr.addr4, sizeof(__be32));
+	}
+
+	if (cfg->inner_src_port)
+		pkt_gtpu.pudp.source = bpf_htons(cfg->inner_src_port);
+	if (cfg->inner_dst_port)
+		pkt_gtpu.pudp.dest = bpf_htons(cfg->inner_dst_port);
+
+	pkt_gtpu.udp.check = 0;
+	
+	struct iphdr iphdrp;
+	memcpy(&iphdrp, &pkt_gtpu.piph, sizeof(struct iphdr));
+	pkt_gtpu.piph.check = calc_ipv4_cksum((__u16 *)&iphdrp, iphdrp.ihl<<2);
+
+	unsigned short buf[sizeof(struct gtpu_packet)
+					- offsetof(struct gtpu_packet, pudp)];
+	memcpy(&buf, &pkt_gtpu.pudp, sizeof(struct gtpu_packet)
+					- offsetof(struct gtpu_packet, pudp));
+	pkt_gtpu.pudp.check = calc_ipv4_udp_cksum(&iphdrp, (unsigned short *)&buf);
 
 	return 0;
 }
@@ -1047,6 +1127,14 @@ static struct prog_option gtpu_options[] = {
 		      .short_opt = 'D',
 		      .metavar = "<addr>",
 		      .help = "Source IP address of generated packets"),
+	DEFINE_OPTION("inner-dst-port", OPT_U16, struct gtpuopt, inner_dst_port,
+		      .short_opt = 'p',
+		      .metavar = "<port>",
+		      .help = "Destination port of generated packets"),
+	DEFINE_OPTION("inner-src-port", OPT_U16, struct gtpuopt, inner_src_port,
+		      .short_opt = 'P',
+		      .metavar = "<port>",
+		      .help = "Source port of generated packets"),
 	DEFINE_OPTION("num-packets", OPT_U32, struct gtpuopt, num_pkts,
 		      .short_opt = 'n',
 		      .metavar = "<port>",
