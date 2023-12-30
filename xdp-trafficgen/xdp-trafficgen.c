@@ -959,35 +959,33 @@ out:
 
 struct gtpu_packet {
     struct ethhdr eth;
-    struct ipv6hdr iph;
+    union {
+        struct iphdr ipv4h;
+        struct ipv6hdr ipv6h;
+    } iph;
     struct udphdr udp;
     struct gtpuhdr gtpu;
-	struct gtpu_hdr_ext gtpu_hdr_ext;
-	struct gtp_pdu_session_container pdu;
-	struct iphdr piph;
-	struct udphdr pudp;
+    struct gtpu_hdr_ext gtpu_hdr_ext;
+    struct gtp_pdu_session_container pdu;
+    union {
+        struct iphdr ipv4h;  
+        struct ipv6hdr ipv6h;
+    } piph;
+    struct udphdr pudp;
 	__u8 payload[64 - sizeof(struct udphdr)
-		     - sizeof(struct ethhdr) - sizeof(struct ipv6hdr)];
+		     - sizeof(struct ethhdr) - sizeof(struct iphdr)];
 } __attribute__((__packed__));
 
 static struct gtpu_packet pkt_gtpu = {
-	.eth.h_proto = __bpf_constant_htons(ETH_P_IPV6),
-	.iph.version = 6,
-	.iph.nexthdr = IPPROTO_UDP,
-	.iph.payload_len = bpf_htons(sizeof(struct gtpu_packet)
-				     - offsetof(struct gtpu_packet, udp)),
-	.iph.hop_limit = 64,
-	.iph.saddr.s6_addr16 = {bpf_htons(0xfe80), 0, 0, 0, 0, 0, 0, bpf_htons(1)},
-	.iph.daddr.s6_addr16 = {bpf_htons(0xfe80), 0, 0, 0, 0, 0, 0, bpf_htons(2)},
+	.eth.h_proto = __bpf_constant_htons(ETH_P_IP),
+
 	.udp.source = bpf_htons(2152),
 	.udp.dest = bpf_htons(2152),
-	.udp.len = bpf_htons(sizeof(struct gtpu_packet)
-			     - offsetof(struct gtpu_packet, udp)),
+	
 	.gtpu.version = 1,
 	.gtpu.pt = 1,
 	.gtpu.e = 1,
-	.gtpu.message_length = bpf_htons(sizeof(struct gtpu_packet)
-			     - offsetof(struct gtpu_packet, gtpu_hdr_ext)),
+	
 	.gtpu.message_type = GTPU_G_PDU,
 	.gtpu_hdr_ext.sqn = 0,
 	.gtpu_hdr_ext.npdu = 0,
@@ -996,18 +994,12 @@ static struct gtpu_packet pkt_gtpu = {
 	.pdu.pdu_type = PDU_SESSION_CONTAINER_PDU_TYPE_UL_PSU,
 	.pdu.next_ext = 0,
 
-	.piph.version = 4,
-	.piph.ihl = 5,
-	.piph.ttl = 64,
-	.piph.protocol = IPPROTO_UDP,
-	.piph.tot_len = bpf_htons(sizeof(struct gtpu_packet)
-					- offsetof(struct gtpu_packet, piph)),
-
 	.pudp.source = bpf_htons(3451),
 	.pudp.dest = bpf_htons(3541),
 	.pudp.len = bpf_htons(sizeof(struct gtpu_packet)
 			     - offsetof(struct gtpu_packet, pudp)),
 };
+static __u8 packet_buf[sizeof(struct gtpu_packet)];
 
 static const struct gtpuopt {
 	__u32 num_pkts;
@@ -1025,7 +1017,7 @@ static const struct gtpuopt {
 	__u16 threads;
 	__u16 interval;
 } defaults_gtpu = {
-	.teid = 1,
+	.teid = 2,
 	.qfi = 9,
 	.interval = 1,
 	.threads = 1,
@@ -1035,71 +1027,151 @@ static int prepare_gtpu_pkt(const struct gtpuopt *cfg) // TODO: define arguments
 {
 	int err;
 	struct mac_addr src_mac = cfg->src_mac;
+	__u32 outer_ip_type, inner_ip_type;
 
 	if (macaddr_is_null(&src_mac)) {
 		err = get_mac_addr(cfg->iface.ifindex, &src_mac);
 		if (err)
-			return err;
+			return -1;
 	}
 	memcpy(pkt_gtpu.eth.h_source, &src_mac, sizeof(src_mac));
 	if (!macaddr_is_null(&cfg->dst_mac))
 		memcpy(pkt_gtpu.eth.h_dest, &cfg->dst_mac, sizeof(cfg->dst_mac));
 
+	if (ipaddr_is_null(&cfg->src_ip) || ipaddr_is_null(&cfg->dst_ip) || (cfg->src_ip.af != cfg->dst_ip.af) ) {
+		pr_warn("Src and dest IP address are required and must be the same version\n");
+		return -1;
+	}
+	outer_ip_type = cfg->src_ip.af;
+
+    __u32 outer_payload_len = sizeof(struct gtpu_packet)
+			     - offsetof(struct gtpu_packet, udp) 
+				 - (cfg->inner_src_ip.af == AF_INET ? sizeof(struct ipv6hdr) - sizeof(struct iphdr) : 0);
+
 	if (!ipaddr_is_null(&cfg->src_ip)) {
-		if (cfg->src_ip.af != AF_INET6) {
-			pr_warn("Only IPv6 is supported\n");
-			return 1;
+		if (cfg->src_ip.af == AF_INET) {
+			memcpy(&pkt_gtpu.iph.ipv4h.saddr, &cfg->src_ip.addr.addr4, sizeof(__be32));
+		} else if (cfg->src_ip.af == AF_INET6) {
+			pkt_gtpu.iph.ipv6h.saddr = cfg->src_ip.addr.addr6;
 		}
-		pkt_gtpu.iph.saddr = cfg->src_ip.addr.addr6;
 	}
 
+    struct iphdr o_iphdr;
 	if (!ipaddr_is_null(&cfg->dst_ip)) {
-		if (cfg->dst_ip.af != AF_INET6) {
-			pr_warn("Only IPv6 is supported\n");
-			return 1;
+		if (cfg->dst_ip.af == AF_INET) {
+			memcpy(&pkt_gtpu.iph.ipv4h.daddr, &cfg->dst_ip.addr.addr4, sizeof(__be32));
+            pkt_gtpu.eth.h_proto = __bpf_constant_htons(ETH_P_IP);
+            // Set the defaults and sizes
+            pkt_gtpu.iph.ipv4h.version = 4;
+            pkt_gtpu.iph.ipv4h.ihl = 5;
+            pkt_gtpu.iph.ipv4h.ttl = 64;
+            pkt_gtpu.iph.ipv4h.protocol = IPPROTO_UDP,
+            pkt_gtpu.iph.ipv4h.tot_len = bpf_htons(sizeof(struct iphdr) + outer_payload_len);
+            memcpy(&o_iphdr, &pkt_gtpu.iph, sizeof(struct iphdr));
+            pkt_gtpu.iph.ipv4h.check = calc_ipv4_cksum((__u16 *)&o_iphdr, o_iphdr.ihl<<2);
+		} else if (cfg->src_ip.af == AF_INET6) {
+			pkt_gtpu.iph.ipv6h.daddr = cfg->dst_ip.addr.addr6;
+            pkt_gtpu.eth.h_proto = __bpf_constant_htons(ETH_P_IPV6);
+            pkt_gtpu.iph.ipv6h.version = 6;
+            pkt_gtpu.iph.ipv6h.nexthdr = IPPROTO_UDP;
+            pkt_gtpu.iph.ipv6h.payload_len = bpf_htons(outer_payload_len);
+            pkt_gtpu.iph.ipv6h.hop_limit = 64;
 		}
-		pkt_gtpu.iph.daddr = cfg->dst_ip.addr.addr6;
 	}
 
+	pkt_gtpu.udp.len = bpf_htons(outer_payload_len);
+	pkt_gtpu.udp.check = 0;
+
+	// Set GTPU values
 	if (cfg->teid)
 		pkt_gtpu.gtpu.teid = bpf_htonl(cfg->teid);
 	if (cfg->qfi)
 		pkt_gtpu.pdu.qfi = (__u8) cfg->qfi;
 
+	// Set GTPU length
+	pkt_gtpu.gtpu.message_length = bpf_htons(outer_payload_len - sizeof(struct udphdr)
+		- sizeof(struct gtpuhdr));
+
+	if (ipaddr_is_null(&cfg->inner_src_ip) || ipaddr_is_null(&cfg->inner_dst_ip) || (cfg->inner_src_ip.af != cfg->inner_dst_ip.af) ) {
+		pr_warn("Src and dest IP address are required and must be the same version\n");
+		return -1;
+	}
+	inner_ip_type = cfg->inner_src_ip.af;
+
 	if (!ipaddr_is_null(&cfg->inner_src_ip)) {
-		if (cfg->inner_src_ip.af != AF_INET) {
-			pr_warn("Only IPv4 is supported for encapsulated packet\n");
-			return 1;
+		if (cfg->inner_src_ip.af == AF_INET) {
+			memcpy(&pkt_gtpu.piph.ipv4h.saddr, &cfg->inner_src_ip.addr.addr4, sizeof(__be32));
+		} else if (cfg->inner_src_ip.af == AF_INET6) {
+			pkt_gtpu.piph.ipv6h.saddr = cfg->inner_src_ip.addr.addr6;
 		}
-		memcpy(&pkt_gtpu.piph.saddr, &cfg->inner_src_ip.addr.addr4, sizeof(__be32));
 	}
 
+    __u32 inner_payload_len = sizeof(struct gtpu_packet)
+			     - offsetof(struct gtpu_packet, pudp); 
+
+    struct iphdr i_iphdr;
 	if (!ipaddr_is_null(&cfg->inner_dst_ip)) {
-		if (cfg->inner_dst_ip.af != AF_INET) {
-			pr_warn("Only IPv4 is supported for encapsulated packet\n");
-			return 1;
+		if (cfg->inner_dst_ip.af == AF_INET) {
+			memcpy(&pkt_gtpu.piph.ipv4h.daddr, &cfg->inner_dst_ip.addr.addr4, sizeof(__be32));
+            pkt_gtpu.piph.ipv4h.version = 4;
+            pkt_gtpu.piph.ipv4h.ihl = 5;
+            pkt_gtpu.piph.ipv4h.ttl = 64;
+            pkt_gtpu.piph.ipv4h.protocol = IPPROTO_UDP,
+            pkt_gtpu.piph.ipv4h.tot_len = bpf_htons(5 * 4 + inner_payload_len);
+            memcpy(&i_iphdr, &pkt_gtpu.piph, sizeof(struct iphdr));
+            pkt_gtpu.piph.ipv4h.check = calc_ipv4_cksum((__u16 *)&i_iphdr, i_iphdr.ihl<<2);
+		} else if (cfg->inner_dst_ip.af == AF_INET6) {
+			pkt_gtpu.piph.ipv6h.daddr = cfg->inner_dst_ip.addr.addr6;
+            pkt_gtpu.piph.ipv6h.version = 6;
+            pkt_gtpu.piph.ipv6h.nexthdr = IPPROTO_UDP;
+            pkt_gtpu.piph.ipv6h.payload_len = bpf_htons(inner_payload_len);
+            pkt_gtpu.piph.ipv6h.hop_limit = 64;
 		}
-		memcpy(&pkt_gtpu.piph.daddr, &cfg->inner_dst_ip.addr.addr4, sizeof(__be32));
 	}
-
+	
+	pkt_gtpu.pudp.len = bpf_htons(inner_payload_len);
 	if (cfg->inner_src_port)
 		pkt_gtpu.pudp.source = bpf_htons(cfg->inner_src_port);
 	if (cfg->inner_dst_port)
 		pkt_gtpu.pudp.dest = bpf_htons(cfg->inner_dst_port);
 
-	pkt_gtpu.udp.check = 0;
+	unsigned short buf[inner_payload_len];
+	memcpy(&buf, &pkt_gtpu.pudp, inner_payload_len);
+	pkt_gtpu.pudp.check = calc_ipv4_udp_cksum(&i_iphdr, (unsigned short *)&buf);
+
+	__u32 pos = 0, len = 0;
+	if (outer_ip_type == AF_INET6) {
+		len = offsetofend(struct gtpu_packet, iph.ipv6h);
+		memcpy(&packet_buf[pos], &pkt_gtpu, len);
+		pos += len;
+	} else if (outer_ip_type == AF_INET) {
+		len =  offsetofend(struct gtpu_packet, iph.ipv4h);
+		memcpy(&packet_buf[pos], &pkt_gtpu, len);
+		pos += len;
+	}
 	
-	struct iphdr iphdrp;
-	memcpy(&iphdrp, &pkt_gtpu.piph, sizeof(struct iphdr));
-	pkt_gtpu.piph.check = calc_ipv4_cksum((__u16 *)&iphdrp, iphdrp.ihl<<2);
+	// Copy UDP + GTP-U headers
+	len = offsetofend(struct gtpu_packet, pdu) - offsetof(struct gtpu_packet, udp);
+	memcpy(&packet_buf[pos], &pkt_gtpu.udp, len);
+	pos += len;
 
-	unsigned short buf[sizeof(struct gtpu_packet)
-					- offsetof(struct gtpu_packet, pudp)];
-	memcpy(&buf, &pkt_gtpu.pudp, sizeof(struct gtpu_packet)
-					- offsetof(struct gtpu_packet, pudp));
-	pkt_gtpu.pudp.check = calc_ipv4_udp_cksum(&iphdrp, (unsigned short *)&buf);
+	if (inner_ip_type == AF_INET6) {
+		len = sizeof(struct ipv6hdr);
+		memcpy(&packet_buf[pos], &pkt_gtpu.piph, len);
+		pos += len;
+	} else if (inner_ip_type == AF_INET) {
+		len = sizeof(struct iphdr);
+		memcpy(&packet_buf[pos], &pkt_gtpu.piph, len);
+		pos += len;
+	}
 
-	return 0;
+	// Copy UDP + payload
+	len = sizeof(struct gtpu_packet)
+			     - offsetof(struct gtpu_packet, pudp);
+	memcpy(&packet_buf[pos], &pkt_gtpu.pudp, len);
+	pos += len;
+
+	return pos;
 }
 
 static struct prog_option gtpu_options[] = {
@@ -1135,6 +1207,14 @@ static struct prog_option gtpu_options[] = {
 		      .short_opt = 'P',
 		      .metavar = "<port>",
 		      .help = "Source port of generated packets"),
+	DEFINE_OPTION("teid", OPT_U32, struct gtpuopt, teid,
+		      .short_opt = 'e',
+		      .metavar = "<teid>",
+		      .help = "GTP-U Tunnel Endpoint Identifier"),
+	DEFINE_OPTION("qfi", OPT_U32, struct gtpuopt, qfi,
+		      .short_opt = 'q',
+		      .metavar = "<qfi>",
+		      .help = "GTP-U QoS Flow Identifier"),
 	DEFINE_OPTION("num-packets", OPT_U32, struct gtpuopt, num_pkts,
 		      .short_opt = 'n',
 		      .metavar = "<port>",
@@ -1161,11 +1241,6 @@ int do_gtpu(const void *opt, __unused const char *pin_root_path)
 	
 	const struct gtpuopt *cfg = opt;
 	DECLARE_LIBXDP_OPTS(xdp_program_opts, opts);
-	struct thread_config *t = NULL, tcfg = {
-		.pkt = &pkt_gtpu,
-		.pkt_size = sizeof(pkt_gtpu),
-		.num_pkts = cfg->num_pkts,
-	};
 	struct trafficgen_state bpf_state = {};
 	struct xdp_trafficgen *skel = NULL;
 	pthread_t *runner_threads = NULL;
@@ -1178,9 +1253,15 @@ int do_gtpu(const void *opt, __unused const char *pin_root_path)
 	if (err)
 		return err;
 
-	err = prepare_gtpu_pkt(cfg);
-	if (err)
+	int pkt_len = prepare_gtpu_pkt(cfg);
+	if (pkt_len < 0)
 		goto out;
+
+	struct thread_config *t = NULL, tcfg = {
+		.pkt = &packet_buf,
+		.pkt_size = pkt_len,
+		.num_pkts = cfg->num_pkts,
+	};
 
 	skel = xdp_trafficgen__open();
 	if (!skel) {
@@ -1230,17 +1311,10 @@ int do_gtpu(const void *opt, __unused const char *pin_root_path)
 	if (err)
 		goto out;
 
-	pr_info("Transmitting on %s (ifindex %d)\n",
-	       cfg->iface.ifname, cfg->iface.ifindex);
-	pr_info("Interval is %d and threads %d", cfg->interval, cfg->threads);
-	char buffer[INET6_ADDRSTRLEN];
-	const char* result = inet_ntop(AF_INET6, &cfg->dst_ip, buffer, INET6_ADDRSTRLEN);
-	pr_info("\nAddress %s\n", result);
-	pr_info("\nSize of gtpu_pkt %ld, offset to first %ld, offset to first udp %ld, offset to second ip %ld", sizeof(struct gtpu_packet), offsetof(struct gtpu_packet, iph),  offsetof(struct gtpu_packet, udp), offsetof(struct gtpu_packet, pudp));
 	err = sample_run(cfg->interval, NULL, NULL);
 	status_exited = true;
 
-	print_packet((unsigned char *)&pkt_gtpu, sizeof(pkt_gtpu));
+	print_packet((unsigned char *)&packet_buf, pkt_len);
 	for (i = 0; i < cfg->threads; i++) {
 		pthread_join(runner_threads[i], NULL);
 		xdp_program__close(t[i].prog);

@@ -7,6 +7,14 @@
 #include <linux/if_ether.h>
 #include <linux/ipv6.h>
 
+#ifndef offsetof
+#define offsetof(type, member) ((size_t) & ((type *)0)->member)
+#endif
+
+#ifndef offsetofend
+#define offsetofend(TYPE, FIELD) (offsetof(TYPE, FIELD) + sizeof(((TYPE *)0)->FIELD))
+#endif
+
 struct tcp_flowkey {
   struct in6_addr src_ip;
   struct in6_addr dst_ip;
