@@ -226,7 +226,7 @@ static bool pcapng_write_shb(struct xpcapng_dumper *pd, const char *comment,
 	shb_length += sizeof(uint32_t);
 
 	/* Allocate the SHB and fill it. */
-	shb = calloc(shb_length, 1);
+	shb = calloc(1, shb_length);
 	if (shb == NULL) {
 		errno = ENOMEM;
 		return false;
@@ -318,7 +318,7 @@ static bool pcapng_write_idb(struct xpcapng_dumper *pd, const char *name,
 	idb_length += sizeof(uint32_t);
 
 	/* Allocate the IDB and fill it. */
-	idb = calloc(idb_length, 1);
+	idb = calloc(1, idb_length);
 	if (idb == NULL) {
 		errno = ENOMEM;
 		return false;
@@ -549,7 +549,7 @@ struct xpcapng_dumper *xpcapng_dump_open(const char *file,
 		goto error_exit;
 	}
 
-	pd = calloc(sizeof(*pd), 1);
+	pd = calloc(1, sizeof(*pd));
 	if (pd == NULL) {
 		errno = ENOMEM;
 		goto error_exit;

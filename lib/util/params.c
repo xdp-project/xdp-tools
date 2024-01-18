@@ -248,7 +248,7 @@ static int handle_ifname_multi(char *optarg, void *tgt, __unused struct prog_opt
 	if (ifindex < 0)
 		return ifindex;
 
-	iface = calloc(sizeof(*iface), 1);
+	iface = calloc(1, sizeof(*iface));
 	if (!iface)
 		return -ENOMEM;
 

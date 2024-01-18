@@ -197,13 +197,13 @@ static int create_runners(pthread_t **runner_threads, struct thread_config **thr
 	pthread_t *threads;
 	int i, err;
 
-	threads = calloc(sizeof(pthread_t), num_threads);
+	threads = calloc(num_threads, sizeof(pthread_t));
 	if (!threads) {
 		pr_warn("Couldn't allocate memory\n");
 		return -ENOMEM;
 	}
 
-	t = calloc(sizeof(struct thread_config), num_threads);
+	t = calloc(num_threads, sizeof(struct thread_config));
 	if (!t) {
 		pr_warn("Couldn't allocate memory\n");
 		free(threads);
