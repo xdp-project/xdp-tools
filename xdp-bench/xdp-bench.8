@@ -449,6 +449,8 @@ round-robin	- Cycle between target CPUs in a round-robin fashion (for each packe
 l4-proto		- Choose the target CPU based on the layer-4 protocol of packet
 l4-filter		- Like l4-proto, but drop UDP packets with destination port 9 (used by pktgen)
 l4-hash		- Use source and destination IP hashing to pick target CPU
+l4-sport		- Use modulo of source port to pick target CPU
+l4-dport		- Use modulo of destination port to pick target CPU
 \fP
 .fi
 .RE
