@@ -1254,14 +1254,14 @@ int do_gtpu(const void *opt, __unused const char *pin_root_path)
 		return err;
 
 	int pkt_len = prepare_gtpu_pkt(cfg);
-	if (pkt_len < 0)
-		goto out;
 
 	struct thread_config *t = NULL, tcfg = {
 		.pkt = &packet_buf,
 		.pkt_size = pkt_len,
 		.num_pkts = cfg->num_pkts,
 	};
+	if (pkt_len < 0)
+		goto out;
 
 	skel = xdp_trafficgen__open();
 	if (!skel) {
