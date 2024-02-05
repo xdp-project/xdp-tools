@@ -66,7 +66,7 @@ all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) $(TEST_TARGETS) man
 
 .PHONY: clean
 clean::
-	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(USER_OBJ) $(TEST_OBJ) $(USER_GEN) $(BPF_SKEL_H) *.ll
+	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(TEST_TARGETS) $(USER_OBJ) $(TEST_OBJ) $(USER_GEN) $(BPF_SKEL_H) *.ll
 
 .PHONY: install
 install: all install_local
