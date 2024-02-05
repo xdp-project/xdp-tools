@@ -13,7 +13,7 @@ $(UTIL_OBJS): %.o: %.c %.h $(UTIL_SKEL_H) $(LIBMK)
 	$(QUIET_CC)$(CC) $(CFLAGS) $(CPPFLAGS) -Wall -I../../headers -c -o $@ $<
 
 clean:
-	$(Q)rm -f $(UTIL_OBJS) $(UTIL_BPF_OBJS) $(UTIL_SKEL_H)
+	$(Q)rm -f $(UTIL_OBJS) $(UTIL_BPF_OBJS) $(UTIL_SKEL_H) *.ll
 
 BPF_CFLAGS += -I$(HEADER_DIR) $(ARCH_INCLUDES)
 
