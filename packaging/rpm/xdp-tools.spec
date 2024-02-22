@@ -8,6 +8,7 @@ License:          GPL-2.0-only
 URL:              https://github.com/xdp-project/%{name}
 Source0:          https://github.com/xdp-project/%{name}/releases/download/v%{version}/xdp-tools-%{version}.tar.gz
 
+BuildRequires:    kernel-headers
 BuildRequires:    libbpf-devel
 BuildRequires:    elfutils-libelf-devel
 BuildRequires:    zlib-devel
@@ -38,7 +39,6 @@ Utilities and example programs for use with XDP
 %package -n libxdp
 Summary:          XDP helper library
 License:          LGPL-2.1-only OR BSD-2-Clause
-Requires:         kernel-headers
 
 %package -n libxdp-devel
 Summary:          Development files for libxdp
@@ -49,7 +49,6 @@ Requires:         libxdp = %{version}-%{release}
 %package -n libxdp-static
 Summary:          Static library files for libxdp
 License:          LGPL-2.1-only OR BSD-2-Clause
-Requires:         kernel-headers
 Requires:         libxdp-devel = %{version}-%{release}
 
 %description -n libxdp
