@@ -1,0 +1,87 @@
+#+Title: XDP SYNPROXY sample application
+
+This is a sample application for XDP SYNPROXY. It was cloned from
+the Linux source code tree under tools/testing/selftests/bpf and called
+xdp_synproxy. main purpose of it is to demonstrate capabilities of
+XDP accelerating SYN Proxying for SYN flood DDOS protection. It is
+a real practical example for user to use. For an overview of accelerating
+SYNPROXY WITH XDP, Please refer to this paper
+(https://netdevconf.info/0x15/slides/30/Netdev%200x15%20Accelerating%20synproxy%20with%20XDP.pdf)
+
+This sample application is tested with Ubuntu 22.04 with 6.2 kernel.
+
+Note XDP SYNPROXY requires netfilter connection tracking and here are the
+sysctl knobs and iptables rules preparation for XDP SYNPROXY:
+#+BEGIN_SRC sh
+  sudo sysctl -w net.ipv4.tcp_syncookies=2
+  sudo sysctl -w net.ipv4.tcp_timestamps=1
+  sudo sysctl -w net.netfilter.nf_conntrack_tcp_loose=0
+  sudo iptables -t raw -I PREROUTING  -i <interface> -p tcp -m tcp --syn --dport <port> -j CT --notrack
+  sudo iptables -t filter -A INPUT -i <interface> -p tcp -m tcp --dport <port> -m state --state INVALID,UNTRACKED -j SYNPROXY --sack-perm --timestamp --wscale 7 --mss 1460
+  sudo iptables -t filter -A INPUT -i <interface> -m state --state INVALID -j DROP
+#+END_SRC
+
+Here is how to start the XDP SYNPROXY application:
+#+BEGIN_SRC sh
+  sudo xdp_synproxy --iface <interface> --mss4 1460 --mss6 1440 --wscale 7 --ttl 64 --ports <port1>,<port2>
+#+END_SRC
+
+XDP SYNPROXY could be built in in container and run by docker
+#+BEGIN_SRC sh
+  sudo docker build . -t xdp-synproxy:0.1
+  sudo docker run -it -h xdp-synproxy --network=host --privileged xdp-synproxy:0.1
+#+END_SRC
+
+XDP SYNPROXY could be deployed in Kubernetes cluster as DaemonSet, Please see
+(https://youtu.be/nIrp0Lv-e0g?si=g-pXl4agVQM6_FYW)
+#+BEGIN_SRC sh
+  sudo kubectl apply -f xdp-synproxy-daemonset.yaml
+  sudo kubectl get po  -o wide -l app=xdp-synproxy
+
+  NAME                 READY   STATUS    RESTARTS   AGE    IP              NODE                     NOMINATED NODE   READINESS GATES
+  xdp-synproxy-6x29j   1/1     Running   0          5d2h   10.169.72.239   cilium-dev               <none>           <none>
+  xdp-synproxy-xj98j   1/1     Running   0          5d2h   10.169.72.233   centos-dev.localdomain   <none>           <none>
+#+END_SRC
+
+XDP SYNPROXY can coexist with other XDP programs since we use libxdp
+to attach the XDP SYNPROXY program, meaning you could build chain of
+XDP programs and attach them to same network interface. Note xdp-loader
+could be built statically and shipped with xdp-synproxy container.
+
+#+BEGIN_SRC sh
+  sudo kubectl exec -it xdp-synproxy-6x29j  -- xdp-loader status
+
+  CURRENT XDP PROGRAM STATUS:
+
+  Interface        Prio  Program name      Mode     ID   Tag               Chain actions
+  --------------------------------------------------------------------------------------
+  ens192                 xdp_dispatcher    native   899  90f686eb86991928
+  =>               50    syncookie_xdp              908  6c6615566a2e0419  XDP_PASS
+#+END_SRC
+
+XDP SYNPROXY can also be deployed in Linux router/Firewall, it requires iptables SYNPROXY to be added in filter table FORWARD chain. see https://youtu.be/Cj7SeviTXrw?si=adZ0FrGq84Ygmmy0 for example.
+
+#+BEGIN_SRC sh
+   sudo sysctl -w net.ipv4.ip_forward=1
+   sudo sysctl -w net.ipv4.tcp_syncookies=2
+   sudo sysctl -w net.ipv4.tcp_timestamps=1
+   sudo sysctl -w net.netfilter.nf_conntrack_tcp_loose=0
+   sudo iptables -t raw -I PREROUTING -i ens7 -p tcp -m tcp --syn --dport 80 -j CT --notrack
+   sudo iptables -t filter -A FORWARD -i ens7 -p tcp -m tcp --dport 80 -m state --state INVALID,UNTRACKED -j SYNPROXY --sack-perm --timestamp --wscale 7 --mss 1460
+   sudo iptables -t filter -A FORWARD -i ens7 -m state --state INVALID -j DROP
+   sudo ./xdp_synproxy --iface ens7 --ports 80 --mss4 1460 --mss6 1440 --wscale 7 --ttl 64
+
+   Simple test diagram
+
+   client:                                                  server:
+   ip r add 10.6.6.0/24                                     ip r add 10.3.3.0/24
+      via 10.3.3.8                                             via 10.6.6.8
+
+   +---------------+      +----------------------------+    +--------------+
+   |               |      |                            |    |              |
+   | client        |      |     Firewall/router        |    |  server      |
+   | 10.3.3.9      eno2---ens7 10.3.3.8   10.6.6.8  ens9----ens9 10.6.6.6  |
+   |               |      |                            |    |              |
+   |               |      |                            |    |              |
+   +---------------+      +----------------------------+    +--------------+
+#+END_SRC

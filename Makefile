@@ -19,7 +19,7 @@ include config.mk
 UTILS := xdp-filter xdp-loader xdp-dump
 
 ifneq ($(BPFTOOL),)
-UTILS += xdp-bench xdp-forward xdp-monitor xdp-trafficgen
+UTILS += xdp-bench xdp-forward xdp-monitor xdp-trafficgen xdp-synproxy
 endif
 
 SUBDIRS := lib $(UTILS)

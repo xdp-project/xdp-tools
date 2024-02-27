@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: xdp-synproxy
+  labels:
+    app: xdp-synproxy
+spec:
+  selector:
+    matchLabels:
+      app: xdp-synproxy
+  template:
+    metadata:
+      labels:
+        app: xdp-synproxy
+    spec:
+      hostNetwork: true
+      containers:
+      - args:
+        - "--iface=ens192"
+        - "--mss4=1460"
+        - "--mss6=1440"
+        - "--wscale=7"
+        - "--ttl=254"
+        - "--ports=80,8080"
+        command:
+        - /usr/local/bin/xdp_synproxy
+        image: vli39/xdp-synproxy:0.1
+        imagePullPolicy: Always
+        lifecycle:
+          postStart:
+            exec:
+              command:
+              - "/install-rules.sh"
+              - "--interface=ens192"
+              - "--ports=80,8080"
+          preStop:
+            exec:
+              command:
+              - "/uninstall-rules.sh"
+              - "--interface=ens192"
+              - "--ports=80,8080"
+        name: xdp-synproxy
+        securityContext:
+          capabilities:
+            add:
+              - NET_ADMIN
+          privileged: true
+        volumeMounts:
+        - mountPath: /sys/fs/bpf
+          name: xdp-synproxy 
+      volumes:
+      - hostPath:
+          path: /sys/fs/bpf
+          type: DirectoryOrCreate
+        name: xdp-synproxy 
