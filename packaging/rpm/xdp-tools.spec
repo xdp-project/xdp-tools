@@ -42,6 +42,7 @@ License:          LGPL-2.1-only OR BSD-2-Clause
 %package -n libxdp-devel
 Summary:          Development files for libxdp
 License:          LGPL-2.1-only OR BSD-2-Clause
+BuildRequires:    kernel-headers
 Requires:         kernel-headers
 Requires:         libxdp = %{version}-%{release}
 
