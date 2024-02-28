@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <string.h>
 
+#include <bpf/libbpf.h>
 #include <xdp/libxdp.h>
 
 #include "params.h"
@@ -10,6 +11,7 @@
 #include "logging.h"
 #include "compat.h"
 
+#include "xdp-forward.h"
 #include "xdp_forward.skel.h"
 
 #define MAX_IFACE_NUM 32
@@ -81,6 +83,32 @@ static int find_prog(struct iface *iface, bool detach)
 	return ret;
 }
 
+int init_tx_port(struct xdp_program *init_prog, int ifindex)
+{
+	struct port_init_config port_cfg = {.ifindex = ifindex};
+	struct xdp_md ctx_in = {
+		.data_end = sizeof(port_cfg),
+	};
+	DECLARE_LIBBPF_OPTS(bpf_test_run_opts, opts, .data_in = &port_cfg,
+			    .data_size_in = sizeof(port_cfg), .ctx_in = &ctx_in,
+			    .ctx_size_in = sizeof(ctx_in), );
+	int nr_cpus = libbpf_num_possible_cpus();
+	int err, i;
+
+	for (i = 0; i < nr_cpus; i++) {
+		port_cfg.cpu = i;
+
+		err = xdp_program__test_run(init_prog, &opts, 0);
+		if (err)
+			return -errno;
+
+		if (opts.retval != XDP_PASS)
+			return -1;
+	}
+
+	return 0;
+}
+
 struct load_opts {
 	enum fwd_mode fwd_mode;
 	enum xdp_attach_mode xdp_mode;
@@ -110,10 +138,9 @@ struct prog_option load_options[] = {
 
 static int do_load(const void *cfg, __unused const char *pin_root_path)
 {
+	struct xdp_program *xdp_prog = NULL, *init_prog = NULL;
 	DECLARE_LIBBPF_OPTS(xdp_program_opts, opts);
-	struct xdp_program *xdp_prog = NULL;
 	const struct load_opts *opt = cfg;
-	struct bpf_program *prog = NULL;
 	struct xdp_forward *skel;
 	int ret = EXIT_FAILURE;
 	struct iface *iface;
@@ -135,15 +162,18 @@ static int do_load(const void *cfg, __unused const char *pin_root_path)
 		goto end;
 	}
 
-	/* Make sure we only load the one XDP program we are interested in */
-	while ((prog = bpf_object__next_program(skel->obj, prog)) != NULL)
-		if (bpf_program__type(prog) == BPF_PROG_TYPE_XDP &&
-		    bpf_program__expected_attach_type(prog) == BPF_XDP)
-			bpf_program__set_autoload(prog, false);
-
 	opts.obj = skel->obj;
 	xdp_prog = xdp_program__create(&opts);
 	if (!xdp_prog) {
+		ret = -errno;
+		pr_warn("Couldn't open XDP program: %s\n",
+			strerror(-ret));
+		goto end_destroy;
+	}
+
+	opts.prog_name = "init_port";
+	init_prog = xdp_program__create(&opts);
+	if (!init_prog) {
 		ret = -errno;
 		pr_warn("Couldn't open XDP program: %s\n",
 			strerror(-ret));
@@ -177,13 +207,13 @@ static int do_load(const void *cfg, __unused const char *pin_root_path)
 			goto end_detach;
 		}
 
-		ret = bpf_map_update_elem(bpf_map__fd(skel->maps.xdp_tx_ports),
-					  &iface->ifindex, &iface->ifindex, 0);
+		ret = init_tx_port(init_prog, iface->ifindex);
 		if (ret) {
-			pr_warn("Failed to update devmap value: %s\n",
+			pr_warn("Failed to initiate TX port: %s\n",
 				strerror(errno));
 			goto end_detach;
 		}
+
 		pr_info("Loaded on interface %s\n", iface->ifname);
 	}
 
