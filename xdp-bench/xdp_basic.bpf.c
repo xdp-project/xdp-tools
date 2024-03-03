@@ -201,15 +201,7 @@ int xdp_parse_prog(struct xdp_md *ctx)
 SEC("xdp")
 int xdp_parse_load_bytes_prog(struct xdp_md *ctx)
 {
-	void *data_end = (void *)(long)ctx->data_end;
-	void *data = (void *)(long)ctx->data;
-	struct ethhdr *eth = data;
 	int ret = action;
-	__u64 nh_off;
-
-	nh_off = sizeof(*eth);
-	if (data + nh_off > data_end)
-		return XDP_ABORTED;
 
 	if (parse_ip_header_load(ctx))
 		ret = XDP_ABORTED;
