@@ -119,15 +119,6 @@ static int record_stats(__u32 rxq_idx, bool success)
 SEC("xdp")
 int xdp_basic_prog(struct xdp_md *ctx)
 {
-	void *data_end = (void *)(long)ctx->data_end;
-	void *data = (void *)(long)ctx->data;
-	struct ethhdr *eth = data;
-	__u64 nh_off;
-
-	nh_off = sizeof(*eth);
-	if (data + nh_off > data_end)
-		return XDP_ABORTED;
-
 	if (record_stats(ctx->rx_queue_index, true))
 		return XDP_ABORTED;
 
