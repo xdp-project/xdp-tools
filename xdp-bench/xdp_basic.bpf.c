@@ -148,6 +148,26 @@ int xdp_read_data_prog(struct xdp_md *ctx)
 }
 
 SEC("xdp")
+int xdp_read_data_load_bytes_prog(struct xdp_md *ctx)
+{
+	int err, offset = 0;
+	struct ethhdr eth;
+	int ret = action;
+
+	err = bpf_xdp_load_bytes(ctx, offset, &eth, sizeof(eth));
+	if (err)
+		return err;
+
+	if (bpf_ntohs(eth.h_proto) < ETH_P_802_3_MIN)
+		ret = XDP_ABORTED;
+
+	if (record_stats(ctx->rx_queue_index, ret==action))
+		return XDP_ABORTED;
+
+	return ret;
+}
+
+SEC("xdp")
 int xdp_swap_macs_prog(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;

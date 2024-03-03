@@ -71,8 +71,8 @@ static int do_basic(const struct basic_opts *opt, enum xdp_action action)
 		mask |= SAMPLE_RXQ_STATS;
 	}
 
-	if (opt->load_mode == BASIC_LOAD_BYTES && opt->program_mode != BASIC_PARSE_IPHDR) {
-		pr_warn("Setting '-l load-bytes' only works with '-p parse-ip'\n");
+	if (opt->load_mode == BASIC_LOAD_BYTES && opt->program_mode == BASIC_SWAP_MACS) {
+		pr_warn("Setting '-l load-bytes' doesn't work with '-p swap-macs'\n");
 		ret = EXIT_FAIL_BPF;
 		goto end_destroy;
 	}
@@ -88,7 +88,7 @@ static int do_basic(const struct basic_opts *opt, enum xdp_action action)
 		opts.prog_name = "xdp_basic_prog";
 		break;
 	case BASIC_READ_DATA:
-		opts.prog_name = "xdp_read_data_prog";
+		opts.prog_name = (opt->load_mode == BASIC_LOAD_BYTES) ? "xdp_read_data_load_bytes_prog" : "xdp_read_data_prog";
 		break;
 	case BASIC_PARSE_IPHDR:
 		opts.prog_name = (opt->load_mode == BASIC_LOAD_BYTES) ? "xdp_parse_load_bytes_prog" : "xdp_parse_prog";
