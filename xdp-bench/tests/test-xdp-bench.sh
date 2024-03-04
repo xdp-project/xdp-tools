@@ -37,6 +37,7 @@ test_xdp_load_bytes()
     for action in drop pass tx; do
         check_run $XDP_BENCH $action $NS -p parse-ip -l load-bytes -vv
         check_run $XDP_BENCH $action $NS -p read-data -l load-bytes -vv
+        check_run $XDP_BENCH $action $NS -p swap-macs -l load-bytes -vv
     done
 }
 

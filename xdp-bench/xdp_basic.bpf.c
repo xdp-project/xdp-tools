@@ -19,6 +19,7 @@
 
 #ifndef HAVE_LIBBPF_BPF_PROGRAM__TYPE
 static long (*bpf_xdp_load_bytes)(struct xdp_md *xdp_md, __u32 offset, void *buf, __u32 len) = (void *) 189;
+static long (*bpf_xdp_store_bytes)(struct xdp_md *xdp_md, __u32 offset, void *buf, __u32 len) = (void *) 190;
 #endif
 
 const volatile bool rxq_stats = 0;
@@ -180,6 +181,28 @@ int xdp_swap_macs_prog(struct xdp_md *ctx)
 		return XDP_ABORTED;
 
 	swap_src_dst_mac(data);
+
+	if (record_stats(ctx->rx_queue_index, true))
+		return XDP_ABORTED;
+
+	return action;
+}
+
+SEC("xdp")
+int xdp_swap_macs_load_bytes_prog(struct xdp_md *ctx)
+{
+	int err, offset = 0;
+	struct ethhdr eth;
+
+	err = bpf_xdp_load_bytes(ctx, offset, &eth, sizeof(eth));
+	if (err)
+		return err;
+
+	swap_src_dst_mac(&eth);
+
+	err = bpf_xdp_store_bytes(ctx, offset, &eth, sizeof(eth));
+	if (err)
+		return err;
 
 	if (record_stats(ctx->rx_queue_index, true))
 		return XDP_ABORTED;
