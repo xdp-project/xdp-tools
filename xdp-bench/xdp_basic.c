@@ -137,7 +137,7 @@ static int do_basic(const struct basic_opts *opt, enum xdp_action action)
 	ret = EXIT_FAIL;
 
 	pr_info("%s packets on %s (ifindex %d; driver %s)\n",
-		action == XDP_DROP ? "Dropping" : "Hairpinning (XDP_TX)",
+		action == XDP_DROP ? "Dropping" : action == XDP_TX ? "Hairpinning (XDP_TX)" : "Passing",
 		opt->iface_in.ifname, opt->iface_in.ifindex, get_driver_name(opt->iface_in.ifindex));
 
 	ret = sample_run(opt->interval, NULL, NULL);
