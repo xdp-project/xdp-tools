@@ -71,12 +71,6 @@ static int do_basic(const struct basic_opts *opt, enum xdp_action action)
 		mask |= SAMPLE_RXQ_STATS;
 	}
 
-	if (opt->load_mode == BASIC_LOAD_BYTES && opt->program_mode == BASIC_SWAP_MACS) {
-		pr_warn("Setting '-l load-bytes' doesn't work with '-p swap-macs'\n");
-		ret = EXIT_FAIL_BPF;
-		goto end_destroy;
-	}
-
 	/* Make sure we only load the one XDP program we are interested in */
 	while ((prog = bpf_object__next_program(skel->obj, prog)) != NULL)
 		if (bpf_program__type(prog) == BPF_PROG_TYPE_XDP &&
@@ -94,7 +88,7 @@ static int do_basic(const struct basic_opts *opt, enum xdp_action action)
 		opts.prog_name = (opt->load_mode == BASIC_LOAD_BYTES) ? "xdp_parse_load_bytes_prog" : "xdp_parse_prog";
 		break;
 	case BASIC_SWAP_MACS:
-		opts.prog_name = "xdp_swap_macs_prog";
+		opts.prog_name = (opt->load_mode == BASIC_LOAD_BYTES) ? "xdp_swap_macs_load_bytes_prog" : "xdp_swap_macs_prog";
 		break;
 	}
 
