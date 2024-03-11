@@ -101,7 +101,7 @@ XDP_ALWAYS_INLINE __u32 xsk_prod_nb_free(struct xsk_ring_prod *r, __u32 nb)
 	 * that this addition can be avoided in the more frequently
 	 * executed code that computs free_entries in the beginning of
 	 * this function. Without this optimization it whould have been
-	 * free_entries = r->cached_prod - r->cached_cons + r->size.
+	 * free_entries = r->cached_cons - r->cached_prod + r->size
 	 */
 	r->cached_cons = __atomic_load_n(r->consumer, __ATOMIC_ACQUIRE);
 	r->cached_cons += r->size;
