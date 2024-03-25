@@ -19,6 +19,7 @@
 
 #ifndef HAVE_LIBBPF_BPF_PROGRAM__TYPE
 static long (*bpf_xdp_load_bytes)(struct xdp_md *xdp_md, __u32 offset, void *buf, __u32 len) = (void *) 189;
+static long (*bpf_xdp_store_bytes)(struct xdp_md *xdp_md, __u32 offset, void *buf, __u32 len) = (void *) 190;
 #endif
 
 const volatile bool rxq_stats = 0;
@@ -119,15 +120,6 @@ static int record_stats(__u32 rxq_idx, bool success)
 SEC("xdp")
 int xdp_basic_prog(struct xdp_md *ctx)
 {
-	void *data_end = (void *)(long)ctx->data_end;
-	void *data = (void *)(long)ctx->data;
-	struct ethhdr *eth = data;
-	__u64 nh_off;
-
-	nh_off = sizeof(*eth);
-	if (data + nh_off > data_end)
-		return XDP_ABORTED;
-
 	if (record_stats(ctx->rx_queue_index, true))
 		return XDP_ABORTED;
 
@@ -157,6 +149,26 @@ int xdp_read_data_prog(struct xdp_md *ctx)
 }
 
 SEC("xdp")
+int xdp_read_data_load_bytes_prog(struct xdp_md *ctx)
+{
+	int err, offset = 0;
+	struct ethhdr eth;
+	int ret = action;
+
+	err = bpf_xdp_load_bytes(ctx, offset, &eth, sizeof(eth));
+	if (err)
+		return err;
+
+	if (bpf_ntohs(eth.h_proto) < ETH_P_802_3_MIN)
+		ret = XDP_ABORTED;
+
+	if (record_stats(ctx->rx_queue_index, ret==action))
+		return XDP_ABORTED;
+
+	return ret;
+}
+
+SEC("xdp")
 int xdp_swap_macs_prog(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
@@ -169,6 +181,28 @@ int xdp_swap_macs_prog(struct xdp_md *ctx)
 		return XDP_ABORTED;
 
 	swap_src_dst_mac(data);
+
+	if (record_stats(ctx->rx_queue_index, true))
+		return XDP_ABORTED;
+
+	return action;
+}
+
+SEC("xdp")
+int xdp_swap_macs_load_bytes_prog(struct xdp_md *ctx)
+{
+	int err, offset = 0;
+	struct ethhdr eth;
+
+	err = bpf_xdp_load_bytes(ctx, offset, &eth, sizeof(eth));
+	if (err)
+		return err;
+
+	swap_src_dst_mac(&eth);
+
+	err = bpf_xdp_store_bytes(ctx, offset, &eth, sizeof(eth));
+	if (err)
+		return err;
 
 	if (record_stats(ctx->rx_queue_index, true))
 		return XDP_ABORTED;
@@ -201,15 +235,7 @@ int xdp_parse_prog(struct xdp_md *ctx)
 SEC("xdp")
 int xdp_parse_load_bytes_prog(struct xdp_md *ctx)
 {
-	void *data_end = (void *)(long)ctx->data_end;
-	void *data = (void *)(long)ctx->data;
-	struct ethhdr *eth = data;
 	int ret = action;
-	__u64 nh_off;
-
-	nh_off = sizeof(*eth);
-	if (data + nh_off > data_end)
-		return XDP_ABORTED;
 
 	if (parse_ip_header_load(ctx))
 		ret = XDP_ABORTED;
