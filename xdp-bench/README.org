@@ -66,7 +66,7 @@ following actions are available:
 
 #+begin_src sh
  no-touch		- Drop the packet without touching the packet data
- touch		- Read a field in the packet header before dropping
+ read-data		- Read a field in the packet header before dropping
  parse-ip		- Parse the IP header field before dropping
  swap-macs		- Swap the source and destination MAC addresses before dropping
 #+end_src
@@ -146,7 +146,7 @@ following actions are available:
 
 #+begin_src sh
  no-touch		- Pass the packet without touching the packet data
- touch		- Read a field in the packet header before passing
+ read-data		- Read a field in the packet header before passing
  parse-ip		- Parse the IP header field before passing
  swap-macs		- Swap the source and destination MAC addresses before passing
 #+end_src
@@ -221,7 +221,7 @@ following actions are available:
 
 #+begin_src sh
  no-touch		- Transmit the packet without touching the packet data
- touch		- Read a field in the packet header before transmitting
+ read-data		- Read a field in the packet header before transmitting
  parse-ip		- Parse the IP header field before transmitting
  swap-macs		- Swap the source and destination MAC addresses before transmitting
 #+end_src
