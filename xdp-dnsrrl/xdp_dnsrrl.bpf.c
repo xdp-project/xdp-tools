@@ -15,12 +15,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifdef  DEBUG
-#define DEBUG_PRINTK(...) bpf_printk(__VA_ARGS__)
-#else
-#define DEBUG_PRINTK(...)
-#endif
-
 #include "vmlinux_local.h"
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
@@ -279,8 +273,6 @@ int xdp_do_rate_limit_ipv6(struct xdp_md *ctx)
 	struct udphdr    *udp;
 	struct dnshdr    *dns;
 
-	DEBUG_PRINTK("xdp_do_rate_limit_ipv6\n");
-
 	cursor_init(&c, ctx);
 	if ((void *)(md + 1) > c.pos || md->ip_pos > 24)
 		return XDP_ABORTED;
@@ -341,8 +333,6 @@ int xdp_do_rate_limit_ipv4(struct xdp_md *ctx)
 	__u32          ipv4_addr;
 	struct udphdr    *udp;
 	struct dnshdr    *dns;
-
-	DEBUG_PRINTK("xdp_do_rate_limit_ipv4\n");
 
 	cursor_init(&c, ctx);
 	if ((void *)(md + 1) > c.pos || md->ip_pos > 24)
@@ -442,13 +432,11 @@ int xdp_cookie_verify_ipv6(struct xdp_md *ctx)
 				/* Cookie match!
 				 * Packet may go staight up to the DNS service
 				 */
-				DEBUG_PRINTK("IPv6 valid cookie\n");
 				return XDP_PASS;
 			}
 			/* Just a client cookie or a bad cookie
 			 * break to go to rate limiting
 			 */
-			DEBUG_PRINTK("IPv6 bad cookie\n");
 			break;
 		}
 		if (opt_len > 1500 || opt_len > rdata_len
@@ -514,13 +502,11 @@ int xdp_cookie_verify_ipv4(struct xdp_md *ctx)
 				/* Cookie match!
 				 * Packet may go staight up to the DNS service
 				 */
-				DEBUG_PRINTK("IPv4 valid cookie\n");
 				return XDP_PASS;
 			}
 			/* Just a client cookie or a bad cookie
 			 * break to go to rate limiting
 			 */
-			DEBUG_PRINTK("IPv4 bad cookie\n");
 			break;
 		}
 		if (opt_len > 1500 || opt_len > rdata_len
