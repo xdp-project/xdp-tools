@@ -131,7 +131,6 @@ int do_load(const void *cfg, __unused const char *pin_root_path)
 retry:
 	for (i = 0; i < num_progs; i++) {
 		DECLARE_LIBXDP_OPTS(xdp_program_opts, xdp_opts, 0);
-		struct bpf_program *bpf_prog = NULL;
 
 		p = progs[i];
 		if (p)
@@ -158,13 +157,6 @@ retry:
 				opt->filenames.strings[i], errmsg);
 			goto out;
 		}
-
-		/* Disable autoload for all programs in the bpf object; libxdp
-		 * will make sure to turn it back on for the program that we're
-		 * actually loading
-		 */
-		bpf_object__for_each_program(bpf_prog, xdp_program__bpf_obj(p))
-			bpf_program__set_autoload(bpf_prog, false);
 
 		if (opt->prio) {
 			err = xdp_program__set_run_prio(p, opt->prio);
