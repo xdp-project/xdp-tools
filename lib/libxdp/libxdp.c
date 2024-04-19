@@ -1659,6 +1659,12 @@ static bool kernel_has_frags_support(void)
 	struct xdp_program *test_prog;
 	bool ret = false;
 	int err;
+	char *envval;
+
+	envval = secure_getenv(XDP_SKIP_ENVVAR);
+	if (envval && envval[0] == '1' && envval[1] == '\0') {
+		return false;
+	}
 
 	pr_debug("Checking for kernel frags support\n");
 	test_prog = __xdp_program__find_file("xdp-dispatcher.o", NULL, "xdp_pass", NULL);
