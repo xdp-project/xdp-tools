@@ -448,11 +448,11 @@ test_promiscuous_selfload()
     fi
 
     RESULT=$(dmesg)
-    if [[ "$RESULT" != *"device $NS entered promiscuous mode"* ]]; then
+    if [[ "$RESULT" != *"device $NS entered promiscuous mode"* ]] && [[ "$RESULT" != *"$NS: entered promiscuous mode"* ]]; then
         print_result "Failed enabling promiscuous mode on legacy interface"
         return 1
     fi
-    if [[ "$RESULT" != *"device $NS left promiscuous mode"* ]]; then
+    if [[ "$RESULT" != *"device $NS left promiscuous mode"* ]] && [[ "$RESULT" != *"$NS: left promiscuous mode"* ]]; then
         print_result "Failed disabling promiscuous mode on legacy interface"
         return 1
     fi
@@ -477,11 +477,11 @@ test_promiscuous_preload()
     fi
 
     RESULT=$(dmesg)
-    if [[ "$RESULT" != *"device $NS entered promiscuous mode"* ]]; then
+    if [[ "$RESULT" != *"device $NS entered promiscuous mode"* ]] && [[ "$RESULT" != *"$NS: entered promiscuous mode"* ]]; then
         print_result "Failed enabling promiscuous mode on interface"
         return 1
     fi
-    if [[ "$RESULT" != *"device $NS left promiscuous mode"* ]]; then
+    if [[ "$RESULT" != *"device $NS left promiscuous mode"* ]] && [[ "$RESULT" != *"$NS: left promiscuous mode"* ]]; then
         print_result "Failed disabling promiscuous mode on interface"
         return 1
     fi
