@@ -20,7 +20,7 @@ ports, and also has basic support for generating dummy TCP traffic on a single
 flow.
 
 ** Running xdp-traffigen
-The syntax for running xdp-bench is:
+The syntax for running xdp-trafficgen is:
 
 #+begin_src sh
 Usage: xdp-trafficgen COMMAND [options]
