@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 
-XDP_TARGETS := xdp_forward.bpf
+XDP_TARGETS := xdp_forward.bpf xdp_flowtable.bpf
 BPF_SKEL_TARGETS := $(XDP_TARGETS)
 
 XDP_OBJ_INSTALL :=
