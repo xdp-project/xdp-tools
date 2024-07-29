@@ -14,8 +14,8 @@ xdp-forward is an XDP forwarding plane, which will accelerate packet forwarding
 using XDP. To use it, simply load it on the set of interfaces to accelerate
 forwarding between. The userspace component of xdp-forward will then configure
 and load XDP programs on those interfaces, and forward packets between them
-using XDP_REDIRECT, using the kernel routing table to determine the destination
-if each packet.
+using XDP_REDIRECT, using the kernel routing table or netfilter flowtable to
+determine the destination for each packet.
 
 Any packets that xdp-forward does not know how to forward will be passed up to
 the networking stack and handled by the kernel like normal. Depending on the
@@ -120,6 +120,35 @@ The =fib-direct= mode functions like =fib-full=, except it passes the
 =BPF_FIB_LOOKUP_DIRECT= flag to the FIB lookup routine. This means that any
 policy routing rules configured will be skipped during the lookup, which can
 improve performance (but won't obey the policy of those rules, obviously).
+
+** flowtable
+The =flowtable= operating mode offloads netfilter sw flowtable logic in
+the XDP layer if the hardware flowtable is not available.
+At the moment =xdp-forward= is able to offload just TCP or UDP netfilter
+flowtable entries to XDP. The user is supposed to configure the flowtable
+separately.
+
+* Examples
+
+In order to enable flowtable offloading for tcp and udp traffic between NICs
+n0 and n1, issue the following commands:
+
+#+begin_src sh
+#nft -f /dev/stdin <<EOF
+table inet filter {
+    flowtable ft {
+        hook ingress priority filter
+        devices = { n0, n1 }
+    }
+    chain forward {
+        type filter hook forward priority filter
+        meta l4proto { tcp, udp } flow add @ft
+    }
+}
+EOF
+
+#xdp-forward load -f flowtable n0 n1
+#+end_src
 
 * SEE ALSO
 =libxdp(3)= for details on the XDP loading semantics and kernel compatibility

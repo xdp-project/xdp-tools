@@ -11,6 +11,8 @@
 #include "compat.h"
 
 #include "xdp_forward.skel.h"
+#include "xdp_flowtable.skel.h"
+#include "xdp_flowtable_sample.skel.h"
 
 #define MAX_IFACE_NUM 32
 #define PROG_NAME "xdp-forward"
@@ -36,11 +38,13 @@ struct enum_val xdp_modes[] = { { "native", XDP_MODE_NATIVE },
 
 enum fwd_mode {
 	FWD_FIB_DIRECT,
-	FWD_FIB_FULL
+	FWD_FIB_FULL,
+	FWD_FLOWTABLE,
 };
 
 struct enum_val fwd_modes[] = { { "fib-direct", FWD_FIB_DIRECT },
 				{ "fib-full", FWD_FIB_FULL },
+				{ "flowtable", FWD_FLOWTABLE },
 				{ NULL, 0 } };
 
 static int find_prog(struct iface *iface, bool detach)
@@ -62,7 +66,8 @@ static int find_prog(struct iface *iface, bool detach)
 	while ((prog = xdp_multiprog__next_prog(prog, mp))) {
 	check:
 		if (!strcmp(xdp_program__name(prog), "xdp_fwd_fib_full") ||
-		    !strcmp(xdp_program__name(prog), "xdp_fwd_fib_direct")) {
+		    !strcmp(xdp_program__name(prog), "xdp_fwd_fib_direct") ||
+		    !strcmp(xdp_program__name(prog), "xdp_fwd_flowtable")) {
 			mode = xdp_multiprog__attach_mode(mp);
 			ret = 0;
 			if (detach) {
@@ -108,15 +113,29 @@ struct prog_option load_options[] = {
 	END_OPTIONS
 };
 
+static bool sample_probe_bpf_xdp_flow_lookup(void)
+{
+	struct xdp_flowtable_sample *skel;
+	bool res;
+
+	skel = xdp_flowtable_sample__open_and_load();
+	res = !!skel;
+	xdp_flowtable_sample__destroy(skel);
+
+	return res;
+}
+
 static int do_load(const void *cfg, __unused const char *pin_root_path)
 {
 	DECLARE_LIBBPF_OPTS(xdp_program_opts, opts);
 	struct xdp_program *xdp_prog = NULL;
 	const struct load_opts *opt = cfg;
 	struct bpf_program *prog = NULL;
-	struct xdp_forward *skel;
+	struct bpf_map *map = NULL;
+	struct bpf_object *obj;
 	int ret = EXIT_FAILURE;
 	struct iface *iface;
+	void *skel;
 
 	switch (opt->fwd_mode) {
 	case FWD_FIB_FULL:
@@ -125,23 +144,48 @@ static int do_load(const void *cfg, __unused const char *pin_root_path)
 	case FWD_FIB_DIRECT:
 		opts.prog_name = "xdp_fwd_fib_direct";
 		break;
+	case FWD_FLOWTABLE:
+		opts.prog_name = "xdp_fwd_flowtable";
+		break;
 	default:
 		goto end;
 	}
 
-	skel = xdp_forward__open();
-	if (!skel) {
-		pr_warn("Failed to load skeleton: %s\n", strerror(errno));
-		goto end;
+	if (opt->fwd_mode == FWD_FLOWTABLE) {
+		struct xdp_flowtable *xdp_flowtable_skel;
+
+		if (!sample_probe_bpf_xdp_flow_lookup()) {
+			pr_warn("The kernel does not support the bpf_xdp_flow_lookup() kfunc\n");
+			goto end;
+		}
+
+		xdp_flowtable_skel = xdp_flowtable__open();
+		if (!xdp_flowtable_skel) {
+			pr_warn("Failed to load skeleton: %s\n", strerror(errno));
+			goto end;
+		}
+		map = xdp_flowtable_skel->maps.xdp_tx_ports;
+		obj = xdp_flowtable_skel->obj;
+		skel = (void *)xdp_flowtable_skel;
+	} else {
+		struct xdp_forward *xdp_forward_skel = xdp_forward__open();
+
+		if (!xdp_forward_skel) {
+			pr_warn("Failed to load skeleton: %s\n", strerror(errno));
+			goto end;
+		}
+		map = xdp_forward_skel->maps.xdp_tx_ports;
+		obj = xdp_forward_skel->obj;
+		skel = (void *)xdp_forward_skel;
 	}
 
 	/* Make sure we only load the one XDP program we are interested in */
-	while ((prog = bpf_object__next_program(skel->obj, prog)) != NULL)
+	while ((prog = bpf_object__next_program(obj, prog)) != NULL)
 		if (bpf_program__type(prog) == BPF_PROG_TYPE_XDP &&
 		    bpf_program__expected_attach_type(prog) == BPF_XDP)
 			bpf_program__set_autoload(prog, false);
 
-	opts.obj = skel->obj;
+	opts.obj = obj;
 	xdp_prog = xdp_program__create(&opts);
 	if (!xdp_prog) {
 		ret = -errno;
@@ -177,8 +221,8 @@ static int do_load(const void *cfg, __unused const char *pin_root_path)
 			goto end_detach;
 		}
 
-		ret = bpf_map_update_elem(bpf_map__fd(skel->maps.xdp_tx_ports),
-					  &iface->ifindex, &iface->ifindex, 0);
+		ret = bpf_map_update_elem(bpf_map__fd(map), &iface->ifindex,
+					  &iface->ifindex, 0);
 		if (ret) {
 			pr_warn("Failed to update devmap value: %s\n",
 				strerror(errno));
@@ -188,7 +232,10 @@ static int do_load(const void *cfg, __unused const char *pin_root_path)
 	}
 
 end_destroy:
-	xdp_forward__destroy(skel);
+	if (opt->fwd_mode == FWD_FLOWTABLE)
+		xdp_flowtable__destroy(skel);
+	else
+		xdp_forward__destroy(skel);
 end:
 	return ret;
 
