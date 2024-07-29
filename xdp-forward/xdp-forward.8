@@ -1,4 +1,4 @@
-.TH "xdp-forward" "8" "JULY 30, 2024" "V1.4.2" "XDP program loader"
+.TH "xdp-forward" "8" "OCTOBER 10, 2024" "V1.4.3" "XDP program loader"
 
 .SH "NAME"
 xdp-forward \- the XDP forwarding plane
@@ -8,8 +8,8 @@ xdp-forward is an XDP forwarding plane, which will accelerate packet forwarding
 using XDP. To use it, simply load it on the set of interfaces to accelerate
 forwarding between. The userspace component of xdp-forward will then configure
 and load XDP programs on those interfaces, and forward packets between them
-using XDP_REDIRECT, using the kernel routing table to determine the destination
-if each packet.
+using XDP_REDIRECT, using the kernel routing table or netfilter flowtable to
+determine the destination for each packet.
 
 .PP
 Any packets that xdp-forward does not know how to forward will be passed up to
@@ -140,6 +140,39 @@ The \fIfib\-direct\fP mode functions like \fIfib\-full\fP, except it passes the
 \fIBPF_FIB_LOOKUP_DIRECT\fP flag to the FIB lookup routine. This means that any
 policy routing rules configured will be skipped during the lookup, which can
 improve performance (but won't obey the policy of those rules, obviously).
+
+.SS "flowtable"
+.PP
+The \fIflowtable\fP operating mode offloads netfilter sw flowtable logic in
+the XDP layer if the hardware flowtable is not available.
+At the moment \fIxdp\-forward\fP is able to offload just TCP or UDP netfilter
+flowtable entries to XDP. The user is supposed to configure the flowtable
+separately.
+
+.SH "Examples"
+.PP
+In order to enable flowtable offloading for tcp and udp traffic between NICs
+n0 and n1, issue the following commands:
+
+.RS
+.nf
+\fC#nft -f /dev/stdin <<EOF
+table inet filter {
+    flowtable ft {
+        hook ingress priority filter
+        devices = { n0, n1 }
+    }
+    chain forward {
+        type filter hook forward priority filter
+        meta l4proto { tcp, udp } flow add @ft
+    }
+}
+EOF
+
+#xdp-forward load -f flowtable n0 n1
+\fP
+.fi
+.RE
 
 .SH "SEE ALSO"
 .PP
