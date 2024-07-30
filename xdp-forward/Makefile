@@ -6,7 +6,7 @@ BPF_SKEL_TARGETS := $(XDP_TARGETS)
 XDP_OBJ_INSTALL :=
 
 TOOL_NAME := xdp-forward
-MAN_PAGE :=
+MAN_PAGE := xdp-forward.8
 TEST_FILE :=
 USER_TARGETS := xdp-forward
 
