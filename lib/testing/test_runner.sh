@@ -584,6 +584,9 @@ fi
 
 export XDP_FILTER
 export XDP_LOADER
+export XDP_BENCH
+export XDP_MONITOR
+export XDP_TRAFFICGEN
 export XDPDUMP
 
 TEST_DEFINITIONS="${1:-}"
