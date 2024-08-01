@@ -270,13 +270,20 @@ set_sysctls()
     local nscmd=
 
     [ -n "$in_ns" ] && nscmd="ip netns exec $in_ns"
-    local sysctls=(accept_dad
-                   accept_ra
-                   mldv1_unsolicited_report_interval
-                   mldv2_unsolicited_report_interval)
+    local sysctls_off_v6=(accept_dad
+                       accept_ra
+                       mldv1_unsolicited_report_interval
+                       mldv2_unsolicited_report_interval)
+    local sysctls_on=(forwarding)
 
-    for s in ${sysctls[*]}; do
+    for s in ${sysctls_off_v6[*]}; do
         $nscmd sysctl -w net.ipv6.conf.$iface.${s}=0 >/dev/null
+    done
+    for s in ${sysctls_on[*]}; do
+        $nscmd sysctl -w net.ipv6.conf.$iface.${s}=1 >/dev/null
+        $nscmd sysctl -w net.ipv6.conf.all.${s}=1 >/dev/null
+        $nscmd sysctl -w net.ipv4.conf.$iface.${s}=1 >/dev/null
+        $nscmd sysctl -w net.ipv4.conf.all.${s}=1 >/dev/null
     done
 }
 
@@ -327,8 +334,8 @@ init_ns()
     ip -n "$nsname" neigh add "$OUTSIDE_IP4" lladdr "$OUTSIDE_MAC" dev veth0 nud permanent
 
     # Add default routes inside the ns
-    ip -n "$nsname" route add default dev veth0
-    ip -n "$nsname" -6 route add default dev veth0
+    ip -n "$nsname" route add default via $OUTSIDE_IP4 dev veth0
+    ip -n "$nsname" -6 route add default via $OUTSIDE_IP6 dev veth0
 
     ALL_INSIDE_IP4+=($INSIDE_IP4)
     ALL_INSIDE_IP6+=($INSIDE_IP6)
