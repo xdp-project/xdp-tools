@@ -139,5 +139,5 @@ test:
 	@echo "    No tests defined"
 else
 test: all
-	$(Q)$(TEST_DIR)/test_runner.sh $(TEST_FILE)
+	$(Q)$(TEST_DIR)/test_runner.sh $(TEST_FILE) $(TESTS)
 endif
