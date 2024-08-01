@@ -115,7 +115,31 @@ Enable debug logging. Specify twice for even more verbosity.
 Display a summary of the available options
 
 .SH "OPERATING MODES"
-nil
+.PP
+The \fIxdp\-forward\fP utility supports the following operating modes (selected by
+the \fI\-\-fwd\-mode\fP parameter to \fIxdp\-forward load\fP.
+
+.SS "fib-full (default)"
+.PP
+In the \fIfib\-full\fP operating mode, \fIxdp\-forward\fP will perform a full lookup in
+the kernel routing table (or FIB) for each packet, and forward packets between
+the configured interfaces based on the result of the lookup. Any packet where
+the lookup fails will be passed up to the stack. This includes packets that
+require neighbour discovery for the next hop, meaning that packets will
+periodically pass up the kernel stack for next hop discovery (initially, and
+when the nexthop entry expires).
+
+.PP
+Note that no checks other than the FIB lookup is performed; in particular, this
+completely bypasses the netfilter subsystem, so firewall rules will not be
+checked before forwarding.
+
+.SS "fib-direct"
+.PP
+The \fIfib\-direct\fP mode functions like \fIfib\-full\fP, except it passes the
+\fIBPF_FIB_LOOKUP_DIRECT\fP flag to the FIB lookup routine. This means that any
+policy routing rules configured will be skipped during the lookup, which can
+improve performance (but won't obey the policy of those rules, obviously).
 
 .SH "SEE ALSO"
 .PP
