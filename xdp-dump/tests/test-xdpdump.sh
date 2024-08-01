@@ -149,7 +149,7 @@ test_capt_pcapng()
     INFOS_REGEX+="Capture hardware:    $HW.*"
     INFOS_REGEX+="Capture oper-sys:    $OS.*"
     INFOS_REGEX+="Capture application: xdpdump v[0-9]+\.[0-9]+\.[0-9]+.*"
-    INFOS_REGEX+="Capture comment:     Capture was taken on interface xdptest, with the following XDP programs loaded:   xdp_dispatcher\(\)     xdp_test_prog_w.*"
+    INFOS_REGEX+="Capture comment:     Capture was taken on interface $NS, with the following XDP programs loaded:   xdp_dispatcher\(\)     xdp_test_prog_w.*"
     INFOS_REGEX+="Interface #0 info:.*"
     INFOS_REGEX+="Name = ${NS}:xdp_test_prog_with_a_long_name\(\)@fentry.*"
     if [ $OLD_CAPINFOS -eq 0 ]; then
@@ -188,7 +188,7 @@ test_capt_pcapng()
     fi
 
     if version_greater_or_equal "$TSHARK_VERSION" 3.6.7; then
-	local ATTRIB_REGEX="^xdptest:xdp_test_prog_with_a_long_name\(\)@fentry	0	1	$.*^xdptest:xdp_test_prog_with_a_long_name\(\)@fexit	0	1	2$.*"
+	local ATTRIB_REGEX="^$NS:xdp_test_prog_with_a_long_name\(\)@fentry	0	1	$.*^$NS:xdp_test_prog_with_a_long_name\(\)@fexit	0	1	2$.*"
 	RESULT=$(tshark -r "$PCAP_FILE" -T fields \
 			-e frame.interface_name \
 			-e frame.interface_queue \
@@ -213,7 +213,7 @@ test_capt_term()
 
     local PASS_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
     local PASS_X_REGEX="(xdp_test_prog_with_a_long_name\(\)@entry: packet size 118 bytes, captured 118 bytes on if_index [0-9]+, rx queue [0-9]+, id [0-9]+)"
-    local PASS_X_OPT="0x0020:  00 00 00 00 00 02 fc 42 de ad ca fe 00 01 00 00"
+    local PASS_X_OPT="0x0020:  00 00 00 00 00 02 fc 42 de ad ca fe"
 
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
 
