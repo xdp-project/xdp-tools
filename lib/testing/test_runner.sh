@@ -472,12 +472,13 @@ else
     fi
 fi
 
-export XDP_FILTER
-export XDP_LOADER
+export XDPDUMP
 export XDP_BENCH
+export XDP_FILTER
+export XDP_FORWARD
+export XDP_LOADER
 export XDP_MONITOR
 export XDP_TRAFFICGEN
-export XDPDUMP
 
 TEST_DEFINITIONS="${1:-}"
 [ -f "$TEST_DEFINITIONS" ] || usage
