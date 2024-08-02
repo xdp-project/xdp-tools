@@ -5,6 +5,10 @@
 
 struct list_head;
 
+struct rhash_head {
+	struct rhash_head *next;
+};
+
 #define HLIST_POISON_POINTER_DELTA 0
 #define HLIST_POISON1  ((void *) 0x100 + HLIST_POISON_POINTER_DELTA)
 #define HLIST_POISON2  ((void *) 0x200 + HLIST_POISON_POINTER_DELTA)

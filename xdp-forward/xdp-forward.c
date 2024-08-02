@@ -35,11 +35,13 @@ struct enum_val xdp_modes[] = { { "native", XDP_MODE_NATIVE },
 
 enum fwd_mode {
 	FWD_FIB_DIRECT,
-	FWD_FIB_FULL
+	FWD_FIB_FULL,
+	FWD_FLOWTABLE,
 };
 
 struct enum_val fwd_modes[] = { { "fib-direct", FWD_FIB_DIRECT },
 				{ "fib-full", FWD_FIB_FULL },
+				{ "flowtable", FWD_FLOWTABLE },
 				{ NULL, 0 } };
 
 static int find_prog(struct iface *iface, bool detach)
@@ -61,7 +63,8 @@ static int find_prog(struct iface *iface, bool detach)
 	while ((prog = xdp_multiprog__next_prog(prog, mp))) {
 	check:
 		if (!strcmp(xdp_program__name(prog), "xdp_fwd_fib_full") ||
-		    !strcmp(xdp_program__name(prog), "xdp_fwd_fib_direct")) {
+		    !strcmp(xdp_program__name(prog), "xdp_fwd_fib_direct") ||
+		    !strcmp(xdp_program__name(prog), "xdp_fwd_flowtable")) {
 			mode = xdp_multiprog__attach_mode(mp);
 			ret = 0;
 			if (detach) {
@@ -123,6 +126,9 @@ static int do_load(const void *cfg, __unused const char *pin_root_path)
 		break;
 	case FWD_FIB_DIRECT:
 		opts.prog_name = "xdp_fwd_fib_direct";
+		break;
+	case FWD_FLOWTABLE:
+		opts.prog_name = "xdp_fwd_flowtable";
 		break;
 	default:
 		goto end;
