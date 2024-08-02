@@ -8,7 +8,6 @@
 # Date:     26 May 2020
 # Copyright (c) 2020 Red Hat
 
-set -o errexit
 set -o nounset
 umask 077
 
@@ -336,6 +335,8 @@ setup()
 {
     local nsname
 
+    set -o errexit
+
     check_prereq
 
     for i in $(seq $NUM_NS); do
@@ -343,6 +344,8 @@ setup()
         init_ns $nsname $i
         NS_NAMES+=($nsname)
     done
+
+    set +o errexit
 
     NS=$nsname
 }
