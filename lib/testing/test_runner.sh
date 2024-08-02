@@ -309,8 +309,8 @@ init_ns()
     ip link add dev "$nsname" type veth peer name "$peername"
     set_sysctls $nsname
 
-    ethtool -K "$nsname" rxvlan off txvlan off
-    ethtool -K "$peername" rxvlan off txvlan off
+    ethtool -K "$nsname" rxvlan off txvlan off gro on
+    ethtool -K "$peername" rxvlan off txvlan off gro on
 
     OUTSIDE_MAC=$(iface_macaddr "$nsname")
     INSIDE_MAC=$(iface_macaddr "$peername")
