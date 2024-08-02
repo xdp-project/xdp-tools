@@ -242,6 +242,8 @@ check_prereq()
     if [ "$max_locked_mem" != "unlimited" ]; then
 	ulimit -l unlimited || die "Unable to set ulimit"
     fi
+
+    mount -t bpf bpf /sys/fs/bpf/ || die "Unable to mount bpffs"
 }
 
 gen_nsname()
@@ -300,10 +302,6 @@ init_ns()
     INSIDE_IP4="${IP4_PREFIX}2"
     OUTSIDE_IP6="${IP6_PREFIX}1"
     OUTSIDE_IP4="${IP4_PREFIX}1"
-
-    if ! mount | grep -q /sys/fs/bpf; then
-        mount -t bpf bpf /sys/fs/bpf/
-    fi
 
     ip netns add "$nsname"
     ip link add dev "$nsname" type veth peer name "$peername"
