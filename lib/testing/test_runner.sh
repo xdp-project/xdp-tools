@@ -460,7 +460,7 @@ usage()
 
 if [ "$EUID" -ne "0" ]; then
     if command -v sudo >/dev/null 2>&1; then
-        exec sudo env V=${VERBOSE_TESTS} "$0" "$@"
+        exec sudo env V=${VERBOSE_TESTS} DEBUG_TESTENV=${DEBUG_TESTENV:-0} "$0" "$@"
     else
         die "Tests should be run as root"
     fi
@@ -487,4 +487,10 @@ TOOL_TESTS_DIR="$(dirname "$TEST_DEFINITIONS")"
 shift
 trap teardown EXIT
 setup
+
+if [ "${DEBUG_TESTENV:-0}" -eq "1" ] && [ -n "$SHELL" ]; then
+    echo "Entering interactive testenv debug - Ctrl-D to exit and resume test execution"
+    $SHELL
+fi
+
 run_tests "$@"
