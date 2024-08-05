@@ -98,6 +98,8 @@ int xdp_program__attach(struct xdp_program *xdp_prog,
 int xdp_program__attach_multi(struct xdp_program **progs, size_t num_progs,
 			      int ifindex, enum xdp_attach_mode mode,
 			      unsigned int flags);
+int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
+                               enum xdp_attach_mode mode);
 int xdp_program__detach(struct xdp_program *xdp_prog,
 			int ifindex, enum xdp_attach_mode mode,
 			unsigned int flags);
