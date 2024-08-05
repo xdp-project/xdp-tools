@@ -18,12 +18,19 @@ jobs:
           - "5.16.8-200.fc35"
           - "5.11.0-156.fc34"
           - "5.6.19-300.fc32"
+        LLVM_VERSION:
+          - 16
+          - 17
+          - 18
+          - 19
       fail-fast: false
 
     env:
       KERNEL_VERSION: ${{ matrix.KERNEL_VERSION }}
-      CLANG: clang-16
-      LLC: llc-16
+      LLVM_VERSION: ${{ matrix.LLVM_VERSION }}
+      CLANG: clang-${{ matrix.LLVM_VERSION }}
+      LLC: llc-${{ matrix.LLVM_VERSION }}
+      LLVM_STRIP: llvm-strip-${{ matrix.LLVM_VERSION }}
       # can't use unshare on old kernels
       DID_UNSHARE: ${{ (startsWith(matrix.KERNEL_VERSION, '5.6') || startsWith(matrix.KERNEL_VERSION, '5.11')) && 1 || 0 }}
 
@@ -39,13 +46,13 @@ jobs:
       - name: Prepare Clang
         run: |
           wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" | sudo tee -a /etc/apt/sources.list
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-$LLVM_VERSION main" | sudo tee -a /etc/apt/sources.list
           sudo apt-get -qq update
-          sudo apt-get -qq -y install clang-16 lld-16 llvm-16
+          sudo apt-get -qq -y install clang-$LLVM_VERSION lld-$LLVM_VERSION llvm-$LLVM_VERSION
       - name: Install latest bpftool
         run: |
           git clone --depth=1 --recurse-submodules https://github.com/libbpf/bpftool bpftool
-          make LLVM_STRIP=llvm-strip-16 -C bpftool/src
+          make -C bpftool/src
           sudo make install -C bpftool/src prefix=/usr
       - name: Compile
         run: make
