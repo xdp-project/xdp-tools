@@ -1,0 +1,136 @@
+#+EXPORT_FILE_NAME: xdp-forward
+#+TITLE: xdp-forward
+#+OPTIONS: ^:nil
+#+MAN_CLASS_OPTIONS: :section-id "8\" \"DATE\" \"VERSION\" \"XDP program loader"
+# This file serves both as a README on github, and as the source for the man
+# page; the latter through the org-mode man page export support.
+# .
+# To export the man page, simply use the org-mode exporter; (require 'ox-man) if
+# it's not available. There's also a Makefile rule to export it.
+
+* xdp-forward - the XDP forwarding plane
+
+xdp-forward is an XDP forwarding plane, which will accelerate packet forwarding
+using XDP. To use it, simply load it on the set of interfaces to accelerate
+forwarding between. The userspace component of xdp-forward will then configure
+and load XDP programs on those interfaces, and forward packets between them
+using XDP_REDIRECT, using the kernel routing table to determine the destination
+if each packet.
+
+Any packets that xdp-forward does not know how to forward will be passed up to
+the networking stack and handled by the kernel like normal. Depending on the
+mode xdp-forward is loaded in, this leads to different forwarding behaviours.
+See the sectinon on *Operating modes* below.
+
+** Running xdp-forward
+The syntax for running xdp-forward is:
+
+#+begin_src sh
+xdp-forward COMMAND [options]
+
+Where COMMAND can be one of:
+       load        - Load the XDP forwarding plane
+       unload      - Unload the XDP forwarding plane
+       help        - show the list of available commands
+#+end_src
+
+Each command, and its options are explained below. Or use =xdp-forward COMMAND
+--help= to see the options for each command.
+
+* The LOAD command
+The =load= command loads the XDP forwarding plane on a list of interfaces.
+
+The syntax for the =load= command is:
+
+=xdp-forward load [options] <ifname...>=
+
+Where =<ifname...>= is the name of the set of interfaces to forward packets
+between. An XDP program will be loaded on each interface, configured to forward
+packets to all other interfaces in the set (using the kernel routing table to
+determine the destination interface of each packet).
+
+The supported options are:
+
+** -f, --fwd-mode <mode>
+Specifies which forwarding mode =xdp-forward= should operate in. Depending on
+the mode selected, =xdp-forward= will perform forwarding in different ways,
+which can lead to different behaviour, including which subset of kernel
+configuration (such as firewall rules) is respected during forwarding. See the
+section *OPERATING MODES* below for a full description of each mode.
+
+** -m, --mode <mode>
+Specifies which mode to load the XDP program to be loaded in. The valid values
+are 'native', which is the default in-driver XDP mode, 'skb', which causes the
+so-called /skb mode/ (also known as /generic XDP/) to be used, 'hw' which causes
+the program to be offloaded to the hardware, or 'unspecified' which leaves it up
+to the kernel to pick a mode (which it will do by picking native mode if the
+driver supports it, or generic mode otherwise). Note that using 'unspecified'
+can make it difficult to predict what mode a program will end up being loaded
+in. For this reason, the default is 'native'. Note that hardware with support
+for the 'hw' mode is rare: Solarflare cards (using the 'sfc' driver) are the
+only devices with support for this in the mainline Linux kernel.
+
+** -v, --verbose
+Enable debug logging. Specify twice for even more verbosity.
+
+** -h, --help
+Display a summary of the available options
+
+* The UNLOAD command
+The =unload= command is used for unloading programs from an interface.
+
+The syntax for the =unload= command is:
+
+=xdp-forward unload [options] <ifname...>=
+
+Where =<ifname...>= is the list of interfaces to unload the XDP forwarding plane
+from. Note that while =xdp-forward= will examine the XDP programs loaded on each
+interface and make sure to only unload its own program, it will not check that
+the list of supplied interfaces is the same as the one supplied during load. As
+such, it is possible to perform a partial unload by supplying a different list
+of interfaces, which may lead to unexpected behaviour.
+
+The supported options are:
+
+** -v, --verbose
+Enable debug logging. Specify twice for even more verbosity.
+
+** -h, --help
+Display a summary of the available options
+
+* OPERATING MODES
+The =xdp-forward= utility supports the following operating modes (selected by
+the =--fwd-mode= parameter to =xdp-forward load=.
+
+** fib-full (default)
+In the =fib-full= operating mode, =xdp-forward= will perform a full lookup in
+the kernel routing table (or FIB) for each packet, and forward packets between
+the configured interfaces based on the result of the lookup. Any packet where
+the lookup fails will be passed up to the stack. This includes packets that
+require neighbour discovery for the next hop, meaning that packets will
+periodically pass up the kernel stack for next hop discovery (initially, and
+when the nexthop entry expires).
+
+Note that no checks other than the FIB lookup is performed; in particular, this
+completely bypasses the netfilter subsystem, so firewall rules will not be
+checked before forwarding.
+
+** fib-direct
+The =fib-direct= mode functions like =fib-full=, except it passes the
+=BPF_FIB_LOOKUP_DIRECT= flag to the FIB lookup routine. This means that any
+policy routing rules configured will be skipped during the lookup, which can
+improve performance (but won't obey the policy of those rules, obviously).
+
+* SEE ALSO
+=libxdp(3)= for details on the XDP loading semantics and kernel compatibility
+requirements.
+
+* BUGS
+
+Please report any bugs on Github: https://github.com/xdp-project/xdp-tools/issues
+
+* AUTHOR
+
+xdp-forward is written by Toke Høiland-Jørgensen, based on the xdp_fwd kernel
+sample, which was originally written by David Ahern. This man page was written
+by Toke Høiland-Jørgensen.
