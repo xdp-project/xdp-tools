@@ -80,6 +80,14 @@ struct {
         __uint(map_flags, BPF_F_NO_PREALLOC);
 } exclude_v6_prefixes __section(".maps");
 
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __type(key, char[256]);
+    __type(value, __u8);
+    __uint(max_entries, 1024);
+    __uint(pinning, LIBBPF_PIN_BY_NAME);
+} domain_denylist SEC(".maps");
+
 /*
  *  Store the time frame
  */
@@ -186,7 +194,7 @@ struct ethhdr *parse_eth(struct cursor *c, __u16 *eth_proto)
 }
 
 static  inline
-__u8 *skip_dname(struct cursor *c)
+__u8 *parse_dname(struct cursor *c)
 {
         __u8 *dname = c->pos;
 	__u8 i;
@@ -544,6 +552,7 @@ int xdp_dns(struct xdp_md *ctx)
 	struct udphdr    *udp;
 	struct dnshdr    *dns;
 	__u64         *count;
+	__u8	*qname;
 
 	if (bpf_xdp_adjust_meta(ctx, -(int)sizeof(struct meta_data)))
 		return XDP_PASS;
@@ -582,9 +591,18 @@ int xdp_dns(struct xdp_md *ctx)
 			if (dns->flags.as_bits_and_pieces.qr
 			||  dns->qdcount != __bpf_htons(1)
 			||  dns->ancount || dns->nscount
-			||  dns->arcount >  __bpf_htons(2)
-			||  !skip_dname(&c)
-			||  !parse_dns_qrr(&c))
+			||  dns->arcount >  __bpf_htons(2))
+				return XDP_ABORTED; // Return FORMERR?
+
+			qname = parse_dname(&c);
+			if (!qname) {
+				return XDP_ABORTED; // Return FORMERR?
+			}
+                        // Check against the domain denylist
+                        if (bpf_map_lookup_elem(&domain_denylist, qname))
+                                return XDP_DROP;
+
+			if (!parse_dns_qrr(&c))
 				return XDP_ABORTED; // Return FORMERR?
 
 			if (dns->arcount == 0) {
@@ -627,10 +645,19 @@ int xdp_dns(struct xdp_md *ctx)
 			if (dns->flags.as_bits_and_pieces.qr
 			||  dns->qdcount != __bpf_htons(1)
 			||  dns->ancount || dns->nscount
-			||  dns->arcount >  __bpf_htons(2)
-			||  !skip_dname(&c)
-			||  !parse_dns_qrr(&c))
-				return XDP_ABORTED; // return FORMERR?
+			||  dns->arcount >  __bpf_htons(2))
+				return XDP_ABORTED; // Return FORMERR?
+
+			qname = parse_dname(&c);
+			if (!qname) {
+				return XDP_ABORTED; // Return FORMERR?
+			}
+                        // Check against the domain denylist
+                        if (bpf_map_lookup_elem(&domain_denylist, qname))
+                                return XDP_DROP;
+
+			if (!parse_dns_qrr(&c))
+				return XDP_ABORTED; // Return FORMERR?
 
 			if (dns->arcount == 0) {
 				bpf_tail_call(ctx, &jmp_rate_table, DO_RATE_LIMIT_IPV4);
