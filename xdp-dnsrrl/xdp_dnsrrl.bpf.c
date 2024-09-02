@@ -598,6 +598,11 @@ int xdp_dns(struct xdp_md *ctx)
 			if (!qname) {
 				return XDP_ABORTED; // Return FORMERR?
 			}
+
+                        // avoid R2 offset is outside of the packet error
+                        if (qname + 256 > c.end)
+				return XDP_ABORTED; // Return FORMERR?
+
                         // Check against the domain denylist
                         if (bpf_map_lookup_elem(&domain_denylist, qname))
                                 return XDP_DROP;
@@ -652,6 +657,11 @@ int xdp_dns(struct xdp_md *ctx)
 			if (!qname) {
 				return XDP_ABORTED; // Return FORMERR?
 			}
+
+                        // avoid R2 offset is outside of the packet error
+                        if (qname + 256 > c.end)
+				return XDP_ABORTED; // Return FORMERR?
+
                         // Check against the domain denylist
                         if (bpf_map_lookup_elem(&domain_denylist, qname))
                                 return XDP_DROP;
