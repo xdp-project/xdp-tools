@@ -101,6 +101,7 @@ struct {
 	__type(key,   __u32);
 	__type(value, struct bucket_time);
 	__uint(max_entries, RRL_SIZE);
+	__uint(pinning, LIBBPF_PIN_BY_NAME);
 } state_map __section(".maps");
 
 struct {
@@ -108,6 +109,7 @@ struct {
 	__type(key,   sizeof(struct in6_addr));
 	__type(value, struct bucket_time);
 	__uint(max_entries, RRL_SIZE);
+	__uint(pinning, LIBBPF_PIN_BY_NAME);
 } state_map_v6 __section(".maps");
 
 

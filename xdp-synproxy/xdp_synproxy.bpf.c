@@ -78,6 +78,7 @@ struct {
 	__type(key, __u32);
 	__type(value, __u64);
 	__uint(max_entries, 2);
+	__uint(pinning, LIBBPF_PIN_BY_NAME);
 } values SEC(".maps");
 
 struct {
@@ -85,6 +86,7 @@ struct {
 	__type(key, __u32);
 	__type(value, __u16);
 	__uint(max_entries, MAX_ALLOWED_PORTS);
+	__uint(pinning, LIBBPF_PIN_BY_NAME);
 } allowed_ports SEC(".maps");
 
 /* Some symbols defined in net/netfilter/nf_conntrack_bpf.c are unavailable in

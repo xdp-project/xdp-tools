@@ -72,6 +72,7 @@ struct {
         __type(key, __u32);
         __type(value, __u16);
         __uint(max_entries, MAX_ALLOWED_PORTS);
+	__uint(pinning, LIBBPF_PIN_BY_NAME);
 } udp_ports SEC(".maps");
 
 
@@ -88,6 +89,7 @@ struct {
 	__type(key,   __u32);
 	__type(value, struct bucket_time);
 	__uint(max_entries, RRL_SIZE);
+	__uint(pinning, LIBBPF_PIN_BY_NAME);
 } udp_state_map __section(".maps");
 
 /** Copied from the kernel module of the base03-map-counter example of the
