@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2021, NLnet Labs. All rights reserved.
+ * Copyright (c) 2024, BPFire.  All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -40,7 +41,7 @@
 // do not use libc includes because this causes clang
 // to include 32bit headers on 64bit ( only ) systems.
 #define memcpy __builtin_memcpy
-#define MAX_DOMAIN_SIZE 18
+#define MAX_DOMAIN_SIZE 128
 
 struct meta_data {
 	__u16 eth_proto;
@@ -49,13 +50,21 @@ struct meta_data {
 	__u16 unused;
 };
 
+/* Define the LPM Trie Map for domain names */
+struct domain_key {
+    struct bpf_lpm_trie_key lpm_key;
+    char data[MAX_DOMAIN_SIZE + 1];
+};
+
 struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
-    __type(key, char[MAX_DOMAIN_SIZE + 1]);
+    __uint(type, BPF_MAP_TYPE_LPM_TRIE);
+    __type(key, struct domain_key);
     __type(value, __u8);
-    __uint(max_entries, 1024);
+    __uint(max_entries, 10000);
     __uint(pinning, LIBBPF_PIN_BY_NAME);
+    __uint(map_flags, BPF_F_NO_PREALLOC);
 } domain_denylist SEC(".maps");
+
 
 /*
  *  Store the VLAN header
@@ -191,8 +200,16 @@ static __always_inline __u8 custom_strlen(const char *str, struct cursor *c) {
     return len;
 }
 
+static __always_inline void reverse_string(char *str, __u8 len) {
+    for (int i = 0; i < (len - 1) / 2; i++) {
+        char temp = str[i];
+        str[i] = str[len - 1 - i];
+        str[len - 1 - i] = temp;
+    }
+}
+
 SEC("xdp")
-int xdp_dns(struct xdp_md *ctx)
+int xdp_dns_denylist(struct xdp_md *ctx)
 {
 	struct meta_data *md = (void *)(long)ctx->data_meta;
 	struct cursor     c;
@@ -201,9 +218,10 @@ int xdp_dns(struct xdp_md *ctx)
 	struct udphdr    *udp;
 	struct dnshdr    *dns;
 	char	*qname;
-//	__u8 value = 1;
+	//__u8 value = 1;
 	__u8 len = 0;
-	char domain_key[MAX_DOMAIN_SIZE + 1 ] = {0};  // Buffer for map lookup
+
+	struct domain_key dkey = {0};  // LPM trie key
 
 	if (bpf_xdp_adjust_meta(ctx, -(int)sizeof(struct meta_data)))
 		return XDP_PASS;
@@ -246,26 +264,27 @@ int xdp_dns(struct xdp_md *ctx)
 				return XDP_ABORTED; // Return FORMERR?
 
 			int copy_len = len < MAX_DOMAIN_SIZE ? len : MAX_DOMAIN_SIZE;
-			custom_memcpy(domain_key, qname, copy_len);
-			domain_key[MAX_DOMAIN_SIZE] = '\0'; // Ensure null-termination
+			custom_memcpy(dkey.data, qname, copy_len);
+			dkey.data[MAX_DOMAIN_SIZE] = '\0'; // Ensure null-termination
+			reverse_string(dkey.data, copy_len);
+
+                        // Set the LPM key prefix length (the length of the domain name string)
+                        dkey.lpm_key.prefixlen = copy_len * 8; // Prefix length in bits
+
+                        //bpf_printk("domain_key  %s copy_len is %d from %pI4", dkey.data, copy_len, &ipv4->saddr);
+
+                        if (bpf_map_lookup_elem(&domain_denylist, &dkey)) {
+                                bpf_printk("Domain %s found in denylist, dropping packet\n", dkey.data);
+                                return XDP_DROP;
+                        }
 
 /*
-			bpf_printk("domain_key  %s copy_len is %d from %pI4", domain_key, copy_len, &ipv4->saddr);
-			
-			if (bpf_map_update_elem(&domain_denylist, &domain_key, &value, BPF_ANY) < 0) {
-				bpf_printk("Domain %s not updated in denylist\n", domain_key);
+			if (bpf_map_update_elem(&domain_denylist, &dkey, &value, BPF_ANY) < 0) {
+				bpf_printk("Domain %s not updated in denylist\n", dkey.data);
 			} else {
-				bpf_printk("Domain %s updated in denylist\n", domain_key);
+				bpf_printk("Domain %s updated in denylist\n", dkey.data);
 			}
-				
 */
-                        if (bpf_map_lookup_elem(&domain_denylist, domain_key)) {
-				bpf_printk("Domain %s found in denylist, dropping packet\n", domain_key);
-				return XDP_DROP;
-			}
-                        else {
-				bpf_printk("Domain %s not found in denylist\n", domain_key);
-			}
 
 			break;
 		}
