@@ -8,6 +8,7 @@
 #include "params.h"
 #include "util.h"
 #include "logging.h"
+#include "compat.h"
 
 #include "xdp_forward.skel.h"
 
