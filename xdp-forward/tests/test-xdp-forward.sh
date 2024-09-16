@@ -31,8 +31,8 @@ test_fwd_full()
     for ip in "${ALL_INSIDE_IP4[@]}"; do
         check_run ns_exec ping -c 1 -W 2 $ip
     done
-    for ip in "${ALL_INSIDE_IP4[@]}"; do
-        check_run ns_exec ping -c 1 -W 2 $ip
+    for ip in "${ALL_INSIDE_IP6[@]}"; do
+        check_run ns_exec $PING6 -c 1 -W 2 $ip
     done
     check_run $XDP_FORWARD unload ${NS_NAMES[@]}
 }
@@ -46,8 +46,8 @@ test_fwd_direct()
     for ip in "${ALL_INSIDE_IP4[@]}"; do
         check_run ns_exec ping -c 1 -W 2 $ip
     done
-    for ip in "${ALL_INSIDE_IP4[@]}"; do
-        check_run ns_exec ping -c 1 -W 2 $ip
+    for ip in "${ALL_INSIDE_IP6[@]}"; do
+        check_run ns_exec $PING6 -c 1 -W 2 $ip
     done
     check_run $XDP_FORWARD unload ${NS_NAMES[@]}
 }
