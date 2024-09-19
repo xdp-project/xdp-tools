@@ -121,7 +121,7 @@ $(XDP_OBJ): %.o: %.c $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEADERS) $(LIBMK)
 	$(QUIET_LLC)$(LLC) -march=$(BPF_TARGET) -filetype=obj -o $@ ${@:.o=.ll}
 
 $(BPF_SKEL_H): %.skel.h: %.bpf.o
-	$(QUIET_GEN)$(BPFTOOL) gen skeleton $< name ${@:.skel.h=} > $@
+	$(QUIET_GEN)$(BPFTOOL) gen skeleton $< name $(notdir ${@:.skel.h=}) > $@
 
 .PHONY: man
 ifeq ($(EMACS),)
