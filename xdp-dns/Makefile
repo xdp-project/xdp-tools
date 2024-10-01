@@ -2,7 +2,7 @@
 
 XDP_TARGETS := xdp_dns.bpf
 BPF_SKEL_TARGETS := $(XDP_TARGETS)
-USER_TARGETS := xdp_dns
+USER_TARGETS := xdp_dns xdp_dns_log
 
 LIB_DIR = ../lib
 
