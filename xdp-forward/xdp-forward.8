@@ -62,7 +62,12 @@ Specifies which forwarding mode \fIxdp\-forward\fP should operate in. Depending 
 the mode selected, \fIxdp\-forward\fP will perform forwarding in different ways,
 which can lead to different behaviour, including which subset of kernel
 configuration (such as firewall rules) is respected during forwarding. See the
-section \fBOPERATING MODES\fP below for a full description of each mode.
+section \fBFORWARDING MODES\fP below for a full description of each mode.
+
+.SS "-F, --fib-mode <mode>"
+.PP
+Specifies how \fIxdp\-forward\fP performs routing table lookup in the linux kernel.
+See the section \fBFIB MODES\fP below for a full description of each mode.
 
 .SS "-m, --mode <mode>"
 .PP
@@ -114,14 +119,14 @@ Enable debug logging. Specify twice for even more verbosity.
 .PP
 Display a summary of the available options
 
-.SH "OPERATING MODES"
+.SH "FORWARDING MODES"
 .PP
-The \fIxdp\-forward\fP utility supports the following operating modes (selected by
+The \fIxdp\-forward\fP utility supports the following forwarding modes (selected by
 the \fI\-\-fwd\-mode\fP parameter to \fIxdp\-forward load\fP.
 
-.SS "fib-full (default)"
+.SS "fib (default)"
 .PP
-In the \fIfib\-full\fP operating mode, \fIxdp\-forward\fP will perform a full lookup in
+In the \fIfib\fP forwarding mode, \fIxdp\-forward\fP will perform a lookup in
 the kernel routing table (or FIB) for each packet, and forward packets between
 the configured interfaces based on the result of the lookup. Any packet where
 the lookup fails will be passed up to the stack. This includes packets that
@@ -134,13 +139,6 @@ Note that no checks other than the FIB lookup is performed; in particular, this
 completely bypasses the netfilter subsystem, so firewall rules will not be
 checked before forwarding.
 
-.SS "fib-direct"
-.PP
-The \fIfib\-direct\fP mode functions like \fIfib\-full\fP, except it passes the
-\fIBPF_FIB_LOOKUP_DIRECT\fP flag to the FIB lookup routine. This means that any
-policy routing rules configured will be skipped during the lookup, which can
-improve performance (but won't obey the policy of those rules, obviously).
-
 .SS "flowtable"
 .PP
 The \fIflowtable\fP operating mode offloads netfilter sw flowtable logic in
@@ -148,6 +146,25 @@ the XDP layer if the hardware flowtable is not available.
 At the moment \fIxdp\-forward\fP is able to offload just TCP or UDP netfilter
 flowtable entries to XDP. The user is supposed to configure the flowtable
 separately.
+
+.SH "FIB MODES"
+.PP
+The \fIxdp\-forward\fP utility supports the following fib modes (selected by
+the \fI\-\-fib\-mode\fP parameter to \fIxdp\-forward load\fP.
+
+.SS "full (default)"
+.PP
+In the \fIfull\fP operating mode, \fIxdp\-forward\fP will perform a full lookup in
+the kernel routing table (or FIB) for each packet, and forward packets between
+the configured interfaces based on the result of the lookup. In particular,
+it will apply any policy routing rules configured by the user.
+
+.SS "direct"
+.PP
+The \fIdirect\fP mode functions like \fIfull\fP, except it passes the
+\fIBPF_FIB_LOOKUP_DIRECT\fP flag to the FIB lookup routine. This means that any
+policy routing rules configured will be skipped during the lookup, which can
+improve performance (but won't obey the policy of those rules, obviously).
 
 .SH "Examples"
 .PP
