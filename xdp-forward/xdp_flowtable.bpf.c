@@ -478,8 +478,8 @@ xdp_flowtable_forward_ipv6(const struct flow_offload *flow, void *data,
 	ip6h->hop_limit--;
 }
 
-SEC("xdp")
-int xdp_fwd_flowtable(struct xdp_md *ctx)
+static __always_inline int xdp_flowtable_flags(struct xdp_md *ctx,
+					       __u32 fib_flags)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	struct flow_offload_tuple_rhash *tuplehash;
@@ -585,7 +585,7 @@ int xdp_fwd_flowtable(struct xdp_md *ctx)
 		xdp_flowtable_get_dnat_ip(&tuple.ipv4_dst, flow, dir);
 	}
 
-	if (bpf_fib_lookup(ctx, &tuple, sizeof(tuple), 0) !=
+	if (bpf_fib_lookup(ctx, &tuple, sizeof(tuple), fib_flags) !=
 	    BPF_FIB_LKUP_RET_SUCCESS)
 		return XDP_PASS;
 
@@ -604,6 +604,18 @@ int xdp_fwd_flowtable(struct xdp_md *ctx)
 	__builtin_memcpy(eth->h_source, tuple.smac, ETH_ALEN);
 
 	return bpf_redirect_map(&xdp_tx_ports, tuple.ifindex, 0);
+}
+
+SEC("xdp")
+int xdp_fwd_flowtable_full(struct xdp_md *ctx)
+{
+	return xdp_flowtable_flags(ctx, 0);
+}
+
+SEC("xdp")
+int xdp_fwd_flowtable_direct(struct xdp_md *ctx)
+{
+	return xdp_flowtable_flags(ctx, BPF_FIB_LOOKUP_DIRECT);
 }
 
 char _license[] SEC("license") = "GPL";

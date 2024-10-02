@@ -37,14 +37,21 @@ struct enum_val xdp_modes[] = { { "native", XDP_MODE_NATIVE },
 				{ NULL, 0 } };
 
 enum fwd_mode {
-	FWD_FIB_DIRECT,
-	FWD_FIB_FULL,
+	FWD_FIB,
 	FWD_FLOWTABLE,
 };
 
-struct enum_val fwd_modes[] = { { "fib-direct", FWD_FIB_DIRECT },
-				{ "fib-full", FWD_FIB_FULL },
+struct enum_val fwd_modes[] = { { "fib", FWD_FIB },
 				{ "flowtable", FWD_FLOWTABLE },
+				{ NULL, 0 } };
+
+enum fib_mode {
+	FIB_DIRECT,
+	FIB_FULL,
+};
+
+struct enum_val fib_modes[] = { { "direct", FIB_DIRECT },
+				{ "full", FIB_FULL },
 				{ NULL, 0 } };
 
 static int find_prog(struct iface *iface, bool detach)
@@ -88,16 +95,22 @@ static int find_prog(struct iface *iface, bool detach)
 
 struct load_opts {
 	enum fwd_mode fwd_mode;
+	enum fib_mode fib_mode;
 	enum xdp_attach_mode xdp_mode;
 	struct iface *ifaces;
-} defaults_load = { .fwd_mode = FWD_FIB_FULL };
+} defaults_load = { .fwd_mode = FWD_FIB, .fib_mode = FIB_FULL, };
 
 struct prog_option load_options[] = {
 	DEFINE_OPTION("fwd-mode", OPT_ENUM, struct load_opts, fwd_mode,
 		      .short_opt = 'f',
 		      .typearg = fwd_modes,
-		      .metavar = "<mode>",
-		      .help = "Forward mode to run in; see man page. Default fib-full"),
+		      .metavar = "<fwd-mode>",
+		      .help = "Forward mode to run in; see man page. Default fib"),
+	DEFINE_OPTION("fib-mode", OPT_ENUM, struct load_opts, fib_mode,
+		      .short_opt = 'F',
+		      .typearg = fib_modes,
+		      .metavar = "<fib-mode>",
+		      .help = "Fib mode to run in; see man page. Default full"),
 	DEFINE_OPTION("xdp-mode", OPT_ENUM, struct load_opts, xdp_mode,
 		      .short_opt = 'm',
 		      .typearg = xdp_modes,
@@ -138,14 +151,14 @@ static int do_load(const void *cfg, __unused const char *pin_root_path)
 	void *skel;
 
 	switch (opt->fwd_mode) {
-	case FWD_FIB_FULL:
-		opts.prog_name = "xdp_fwd_fib_full";
-		break;
-	case FWD_FIB_DIRECT:
-		opts.prog_name = "xdp_fwd_fib_direct";
+	case FWD_FIB:
+		opts.prog_name = opt->fib_mode == FIB_DIRECT
+				 ? "xdp_fwd_fib_direct" : "xdp_fwd_fib_full";
 		break;
 	case FWD_FLOWTABLE:
-		opts.prog_name = "xdp_fwd_flowtable";
+		opts.prog_name = opt->fib_mode == FIB_DIRECT
+				 ? "xdp_fwd_flowtable_direct"
+				 : "xdp_fwd_flowtable_full";
 		break;
 	default:
 		goto end;

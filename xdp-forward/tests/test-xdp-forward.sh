@@ -26,7 +26,7 @@ test_fwd_full()
     # veth NAPI GRO support added this symbol; forwarding won't work without it
     skip_if_missing_kernel_symbol veth_set_features
 
-    check_run $XDP_FORWARD load -f fib-full ${NS_NAMES[@]}
+    check_run $XDP_FORWARD load -f fib -F full ${NS_NAMES[@]}
     for ip in "${ALL_INSIDE_IP4[@]}"; do
         check_run ns_exec ping -c 1 -W 2 $ip
     done
@@ -41,7 +41,7 @@ test_fwd_direct()
     # veth NAPI GRO support added this symbol; forwarding won't work without it
     skip_if_missing_kernel_symbol veth_set_features
 
-    check_run $XDP_FORWARD load -f fib-direct ${NS_NAMES[@]}
+    check_run $XDP_FORWARD load -f fib -F direct ${NS_NAMES[@]}
     for ip in "${ALL_INSIDE_IP4[@]}"; do
         check_run ns_exec ping -c 1 -W 2 $ip
     done
