@@ -22,7 +22,7 @@
 #include <errno.h>
 #include <stdlib.h>
 
-#define MAX_DOMAIN_SIZE 128 // Increased size to handle larger domains
+#define MAX_DOMAIN_SIZE 63 // Increased size to handle larger domains
 
 struct domain_key {
 	struct bpf_lpm_trie_key lpm_key;

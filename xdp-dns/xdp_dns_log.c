@@ -21,7 +21,7 @@
 #include <bpf/bpf.h>
 #include <syslog.h>
 
-#define MAX_DOMAIN_SIZE 128
+#define MAX_DOMAIN_SIZE 63
 
 struct qname_event {
 	__u8 len;

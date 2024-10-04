@@ -41,7 +41,7 @@
 // do not use libc includes because this causes clang
 // to include 32bit headers on 64bit ( only ) systems.
 #define memcpy __builtin_memcpy
-#define MAX_DOMAIN_SIZE 128
+#define MAX_DOMAIN_SIZE 63
 
 struct meta_data {
 	__u16 eth_proto;
@@ -217,11 +217,11 @@ static __always_inline __u8 custom_strlen(const char *str, struct cursor *c)
 
 static __always_inline void reverse_string(char *str, __u8 len)
 {
-	for (int i = 0; i < (len - 1) / 2; i++) {
-		char temp = str[i];
-		str[i] = str[len - 1 - i];
-		str[len - 1 - i] = temp;
-	}
+        for (int i = 0; i < len / 2; i++) {
+                char temp = str[i];
+                str[i] = str[len - 1 - i];
+                str[len - 1 - i] = temp;
+        }
 }
 
 SEC("xdp")
@@ -234,7 +234,6 @@ int xdp_dns_denylist(struct xdp_md *ctx)
 	struct udphdr *udp;
 	struct dnshdr *dns;
 	char *qname;
-	//__u8 value = 1;
 	__u8 len = 0;
 
 	struct domain_key dkey = { 0 }; // LPM trie key
@@ -272,8 +271,7 @@ int xdp_dns_denylist(struct xdp_md *ctx)
 			}
 
 			len = custom_strlen(qname, &c);
-			bpf_printk("qname  %s len is %d from %pI4", qname, len,
-				   &ipv4->saddr);
+			//bpf_printk("qname  %s len is %d from %pI4", qname, len, &ipv4->saddr);
 
 			//avoid R2 offset is outside of the packet error
 			if (qname + len > c.end)
@@ -317,7 +315,8 @@ int xdp_dns_denylist(struct xdp_md *ctx)
 				return XDP_DROP;
 			}
 
-			/*
+/*
+			__u8 value = 1;
 			if (bpf_map_update_elem(&domain_denylist, &dkey, &value, BPF_ANY) < 0) {
 				bpf_printk("Domain %s not updated in denylist\n", dkey.data);
 			} else {
