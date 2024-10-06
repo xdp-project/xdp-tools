@@ -224,6 +224,21 @@ static __always_inline void reverse_string(char *str, __u8 len)
         }
 }
 
+/*
+static __always_inline void log_debug_info(struct xdp_md *ctx, const char *qname, struct qname_event *event, __u8 len, __u32 src_ip) {
+    // Log CPU ID and qname info
+    int cpu_id = bpf_get_smp_processor_id();
+    bpf_printk("CPU %d: qname %s len %d src_ip %pI4\n", cpu_id, qname, len, &src_ip);
+
+    if (event) {
+        // Log event pointer to check if it is being reused
+        bpf_printk("CPU %d: Reserved event at %p for qname %s\n", cpu_id, event, qname);
+    } else {
+        bpf_printk("CPU %d: Ring buffer reservation failed for qname %s\n", cpu_id, qname);
+    }
+}
+*/
+
 SEC("xdp")
 int xdp_dns_denylist(struct xdp_md *ctx)
 {
@@ -271,7 +286,7 @@ int xdp_dns_denylist(struct xdp_md *ctx)
 			}
 
 			len = custom_strlen(qname, &c);
-			//bpf_printk("qname  %s len is %d from %pI4", qname, len, &ipv4->saddr);
+			//bpf_printk("qname %s len %d ipid %d from %pI4", qname, len, ipv4->id, &ipv4->saddr);
 
 			//avoid R2 offset is outside of the packet error
 			if (qname + len > c.end)
@@ -283,6 +298,10 @@ int xdp_dns_denylist(struct xdp_md *ctx)
 			// Allocate a buffer from the ring buffer
 			struct qname_event *event = bpf_ringbuf_reserve(
 				&dns_ringbuf, sizeof(*event), 0);
+
+		        // Log debug info about event reservation
+			//log_debug_info(ctx, qname, event, len, ipv4->saddr);
+
 			if (!event)
 				return XDP_PASS; // Drop if no space
 
