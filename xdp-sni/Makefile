@@ -2,7 +2,7 @@
 
 XDP_TARGETS := xdp_sni.bpf
 BPF_SKEL_TARGETS := $(XDP_TARGETS)
-USER_TARGETS := xdp_sni
+USER_TARGETS := xdp_sni xdp_sni_log
 
 LIB_DIR = ../lib
 

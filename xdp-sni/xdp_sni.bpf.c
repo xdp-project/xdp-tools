@@ -28,185 +28,241 @@
 #include <linux/in.h>
 
 #define SERVER_NAME_EXTENSION 0
-#define MAX_DOMAIN_SIZE 127
+#define MAX_DOMAIN_SIZE 63
 
 struct domain_name {
-    struct bpf_lpm_trie_key lpm_key;
-    char server_name[MAX_DOMAIN_SIZE + 1];
+	struct bpf_lpm_trie_key lpm_key;
+	char server_name[MAX_DOMAIN_SIZE + 1];
 };
 
 struct {
-    __uint(type, BPF_MAP_TYPE_LPM_TRIE);
-    __type(key, struct domain_name);
-    __type(value, __u8);
-    __uint(max_entries, 10000);
-    __uint(pinning, LIBBPF_PIN_BY_NAME);
-    __uint(map_flags, BPF_F_NO_PREALLOC);
+	__uint(type, BPF_MAP_TYPE_LPM_TRIE);
+	__type(key, struct domain_name);
+	__type(value, __u8);
+	__uint(max_entries, 10000);
+	__uint(pinning, LIBBPF_PIN_BY_NAME);
+	__uint(map_flags, BPF_F_NO_PREALLOC);
 } sni_denylist SEC(".maps");
 
-
 struct extension {
-    __u16 type;
-    __u16 len;
+	__u16 type;
+	__u16 len;
 } __attribute__((packed));
 
 struct sni_extension {
-    __u16 list_len;
-    __u8 type;
-    __u16 len;
+	__u16 list_len;
+	__u8 type;
+	__u16 len;
 } __attribute__((packed));
 
-static __always_inline void reverse_string(char *str, __u8 len) {
-    for (int i = 0; i < (len - 1) / 2; i++) {
-        char temp = str[i];
-        str[i] = str[len - 1 - i];
-        str[len - 1 - i] = temp;
-    }
-}
+struct {
+	__uint(type, BPF_MAP_TYPE_RINGBUF);
+	__uint(max_entries, 1 << 12); // 4KB buffer
+	__uint(pinning, LIBBPF_PIN_BY_NAME);
+} sni_ringbuf SEC(".maps");
+
+struct sni_event {
+	__u8 len;
+	__u32 src_ip; // Store IPv4 address
+	char sni[MAX_DOMAIN_SIZE + 1];
+};
 
 SEC("xdp")
-int xdp_tls_sni(struct xdp_md *ctx) {
-    void *data_end = (void *)(long)ctx->data_end;
-    void *data = (void *)(long)ctx->data;
-    void *cursor = data;
+int xdp_tls_sni(struct xdp_md *ctx)
+{
+	void *data_end = (void *)(long)ctx->data_end;
+	void *data = (void *)(long)ctx->data;
+	void *cursor = data;
 
-    // Parse Ethernet header
-    struct ethhdr *eth = cursor;
-    if (cursor + sizeof(*eth) > data_end) goto end;
-    cursor += sizeof(*eth);
+	// Parse Ethernet header
+	struct ethhdr *eth = cursor;
+	if (cursor + sizeof(*eth) > data_end)
+		goto end;
+	cursor += sizeof(*eth);
 
-    // Only process IPv4 packets
-    if (eth->h_proto != bpf_htons(ETH_P_IP)) goto end;
+	// Only process IPv4 packets
+	if (eth->h_proto != bpf_htons(ETH_P_IP))
+		goto end;
 
-    // Parse IP header
-    struct iphdr *ip = cursor;
-    if (cursor + sizeof(*ip) > data_end) goto end;
-    cursor += ip->ihl * 4; // IP header length in 32-bit words
+	// Parse IP header
+	struct iphdr *ip = cursor;
+	if (cursor + sizeof(*ip) > data_end)
+		goto end;
+	cursor += ip->ihl * 4; // IP header length in 32-bit words
 
-    // Only process TCP traffic
-    if (ip->protocol != IPPROTO_TCP) goto end;
+	// Only process TCP traffic
+	if (ip->protocol != IPPROTO_TCP)
+		goto end;
 
-    // Parse TCP header
-    struct tcphdr *tcp = cursor;
-    if (cursor + sizeof(*tcp) > data_end) goto end;
-    cursor += tcp->doff * 4; // TCP header length in 32-bit words
+	// Parse TCP header
+	struct tcphdr *tcp = cursor;
+	if (cursor + sizeof(*tcp) > data_end)
+		goto end;
+	cursor += tcp->doff * 4; // TCP header length in 32-bit words
 
-    // Only process traffic on port 443 (HTTPS)
-    if (tcp->dest != bpf_htons(443)) goto end;
+	// Only process traffic on port 443 (HTTPS)
+	if (tcp->dest != bpf_htons(443))
+		goto end;
 
-    // Check if there's enough data for the TLS ClientHello
-    if (data_end < cursor + 5) goto end;
+	// Check if there's enough data for the TLS ClientHello
+	if (data_end < cursor + 5)
+		goto end;
 
-    // TLS record header
-    __u8 record_type = *((__u8 *)cursor);
-    __u16 tls_version = bpf_ntohs(*(__u16 *)(cursor + 1));
-    __u16 record_length = bpf_ntohs(*(__u16 *)(cursor + 3));
+	// TLS record header
+	__u8 record_type = *((__u8 *)cursor);
+	__u16 tls_version = bpf_ntohs(*(__u16 *)(cursor + 1));
+	__u16 record_length = bpf_ntohs(*(__u16 *)(cursor + 3));
 
-    if (record_type != 0x16 || tls_version < 0x0301) goto end; // Only handshake and TLSv1.0+
-    cursor += 5;
+	if (record_type != 0x16 || tls_version < 0x0301)
+		goto end; // Only handshake and TLSv1.0+
+	cursor += 5;
 
-    if (record_length > 1024) goto end ;
-    // Ensure record length doesn't exceed bounds
-    if (cursor + record_length > data_end) goto end;
+	if (record_length > 1024)
+		goto end;
+	// Ensure record length doesn't exceed bounds
+	if (cursor + record_length > data_end)
+		goto end;
 
-    // TLS handshake header
-    if (cursor + 1 > data_end || *((__u8 *)cursor) != 0x01) goto end; // ClientHello
-    cursor += 4; // Skip handshake message type and length
+	// TLS handshake header
+	if (cursor + 1 > data_end || *((__u8 *)cursor) != 0x01)
+		goto end; // ClientHello
+	cursor += 4; // Skip handshake message type and length
 
-    // Skip TLS version
-    if (cursor + 2 > data_end) goto end;
-    cursor += 2;
+	// Skip TLS version
+	if (cursor + 2 > data_end)
+		goto end;
+	cursor += 2;
 
-    // Skip random bytes (32 bytes)
-    if (cursor + 32 > data_end) goto end;
-    cursor += 32;
+	// Skip random bytes (32 bytes)
+	if (cursor + 32 > data_end)
+		goto end;
+	cursor += 32;
 
-    // Skip session ID
-    if (cursor + 1 > data_end) goto end;
-    __u8 session_id_len = *((__u8 *)cursor);
-    cursor += 1;
-    if (cursor + session_id_len > data_end) goto end;
-    cursor += session_id_len;
+	// Skip session ID
+	if (cursor + 1 > data_end)
+		goto end;
+	__u8 session_id_len = *((__u8 *)cursor);
+	cursor += 1;
+	if (cursor + session_id_len > data_end)
+		goto end;
+	cursor += session_id_len;
 
-    // Skip cipher suites
-    if (cursor + 2 > data_end) goto end;
-    __u16 cipher_suites_len = bpf_ntohs(*(__u16 *)cursor);
-    cursor += 2;
-    if (cipher_suites_len > 254) goto end;
-    if (cursor + cipher_suites_len > data_end) goto end;
-    cursor += cipher_suites_len;
+	// Skip cipher suites
+	if (cursor + 2 > data_end)
+		goto end;
+	__u16 cipher_suites_len = bpf_ntohs(*(__u16 *)cursor);
+	cursor += 2;
+	if (cipher_suites_len > 254)
+		goto end;
+	if (cursor + cipher_suites_len > data_end)
+		goto end;
+	cursor += cipher_suites_len;
 
-    // Skip compression methods
-    if (cursor + 1 > data_end) goto end;
+	// Skip compression methods
+	if (cursor + 1 > data_end)
+		goto end;
 
-    __u8 compression_methods_len = *((__u8 *)cursor);
-    cursor += 1;
-    if (cursor + compression_methods_len > data_end) goto end;
-    cursor += compression_methods_len;
+	__u8 compression_methods_len = *((__u8 *)cursor);
+	cursor += 1;
+	if (cursor + compression_methods_len > data_end)
+		goto end;
+	cursor += compression_methods_len;
 
-    // check bound before get extension_method_len
-    if (cursor + 2 > data_end) goto end;
+	// check bound before get extension_method_len
+	if (cursor + 2 > data_end)
+		goto end;
 
-    __u16 extension_method_len = *(__u16 *)cursor; //here use bpf_ntohs breaks SNI parsing, why?
+	__u16 extension_method_len =
+		*(__u16 *)cursor; //here use bpf_ntohs breaks SNI parsing, why?
 
-    if (extension_method_len < 0) goto end;
+	if (extension_method_len < 0)
+		goto end;
 
-    cursor += sizeof(__u16);
+	cursor += sizeof(__u16);
 
-    for (int i = 0; i < 32; i++)
-    {
-        struct extension *ext;
-	__u16 ext_len = 0;
+	for (int i = 0; i < 32; i++) {
+		struct extension *ext;
+		__u16 ext_len = 0;
 
-        if (cursor > extension_method_len + data) goto end;
+		if (cursor > extension_method_len + data)
+			goto end;
 
-        if (data_end < (cursor + sizeof(*ext))) goto end;
+		if (data_end < (cursor + sizeof(*ext)))
+			goto end;
 
-        ext = (struct extension *)cursor;
-	ext_len = bpf_ntohs(ext->len);
+		ext = (struct extension *)cursor;
+		ext_len = bpf_ntohs(ext->len);
 
-        cursor += sizeof(*ext);
+		cursor += sizeof(*ext);
 
-        if (ext->type == SERVER_NAME_EXTENSION)
-        {
-            struct domain_name dn = {0};
+		if (ext->type == SERVER_NAME_EXTENSION) {
+			// Allocate a buffer from the ring buffer
+			struct sni_event *event = bpf_ringbuf_reserve(
+				&sni_ringbuf, sizeof(*event), 0);
+			if (!event)
+				goto end; // Drop if no space
 
-            if (data_end < (cursor + sizeof(struct sni_extension))) goto end;
+			struct domain_name dn = { 0 };
 
-            struct sni_extension *sni = (struct sni_extension *)cursor;
+			if (data_end <
+			    (cursor + sizeof(struct sni_extension))) {
+				bpf_ringbuf_discard(event, 0);
+				goto end;
+			}
 
-            cursor += sizeof(struct sni_extension);
+			struct sni_extension *sni =
+				(struct sni_extension *)cursor;
 
-            __u16 server_name_len = bpf_ntohs(sni->len);
+			cursor += sizeof(struct sni_extension);
 
-            //avoid invalid write to stack R1 off=0 size=1
-            if (server_name_len >= sizeof(dn.server_name)) goto end;
+			__u16 server_name_len = bpf_ntohs(sni->len);
 
-            for (int sn_idx = 0; sn_idx < server_name_len; sn_idx++)
-            {
-                // invalid access to packet, off=11 size=1, R5(id=0,off=11,r=11)
-                // R5 offset is outside of the packet
-                if (data_end < cursor + sn_idx + 1) goto end;
+			//avoid invalid write to stack R1 off=0 size=1
+			if (server_name_len >= sizeof(dn.server_name)) {
+				bpf_ringbuf_discard(event, 0);
+				goto end;
+			}
 
-                if (dn.server_name + sizeof(struct domain_name) < dn.server_name + sn_idx) goto end;
+			for (int sn_idx = 0; sn_idx < server_name_len;
+			     sn_idx++) {
+				// invalid access to packet, off=11 size=1, R5(id=0,off=11,r=11)
+				// R5 offset is outside of the packet
+				if (data_end < cursor + sn_idx + 1) {
+					bpf_ringbuf_discard(event, 0);
+					goto end;
+				}
 
+				if (dn.server_name +
+					    sizeof(struct domain_name) <
+				    dn.server_name + sn_idx) {
+					bpf_ringbuf_discard(event, 0);
+					goto end;
+				}
 
-                dn.server_name[sn_idx] = ((char *)cursor)[sn_idx];
-            }
+				dn.server_name[sn_idx] =
+					((char *)cursor)[sn_idx];
+				event->sni[sn_idx] = ((char *)cursor)[sn_idx];
+			}
 
-            dn.server_name[MAX_DOMAIN_SIZE] = '\0';
-	    dn.lpm_key.prefixlen = server_name_len * 8;
+			event->sni[MAX_DOMAIN_SIZE] = '\0';
+			event->len = server_name_len;
+			event->src_ip = ip->saddr;
 
-            bpf_printk("TLS SNI: %s", dn.server_name);
+			bpf_ringbuf_submit(event, 0);
 
-	    reverse_string(dn.server_name, server_name_len);
+			dn.server_name[MAX_DOMAIN_SIZE] = '\0';
+			dn.lpm_key.prefixlen = server_name_len * 8;
 
-            if (bpf_map_lookup_elem(&sni_denylist, &dn)) {
-                    bpf_printk("Domain %s found in denylist, dropping packet\n", dn.server_name);
-                    return XDP_DROP;
-            }
+			bpf_printk("TLS SNI: %s", dn.server_name);
 
-/*
+			if (bpf_map_lookup_elem(&sni_denylist, &dn)) {
+				bpf_printk(
+					"Domain %s found in denylist, dropping packet\n",
+					dn.server_name);
+				return XDP_DROP;
+			}
+
+			/*
 	    __u8 value = 1;
 
 	    if (bpf_map_update_elem(&sni_denylist, &dn, &value, BPF_ANY) < 0) {
@@ -216,20 +272,20 @@ int xdp_tls_sni(struct xdp_md *ctx) {
             }
 */
 
-            goto end;
-        }
+			goto end;
+		}
 
-        if (ext_len > 2048) goto end;
+		if (ext_len > 2048)
+			goto end;
 
-        if (data_end < cursor + ext_len) goto end;
+		if (data_end < cursor + ext_len)
+			goto end;
 
-        cursor += ext_len;
-    }
+		cursor += ext_len;
+	}
 
 end:
-    return XDP_PASS;
-
+	return XDP_PASS;
 }
 
 char _license[] SEC("license") = "GPL";
-
