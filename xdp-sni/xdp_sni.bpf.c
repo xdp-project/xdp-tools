@@ -30,18 +30,13 @@
 #define SERVER_NAME_EXTENSION 0
 #define MAX_DOMAIN_SIZE 63
 
-struct domain_name {
-	struct bpf_lpm_trie_key lpm_key;
-	char server_name[MAX_DOMAIN_SIZE + 1];
-};
-
 struct {
-	__uint(type, BPF_MAP_TYPE_LPM_TRIE);
-	__type(key, struct domain_name);
-	__type(value, __u8);
-	__uint(max_entries, 10000);
-	__uint(pinning, LIBBPF_PIN_BY_NAME);
-	__uint(map_flags, BPF_F_NO_PREALLOC);
+    __uint(type, BPF_MAP_TYPE_HASH);  // Hash map for SNI denylist
+    __type(key, char[MAX_DOMAIN_SIZE + 1]);  // Server name as the key
+    __type(value, __u8);  // Value could be anything (e.g., 1 for blacklisted)
+    __uint(max_entries, 10000);
+    __uint(pinning, LIBBPF_PIN_BY_NAME);
+    __uint(map_flags, BPF_F_NO_PREALLOC);
 } sni_denylist SEC(".maps");
 
 struct extension {
@@ -197,50 +192,35 @@ int xdp_tls_sni(struct xdp_md *ctx)
 
 		if (ext->type == SERVER_NAME_EXTENSION) {
 			// Allocate a buffer from the ring buffer
-			struct sni_event *event = bpf_ringbuf_reserve(
-				&sni_ringbuf, sizeof(*event), 0);
+			struct sni_event *event = bpf_ringbuf_reserve( &sni_ringbuf, sizeof(*event), 0);
 			if (!event)
 				goto end; // Drop if no space
 
-			struct domain_name dn = { 0 };
+			char server_name[MAX_DOMAIN_SIZE + 1] = {0};  // Allocate server name buffer
 
-			if (data_end <
-			    (cursor + sizeof(struct sni_extension))) {
+			if (data_end < (cursor + sizeof(struct sni_extension))) {
 				bpf_ringbuf_discard(event, 0);
 				goto end;
 			}
 
-			struct sni_extension *sni =
-				(struct sni_extension *)cursor;
+			struct sni_extension *sni = (struct sni_extension *)cursor;
 
 			cursor += sizeof(struct sni_extension);
 
 			__u16 server_name_len = bpf_ntohs(sni->len);
 
-			//avoid invalid write to stack R1 off=0 size=1
-			if (server_name_len >= sizeof(dn.server_name)) {
+			if (server_name_len >= sizeof(server_name)) {
 				bpf_ringbuf_discard(event, 0);
 				goto end;
 			}
 
-			for (int sn_idx = 0; sn_idx < server_name_len;
-			     sn_idx++) {
-				// invalid access to packet, off=11 size=1, R5(id=0,off=11,r=11)
-				// R5 offset is outside of the packet
+			for (int sn_idx = 0; sn_idx < server_name_len; sn_idx++) {
 				if (data_end < cursor + sn_idx + 1) {
 					bpf_ringbuf_discard(event, 0);
 					goto end;
 				}
 
-				if (dn.server_name +
-					    sizeof(struct domain_name) <
-				    dn.server_name + sn_idx) {
-					bpf_ringbuf_discard(event, 0);
-					goto end;
-				}
-
-				dn.server_name[sn_idx] =
-					((char *)cursor)[sn_idx];
+				server_name[sn_idx] = ((char *)cursor)[sn_idx];
 				event->sni[sn_idx] = ((char *)cursor)[sn_idx];
 			}
 
@@ -250,15 +230,14 @@ int xdp_tls_sni(struct xdp_md *ctx)
 
 			bpf_ringbuf_submit(event, 0);
 
-			dn.server_name[MAX_DOMAIN_SIZE] = '\0';
-			dn.lpm_key.prefixlen = server_name_len * 8;
+			server_name[MAX_DOMAIN_SIZE] = '\0';
 
-			bpf_printk("TLS SNI: %s", dn.server_name);
+			bpf_printk("TLS SNI: %s", server_name);
 
-			if (bpf_map_lookup_elem(&sni_denylist, &dn)) {
+			if (bpf_map_lookup_elem(&sni_denylist, &server_name)) {
 				bpf_printk(
 					"Domain %s found in denylist, dropping packet\n",
-					dn.server_name);
+					server_name);
 				return XDP_DROP;
 			}
 

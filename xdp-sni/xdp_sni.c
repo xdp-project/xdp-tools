@@ -24,26 +24,10 @@
 
 #define MAX_DOMAIN_SIZE 63 
 
-struct domain_name {
-	struct bpf_lpm_trie_key lpm_key;
-	char server_name[MAX_DOMAIN_SIZE + 1];
-};
-
-// Function to reverse the entire domain string, including the dot
-static void reverse_string(char *str)
-{
-	int len = strlen(str);
-	for (int i = 0; i < len / 2; i++) {
-		char temp = str[i];
-		str[i] = str[len - i - 1];
-		str[len - i - 1] = temp;
-	}
-}
-
 int main(int argc, char *argv[])
 {
 	int map_fd;
-	struct domain_name dn = { 0 };
+	char server_name[MAX_DOMAIN_SIZE + 1] = {0};
 	__u8 value = 1;
 
 	// Check for proper number of arguments
@@ -53,12 +37,8 @@ int main(int argc, char *argv[])
 	}
 
 	// Reverse the input domain
-	strncpy(dn.server_name, argv[2], MAX_DOMAIN_SIZE);
-	dn.server_name[MAX_DOMAIN_SIZE] = '\0'; // Ensure null termination
-	reverse_string(dn.server_name);
-
-	// Set the LPM trie key prefix length
-	dn.lpm_key.prefixlen = strlen(dn.server_name) * 8;
+	strncpy(server_name, argv[2], MAX_DOMAIN_SIZE);
+	server_name[MAX_DOMAIN_SIZE] = '\0'; // Ensure null termination
 
 	// Open the BPF map
 	map_fd = bpf_obj_get("/sys/fs/bpf/xdp-sni/sni_denylist");
@@ -70,23 +50,23 @@ int main(int argc, char *argv[])
 	// Add or delete the domain based on the first argument
 	if (strcmp(argv[1], "add") == 0) {
 		// Update the map with the reversed domain name
-		if (bpf_map_update_elem(map_fd, &dn, &value, BPF_ANY) != 0) {
+		if (bpf_map_update_elem(map_fd, server_name, &value, BPF_ANY) != 0) {
 			fprintf(stderr, "Failed to add domain to map: %s\n",
 				strerror(errno));
 			return 1;
 		}
 		printf("Domain %s (reversed: %s) added to denylist\n", argv[2],
-		       dn.server_name);
+		       server_name);
 	} else if (strcmp(argv[1], "delete") == 0) {
 		// Remove the reversed domain from the map
-		if (bpf_map_delete_elem(map_fd, &dn) != 0) {
+		if (bpf_map_delete_elem(map_fd, server_name) != 0) {
 			fprintf(stderr,
 				"Failed to remove domain from map: %s\n",
 				strerror(errno));
 			return 1;
 		}
 		printf("Domain %s (reversed: %s) removed from denylist\n",
-		       argv[2], dn.server_name);
+		       argv[2], server_name);
 	} else {
 		fprintf(stderr, "Invalid command: %s. Use 'add' or 'delete'.\n",
 			argv[1]);
