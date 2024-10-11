@@ -7,11 +7,12 @@ code that uses the library.
 The repository contains the following:
 
 - [[lib/libxdp/][lib/libxdp/]] - the =libxdp= library itself - can be built standalone using =make libxdp=
-- [[xdp-loader/][xdp-loader/]] - a command-line utility for loading XDP programs using =libxdp=
-- [[xdp-filter/][xdp-filter/]] - a simple packet filtering utility powered by XDP
-- [[xdp-dump/][xdp-dump/]] - a tcpdump-like tool for capturing packets at the XDP layer
-- [[xdp-monitor/][xdp-monitor/]] - a simple XDP tracepoint monitoring tool
 - [[xdp-bench/][xdp-bench/]] - an XDP benchmarking tool
+- [[xdp-dump/][xdp-dump/]] - a tcpdump-like tool for capturing packets at the XDP layer
+- [[xdp-filter/][xdp-filter/]] - a simple packet filtering utility powered by XDP
+- [[xdp-forward/][xdp-forward/]] - an XDP forwarding plane
+- [[xdp-loader/][xdp-loader/]] - a command-line utility for loading XDP programs using =libxdp=
+- [[xdp-monitor/][xdp-monitor/]] - a simple XDP tracepoint monitoring tool
 - [[xdp-trafficgen/][xdp-trafficgen/]] - an XDP-based packet generator
 - [[headers/xdp/][headers/xdp/]] - reusable eBPF code snippets for XDP (installed in /usr/include/xdp by =make install=).
 - [[lib/util/][lib/util/]] - common code shared between the different utilities
