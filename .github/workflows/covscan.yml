@@ -7,10 +7,14 @@ on:
 
 jobs:
   latest:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    env:
+      LLVM_VERSION: 19
+      CLANG: clang-19
+      LLC: llc-19
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -22,9 +26,9 @@ jobs:
       - name: Prepare Clang
         run: |
           wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-11 main" | sudo tee -a /etc/apt/sources.list
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-$LLVM_VERSION main" | sudo tee -a /etc/apt/sources.list
           sudo apt-get -qq update
-          sudo apt-get -qq -y install clang-11 lld-11 llvm-11
+          sudo apt-get -qq -y install clang-$LLVM_VERSION lld-$LLVM_VERSION llvm-$LLVM_VERSION
 
       - name: Download Coverity Build Tool
         run: |
@@ -36,9 +40,6 @@ jobs:
 
       - name: Configure
         run: ./configure
-        env:
-          CLANG: clang-11
-          LLC: llc-11
 
       - name: Build with cov-build
         run: |
