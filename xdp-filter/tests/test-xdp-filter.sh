@@ -87,8 +87,8 @@ check_port()
     local port=$2
     local expect=$3
     echo "$type port $port $expect"
-    [[ "$type" == "tcp" ]] && command="nc -w 1 -z $OUTSIDE_IP6 $port"
-    [[ "$type" == "udp" ]] && command="echo test | nc -w 1 -u $OUTSIDE_IP6 $port"
+    [[ "$type" == "tcp" ]] && command="echo test | socat - TCP6:[$OUTSIDE_IP6]:$port,connect-timeout=1"
+    [[ "$type" == "udp" ]] && command="echo test | socat - UDP6:[$OUTSIDE_IP6]:$port"
 
     check_packet "$type dst port $port" "$command" $expect
 }

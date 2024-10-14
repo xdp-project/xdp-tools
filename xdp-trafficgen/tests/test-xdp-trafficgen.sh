@@ -28,7 +28,7 @@ test_tcp()
     skip_if_missing_kernel_support
     export XDP_SAMPLE_IMMEDIATE_EXIT=1
 
-    PID=$(start_background_ns_devnull "nc -6 -l 10000")
+    PID=$(start_background_ns_devnull "socat -6 TCP-LISTEN:10000,reuseaddr,fork -")
     $XDP_TRAFFICGEN tcp -i $NS $INSIDE_IP6 -n 1
     res=$?
     stop_background $PID

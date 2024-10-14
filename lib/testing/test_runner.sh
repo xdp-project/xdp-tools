@@ -25,7 +25,7 @@ ALL_TESTS=""
 VERBOSE_TESTS=${V:-0}
 NUM_NS=2
 
-NEEDED_TOOLS="capinfos ethtool ip ping sed tc tcpdump timeout nc tshark nft socat"
+NEEDED_TOOLS="capinfos ethtool ip ping sed tc tcpdump timeout tshark nft socat"
 
 if [ -f "$TEST_CONFIG" ]; then
     source "$TEST_CONFIG"
