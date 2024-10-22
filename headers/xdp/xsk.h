@@ -204,6 +204,20 @@ struct xsk_umem_config {
 	__u32 tx_metadata_len;
 };
 
+/* The following fields are required, and must be set at once:
+ * 
+ * @umem_area, @fill, @comp
+ * 
+ * The following fields are optional:
+ * 
+ * @fd, @size, @usr_config
+ *  If @fd is unset, a new sockfd will be created.
+ *  If @size is unset, @umem_area must be page-aligned.
+ *  If @usr_config is unset, all fields in @usr_config will be set to 
+ *  default value (see `xsk_set_umem_config()`).
+ * 
+ * Except for the fields mentioned above, none field can be set.
+ */
 struct xsk_umem_opts {
 	size_t sz;
 	int fd;
