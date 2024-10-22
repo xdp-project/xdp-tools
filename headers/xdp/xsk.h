@@ -204,6 +204,18 @@ struct xsk_umem_config {
 	__u32 tx_metadata_len;
 };
 
+struct xsk_umem_opts {
+	size_t sz;
+	int fd;
+	void *umem_area;
+	__u64 size;
+	struct xsk_ring_prod *fill;
+	struct xsk_ring_cons *comp;
+	const struct xsk_umem_config *usr_config;
+	size_t :0;
+};
+#define xsk_umem_opts__last_field usr_config
+
 int xsk_setup_xdp_prog(int ifindex, int *xsks_map_fd);
 int xsk_socket__update_xskmap(struct xsk_socket *xsk, int xsks_map_fd);
 
@@ -235,6 +247,9 @@ int xsk_umem__create_with_fd(struct xsk_umem **umem,
 			     struct xsk_ring_prod *fill,
 			     struct xsk_ring_cons *comp,
 			     const struct xsk_umem_config *config);
+/* Newer version to create umem by opts, recommended to use. */
+struct xsk_umem *xsk_umem__create_opts(struct xsk_umem_opts *opts);
+
 int xsk_socket__create(struct xsk_socket **xsk,
 		       const char *ifname, __u32 queue_id,
 		       struct xsk_umem *umem,
