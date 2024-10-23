@@ -1589,7 +1589,7 @@ static bool load_xdp_trace_program(struct dumpopt *cfg,
 	fd = bpf_map__fd(perf_map);
 	if (fd < 0) {
 		pr_warn("ERROR: Can't get xdpdump_perf_map file descriptor: %s\n",
-			strerror(fd));
+			strerror(errno));
 
 		xdp_program__detach(prog, cfg->iface.ifindex,
 				    cfg->load_xdp_mode, 0);
