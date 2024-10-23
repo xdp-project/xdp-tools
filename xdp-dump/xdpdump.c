@@ -563,7 +563,7 @@ static enum bpf_perf_event_ret handle_perf_event(void *private_data,
 /*****************************************************************************
  * get_epoch_to_uptime_delta()
  *****************************************************************************/
-static uint64_t get_epoch_to_uptime_delta(void)
+static int get_epoch_to_uptime_delta(uint64_t *delta)
 {
 	/* This function will calculate the rough delta between uptime
 	 * seconds and the epoch time. This is not a precise delta as there is
@@ -576,10 +576,15 @@ static uint64_t get_epoch_to_uptime_delta(void)
 	uint64_t        uptime;
 	uint64_t        epoch = time(NULL) * 1000000000ULL;
 
-	clock_gettime(CLOCK_MONOTONIC, &ts);
+	if (clock_gettime(CLOCK_MONOTONIC, &ts)) {
+		pr_warn("ERROR: Failed to get CLOCK_MONOTONIC time: %s(%d)",
+			strerror(errno), errno);
+		return -errno;
+	}
 	uptime = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
 
-	return epoch - uptime;
+	*delta = epoch - uptime;
+	return 0;
 }
 
 /*****************************************************************************
@@ -1782,7 +1787,9 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	perf_ctx.pcap = pcap;
 	perf_ctx.pcap_dumper = pcap_dumper;
 	perf_ctx.pcapng_dumper = pcapng_dumper;
-	perf_ctx.epoch_delta = get_epoch_to_uptime_delta();
+
+	if (get_epoch_to_uptime_delta(&perf_ctx.epoch_delta))
+		goto error_exit;
 
 	/* Determine the perf wakeup_events value to use */
 #ifdef HAVE_LIBBPF_PERF_BUFFER__CONSUME
