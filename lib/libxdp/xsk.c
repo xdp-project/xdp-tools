@@ -160,6 +160,7 @@ static void xsk_set_umem_config(struct xsk_umem_config *cfg,
 		cfg->frame_size = XSK_UMEM__DEFAULT_FRAME_SIZE;
 		cfg->frame_headroom = XSK_UMEM__DEFAULT_FRAME_HEADROOM;
 		cfg->flags = XSK_UMEM__DEFAULT_FLAGS;
+		cfg->tx_metadata_len = 0;
 		return;
 	}
 
@@ -168,6 +169,7 @@ static void xsk_set_umem_config(struct xsk_umem_config *cfg,
 	cfg->frame_size = usr_cfg->frame_size;
 	cfg->frame_headroom = usr_cfg->frame_headroom;
 	cfg->flags = usr_cfg->flags;
+	cfg->tx_metadata_len = usr_cfg->tx_metadata_len;
 }
 
 static int xsk_set_xdp_socket_config(struct xsk_socket_config *cfg,
@@ -306,24 +308,43 @@ out_mmap:
 	return err;
 }
 
-int xsk_umem__create_with_fd(struct xsk_umem **umem_ptr, int fd,
-			     void *umem_area, __u64 size,
-			     struct xsk_ring_prod *fill,
-			     struct xsk_ring_cons *comp,
-			     const struct xsk_umem_config *usr_config)
-{
-	struct xdp_umem_reg mr;
+struct xsk_umem *xsk_umem__create_opts(struct xsk_umem_opts *opts) {
+	int err, fd;
+	void *umem_area;
+	__u64 size;
+	struct xsk_ring_prod *fill;
+	struct xsk_ring_cons *comp;
+	const struct xsk_umem_config *usr_config;
 	struct xsk_umem *umem;
-	int err;
+	struct xdp_umem_reg mr;
+	struct xdp_umem_reg_v1 mr_v1;
 
-	if (!umem_area || !umem_ptr || !fill || !comp)
-		return -EFAULT;
-	if (!size && !xsk_page_aligned(umem_area))
-		return -EINVAL;
+	if (!opts || !OPTS_VALID(opts, xsk_umem_opts)) {
+		err = -EINVAL;
+		goto err;
+	}
+
+	fd = OPTS_GET(opts, fd, -1);
+	umem_area = OPTS_GET(opts, umem_area, NULL);
+	size = OPTS_GET(opts, size, 0);
+	fill = OPTS_GET(opts, fill, NULL);
+	comp = OPTS_GET(opts, comp, NULL);
+	usr_config = OPTS_GET(opts, usr_config, NULL);
+
+	if (!umem_area || !fill || !comp) {
+		err = -EFAULT;
+		goto err;
+	}
+	if (!size && !xsk_page_aligned(umem_area)) {
+		err = -EINVAL;
+		goto err;
+	}
 
 	umem = calloc(1, sizeof(*umem));
-	if (!umem)
-		return -ENOMEM;
+	if (!umem) {
+		err = -ENOMEM;
+		goto err;
+	}
 
 	umem->fd = fd < 0 ? socket(AF_XDP, SOCK_RAW, 0) : fd;
 	if (umem->fd < 0) {
@@ -335,14 +356,25 @@ int xsk_umem__create_with_fd(struct xsk_umem **umem_ptr, int fd,
 	INIT_LIST_HEAD(&umem->ctx_list);
 	xsk_set_umem_config(&umem->config, usr_config);
 
-	memset(&mr, 0, sizeof(mr));
-	mr.addr = (uintptr_t)umem_area;
-	mr.len = size;
-	mr.chunk_size = umem->config.frame_size;
-	mr.headroom = umem->config.frame_headroom;
-	mr.flags = umem->config.flags;
+	if (umem->config.tx_metadata_len) {
+		memset(&mr, 0, sizeof(mr));
+		mr.addr = (uintptr_t)umem_area;
+		mr.len = size;
+		mr.chunk_size = umem->config.frame_size;
+		mr.headroom = umem->config.frame_headroom;
+		mr.flags = umem->config.flags;
+		mr.tx_metadata_len = umem->config.tx_metadata_len;
+		err = setsockopt(umem->fd, SOL_XDP, XDP_UMEM_REG, &mr, sizeof(mr));
+	} else {
+		memset(&mr_v1, 0, sizeof(mr_v1));
+		mr_v1.addr = (uintptr_t)umem_area;
+		mr_v1.len = size;
+		mr_v1.chunk_size = umem->config.frame_size;
+		mr_v1.headroom = umem->config.frame_headroom;
+		mr_v1.flags = umem->config.flags;
+		err = setsockopt(umem->fd, SOL_XDP, XDP_UMEM_REG, &mr_v1, sizeof(mr_v1));
+	}
 
-	err = setsockopt(umem->fd, SOL_XDP, XDP_UMEM_REG, &mr, sizeof(mr));
 	if (err) {
 		err = -errno;
 		goto out_socket;
@@ -354,14 +386,40 @@ int xsk_umem__create_with_fd(struct xsk_umem **umem_ptr, int fd,
 
 	umem->fill_save = fill;
 	umem->comp_save = comp;
-	*umem_ptr = umem;
-	return 0;
-
+	return umem;
 out_socket:
 	close(umem->fd);
 out_umem_alloc:
 	free(umem);
-	return err;
+err:
+	return libxdp_err_ptr(err, true);
+}
+
+int xsk_umem__create_with_fd(struct xsk_umem **umem_ptr, int fd,
+			     void *umem_area, __u64 size,
+			     struct xsk_ring_prod *fill,
+			     struct xsk_ring_cons *comp,
+			     const struct xsk_umem_config *usr_config)
+{
+	struct xsk_umem *umem;
+
+	if(!umem_ptr)
+		return -EFAULT;
+
+	DECLARE_LIBXDP_OPTS(xsk_umem_opts, opts,
+		.fd = fd,
+		.umem_area = umem_area,
+		.size = size,
+		.fill = fill,
+		.comp = comp,
+		.usr_config = usr_config,
+	);
+	umem = xsk_umem__create_opts(&opts);
+	if(!umem)
+		return errno;
+	
+	*umem_ptr = umem;
+	return 0;
 }
 
 int xsk_umem__create(struct xsk_umem **umem_ptr, void *umem_area,

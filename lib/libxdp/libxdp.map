@@ -79,4 +79,5 @@ LIBXDP_1.3.0 {
 
 LIBXDP_1.4.0 {
 		xsk_umem__create_with_fd;
+		xsk_umem__create_opts;
 } LIBXDP_1.3.0;
