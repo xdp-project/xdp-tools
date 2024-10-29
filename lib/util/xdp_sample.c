@@ -21,7 +21,6 @@
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
 #include <bpf/libbpf.h>
-#include <sys/sysinfo.h>
 #include <sys/timerfd.h>
 #include <sys/utsname.h>
 #include <linux/limits.h>
