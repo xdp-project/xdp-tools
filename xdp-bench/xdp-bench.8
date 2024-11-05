@@ -92,14 +92,13 @@ The default for this option is \fIno\-touch\fP.
 
 .SS "-l, --load-mode <MODE>"
 .PP
-Specify which mechanism xdp-bench should use to load the packet data when
-parsing the IP header (used with \fI\-p parse\-ip\fP). The following modes are
-available:
+Specify which mechanism xdp-bench should use to load (and store) the packet data.
+The following modes are available:
 
 .RS
 .nf
-\fCdpa		- Use traditional Direct Packet Access from the XDP program
-load-bytes		- Use the xdp_load_bytes() helper function to load the data
+\fCdpa			- Use traditional Direct Packet Access from the XDP program
+load-bytes	- Use the xdp_load_bytes() and xdp_store_bytes() helper functions
 \fP
 .fi
 .RE
@@ -191,14 +190,13 @@ The default for this option is \fIno\-touch\fP.
 
 .SS "-l, --load-mode <MODE>"
 .PP
-Specify which mechanism xdp-bench should use to load the packet data when
-parsing the IP header (used with \fI\-p parse\-ip\fP). The following modes are
-available:
+Specify which mechanism xdp-bench should use to load (and store) the packet data.
+The following modes are available:
 
 .RS
 .nf
-\fCdpa		- Use traditional Direct Packet Access from the XDP program
-load-bytes		- Use the xdp_load_bytes() helper function to load the data
+\fCdpa			- Use traditional Direct Packet Access from the XDP program
+load-bytes	- Use the xdp_load_bytes() and xdp_store_bytes() helper functions
 \fP
 .fi
 .RE
@@ -295,14 +293,13 @@ The default for this option is \fIswap\-macs\fP.
 
 .SS "-l, --load-mode <MODE>"
 .PP
-Specify which mechanism xdp-bench should use to load the packet data when
-parsing the IP header (used with \fI\-p parse\-ip\fP). The following modes are
-available:
+Specify which mechanism xdp-bench should use to load (and store) the packet data.
+The following modes are available:
 
 .RS
 .nf
-\fCdpa		- Use traditional Direct Packet Access from the XDP program
-load-bytes		- Use the xdp_load_bytes() helper function to load the data
+\fCdpa			- Use traditional Direct Packet Access from the XDP program
+load-bytes	- Use the xdp_load_bytes() and xdp_store_bytes() helper functions
 \fP
 .fi
 .RE
