@@ -368,6 +368,26 @@ be redirect to the output interface \fI<ifname_out>\fP.
 .PP
 The supported options are:
 
+.SS "-l, --load-mode <MODE>"
+.PP
+Specify which mechanism xdp-bench should use to load (and store) the packet data.
+The following modes are available:
+
+.RS
+.nf
+\fCdpa			- Use traditional Direct Packet Access from the XDP program
+load-bytes	- Use the xdp_load_bytes() and xdp_store_bytes() helper functions
+\fP
+.fi
+.RE
+
+.PP
+This can be used to benchmark the various packet access modes supported by the
+kernel.
+
+.PP
+The default for this option is \fIdpa\fP.
+
 .SS "-i, --interval <SECONDS>"
 .PP
 Set the polling interval for collecting all statistics and displaying them to

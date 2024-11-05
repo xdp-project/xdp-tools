@@ -290,6 +290,20 @@ be redirect to the output interface =<ifname_out>=.
 
 The supported options are:
 
+** -l, --load-mode <MODE>
+Specify which mechanism xdp-bench should use to load (and store) the packet data.
+The following modes are available:
+
+#+begin_src sh
+ dpa		- Use traditional Direct Packet Access from the XDP program
+ load-bytes	- Use the xdp_load_bytes() and xdp_store_bytes() helper functions
+#+end_src
+
+This can be used to benchmark the various packet access modes supported by the
+kernel.
+
+The default for this option is =dpa=.
+
 ** -i, --interval <SECONDS>
 Set the polling interval for collecting all statistics and displaying them to
 the output. The unit of interval is in seconds.

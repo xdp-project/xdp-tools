@@ -107,6 +107,11 @@ struct prog_option basic_options[] = {
 };
 
 struct prog_option redirect_basic_options[] = {
+	DEFINE_OPTION("load-mode", OPT_ENUM, struct redirect_opts, load_mode,
+		      .short_opt = 'l',
+                      .metavar = "<mode>",
+                      .typearg = basic_load_modes,
+		      .help = "How to load (and store) data; default dpa"),
 	DEFINE_OPTION("interval", OPT_U32, struct redirect_opts, interval,
 		      .short_opt = 'i',
 		      .metavar = "<seconds>",
