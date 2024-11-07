@@ -154,11 +154,11 @@ static bool xsk_page_aligned(void *buffer)
 static void xsk_set_umem_config(struct xsk_umem_config *cfg,
 				const struct xsk_umem_opts *opts)
 {
-	cfg->fill_size = OPTS_GET(opts, fill_size, XSK_RING_PROD__DEFAULT_NUM_DESCS);
-	cfg->comp_size = OPTS_GET(opts, comp_size, XSK_RING_CONS__DEFAULT_NUM_DESCS);
-	cfg->frame_size = OPTS_GET(opts, frame_size, XSK_UMEM__DEFAULT_FRAME_SIZE);
-	cfg->frame_headroom = OPTS_GET(opts, frame_headroom, XSK_UMEM__DEFAULT_FRAME_HEADROOM);
-	cfg->flags = OPTS_GET(opts, flags, XSK_UMEM__DEFAULT_FLAGS);
+	cfg->fill_size = OPTS_GET(opts, fill_size, 0) ?: XSK_RING_PROD__DEFAULT_NUM_DESCS;
+	cfg->comp_size = OPTS_GET(opts, comp_size, 0) ?: XSK_RING_CONS__DEFAULT_NUM_DESCS;
+	cfg->frame_size = OPTS_GET(opts, frame_size, 0) ?: XSK_UMEM__DEFAULT_FRAME_SIZE;
+	cfg->frame_headroom = OPTS_GET(opts, frame_headroom, 0) ?: XSK_UMEM__DEFAULT_FRAME_HEADROOM;
+	cfg->flags = OPTS_GET(opts, flags, 0) ?: XSK_UMEM__DEFAULT_FLAGS;
 }
 
 static int xsk_set_xdp_socket_config(struct xsk_socket_config *cfg,
@@ -316,7 +316,7 @@ struct xsk_umem *xsk_umem__create_opts(void *umem_area,
 		err = -EINVAL;
 		goto err;
 	}
-	fd = OPTS_GET(opts, fd, -1);
+	fd = OPTS_GET(opts, fd, 0);
 	size = OPTS_GET(opts, size, 0);
 	
 	if (!size && !xsk_page_aligned(umem_area)) {
@@ -330,7 +330,7 @@ struct xsk_umem *xsk_umem__create_opts(void *umem_area,
 		goto err;
 	}
 
-	umem->fd = fd < 0 ? socket(AF_XDP, SOCK_RAW, 0) : fd;
+	umem->fd = fd > 0 ? fd : socket(AF_XDP, SOCK_RAW, 0);
 	if (umem->fd < 0) {
 		err = -errno;
 		goto out_umem_alloc;
@@ -387,18 +387,14 @@ int xsk_umem__create_with_fd(struct xsk_umem **umem_ptr, int fd,
 	DECLARE_LIBXDP_OPTS(xsk_umem_opts, opts,
 		.fd = fd,
 		.size = size,
-		.fill_size = usr_config ? usr_config->fill_size
-			 : XSK_RING_PROD__DEFAULT_NUM_DESCS,
-		.comp_size = usr_config ? usr_config->comp_size
-			 : XSK_RING_CONS__DEFAULT_NUM_DESCS,
-		.frame_size = usr_config ? usr_config->frame_size
-			 : XSK_UMEM__DEFAULT_FRAME_SIZE,
-		.frame_headroom = usr_config ? usr_config->frame_headroom
-			 : XSK_UMEM__DEFAULT_FRAME_HEADROOM,
-		.flags = usr_config ? usr_config->flags
-			 : XSK_UMEM__DEFAULT_FLAGS,
 	);
-
+	if (usr_config) {
+		opts.fill_size = usr_config->fill_size;
+		opts.comp_size = usr_config->comp_size;
+		opts.frame_size = usr_config->frame_size;
+		opts.frame_headroom = usr_config->frame_headroom;
+		opts.flags = usr_config->flags;
+	}
 	umem = xsk_umem__create_opts(umem_area, fill, comp, &opts);
 	if(!umem)
 		return errno;
@@ -412,7 +408,7 @@ int xsk_umem__create(struct xsk_umem **umem_ptr, void *umem_area,
 		     struct xsk_ring_cons *comp,
 		     const struct xsk_umem_config *usr_config)
 {
-	return xsk_umem__create_with_fd(umem_ptr, -1, umem_area, size,
+	return xsk_umem__create_with_fd(umem_ptr, 0, umem_area, size,
 					fill, comp, usr_config);
 }
 
