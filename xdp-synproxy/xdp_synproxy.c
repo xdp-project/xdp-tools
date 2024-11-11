@@ -84,8 +84,8 @@ static void parse_options(int argc, char *argv[], unsigned int *ifindex, __u32 *
 		{ "ports", required_argument, NULL, 'p' },
 		{ NULL, 0, NULL, 0 },
 	};
-	unsigned long mss4, wscale, ttl;
-	unsigned long long mss6;
+
+	unsigned long mss4 = 0, mss6 = 0, wscale = 0, ttl = 0;
 	unsigned int tcpipopts_mask = 0;
 
 	if (argc < 2)
@@ -143,12 +143,18 @@ static void parse_options(int argc, char *argv[], unsigned int *ifindex, __u32 *
 	if (optind < argc)
 		help(argv[0]);
 
-	if (tcpipopts_mask == 0xf) {
-		if (mss4 == 0 || mss6 == 0 || wscale == 0 || ttl == 0)
-			help(argv[0]);
-		*tcpipopts = (mss6 << 32) | (ttl << 24) | (wscale << 16) | mss4;
-	} else if (tcpipopts_mask != 0) {
-		help(argv[0]);
+	// Construct tcpipopts based on provided options
+	if (tcpipopts_mask & (1 << 0)) {  // mss4 provided
+		*tcpipopts |= mss4;
+	}
+	if (tcpipopts_mask & (1 << 1)) {  // mss6 provided
+		*tcpipopts |= ((unsigned long long)mss6 << 32);
+	}
+	if (tcpipopts_mask & (1 << 2)) {  // wscale provided
+		*tcpipopts |= ((unsigned long long)wscale << 16);
+	}
+	if (tcpipopts_mask & (1 << 3)) {  // ttl provided
+		*tcpipopts |= ((unsigned long long)ttl << 24);
 	}
 
 	if (*ifindex != 0 && *prog_id != 0)

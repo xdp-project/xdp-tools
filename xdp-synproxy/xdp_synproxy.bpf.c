@@ -56,7 +56,7 @@
 
 #define DEFAULT_MSS4 1460
 #define DEFAULT_MSS6 1440
-#define DEFAULT_WSCALE 7
+#define DEFAULT_WSCALE 0
 #define DEFAULT_TTL 64
 #define MAX_ALLOWED_PORTS 8
 
@@ -486,6 +486,9 @@ static __always_inline __u8 tcp_mkoptions(__be32 *buf, __be32 *tsopt, __u16 mss,
 	*buf++ = bpf_htonl((TCPOPT_MSS << 24) | (TCPOLEN_MSS << 16) | mss);
 
 	if (!tsopt)
+		return buf - start;
+
+	if ( wscale == 0 )
 		return buf - start;
 
 	if (tsopt[0] & bpf_htonl(1 << 4))
