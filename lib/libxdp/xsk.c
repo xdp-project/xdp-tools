@@ -350,7 +350,7 @@ struct xsk_umem *xsk_umem__create_opts(void *umem_area,
 	
 	mr_size = sizeof(mr);
 	/* Older kernels don't support tx_metadata_len, skip if we are not setting a value */
-	if(!mr.tx_metadata_len)
+	if (!mr.tx_metadata_len)
 		mr_size = offsetof(struct xdp_umem_reg, tx_metadata_len);
 	err = setsockopt(umem->fd, SOL_XDP, XDP_UMEM_REG, &mr, mr_size);
 	if (err) {
@@ -381,7 +381,7 @@ int xsk_umem__create_with_fd(struct xsk_umem **umem_ptr, int fd,
 {
 	struct xsk_umem *umem;
 
-	if(!umem_ptr)
+	if (!umem_ptr)
 		return -EFAULT;
 
 	DECLARE_LIBXDP_OPTS(xsk_umem_opts, opts,
@@ -396,7 +396,7 @@ int xsk_umem__create_with_fd(struct xsk_umem **umem_ptr, int fd,
 		opts.flags = usr_config->flags;
 	}
 	umem = xsk_umem__create_opts(umem_area, fill, comp, &opts);
-	if(!umem)
+	if (!umem)
 		return errno;
 	
 	*umem_ptr = umem;
