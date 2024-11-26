@@ -58,7 +58,7 @@
 #define DEFAULT_MSS6 1440
 #define DEFAULT_WSCALE 0
 #define DEFAULT_TTL 64
-#define MAX_ALLOWED_PORTS 8
+#define MAX_ALLOWED_PORTS 24
 
 #define MAX_PACKET_OFF 0xffff
 
