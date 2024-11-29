@@ -133,6 +133,13 @@ check_toolchain()
         done
     fi
 
+    case $(uname -m) in
+        aarch64) ARCH_EMULATION=aarch64linux ;;
+        armv7*) ARCH_EMULATION=armelf_linux_eabi ;;
+        i386) ARCH_EMULATION=elf_i386 ;;
+        *) ARCH_EMULATION=elf_x86_64 ;;
+    esac
+
     echo "PKG_CONFIG:=${PKG_CONFIG}" >>$CONFIG
     echo "CC:=${CC}" >>$CONFIG
     echo "LD:=${LD}" >>$CONFIG
@@ -144,6 +151,7 @@ check_toolchain()
     echo "ARCH_INCLUDES:=$ARCH_INCLUDES" >> $CONFIG
     echo "READELF:=${READELF}" >> $CONFIG
     echo "BPFTOOL:=${BPFTOOL}" >> $CONFIG
+    echo "ARCH_EMULATION:=${ARCH_EMULATION}" >> $CONFIG
     [ -n "$BPFTOOL" ] && echo "HAVE_FEATURES+=BPFTOOL" >>"$CONFIG"
 }
 
