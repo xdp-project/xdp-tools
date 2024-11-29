@@ -82,7 +82,7 @@ check_toolchain()
 
     ARCH_NAME=$($CC -print-multiarch 2>/dev/null)
 
-    clang_version=$($CLANG --version | grep -Po '(?<=clang version )[[:digit:]]+')
+    clang_version=$($CLANG --version | sed -nE 's/.*clang version ([[:digit:]]+).*/\1/p')
     if [ "$?" -ne "0" ]; then
         echo "*** ERROR: Couldn't execute '$CLANG --version'"
         exit 1
