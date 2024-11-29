@@ -56,9 +56,14 @@ check_toolchain()
     local emacs_version
     local clang_version
     local bpftool_version
+    local compiler=gcc
+
+    if ! command -v gcc >/dev/null 2>&1 && command -v clang >/dev/null 2>&1; then
+        compiler=clang
+    fi
 
     : ${PKG_CONFIG:=pkg-config}
-    : ${CC=gcc}
+    : ${CC=$compiler}
     : ${LD=ld}
     : ${OBJCOPY=objcopy}
     : ${CLANG=clang}
