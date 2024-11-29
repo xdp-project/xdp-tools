@@ -56,9 +56,14 @@ check_toolchain()
     local emacs_version
     local clang_version
     local bpftool_version
+    local compiler=gcc
+
+    if ! command -v gcc >/dev/null 2>&1 && command -v clang >/dev/null 2>&1; then
+        compiler=clang
+    fi
 
     : ${PKG_CONFIG:=pkg-config}
-    : ${CC=gcc}
+    : ${CC=$compiler}
     : ${LD=ld}
     : ${OBJCOPY=objcopy}
     : ${CLANG=clang}
@@ -82,7 +87,7 @@ check_toolchain()
 
     ARCH_NAME=$($CC -print-multiarch 2>/dev/null)
 
-    clang_version=$($CLANG --version | grep -Po '(?<=clang version )[[:digit:]]+')
+    clang_version=$($CLANG --version | sed -nE 's/.*clang version ([[:digit:]]+).*/\1/p')
     if [ "$?" -ne "0" ]; then
         echo "*** ERROR: Couldn't execute '$CLANG --version'"
         exit 1
@@ -128,6 +133,13 @@ check_toolchain()
         done
     fi
 
+    case $(uname -m) in
+        aarch64) ARCH_EMULATION=aarch64linux ;;
+        armv7*) ARCH_EMULATION=armelf_linux_eabi ;;
+        i386) ARCH_EMULATION=elf_i386 ;;
+        *) ARCH_EMULATION=elf_x86_64 ;;
+    esac
+
     echo "PKG_CONFIG:=${PKG_CONFIG}" >>$CONFIG
     echo "CC:=${CC}" >>$CONFIG
     echo "LD:=${LD}" >>$CONFIG
@@ -139,6 +151,7 @@ check_toolchain()
     echo "ARCH_INCLUDES:=$ARCH_INCLUDES" >> $CONFIG
     echo "READELF:=${READELF}" >> $CONFIG
     echo "BPFTOOL:=${BPFTOOL}" >> $CONFIG
+    echo "ARCH_EMULATION:=${ARCH_EMULATION}" >> $CONFIG
     [ -n "$BPFTOOL" ] && echo "HAVE_FEATURES+=BPFTOOL" >>"$CONFIG"
 }
 
