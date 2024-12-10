@@ -59,7 +59,6 @@ check_toolchain()
 
     : ${PKG_CONFIG:=pkg-config}
     : ${CC=gcc}
-    : ${LD=ld}
     : ${OBJCOPY=objcopy}
     : ${CLANG=clang}
     : ${LLC=llc}
@@ -73,7 +72,7 @@ check_toolchain()
     CLANG=$(find_tool clang "$CLANG")
     LLC=$(find_tool llc "$LLC")
 
-    for TOOL in $PKG_CONFIG $CC $LD $OBJCOPY $CLANG $LLC $M4 $READELF; do
+    for TOOL in $PKG_CONFIG $CC $OBJCOPY $CLANG $LLC $M4 $READELF; do
         if [ ! $(command -v ${TOOL} 2>/dev/null) ]; then
             echo "*** ERROR: Cannot find tool ${TOOL}" ;
             exit 1;
@@ -130,7 +129,6 @@ check_toolchain()
 
     echo "PKG_CONFIG:=${PKG_CONFIG}" >>$CONFIG
     echo "CC:=${CC}" >>$CONFIG
-    echo "LD:=${LD}" >>$CONFIG
     echo "OBJCOPY:=${OBJCOPY}" >>$CONFIG
     echo "CLANG:=${CLANG}" >>$CONFIG
     echo "LLC:=${LLC}" >>$CONFIG
