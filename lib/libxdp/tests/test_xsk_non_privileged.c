@@ -91,11 +91,6 @@ static void run_non_privileged_preconfig(const char *ifname,
 
 static struct xsk_umem *create_umem_non_privileged(int sock_fd)
 {
-	struct xsk_umem_config config = {
-		.fill_size = XSK_RING_PROD__DEFAULT_NUM_DESCS,
-		.comp_size = XSK_RING_CONS__DEFAULT_NUM_DESCS,
-		.frame_size = XSK_UMEM__DEFAULT_FRAME_SIZE,
-	};
 	struct xsk_umem *umem = NULL;
 	struct xsk_ring_cons cq;
 	struct xsk_ring_prod fq;
@@ -107,16 +102,29 @@ static struct xsk_umem *create_umem_non_privileged(int sock_fd)
 	}
 
 	/* This variant requires CAP_NET_RAW, so should fail. */
-	if (!xsk_umem__create(&umem, b, UMEM_SIZE,
-			      &fq, &cq, &config) || umem) {
-		perror("xsk_umem__create succeeded");
+	DECLARE_LIBXDP_OPTS(xsk_umem_opts, opts_cap,
+		.size = UMEM_SIZE,
+		.fill_size = XSK_RING_PROD__DEFAULT_NUM_DESCS,
+		.comp_size = XSK_RING_CONS__DEFAULT_NUM_DESCS,
+		.frame_size = XSK_UMEM__DEFAULT_FRAME_SIZE,
+	);
+	umem = xsk_umem__create_opts(b, &fq, &cq, &opts_cap);
+	if (umem) {
+		perror("xsk_umem__create_opts succeeded");
 		exit(EXIT_FAILURE);
 	}
 
 	/* This variant shouldn't need any capabilities, so should pass. */
-	if (xsk_umem__create_with_fd(&umem, sock_fd, b, UMEM_SIZE,
-				     &fq, &cq, &config) || !umem) {
-		perror("xsk_umem__create_with_fd failed");
+	DECLARE_LIBXDP_OPTS(xsk_umem_opts, opts,
+		.fd = sock_fd,
+		.size = UMEM_SIZE,
+		.fill_size = XSK_RING_PROD__DEFAULT_NUM_DESCS,
+		.comp_size = XSK_RING_CONS__DEFAULT_NUM_DESCS,
+		.frame_size = XSK_UMEM__DEFAULT_FRAME_SIZE,
+	);
+	umem = xsk_umem__create_opts(b, &fq, &cq, &opts);
+	if (!umem) {
+		perror("xsk_umem__create_opts failed");
 		exit(EXIT_FAILURE);
 	}
 
