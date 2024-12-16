@@ -1072,12 +1072,16 @@ struct xsk_socket *xsk_socket__create_opts(const char *ifname,
 	}
 	rx = OPTS_GET(opts, rx, NULL);
 	tx = OPTS_GET(opts, tx, NULL);
-	fill = OPTS_GET(opts, fill, umem->fill_save);
-	comp = OPTS_GET(opts, comp, umem->comp_save);
+	fill = OPTS_GET(opts, fill, NULL);
+	comp = OPTS_GET(opts, comp, NULL);
 
 	if (!umem || !(rx || tx)) {
 		err = -EFAULT;
 		goto err;
+	}
+	if (!fill && !comp) {
+		fill = umem->fill_save;
+		comp = umem->comp_save;
 	}
 
 	xsk = calloc(1, sizeof(*xsk));

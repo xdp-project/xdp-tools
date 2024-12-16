@@ -259,10 +259,9 @@ struct xsk_socket_config {
  * 
  * @fill, @comp, @rx_size, @tx_size, @libxdp_flags, @xdp_flags,
  * @bind_flags
- *  If a socket with exclusive ownership of a umem is going to be
- *  created, keep @fill and @comp unset. If the umem is to be shared
- *  with other sockets, set @fill and @comp to the corresponding
- *  fields of the umem.
+ *  If @fill and @comp are both unset, fill_save and comp_save of
+ *  the umem will be assigned to them, otherwise keep what they
+ *  are set in opts.
  *  If the remaining fields are unset, they will be set to 
  *  default value (see `xsk_set_xdp_socket_config()`).
  * 
