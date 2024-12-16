@@ -1075,7 +1075,7 @@ struct xsk_socket *xsk_socket__create_opts(const char *ifname,
 	fill = OPTS_GET(opts, fill, NULL);
 	comp = OPTS_GET(opts, comp, NULL);
 
-	if (!umem || !(rx || tx)) {
+	if (!umem || !(rx || tx) || (fill == NULL) ^ (comp == NULL)) {
 		err = -EFAULT;
 		goto err;
 	}
