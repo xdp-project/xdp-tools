@@ -73,35 +73,36 @@ int main(int argc, char *argv[])
 	__u8 value = 1;
 
 	// Check for proper number of arguments
-	if (argc != 3) {
-		fprintf(stderr, "Usage: %s <add|delete> <domain>\n", argv[0]);
+	if (argc != 4) {
+		fprintf(stderr, "Usage: %s <map_path> <add|delete> <domain>\n", argv[0]);
 		return 1;
 	}
 
 	// Encode the domain name with label lengths
-	encode_domain(argv[2], dkey.data);
+	encode_domain(argv[3], dkey.data);
 	reverse_string(dkey.data);
 
 	// Set the LPM trie key prefix length
 	dkey.lpm_key.prefixlen = strlen(dkey.data) * 8;
 
 	// Open the BPF map
-	map_fd = bpf_obj_get("/sys/fs/bpf/xdp-dns-denylist/domain_denylist");
+	const char *map_path = argv[1];
+	map_fd = bpf_obj_get(map_path);
 	if (map_fd < 0) {
-		fprintf(stderr, "Failed to open map: %s\n", strerror(errno));
+		fprintf(stderr, "Failed to open map at %s: %s\n", map_path, strerror(errno));
 		return 1;
 	}
 
 	// Add or delete the domain based on the first argument
-	if (strcmp(argv[1], "add") == 0) {
+	if (strcmp(argv[2], "add") == 0) {
 		// Update the map with the encoded domain name
 		if (bpf_map_update_elem(map_fd, &dkey, &value, BPF_ANY) != 0) {
 			fprintf(stderr, "Failed to add domain to map: %s\n",
 				strerror(errno));
 			return 1;
 		}
-		printf("Domain %s added to denylist\n", argv[2]);
-	} else if (strcmp(argv[1], "delete") == 0) {
+		printf("Domain %s added to denylist\n", argv[3]);
+	} else if (strcmp(argv[2], "delete") == 0) {
 		// Remove the domain from the map
 		if (bpf_map_delete_elem(map_fd, &dkey) != 0) {
 			fprintf(stderr,
@@ -109,10 +110,10 @@ int main(int argc, char *argv[])
 				strerror(errno));
 			return 1;
 		}
-		printf("Domain %s removed from denylist\n", argv[2]);
+		printf("Domain %s removed from denylist\n", argv[3]);
 	} else {
 		fprintf(stderr, "Invalid command: %s. Use 'add' or 'delete'.\n",
-			argv[1]);
+			argv[2]);
 		return 1;
 	}
 

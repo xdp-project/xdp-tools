@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <arpa/inet.h>
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
@@ -44,15 +45,21 @@ int handle_event(void *ctx __attribute__((unused)), void *data,
 	return 0; // Return 0 to indicate success
 }
 
-int main()
+int main(int argc, char *argv[])
 {
+	if (argc != 2) {
+		fprintf(stderr, "Usage: %s <path_to_ringbuf>\n", argv[0]);
+		return 1;
+	}
+
+	const char *ringbuf_path = argv[1];
 	struct ring_buffer *rb;
 	int ringbuf_fd;
 
 	openlog("sni_logger", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
 
 	// Open the ring buffer
-	ringbuf_fd = bpf_obj_get("/sys/fs/bpf/xdp-sni/sni_ringbuf");
+	ringbuf_fd = bpf_obj_get(ringbuf_path);
 	if (ringbuf_fd < 0) {
 		perror("Failed to open ring buffer");
 		return 1;
