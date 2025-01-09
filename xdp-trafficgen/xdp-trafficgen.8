@@ -94,6 +94,11 @@ Enable dynamic port mode where the destination port is varied over a range of
 Number of packets to send before exiting. If not supplied, \fIxdp\-trafficgen\fP will
 keep sending packets until interrupted.
 
+.SS "-s, --pkt-size <bytes>"
+.PP
+Size of each UDP packet being sent, including the Ethernet header. The minimum
+size, which is also the default, is 64 bytes.
+
 .SS "-t, --threads <threads>"
 .PP
 Number of simultaneous threads to transmit from. Each thread will be pinned to a

@@ -276,47 +276,73 @@ static const struct udpopt {
 	__u16 dyn_ports;
 	__u16 threads;
 	__u16 interval;
+	__u16 pkt_size;
 } defaults_udp = {
 	.interval = 1,
 	.threads = 1,
+	.pkt_size = 64,
 };
 
-static int prepare_udp_pkt(const struct udpopt *cfg)
+static struct udp_packet *prepare_udp_pkt(const struct udpopt *cfg)
 {
 	struct mac_addr src_mac = cfg->src_mac;
+	struct udp_packet *pkt = NULL;
+	__u16 payload_len;
 	int err;
 
 	if (macaddr_is_null(&src_mac)) {
 		err = get_mac_addr(cfg->iface.ifindex, &src_mac);
 		if (err)
-			return err;
+			goto err;
 	}
-	memcpy(pkt_udp.eth.h_source, &src_mac, sizeof(src_mac));
+
+	if (cfg->pkt_size < sizeof(*pkt)) {
+		pr_warn("Mininum packet size is %zu bytes\n", sizeof(*pkt));
+		goto err;
+	}
+
+
+	pkt = calloc(1, cfg->pkt_size);
+	if (!pkt)
+		goto err;
+
+	memcpy(pkt, &pkt_udp, sizeof(*pkt));
+
+	payload_len = cfg->pkt_size - offsetof(struct udp_packet, udp);
+	pkt->iph.payload_len = bpf_htons(payload_len);
+	pkt->udp.len = bpf_htons(payload_len);
+
+	memcpy(pkt->eth.h_source, &src_mac, sizeof(src_mac));
 	if (!macaddr_is_null(&cfg->dst_mac))
-		memcpy(pkt_udp.eth.h_dest, &cfg->dst_mac, sizeof(cfg->dst_mac));
+		memcpy(pkt->eth.h_dest, &cfg->dst_mac, sizeof(cfg->dst_mac));
 
 	if (!ipaddr_is_null(&cfg->src_ip)) {
 		if (cfg->src_ip.af != AF_INET6) {
 			pr_warn("Only IPv6 is supported\n");
-			return 1;
+			goto err;
 		}
-		pkt_udp.iph.saddr = cfg->src_ip.addr.addr6;
+		pkt->iph.saddr = cfg->src_ip.addr.addr6;
 	}
 
 	if (!ipaddr_is_null(&cfg->dst_ip)) {
 		if (cfg->dst_ip.af != AF_INET6) {
 			pr_warn("Only IPv6 is supported\n");
-			return 1;
+			goto err;
 		}
-		pkt_udp.iph.daddr = cfg->dst_ip.addr.addr6;
+		pkt->iph.daddr = cfg->dst_ip.addr.addr6;
 	}
 
 	if (cfg->src_port)
-		pkt_udp.udp.source = bpf_htons(cfg->src_port);
+		pkt->udp.source = bpf_htons(cfg->src_port);
 	if (cfg->dst_port)
-		pkt_udp.udp.dest = bpf_htons(cfg->dst_port);
-	pkt_udp.udp.check = calc_udp_cksum(&pkt_udp);
-	return 0;
+		pkt->udp.dest = bpf_htons(cfg->dst_port);
+	pkt->udp.check = calc_udp_cksum(pkt);
+
+	return pkt;
+
+err:
+	free(pkt);
+	return NULL;
 }
 
 static struct prog_option udp_options[] = {
@@ -352,6 +378,10 @@ static struct prog_option udp_options[] = {
 		      .short_opt = 'n',
 		      .metavar = "<port>",
 		      .help = "Number of packets to send"),
+	DEFINE_OPTION("pkt-size", OPT_U16, struct udpopt, pkt_size,
+		      .short_opt = 's',
+		      .metavar = "<bytes>",
+		      .help = "Packet size. Default 64."),
 	DEFINE_OPTION("threads", OPT_U16, struct udpopt, threads,
 		      .short_opt = 't',
 		      .metavar = "<threads>",
@@ -374,12 +404,12 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 
 	DECLARE_LIBXDP_OPTS(xdp_program_opts, opts);
 	struct thread_config *t = NULL, tcfg = {
-		.pkt = &pkt_udp,
-		.pkt_size = sizeof(pkt_udp),
+		.pkt_size = cfg->pkt_size,
 		.num_pkts = cfg->num_pkts,
 	};
 	struct trafficgen_state bpf_state = {};
 	struct xdp_trafficgen *skel = NULL;
+	struct udp_packet *payload = NULL;
 	pthread_t *runner_threads = NULL;
 	struct xdp_program *prog = NULL;
 	int err = 0, i;
@@ -390,9 +420,12 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 	if (err)
 		return err;
 
-	err = prepare_udp_pkt(cfg);
-	if (err)
+	payload = prepare_udp_pkt(cfg);
+	if (!payload) {
+		err = -ENOMEM;
 		goto out;
+	}
+	tcfg.pkt = payload;
 
 	skel = xdp_trafficgen__open();
 	if (!skel) {
@@ -463,6 +496,7 @@ out:
 	xdp_program__close(prog);
 	xdp_trafficgen__destroy(skel);
 	free(runner_threads);
+	free(payload);
 	free(t);
         return err;
 }
