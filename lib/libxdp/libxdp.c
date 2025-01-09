@@ -2928,8 +2928,10 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 
 	num_new_progs += remove_progs ? -num_progs : num_progs;
 
-	if (num_new_progs > MAX_DISPATCHER_ACTIONS)
+	if (num_new_progs > MAX_DISPATCHER_ACTIONS) {
+		pr_warn("Not enough free slots in the dispatcher.\n");
 		return ERR_PTR(-E2BIG);
+	}
 
 	pr_debug("Generating multi-prog dispatcher for %zu programs\n",
 		 num_new_progs);
