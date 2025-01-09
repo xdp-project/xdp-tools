@@ -53,7 +53,6 @@ static int mask = SAMPLE_DEVMAP_XMIT_CNT_MULTI | SAMPLE_DROP_OK;
 DEFINE_SAMPLE_INIT(xdp_trafficgen);
 
 static bool status_exited = false;
-static bool runners_exited = false;
 
 struct udp_packet {
 	struct ethhdr eth;
@@ -132,7 +131,7 @@ static void *run_traffic(void *arg)
 	if (err)
 		pr_warn("Couldn't run trafficgen program: %s\n", strerror(-err));
 
-	runners_exited = true;
+	kill(getpid(), SIGINT);
 	return NULL;
 }
 
