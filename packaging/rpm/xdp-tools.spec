@@ -1,8 +1,8 @@
 Name:             xdp-tools
-Version:          1.4.3
+Version:          1.5.0
 Release:          1%{?dist}
 Summary:          Utilities and example programs for use with XDP
-%global _soversion 1.4.0
+%global _soversion 1.5.0
 
 License:          GPL-2.0-only
 URL:              https://github.com/xdp-project/%{name}
@@ -91,12 +91,13 @@ export HDRDIR='%{_includedir}/xdp'
 make install V=1
 
 %files
-%{_sbindir}/xdp-filter
-%{_sbindir}/xdp-loader
-%{_sbindir}/xdpdump
 %{_sbindir}/xdp-bench
+%{_sbindir}/xdp-filter
+%{_sbindir}/xdp-forward
+%{_sbindir}/xdp-loader
 %{_sbindir}/xdp-monitor
 %{_sbindir}/xdp-trafficgen
+%{_sbindir}/xdpdump
 %{_mandir}/man8/*
 %{_libdir}/bpf/xdpfilt_*.o
 %{_libdir}/bpf/xdpdump_*.o
@@ -120,6 +121,9 @@ make install V=1
 %{_libdir}/pkgconfig/libxdp.pc
 
 %changelog
+* Thu Jan 9 2025 Toke Høiland-Jørgensen <toke@redhat.com> 1.5.0-1
+- Upstream version bump
+
 * Tue Aug 6 2024 Toke Høiland-Jørgensen <toke@redhat.com> 1.4.3-1
 - Upstream version bump
 
