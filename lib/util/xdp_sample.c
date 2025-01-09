@@ -1479,16 +1479,10 @@ static void swap(struct stats_record **a, struct stats_record **b)
 	*b = tmp;
 }
 
-static int sample_timer_cb(int timerfd, struct stats_record **rec,
-			   struct stats_record **prev)
+static int print_stats(struct stats_record **rec, struct stats_record **prev)
 {
 	char line[64] = "Summary";
 	int ret;
-	__u64 t;
-
-	ret = read(timerfd, &t, sizeof(t));
-	if (ret < 0)
-		return -errno;
 
 	swap(prev, rec);
 	ret = sample_stats_collect(*rec);
@@ -1511,6 +1505,19 @@ static int sample_timer_cb(int timerfd, struct stats_record **rec,
 
 	sample_stats_print(sample_mask, *rec, *prev, line);
 	return 0;
+}
+
+static int sample_timer_cb(int timerfd, struct stats_record **rec,
+			   struct stats_record **prev)
+{
+	int ret;
+	__u64 t;
+
+	ret = read(timerfd, &t, sizeof(t));
+	if (ret < 0)
+		return -errno;
+
+	return print_stats(rec, prev);
 }
 
 int sample_run(int interval, void (*post_cb)(void *), void *ctx)
@@ -1572,9 +1579,11 @@ int sample_run(int interval, void (*post_cb)(void *), void *ctx)
 				break;
 		}
 
-		if (pfd[0].revents & POLLIN)
+		if (pfd[0].revents & POLLIN) {
 			ret = sample_signal_cb();
-		else if (pfd[1].revents & POLLIN)
+			if (ret)
+				print_stats(&rec, &prev);
+		} else if (pfd[1].revents & POLLIN)
 			ret = sample_timer_cb(timerfd, &rec, &prev);
 
 		if (ret)
