@@ -36,19 +36,20 @@ void dns_label_to_dot_notation(char *dns_name, char *output, size_t len)
 
 	while (pos < len) {
 		__u8 label_len = dns_name[pos];
-		if (label_len == 0)
-			break; // End of domain name
+		if (label_len == 0 || pos + label_len + 1 > len || out_pos + label_len >= MAX_DOMAIN_SIZE) {
+			break; // Prevent buffer overflow
+		}
 
 		if (out_pos != 0) {
 			output[out_pos++] = '.'; // Add a dot between labels
 		}
 
 		// Copy the label
-		for (int i = 1; i <= label_len; i++) {
+		for (size_t i = 1; i <= label_len; i++) {
 			output[out_pos++] = dns_name[pos + i];
 		}
 
-		pos += label_len + 1; // Move to the next label
+		pos += label_len + 1;
 	}
 
 	output[out_pos] = '\0'; // Null-terminate the result
@@ -56,14 +57,27 @@ void dns_label_to_dot_notation(char *dns_name, char *output, size_t len)
 
 // Corrected handle_event function to match the signature expected by ring_buffer__new
 int handle_event(void *ctx __attribute__((unused)), void *data,
-		 size_t data_sz __attribute__((unused)))
+		 size_t data_sz)
 {
+	if (data_sz < sizeof(struct qname_event)) {
+		syslog(LOG_ERR, "Unexpected data size: %zu", data_sz);
+		return -1;
+	}
+
 	struct qname_event *event = (struct qname_event *)data;
 
-	char src_ip_str[INET_ADDRSTRLEN];
-	inet_ntop(AF_INET, &event->src_ip, src_ip_str, sizeof(src_ip_str));
+	if (event->len > MAX_DOMAIN_SIZE) {
+		syslog(LOG_ERR, "Invalid qname length: %u", event->len);
+		return -1;
+	}
 
-	char domain_str[MAX_DOMAIN_SIZE] = { 0 };
+	char src_ip_str[INET_ADDRSTRLEN];
+	if (!inet_ntop(AF_INET, &event->src_ip, src_ip_str, sizeof(src_ip_str))) {
+		syslog(LOG_ERR, "Failed to convert source IP");
+		return -1;
+	}
+
+	char domain_str[MAX_DOMAIN_SIZE + 1] = { 0 }; // +1 for null terminator
 	dns_label_to_dot_notation(event->qname, domain_str, event->len);
 
 	syslog(LOG_INFO, "Received qname: %s from source IP: %s", domain_str,
@@ -74,10 +88,10 @@ int handle_event(void *ctx __attribute__((unused)), void *data,
 
 int main(int argc, char *argv[])
 {
-        if (argc != 2) {
-                fprintf(stderr, "Usage: %s <path_to_ringbuf>\n", argv[0]);
-                return 1;
-        }
+	if (argc != 2) {
+		fprintf(stderr, "Usage: %s <path_to_ringbuf>\n", argv[0]);
+		return 1;
+	}
 
 	const char *ringbuf_path = argv[1];
 	struct ring_buffer *rb;
@@ -108,3 +122,4 @@ int main(int argc, char *argv[])
 	closelog();
 	return 0;
 }
+
