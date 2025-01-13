@@ -296,7 +296,7 @@ static struct udp_packet *prepare_udp_pkt(const struct udpopt *cfg)
 	}
 
 	if (cfg->pkt_size < sizeof(*pkt)) {
-		pr_warn("Mininum packet size is %zu bytes\n", sizeof(*pkt));
+		pr_warn("Minimum packet size is %zu bytes\n", sizeof(*pkt));
 		goto err;
 	}
 
