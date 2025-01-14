@@ -192,8 +192,8 @@ static uint64_t get_if_speed(struct iface *iface)
 	int                                  fd;
 	struct ifreq                         ifr;
 	struct {
-		struct ethtool_link_settings req;
 		uint32_t                     modes[3 * MAX_MODE_MASKS];
+		struct ethtool_link_settings req;
 	} ereq;
 
 	if (iface == NULL)
