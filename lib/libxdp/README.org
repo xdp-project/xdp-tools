@@ -319,7 +319,7 @@ from some form of control process that has the necessary privileges. The
 xsk_socket__create executed on the non-privileged process will then skip these
 two steps. For an example on how to use these, please take a look at the
 AF_XDP-example program in the bpf-examples repository:
-https://github.com/xdp-project/bpf-examples/tree/master/AF_XDP-example.
+https://github.com/xdp-project/bpf-examples/tree/main/AF_XDP-example.
 
 #+begin_src C
 int xsk_setup_xdp_prog(int ifindex, int *xsks_map_fd);
