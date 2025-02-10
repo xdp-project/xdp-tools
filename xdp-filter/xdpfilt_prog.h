@@ -14,6 +14,9 @@
 #include <bpf/bpf_helpers.h>
 #include <xdp/xdp_helpers.h>
 
+#define NDISC_NEIGHBOUR_SOLICITATION	135
+#define NDISC_NEIGHBOUR_ADVERTISEMENT	136
+
 #include "common_kern_user.h"
 
 /* Defines xdp_stats_map */
@@ -146,22 +149,26 @@ struct {
 	__uint(pinning, LIBBPF_PIN_BY_NAME);
 } MAP_NAME_IPV6 SEC(".maps");
 
-static int __always_inline lookup_verdict_ipv6(struct ipv6hdr *ipv6hdr)
+static int __always_inline lookup_verdict_ipv6(struct in6_addr *src_addr, struct in6_addr *dst_addr)
 {
 	struct in6_addr addr;
 
-	addr = ipv6hdr->daddr;
-	CHECK_MAP(&filter_ipv6, &addr, MAP_FLAG_DST);
-	addr = ipv6hdr->saddr;
-	CHECK_MAP(&filter_ipv6, &addr, MAP_FLAG_SRC);
+	if (dst_addr) {
+		addr = *dst_addr;
+		CHECK_MAP(&filter_ipv6, &addr, MAP_FLAG_DST);
+	}
+	if (src_addr) {
+		addr = *src_addr;
+		CHECK_MAP(&filter_ipv6, &addr, MAP_FLAG_SRC);
+	}
 	return VERDICT_MISS;
 }
 
-#define CHECK_VERDICT_IPV6(param) CHECK_VERDICT(ipv6, param)
+#define CHECK_VERDICT_IPV6(src, dst) CHECK_VERDICT_2(ipv6, src, dst)
 #define FEATURE_IPV6 FEAT_IPV6
 #else
 #define FEATURE_IPV6 0
-#define CHECK_VERDICT_IPV6(param)
+#define CHECK_VERDICT_IPV6(src, dst)
 #endif /* FILT_MODE_IPV6 */
 
 #ifdef FILT_MODE_ETHERNET
@@ -221,6 +228,7 @@ int FUNCNAME(struct xdp_md *ctx)
 
 #if defined(FILT_MODE_IPV4) || defined(FILT_MODE_IPV6) || \
 	defined(FILT_MODE_TCP) || defined(FILT_MODE_UDP)
+	struct icmp6hdr *icmp6hdr;
 	struct ipv6hdr *ipv6hdr;
 	struct iphdr *iphdr;
 	int ip_type = 0, nh_op;
@@ -255,7 +263,28 @@ int FUNCNAME(struct xdp_md *ctx)
 		ip_type = parse_ip6hdr(&nh, data_end, &ipv6hdr);
 		CHECK_RET(ip_type);
 
-		CHECK_VERDICT_IPV6(ipv6hdr);
+		CHECK_VERDICT_IPV6(&ipv6hdr->saddr, &ipv6hdr->daddr);
+
+		if (ip_type == IPPROTO_ICMPV6) {
+			nh_op = parse_icmp6hdr(&nh, data_end, &icmp6hdr);
+			CHECK_RET(nh_op);
+
+			if (nh_op == NDISC_NEIGHBOUR_SOLICITATION ||
+			    nh_op == NDISC_NEIGHBOUR_ADVERTISEMENT) {
+				struct in6_addr *addr = nh.pos;
+
+				if (addr + 1 > data_end) {
+					action = XDP_ABORTED;
+					goto out;
+				}
+				if (nh_op == NDISC_NEIGHBOUR_SOLICITATION)
+					/* Someone wants to talk to TARGET, so target is a DST IP */
+					CHECK_VERDICT_IPV6(NULL, addr);
+				else
+					/* Someone has addr TARGET, so target is a SRC IP */
+					CHECK_VERDICT_IPV6(addr, NULL);
+			}
+		}
 	} else {
 		goto out;
 	}
