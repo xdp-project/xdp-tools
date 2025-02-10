@@ -52,6 +52,27 @@ struct icmphdr_common {
 	__sum16	cksum;
 };
 
+#define ARPHRD_ETHER 	1		/* Ethernet 10Mbps		*/
+#define	ARPOP_REQUEST	1		/* ARP request			*/
+#define	ARPOP_REPLY	2		/* ARP reply			*/
+
+struct arphdr {
+	__be16		ar_hrd;		/* format of hardware address	*/
+	__be16		ar_pro;		/* format of protocol address	*/
+	unsigned char	ar_hln;		/* length of hardware address	*/
+	unsigned char	ar_pln;		/* length of protocol address	*/
+	__be16		ar_op;		/* ARP opcode (command)		*/
+
+	 /*
+	  *	 Ethernet looks like this : This bit is variable sized however...
+	  */
+	unsigned char		ar_sha[ETH_ALEN];	/* sender hardware address	*/
+	__be32			ar_sip;		/* sender IP address		*/
+	unsigned char		ar_tha[ETH_ALEN];	/* target hardware address	*/
+	__be32			ar_tip;		/* target IP address		*/
+
+} __attribute__((packed));
+
 /* Allow users of header file to redefine VLAN max depth */
 #ifndef VLAN_MAX_DEPTH
 #define VLAN_MAX_DEPTH 4
@@ -183,6 +204,26 @@ static __always_inline int parse_iphdr(struct hdr_cursor *nh,
 	*iphdr = iph;
 
 	return iph->protocol;
+}
+
+static __always_inline int parse_arphdr(struct hdr_cursor *nh,
+				       void *data_end,
+				       struct arphdr **arp_hdr)
+{
+	struct arphdr *arp = nh->pos;
+
+	if (arp + 1 > data_end)
+		return -1;
+
+	if (arp->ar_hrd != bpf_htons(ARPHRD_ETHER) ||
+	    arp->ar_pro != bpf_htons(ETH_P_IP) || arp->ar_hln != ETH_ALEN ||
+	    arp->ar_pln != 4)
+		return -1;
+
+	nh->pos = (void *)(arp + 1);
+	*arp_hdr = arp;
+
+	return arp->ar_op;
 }
 
 static __always_inline int parse_icmp6hdr(struct hdr_cursor *nh,

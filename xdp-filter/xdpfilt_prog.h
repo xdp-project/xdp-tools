@@ -44,6 +44,12 @@
 			goto out;                                            \
 	} while (0)
 
+#define CHECK_VERDICT_2(type, param1, param2)					\
+	do {                                                                 \
+		if ((action = lookup_verdict_##type(param1, param2)) != VERDICT_MISS) \
+			goto out;                                            \
+	} while (0)
+
 #define CHECK_MAP(map, key, mask)                               \
 	do {                                                    \
 		__u64 *value;                                   \
@@ -109,21 +115,26 @@ struct {
 	__uint(pinning, LIBBPF_PIN_BY_NAME);
 } MAP_NAME_IPV4 SEC(".maps");
 
-static int __always_inline lookup_verdict_ipv4(struct iphdr *iphdr)
+static int __always_inline lookup_verdict_ipv4(__u32 *src_addr, __u32 *dst_addr)
 {
 	__u32 addr;
-	addr = iphdr->daddr;
-	CHECK_MAP(&filter_ipv4, &addr, MAP_FLAG_DST);
-	addr = iphdr->saddr;
-	CHECK_MAP(&filter_ipv4, &addr, MAP_FLAG_SRC);
+
+	if (dst_addr) {
+		addr = *dst_addr;
+		CHECK_MAP(&filter_ipv4, &addr, MAP_FLAG_DST);
+	}
+	if (src_addr) {
+		addr = *src_addr;
+		CHECK_MAP(&filter_ipv4, &addr, MAP_FLAG_SRC);
+	}
 	return VERDICT_MISS;
 }
 
-#define CHECK_VERDICT_IPV4(param) CHECK_VERDICT(ipv4, param)
+#define CHECK_VERDICT_IPV4(src, dst) CHECK_VERDICT_2(ipv4, src, dst)
 #define FEATURE_IPV4 FEAT_IPV4
 #else
 #define FEATURE_IPV4 0
-#define CHECK_VERDICT_IPV4(param)
+#define CHECK_VERDICT_IPV4(src, dst)
 #endif /* FILT_MODE_IPV4 */
 
 #ifdef FILT_MODE_IPV6
@@ -210,14 +221,36 @@ int FUNCNAME(struct xdp_md *ctx)
 
 #if defined(FILT_MODE_IPV4) || defined(FILT_MODE_IPV6) || \
 	defined(FILT_MODE_TCP) || defined(FILT_MODE_UDP)
-	struct iphdr *iphdr;
 	struct ipv6hdr *ipv6hdr;
-	int ip_type;
+	struct iphdr *iphdr;
+	int ip_type = 0, nh_op;
 	if (eth_type == bpf_htons(ETH_P_IP)) {
 		ip_type = parse_iphdr(&nh, data_end, &iphdr);
 		CHECK_RET(ip_type);
 
-		CHECK_VERDICT_IPV4(iphdr);
+		CHECK_VERDICT_IPV4(&iphdr->saddr, &iphdr->daddr);
+#if defined(FILT_MODE_IPV4)
+	} else if (eth_type == bpf_htons(ETH_P_ARP)) {
+		struct arphdr *arphdr;
+		__be32 sip, tip;
+
+		nh_op = parse_arphdr(&nh, data_end, &arphdr);
+		CHECK_RET(nh_op);
+
+		sip = arphdr->ar_sip;
+		tip = arphdr->ar_tip;
+
+		/* Always check the verdict of the ARP sender */
+		CHECK_VERDICT_IPV4(&sip, NULL);
+
+		if (nh_op == bpf_htons(ARPOP_REQUEST)) {
+			/* Someone wants to talk to TARGET, so target is a DST IP */
+			CHECK_VERDICT_IPV4(NULL, &tip);
+		} else if (nh_op == bpf_htons(ARPOP_REPLY)) {
+			/* Someone has addr TARGET, so target is a SRC IP */
+			CHECK_VERDICT_IPV4(&tip, NULL);
+		}
+#endif
 	} else if (eth_type == bpf_htons(ETH_P_IPV6)) {
 		ip_type = parse_ip6hdr(&nh, data_end, &ipv6hdr);
 		CHECK_RET(ip_type);
