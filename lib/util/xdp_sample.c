@@ -154,6 +154,7 @@ size_t sample_map_count[NUM_MAP];
 enum log_level sample_log_level;
 struct sample_output sample_out;
 unsigned long sample_interval;
+__u64 sample_start_time;
 bool sample_err_exp;
 int sample_xdp_cnt;
 int sample_n_cpus;
@@ -1339,15 +1340,18 @@ int __sample_init(int mask, int ifindex_from, int ifindex_to)
 
 static void sample_summary_print(void)
 {
-	double num = sample_out.rx_cnt.num;
+	__u64 start = sample_start_time;
+	__u64 now = gettime();
+	double dur_s = ((double)now - start) / NANOSEC_PER_SEC;
 
+	print_always("  Duration            : %.1fs\n", dur_s);
 	if (sample_out.totals.rx) {
 		double pkts = sample_out.totals.rx;
 
 		print_always("  Packets received    : %'-10" PRIu64 "\n",
 			     (uint64_t)sample_out.totals.rx);
 		print_always("  Average packets/s   : %'-10.0f\n",
-			     round(pkts / num));
+			     round(pkts / dur_s));
 	}
 	if (sample_out.totals.redir) {
 		double pkts = sample_out.totals.redir;
@@ -1355,7 +1359,7 @@ static void sample_summary_print(void)
 		print_always("  Packets redirected  : %'-10" PRIu64 "\n",
 			     sample_out.totals.redir);
 		print_always("  Average redir/s     : %'-10.0f\n",
-			     round(pkts / num));
+			     round(pkts / dur_s));
 	}
 	if (sample_out.totals.drop)
 		print_always("  Rx dropped          : %'-10" PRIu64 "\n",
@@ -1372,7 +1376,7 @@ static void sample_summary_print(void)
 		print_always("  Packets transmitted : %'-10" PRIu64 "\n",
 			     sample_out.totals.xmit);
 		print_always("  Average transmit/s  : %'-10.0f\n",
-			     round(pkts / num));
+			     round(pkts / dur_s));
 	}
 }
 
@@ -1439,7 +1443,6 @@ static void sample_summary_update(struct sample_output *out)
 	sample_out.totals.drop_xmit += out->totals.drop_xmit;
 	sample_out.totals.err += out->totals.err;
 	sample_out.totals.xmit += out->totals.xmit;
-	sample_out.rx_cnt.num++;
 }
 
 static void sample_stats_print(int mask, struct stats_record *cur,
@@ -1584,6 +1587,8 @@ int sample_run(unsigned int interval, void (*post_cb)(void *), void *ctx)
 	prev = alloc_stats_record();
 	if (!prev)
 		goto end_rec;
+
+	sample_start_time = gettime();
 
 	ret = sample_stats_collect(rec);
 	if (ret < 0)
