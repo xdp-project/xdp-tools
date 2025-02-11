@@ -1542,7 +1542,7 @@ static int sample_timer_cb(int timerfd, struct stats_record **rec,
 	return print_stats(rec, prev);
 }
 
-int sample_run(int interval, void (*post_cb)(void *), void *ctx)
+int sample_run(unsigned int interval, void (*post_cb)(void *), void *ctx)
 {
 	struct timespec ts = { interval, 0 };
 	struct itimerspec its = { ts, ts };
