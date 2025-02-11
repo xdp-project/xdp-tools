@@ -123,6 +123,7 @@ struct sample_output {
 		uint64_t drop;
 		uint64_t drop_xmit;
 		uint64_t err;
+		uint64_t err_pps;
 		uint64_t xmit;
 	} totals;
 	struct {
@@ -669,13 +670,16 @@ static void stats_get_rx_cnt(struct stats_record *stats_rec,
 	}
 
 	if (out) {
+		err = calc_errs_pps(&rec->total, &prev->total, t);
+
 		out->rx_cnt.pps = calc_pps(&rec->total, &prev->total, t);
 		out->rx_cnt.drop = calc_drop_pps(&rec->total, &prev->total, t);
-		out->rx_cnt.err = calc_errs_pps(&rec->total, &prev->total, t);
+		out->rx_cnt.err = err;
 
 		out->totals.rx += calc_pkts(&rec->total, &prev->total, t);
 		out->totals.drop += calc_drop_pkts(&rec->total, &prev->total, t);
 		out->totals.err += calc_errs_pkts(&rec->total, &prev->total, t);
+		out->totals.err_pps += err;
 	}
 }
 
@@ -918,6 +922,7 @@ static void stats_get_redirect_err_cnt(struct stats_record *stats_rec,
 	if (out) {
 		out->redir_cnt.err = sum_pps;
 		out->totals.err += sum_pkts;
+		out->totals.err_pps += sum_pps;
 	}
 }
 
@@ -964,6 +969,7 @@ static void stats_get_exception_cnt(struct stats_record *stats_rec,
 	if (out) {
 		out->except_cnt.hits = sum_pps;
 		out->totals.err += sum_pkts;
+		out->totals.err_pps += sum_pps;
 	}
 }
 
@@ -1004,6 +1010,7 @@ static void stats_get_devmap_xmit(struct stats_record *stats_rec,
 	if (out) {
 		pps = calc_pps(&rec->total, &prev->total, t);
 		drop = calc_drop_pps(&rec->total, &prev->total, t);
+		err = calc_errs_pps(&rec->total, &prev->total, t);
 
 		info = calc_info_pps(&rec->total, &prev->total, t);
 		if (info > 0)
@@ -1011,11 +1018,12 @@ static void stats_get_devmap_xmit(struct stats_record *stats_rec,
 
 		out->xmit_cnt.pps = pps;
 		out->xmit_cnt.drop = drop;
-		out->xmit_cnt.err = calc_errs_pps(&rec->total, &prev->total, t);
+		out->xmit_cnt.err = err;
 
 		out->totals.xmit += calc_pkts(&rec->total, &prev->total, t);
 		out->totals.drop_xmit += calc_drop_pkts(&rec->total, &prev->total, t);;
 		out->totals.err += calc_errs_pkts(&rec->total, &prev->total, t);;
+		out->totals.err_pps += err;
 	}
 }
 
@@ -1069,6 +1077,7 @@ static void stats_get_devmap_xmit_multi(struct stats_record *stats_rec,
 			out->totals.xmit += calc_pkts(&r->total, &p->total, t);
 			out->totals.drop_xmit += calc_drop_pkts(&r->total, &p->total, t);
 			out->totals.err += calc_errs_pkts(&r->total, &p->total, t);
+			out->totals.err_pps += calc_errs_pps(&r->total, &p->total, t);
 			continue;
 		}
 
@@ -1129,15 +1138,15 @@ static void stats_print(const char *prefix, int mask, struct stats_record *r,
 
 	print_always("%-23s", prefix ?: "Summary");
 	if (mask & SAMPLE_RX_CNT)
-		print_always(FMT_COLUMNl, RX(out->totals.rx));
+		print_always(FMT_COLUMNl, RX(out->rx_cnt.pps));
 	if (mask & SAMPLE_REDIRECT_CNT)
-		print_always(FMT_COLUMNl, REDIR(out->totals.redir));
+		print_always(FMT_COLUMNl, REDIR(out->redir_cnt.suc));
 	printf(FMT_COLUMNl,
-	       out->totals.err + ((out->totals.drop_xmit + out->totals.drop) * !(mask & SAMPLE_DROP_OK)),
+	       out->totals.err_pps + ((out->rx_cnt.drop + out->xmit_cnt.drop) * !(mask & SAMPLE_DROP_OK)),
 	       (mask & SAMPLE_DROP_OK) ? "err/s" : "err,drop/s");
 	if (mask & SAMPLE_DEVMAP_XMIT_CNT ||
 	    mask & SAMPLE_DEVMAP_XMIT_CNT_MULTI)
-		printf(FMT_COLUMNl, XMIT(out->totals.xmit));
+		printf(FMT_COLUMNl, XMIT(out->xmit_cnt.pps));
 	printf("\n");
 
 	if (mask & SAMPLE_RX_CNT) {
