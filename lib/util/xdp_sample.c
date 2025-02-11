@@ -549,13 +549,6 @@ static double calc_period(struct record *r, struct record *p)
 	return period_;
 }
 
-static double sample_round(double val)
-{
-	if (val - floor(val) < 0.5)
-		return floor(val);
-	return ceil(val);
-}
-
 static __u64 calc_pps(struct datarec *r, struct datarec *p, double period_)
 {
 	__u64 packets = 0;
@@ -563,7 +556,7 @@ static __u64 calc_pps(struct datarec *r, struct datarec *p, double period_)
 
 	if (period_ > 0) {
 		packets = r->processed - p->processed;
-		pps = sample_round(packets / period_);
+		pps = round(packets / period_);
 	}
 	return pps;
 }
@@ -585,7 +578,7 @@ static __u64 calc_drop_pps(struct datarec *r, struct datarec *p, double period_)
 
 	if (period_ > 0) {
 		packets = r->dropped - p->dropped;
-		pps = sample_round(packets / period_);
+		pps = round(packets / period_);
 	}
 	return pps;
 }
@@ -607,7 +600,7 @@ static __u64 calc_errs_pps(struct datarec *r, struct datarec *p, double period_)
 
 	if (period_ > 0) {
 		packets = r->issue - p->issue;
-		pps = sample_round(packets / period_);
+		pps = round(packets / period_);
 	}
 	return pps;
 }
@@ -629,7 +622,7 @@ static __u64 calc_info_pps(struct datarec *r, struct datarec *p, double period_)
 
 	if (period_ > 0) {
 		packets = r->info - p->info;
-		pps = sample_round(packets / period_);
+		pps = round(packets / period_);
 	}
 	return pps;
 }
@@ -1354,7 +1347,7 @@ static void sample_summary_print(void)
 		print_always("  Packets received    : %'-10" PRIu64 "\n",
 			     (uint64_t)sample_out.totals.rx);
 		print_always("  Average packets/s   : %'-10.0f\n",
-			     sample_round(pkts / num));
+			     round(pkts / num));
 	}
 	if (sample_out.totals.redir) {
 		double pkts = sample_out.totals.redir;
@@ -1362,7 +1355,7 @@ static void sample_summary_print(void)
 		print_always("  Packets redirected  : %'-10" PRIu64 "\n",
 			     sample_out.totals.redir);
 		print_always("  Average redir/s     : %'-10.0f\n",
-			     sample_round(pkts / num));
+			     round(pkts / num));
 	}
 	if (sample_out.totals.drop)
 		print_always("  Rx dropped          : %'-10" PRIu64 "\n",
@@ -1379,7 +1372,7 @@ static void sample_summary_print(void)
 		print_always("  Packets transmitted : %'-10" PRIu64 "\n",
 			     sample_out.totals.xmit);
 		print_always("  Average transmit/s  : %'-10.0f\n",
-			     sample_round(pkts / num));
+			     round(pkts / num));
 	}
 }
 
