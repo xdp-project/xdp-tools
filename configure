@@ -379,7 +379,7 @@ EOF
         fi
 
         LIBBPF_VERSION=$(get_libbpf_version "lib/libbpf/src")
-        LIBBPF_INCLUDE_DIR='$(LIB_DIR)/libbpf/src/root/usr/include'
+        LIBBPF_INCLUDE_DIR='$(LIB_DIR)/libbpf/src/root/include'
         LIBBPF_LIB_DIR='$(LIB_DIR)/libbpf/src'
         OBJECT_LIBBPF="${LIBBPF_LIB_DIR}/libbpf.a"
         echo "submodule v$LIBBPF_VERSION"
