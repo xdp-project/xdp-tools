@@ -48,7 +48,7 @@ LIBBPF_SOURCES := $(wildcard libbpf/src/*.[ch])
 libbpf/src/libbpf.a: $(LIBBPF_SOURCES)
 	@echo ; echo "  libbpf"
 	$(QUIET_CC)$(MAKE) -C libbpf/src CFLAGS="$(LIBBPF_CFLAGS)" $P
-	$(QUIET_INSTALL)$(MAKE) -C libbpf/src install_headers DESTDIR=root $P
+	$(QUIET_INSTALL)$(MAKE) -C libbpf/src install_headers DESTDIR=root PREFIX=/ $P
 
 libbpf_clean:
 	$(Q)$(MAKE) -C libbpf/src clean $P
