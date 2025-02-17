@@ -297,7 +297,6 @@ struct xsk_umem *xsk_umem__create_opts(void *umem_area,
 				       struct xsk_umem_opts *opts) {
 	struct xdp_umem_reg mr;
 	struct xsk_umem *umem;
-	size_t mr_size;
 	int err, fd;
 	__u64 size;
 	
@@ -342,11 +341,7 @@ struct xsk_umem *xsk_umem__create_opts(void *umem_area,
 	mr.flags = umem->config.flags;
 	mr.tx_metadata_len = OPTS_GET(opts, tx_metadata_len, XSK_UMEM__DEFAULT_TX_METADATA_LEN);
 	
-	mr_size = sizeof(mr);
-	/* Older kernels don't support tx_metadata_len, skip if we are not setting a value */
-	if (!mr.tx_metadata_len)
-		mr_size = offsetof(struct xdp_umem_reg, tx_metadata_len);
-	err = setsockopt(umem->fd, SOL_XDP, XDP_UMEM_REG, &mr, mr_size);
+	err = setsockopt(umem->fd, SOL_XDP, XDP_UMEM_REG, &mr, sizeof(mr));
 	if (err) {
 		err = -errno;
 		goto out_socket;
