@@ -386,7 +386,7 @@ int xsk_umem__create_with_fd(struct xsk_umem **umem_ptr, int fd,
 	}
 	umem = xsk_umem__create_opts(umem_area, fill, comp, &opts);
 	if (!umem)
-		return errno;
+		return -errno;
 	
 	*umem_ptr = umem;
 	return 0;
@@ -1283,7 +1283,7 @@ int xsk_socket__create_shared(struct xsk_socket **xsk_ptr,
 	}
 	xsk = xsk_socket__create_opts(ifname, queue_id, umem, &opts);
 	if (!xsk)
-		return errno;
+		return -errno;
 
 	*xsk_ptr = xsk;
 	return 0;
