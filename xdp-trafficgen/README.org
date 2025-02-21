@@ -148,6 +148,79 @@ Display version information and exit.
 Display a summary of the available options
 
 
+* The GTPU command
+The GTPU command generates GTPU traffic to a given destination IP on
+fixed source and destination ports 2512. Both IPv4 and IPv6 traffic is
+supported. The payload of the GTPU tunnel will be a UDP packet. 
+
+The syntax for the =udp= command is:
+
+=xdp-trafficgen gtpu [options] <ifname>=
+
+Where =<ifname>= is the name of the destination interface that packets will be
+transmitted on. Note that the network driver of this network interface must
+support being the target of XDP redirects (it must implement the =ndo_xdp_xmit=
+driver operation).
+
+The supported options are:
+
+** -m, --dst-mac <mac addr>
+Set the destination MAC address of generated packets. The default is to generate
+packets with an all-zero destination MAC.
+
+** -M, --src-mac <mac addr>
+Set the source MAC address of the generated packets. The default is to use the
+MAC address of the interface packets are transmitted on.
+
+** -a, --dst-addr <addr>
+Destination IP address of generated packets. The default is the link-local
+=fe80::2= address.
+
+** -A, --src-addr <addr>
+Source IP address of generated packets. The default is the link-local =fe80::1=
+address.
+
+** -d, --inner-dst-addr <addr>
+Destination IP address of the inner IP packet (payload of the GTPU tunnel, i.e., UDP packet).
+This is the IP address of the ultimate receiver of the data.
+
+** -D, --inner-src-addr <addr>
+Source IP address of the inner IP packet (payload of the GTPU tunnel i.e., UDP packet). 
+This is the IP address of the original sender of the data.
+
+** -p, --inner-dst-port <port>
+Destination UDP port of generated packets. Defaults to 1.
+
+** -P, --inner-src-port <port>
+Source UDP port of generated packets. Defaults to 1.
+
+** -e, --teid <teid>
+Tunnel Endpoint Identifier.  This identifies the GTP tunnel. Default 2.
+
+** -q, --qfi <qfi>
+QoS Flow Identifier.  This identifies the QoS flow associated with the packets. Default 9.
+
+** -n, --num-packets <port>
+Number of packets to send before exiting. If not supplied, =xdp-trafficgen= will
+keep sending packets until interrupted.
+
+** -t, --threads <threads>
+Number of simultaneous threads to transmit from. Each thread will be pinned to a
+separate CPU core if possible. Defaults to 1.
+
+** -I, --interval <s>
+Output transmission statistics with this interval (in seconds).
+
+** -v, --verbose
+Enable verbose logging (-vv: more verbose).
+
+** --version
+Display version information and exit.
+
+** -h, --help
+Display a summary of the available options
+
+
 * BUGS
 
 Please report any bugs on Github: https://github.com/xdp-project/xdp-tools/issues
