@@ -131,7 +131,7 @@ $(TEMPLATED_SOURCES): %.c: %.c.in Makefile
 	$(QUIET_M4)$(M4) $(DEFINES) $< > $@ || ( ret=$$?; rm -f $@; exit $$ret )
 
 $(EMBEDDED_XDP_OBJS): %.embed.o: %.o
-	$(QUIET_GEN)$(LD) -r -b binary -o $@ -z noexecstack --format=binary $<
+	$(QUIET_CC)$(CC) -r -nostdlib -Wl,-z,noexecstack,--format=binary $(LDFLAGS) -o $@ $<
 	$(Q)$(OBJCOPY)  --rename-section .data=.rodata,alloc,load,readonly,data,contents $@
 
 $(XDP_OBJS): %.o: %.c $(BPF_HEADERS) $(LIBMK)

@@ -174,6 +174,8 @@ restart:
 		goto end_detach;
 	}
 
+	xdp_program__set_xdp_frags_support(dummy_prog, true);
+
 	ret = xdp_program__attach(dummy_prog, opt->iface_out.ifindex, opt->mode, 0);
 	if (ret < 0) {
 		pr_warn("Failed to attach dummy program: %s\n", strerror(-ret));

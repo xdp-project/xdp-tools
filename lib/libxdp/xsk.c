@@ -152,44 +152,29 @@ static bool xsk_page_aligned(void *buffer)
 }
 
 static void xsk_set_umem_config(struct xsk_umem_config *cfg,
-				const struct xsk_umem_config *usr_cfg)
+				const struct xsk_umem_opts *opts)
 {
-	if (!usr_cfg) {
-		cfg->fill_size = XSK_RING_PROD__DEFAULT_NUM_DESCS;
-		cfg->comp_size = XSK_RING_CONS__DEFAULT_NUM_DESCS;
-		cfg->frame_size = XSK_UMEM__DEFAULT_FRAME_SIZE;
-		cfg->frame_headroom = XSK_UMEM__DEFAULT_FRAME_HEADROOM;
-		cfg->flags = XSK_UMEM__DEFAULT_FLAGS;
-		return;
-	}
-
-	cfg->fill_size = usr_cfg->fill_size;
-	cfg->comp_size = usr_cfg->comp_size;
-	cfg->frame_size = usr_cfg->frame_size;
-	cfg->frame_headroom = usr_cfg->frame_headroom;
-	cfg->flags = usr_cfg->flags;
+	cfg->fill_size = OPTS_GET(opts, fill_size, 0) ?: XSK_RING_PROD__DEFAULT_NUM_DESCS;
+	cfg->comp_size = OPTS_GET(opts, comp_size, 0) ?: XSK_RING_CONS__DEFAULT_NUM_DESCS;
+	cfg->frame_size = OPTS_GET(opts, frame_size, 0) ?: XSK_UMEM__DEFAULT_FRAME_SIZE;
+	cfg->frame_headroom = OPTS_GET(opts, frame_headroom, 0) ?: XSK_UMEM__DEFAULT_FRAME_HEADROOM;
+	cfg->flags = OPTS_GET(opts, flags, 0) ?: XSK_UMEM__DEFAULT_FLAGS;
 }
 
 static int xsk_set_xdp_socket_config(struct xsk_socket_config *cfg,
-				     const struct xsk_socket_config *usr_cfg)
+				     const struct xsk_socket_opts *opts)
 {
-	if (!usr_cfg) {
-		cfg->rx_size = XSK_RING_CONS__DEFAULT_NUM_DESCS;
-		cfg->tx_size = XSK_RING_PROD__DEFAULT_NUM_DESCS;
-		cfg->libbpf_flags = 0;
-		cfg->xdp_flags = 0;
-		cfg->bind_flags = 0;
-		return 0;
-	}
+	__u32 libxdp_flags;
 
-	if (usr_cfg->libbpf_flags & ~XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD)
+	libxdp_flags = OPTS_GET(opts, libxdp_flags, 0);
+	if (libxdp_flags & ~XSK_LIBXDP_FLAGS__INHIBIT_PROG_LOAD)
 		return -EINVAL;
 
-	cfg->rx_size = usr_cfg->rx_size;
-	cfg->tx_size = usr_cfg->tx_size;
-	cfg->libbpf_flags = usr_cfg->libbpf_flags;
-	cfg->xdp_flags = usr_cfg->xdp_flags;
-	cfg->bind_flags = usr_cfg->bind_flags;
+	cfg->rx_size = OPTS_GET(opts, rx_size, 0) ?: XSK_RING_CONS__DEFAULT_NUM_DESCS;
+	cfg->tx_size = OPTS_GET(opts, tx_size, 0) ?: XSK_RING_PROD__DEFAULT_NUM_DESCS;
+	cfg->libxdp_flags = libxdp_flags;
+	cfg->xdp_flags = OPTS_GET(opts, xdp_flags, 0);
+	cfg->bind_flags = OPTS_GET(opts, bind_flags, 0);
 
 	return 0;
 }
@@ -306,26 +291,39 @@ out_mmap:
 	return err;
 }
 
-int xsk_umem__create_with_fd(struct xsk_umem **umem_ptr, int fd,
-			     void *umem_area, __u64 size,
-			     struct xsk_ring_prod *fill,
-			     struct xsk_ring_cons *comp,
-			     const struct xsk_umem_config *usr_config)
-{
+struct xsk_umem *xsk_umem__create_opts(void *umem_area,
+				       struct xsk_ring_prod *fill,
+				       struct xsk_ring_cons *comp,
+				       struct xsk_umem_opts *opts) {
 	struct xdp_umem_reg mr;
 	struct xsk_umem *umem;
-	int err;
+	int err, fd;
+	__u64 size;
+	
+	if (!umem_area || !fill || !comp) {
+		err = -EFAULT;
+		goto err;
+	}
 
-	if (!umem_area || !umem_ptr || !fill || !comp)
-		return -EFAULT;
-	if (!size && !xsk_page_aligned(umem_area))
-		return -EINVAL;
+	if (!OPTS_VALID(opts, xsk_umem_opts)) {
+		err = -EINVAL;
+		goto err;
+	}
+	fd = OPTS_GET(opts, fd, 0);
+	size = OPTS_GET(opts, size, 0);
+	
+	if (!size && !xsk_page_aligned(umem_area)) {
+		err = -EINVAL;
+		goto err;
+	}
 
 	umem = calloc(1, sizeof(*umem));
-	if (!umem)
-		return -ENOMEM;
+	if (!umem) {
+		err = -ENOMEM;
+		goto err;
+	}
 
-	umem->fd = fd < 0 ? socket(AF_XDP, SOCK_RAW, 0) : fd;
+	umem->fd = fd > 0 ? fd : socket(AF_XDP, SOCK_RAW, 0);
 	if (umem->fd < 0) {
 		err = -errno;
 		goto out_umem_alloc;
@@ -333,7 +331,7 @@ int xsk_umem__create_with_fd(struct xsk_umem **umem_ptr, int fd,
 
 	umem->umem_area = umem_area;
 	INIT_LIST_HEAD(&umem->ctx_list);
-	xsk_set_umem_config(&umem->config, usr_config);
+	xsk_set_umem_config(&umem->config, opts);
 
 	memset(&mr, 0, sizeof(mr));
 	mr.addr = (uintptr_t)umem_area;
@@ -341,7 +339,8 @@ int xsk_umem__create_with_fd(struct xsk_umem **umem_ptr, int fd,
 	mr.chunk_size = umem->config.frame_size;
 	mr.headroom = umem->config.frame_headroom;
 	mr.flags = umem->config.flags;
-
+	mr.tx_metadata_len = OPTS_GET(opts, tx_metadata_len, XSK_UMEM__DEFAULT_TX_METADATA_LEN);
+	
 	err = setsockopt(umem->fd, SOL_XDP, XDP_UMEM_REG, &mr, sizeof(mr));
 	if (err) {
 		err = -errno;
@@ -354,14 +353,43 @@ int xsk_umem__create_with_fd(struct xsk_umem **umem_ptr, int fd,
 
 	umem->fill_save = fill;
 	umem->comp_save = comp;
-	*umem_ptr = umem;
-	return 0;
-
+	return umem;
 out_socket:
 	close(umem->fd);
 out_umem_alloc:
 	free(umem);
-	return err;
+err:
+	return libxdp_err_ptr(err, true);
+}
+
+int xsk_umem__create_with_fd(struct xsk_umem **umem_ptr, int fd,
+			     void *umem_area, __u64 size,
+			     struct xsk_ring_prod *fill,
+			     struct xsk_ring_cons *comp,
+			     const struct xsk_umem_config *usr_config)
+{
+	struct xsk_umem *umem;
+
+	if (!umem_ptr)
+		return -EFAULT;
+
+	DECLARE_LIBXDP_OPTS(xsk_umem_opts, opts,
+		.fd = fd,
+		.size = size,
+	);
+	if (usr_config) {
+		opts.fill_size = usr_config->fill_size;
+		opts.comp_size = usr_config->comp_size;
+		opts.frame_size = usr_config->frame_size;
+		opts.frame_headroom = usr_config->frame_headroom;
+		opts.flags = usr_config->flags;
+	}
+	umem = xsk_umem__create_opts(umem_area, fill, comp, &opts);
+	if (!umem)
+		return errno;
+	
+	*umem_ptr = umem;
+	return 0;
 }
 
 int xsk_umem__create(struct xsk_umem **umem_ptr, void *umem_area,
@@ -369,7 +397,7 @@ int xsk_umem__create(struct xsk_umem **umem_ptr, void *umem_area,
 		     struct xsk_ring_cons *comp,
 		     const struct xsk_umem_config *usr_config)
 {
-	return xsk_umem__create_with_fd(umem_ptr, -1, umem_area, size,
+	return xsk_umem__create_with_fd(umem_ptr, 0, umem_area, size,
 					fill, comp, usr_config);
 }
 
@@ -1013,19 +1041,19 @@ int xsk_setup_xdp_prog(int ifindex, int *xsks_map_fd)
 	return res;
 }
 
-int xsk_socket__create_shared(struct xsk_socket **xsk_ptr,
-			      const char *ifname,
-			      __u32 queue_id, struct xsk_umem *umem,
-			      struct xsk_ring_cons *rx,
-			      struct xsk_ring_prod *tx,
-			      struct xsk_ring_prod *fill,
-			      struct xsk_ring_cons *comp,
-			      const struct xsk_socket_config *usr_config)
+struct xsk_socket *xsk_socket__create_opts(const char *ifname,
+					   __u32 queue_id,
+					   struct xsk_umem *umem,
+					   struct xsk_socket_opts *opts)
 {
 	bool rx_setup_done = false, tx_setup_done = false;
 	void *rx_map = NULL, *tx_map = NULL;
 	struct sockaddr_xdp sxdp = {};
 	struct xdp_mmap_offsets off;
+	struct xsk_ring_prod *fill;
+	struct xsk_ring_cons *comp;
+	struct xsk_ring_cons *rx;
+	struct xsk_ring_prod *tx;
 	struct xsk_socket *xsk;
 	struct xsk_ctx *ctx;
 	int err, ifindex;
@@ -1033,14 +1061,31 @@ int xsk_socket__create_shared(struct xsk_socket **xsk_ptr,
 	socklen_t optlen;
 	bool unmap;
 
-	if (!umem || !xsk_ptr || !(rx || tx))
-		return -EFAULT;
+	if (!OPTS_VALID(opts, xsk_socket_opts)) {
+		err = -EINVAL;
+		goto err;
+	}
+	rx = OPTS_GET(opts, rx, NULL);
+	tx = OPTS_GET(opts, tx, NULL);
+	fill = OPTS_GET(opts, fill, NULL);
+	comp = OPTS_GET(opts, comp, NULL);
+
+	if (!umem || !(rx || tx) || (fill == NULL) ^ (comp == NULL)) {
+		err = -EFAULT;
+		goto err;
+	}
+	if (!fill && !comp) {
+		fill = umem->fill_save;
+		comp = umem->comp_save;
+	}
 
 	xsk = calloc(1, sizeof(*xsk));
-	if (!xsk)
-		return -ENOMEM;
+	if (!xsk) {
+		err = -ENOMEM;
+		goto err;
+	}
 
-	err = xsk_set_xdp_socket_config(&xsk->config, usr_config);
+	err = xsk_set_xdp_socket_config(&xsk->config, opts);
 	if (err)
 		goto out_xsk_alloc;
 
@@ -1179,16 +1224,15 @@ int xsk_socket__create_shared(struct xsk_socket **xsk_ptr,
 		goto out_mmap_tx;
 	}
 
-	if (!(xsk->config.libbpf_flags & XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD)) {
+	if (!(xsk->config.libxdp_flags & XSK_LIBXDP_FLAGS__INHIBIT_PROG_LOAD)) {
 		err = __xsk_setup_xdp_prog(xsk, NULL);
 		if (err)
 			goto out_mmap_tx;
 	}
 
-	*xsk_ptr = xsk;
 	umem->fill_save = NULL;
 	umem->comp_save = NULL;
-	return 0;
+	return xsk;
 
 out_mmap_tx:
 	if (tx)
@@ -1206,7 +1250,43 @@ out_socket:
 		close(xsk->fd);
 out_xsk_alloc:
 	free(xsk);
-	return err;
+err:
+	return libxdp_err_ptr(err, true);
+}							
+
+int xsk_socket__create_shared(struct xsk_socket **xsk_ptr,
+			      const char *ifname,
+			      __u32 queue_id, struct xsk_umem *umem,
+			      struct xsk_ring_cons *rx,
+			      struct xsk_ring_prod *tx,
+			      struct xsk_ring_prod *fill,
+			      struct xsk_ring_cons *comp,
+			      const struct xsk_socket_config *usr_config)
+{
+	struct xsk_socket *xsk;
+
+	if (!xsk_ptr)
+		return -EFAULT;
+
+	DECLARE_LIBXDP_OPTS(xsk_socket_opts, opts,
+		.rx = rx,
+		.tx = tx,
+		.fill = fill,
+		.comp = comp,
+	);
+	if (usr_config) {
+		opts.rx_size = usr_config->rx_size;
+		opts.tx_size= usr_config->tx_size;
+		opts.libxdp_flags = usr_config->libxdp_flags;
+		opts.xdp_flags = usr_config->xdp_flags;
+		opts.bind_flags = usr_config->bind_flags;
+	}
+	xsk = xsk_socket__create_opts(ifname, queue_id, umem, &opts);
+	if (!xsk)
+		return errno;
+
+	*xsk_ptr = xsk;
+	return 0;
 }
 
 int xsk_socket__create(struct xsk_socket **xsk_ptr, const char *ifname,

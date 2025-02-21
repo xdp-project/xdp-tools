@@ -102,9 +102,9 @@ test_ports_allow()
     check_port tcp $TEST_PORT OK
     check_port udp $TEST_PORT OK
     check_run $XDP_FILTER port $TEST_PORT -v
-    check_port tcp $TEST_PORT FAIL
+    check_port tcp $TEST_PORT NOTOK
     check_port tcp $[TEST_PORT+1] OK
-    check_port udp $TEST_PORT FAIL
+    check_port udp $TEST_PORT NOTOK
     check_port udp $[TEST_PORT+1] OK
     check_run $XDP_FILTER port -r $TEST_PORT -v
     check_port tcp $TEST_PORT OK
@@ -117,16 +117,16 @@ test_ports_deny()
     local TEST_PORT=10000
     # default deny mode
     check_run $XDP_FILTER load -p deny -f udp,tcp $NS -v
-    check_port tcp $TEST_PORT FAIL
-    check_port udp $TEST_PORT FAIL
+    check_port tcp $TEST_PORT NOTOK
+    check_port udp $TEST_PORT NOTOK
     check_run $XDP_FILTER port $TEST_PORT -v
     check_port tcp $TEST_PORT OK
-    check_port tcp $[TEST_PORT+1] FAIL
+    check_port tcp $[TEST_PORT+1] NOTOK
     check_port udp $TEST_PORT OK
-    check_port udp $[TEST_PORT+1] FAIL
+    check_port udp $[TEST_PORT+1] NOTOK
     check_run $XDP_FILTER port -r $TEST_PORT -v
-    check_port tcp $TEST_PORT FAIL
-    check_port udp $TEST_PORT FAIL
+    check_port tcp $TEST_PORT NOTOK
+    check_port udp $TEST_PORT NOTOK
     check_run $XDP_FILTER unload $NS -v
 }
 
@@ -140,11 +140,11 @@ test_ipv6_allow()
     check_ping6 OK
     check_run $XDP_FILTER load -f ipv6 $NS -v
     check_run $XDP_FILTER ip $OUTSIDE_IP6
-    check_ping6 FAIL
+    check_ping6 NOTOK
     check_run $XDP_FILTER ip -r $OUTSIDE_IP6
     check_ping6 OK
     check_run $XDP_FILTER ip -m src $INSIDE_IP6
-    check_ping6 FAIL
+    check_ping6 NOTOK
     check_run $XDP_FILTER ip -m src -r $INSIDE_IP6
     check_ping6 OK
     check_run $XDP_FILTER unload $NS -v
@@ -157,11 +157,11 @@ test_ipv6_deny()
     check_run $XDP_FILTER ip $OUTSIDE_IP6
     check_ping6 OK
     check_run $XDP_FILTER ip -r $OUTSIDE_IP6
-    check_ping6 FAIL
+    check_ping6 NOTOK
     check_run $XDP_FILTER ip -m src $INSIDE_IP6
     check_ping6 OK
     check_run $XDP_FILTER ip -m src -r $INSIDE_IP6
-    check_ping6 FAIL
+    check_ping6 NOTOK
     check_run $XDP_FILTER unload $NS -v
 }
 
@@ -175,11 +175,11 @@ test_ipv4_allow()
     check_ping4 OK
     check_run $XDP_FILTER load -f ipv4 $NS -v
     check_run $XDP_FILTER ip $OUTSIDE_IP4
-    check_ping4 FAIL
+    check_ping4 NOTOK
     check_run $XDP_FILTER ip -r $OUTSIDE_IP4
     check_ping4 OK
     check_run $XDP_FILTER ip -m src $INSIDE_IP4
-    check_ping4 FAIL
+    check_ping4 NOTOK
     check_run $XDP_FILTER ip -m src -r $INSIDE_IP4
     check_ping4 OK
     check_run $XDP_FILTER unload $NS -v
@@ -192,11 +192,11 @@ test_ipv4_deny()
     check_run $XDP_FILTER ip $OUTSIDE_IP4
     check_ping4 OK
     check_run $XDP_FILTER ip -r $OUTSIDE_IP4
-    check_ping4 FAIL
+    check_ping4 NOTOK
     check_run $XDP_FILTER ip -m src $INSIDE_IP4
     check_ping4 OK
     check_run $XDP_FILTER ip -m src -r $INSIDE_IP4
-    check_ping4 FAIL
+    check_ping4 NOTOK
     check_run $XDP_FILTER unload $NS -v
 }
 
@@ -205,11 +205,11 @@ test_ether_allow()
     check_ping6 OK
     check_run $XDP_FILTER load -f ethernet $NS -v
     check_run $XDP_FILTER ether $OUTSIDE_MAC
-    check_ping6 FAIL
+    check_ping6 NOTOK
     check_run $XDP_FILTER ether -r $OUTSIDE_MAC
     check_ping6 OK
     check_run $XDP_FILTER ether -m src $INSIDE_MAC
-    check_ping6 FAIL
+    check_ping6 NOTOK
     check_run $XDP_FILTER ether -m src -r $INSIDE_MAC
     check_ping6 OK
     check_run $XDP_FILTER unload $NS -v
@@ -222,11 +222,11 @@ test_ether_deny()
     check_run $XDP_FILTER ether $OUTSIDE_MAC
     check_ping6 OK
     check_run $XDP_FILTER ether -r $OUTSIDE_MAC
-    check_ping6 FAIL
+    check_ping6 NOTOK
     check_run $XDP_FILTER ether -m src $INSIDE_MAC
     check_ping6 OK
     check_run $XDP_FILTER ether -m src -r $INSIDE_MAC
-    check_ping6 FAIL
+    check_ping6 NOTOK
     check_run $XDP_FILTER unload $NS -v
 }
 
@@ -287,7 +287,7 @@ check_port_removal_from_all()
 
     check_run $XDP_FILTER port $TEST_PORT -p tcp,udp -m src,dst
     check_status "$TEST_PORT.*src,dst,tcp,udp"
-    
+
     check_run $XDP_FILTER port $TEST_PORT $command_options -r
     if [[ -z "$expected_output" ]]; then
         check_status_no_match "$TEST_PORT"
@@ -362,7 +362,7 @@ run_python_test()
     fi
 
     python="$(get_python)"
-    if [[ $? -ne 0 ]]; then 
+    if [[ $? -ne 0 ]]; then
         return "$SKIPPED_TEST"
     fi
 

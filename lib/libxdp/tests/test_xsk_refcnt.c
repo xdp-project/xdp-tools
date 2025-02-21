@@ -107,16 +107,17 @@ static struct xsk_socket_info *xsks[MAX_NUM_QUEUES];
 static struct xsk_umem_info *xsk_configure_umem(void *buffer, u64 size)
 {
 	struct xsk_umem_info *umem;
-	int ret;
 
 	umem = calloc(1, sizeof(*umem));
 	if (!umem)
 		exit(EXIT_FAILURE);
 
-	ret = xsk_umem__create(&umem->umem, buffer, size, &umem->fq, &umem->cq,
-			       NULL);
-	if (ret)
-		exit(ret);
+	DECLARE_LIBXDP_OPTS(xsk_umem_opts, opts, 
+		.size = size,
+	);
+	umem->umem = xsk_umem__create_opts(buffer, &umem->fq, &umem->cq, &opts);
+	if (!umem->umem)
+		exit(errno);
 
 	umem->buffer = buffer;
 	return umem;
@@ -125,7 +126,6 @@ static struct xsk_umem_info *xsk_configure_umem(void *buffer, u64 size)
 static struct xsk_socket_info *xsk_configure_socket(struct xsk_umem_info *umem,
 						    unsigned int qid)
 {
-	struct xsk_socket_config cfg = {};
 	struct xsk_socket_info *xsk;
 	struct xsk_ring_cons *rxr;
 
@@ -134,11 +134,12 @@ static struct xsk_socket_info *xsk_configure_socket(struct xsk_umem_info *umem,
 		exit(EXIT_FAILURE);
 
 	xsk->umem = umem;
-	cfg.rx_size = XSK_RING_CONS__DEFAULT_NUM_DESCS;
-
 	rxr = &xsk->rx;
-	xsk_socket__create(&xsk->xsk, opt_if, qid, umem->umem,
-			   rxr, NULL, &cfg);
+	DECLARE_LIBXDP_OPTS(xsk_socket_opts, opts, 
+		.rx = rxr,
+		.rx_size = XSK_RING_CONS__DEFAULT_NUM_DESCS,
+	);
+	xsk->xsk = xsk_socket__create_opts(opt_if, qid, umem->umem, &opts);
 
 	return xsk;
 }

@@ -39,6 +39,7 @@ int do_redirect_basic(const void *cfg, __unused const char *pin_root_path)
 
 	struct xdp_program *xdp_prog = NULL, *dummy_prog = NULL;
 	DECLARE_LIBBPF_OPTS(xdp_program_opts, opts);
+	struct bpf_program *prog = NULL;
 	struct xdp_redirect_basic *skel;
 	char str[2 * IF_NAMESIZE + 1];
 	int ret = EXIT_FAIL_OPTION;
@@ -73,8 +74,14 @@ int do_redirect_basic(const void *cfg, __unused const char *pin_root_path)
 	skel->rodata->to_match[0] = opt->iface_out.ifindex;
 	skel->rodata->ifindex_out = opt->iface_out.ifindex;
 
+	/* Make sure we only load the one XDP program we are interested in */
+	while ((prog = bpf_object__next_program(skel->obj, prog)) != NULL)
+		if (bpf_program__type(prog) == BPF_PROG_TYPE_XDP &&
+		    bpf_program__expected_attach_type(prog) == BPF_XDP)
+			bpf_program__set_autoload(prog, false);
+
 	opts.obj = skel->obj;
-	opts.prog_name = bpf_program__name(skel->progs.xdp_redirect_basic_prog);
+	opts.prog_name = (opt->load_mode == BASIC_LOAD_BYTES) ? "xdp_redirect_load_bytes_prog" : "xdp_redirect_prog";
 	xdp_prog = xdp_program__create(&opts);
 	if (!xdp_prog) {
 		ret = -errno;
@@ -119,6 +126,8 @@ int do_redirect_basic(const void *cfg, __unused const char *pin_root_path)
 		ret = EXIT_FAIL_BPF;
 		goto end_detach;
 	}
+
+	xdp_program__set_xdp_frags_support(dummy_prog, true);
 
 	ret = xdp_program__attach(dummy_prog, opt->iface_out.ifindex, opt->mode, 0);
 	if (ret < 0) {

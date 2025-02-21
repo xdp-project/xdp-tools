@@ -59,7 +59,6 @@ check_toolchain()
 
     : ${PKG_CONFIG:=pkg-config}
     : ${CC=gcc}
-    : ${LD=ld}
     : ${OBJCOPY=objcopy}
     : ${CLANG=clang}
     : ${LLC=llc}
@@ -73,7 +72,7 @@ check_toolchain()
     CLANG=$(find_tool clang "$CLANG")
     LLC=$(find_tool llc "$LLC")
 
-    for TOOL in $PKG_CONFIG $CC $LD $OBJCOPY $CLANG $LLC $M4 $READELF; do
+    for TOOL in $PKG_CONFIG $CC $OBJCOPY $CLANG $LLC $M4 $READELF; do
         if [ ! $(command -v ${TOOL} 2>/dev/null) ]; then
             echo "*** ERROR: Cannot find tool ${TOOL}" ;
             exit 1;
@@ -82,7 +81,7 @@ check_toolchain()
 
     ARCH_NAME=$($CC -print-multiarch 2>/dev/null)
 
-    clang_version=$($CLANG --version | grep -Po '(?<=clang version )[[:digit:]]+')
+    clang_version=$($CLANG --version | sed -nE 's/.*clang version ([[:digit:]]+).*/\1/p')
     if [ "$?" -ne "0" ]; then
         echo "*** ERROR: Couldn't execute '$CLANG --version'"
         exit 1
@@ -130,7 +129,6 @@ check_toolchain()
 
     echo "PKG_CONFIG:=${PKG_CONFIG}" >>$CONFIG
     echo "CC:=${CC}" >>$CONFIG
-    echo "LD:=${LD}" >>$CONFIG
     echo "OBJCOPY:=${OBJCOPY}" >>$CONFIG
     echo "CLANG:=${CLANG}" >>$CONFIG
     echo "LLC:=${LLC}" >>$CONFIG

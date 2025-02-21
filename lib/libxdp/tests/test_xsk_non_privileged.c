@@ -91,11 +91,6 @@ static void run_non_privileged_preconfig(const char *ifname,
 
 static struct xsk_umem *create_umem_non_privileged(int sock_fd)
 {
-	struct xsk_umem_config config = {
-		.fill_size = XSK_RING_PROD__DEFAULT_NUM_DESCS,
-		.comp_size = XSK_RING_CONS__DEFAULT_NUM_DESCS,
-		.frame_size = XSK_UMEM__DEFAULT_FRAME_SIZE,
-	};
 	struct xsk_umem *umem = NULL;
 	struct xsk_ring_cons cq;
 	struct xsk_ring_prod fq;
@@ -107,16 +102,29 @@ static struct xsk_umem *create_umem_non_privileged(int sock_fd)
 	}
 
 	/* This variant requires CAP_NET_RAW, so should fail. */
-	if (!xsk_umem__create(&umem, b, UMEM_SIZE,
-			      &fq, &cq, &config) || umem) {
-		perror("xsk_umem__create succeeded");
+	DECLARE_LIBXDP_OPTS(xsk_umem_opts, opts_cap,
+		.size = UMEM_SIZE,
+		.fill_size = XSK_RING_PROD__DEFAULT_NUM_DESCS,
+		.comp_size = XSK_RING_CONS__DEFAULT_NUM_DESCS,
+		.frame_size = XSK_UMEM__DEFAULT_FRAME_SIZE,
+	);
+	umem = xsk_umem__create_opts(b, &fq, &cq, &opts_cap);
+	if (umem) {
+		perror("xsk_umem__create_opts succeeded");
 		exit(EXIT_FAILURE);
 	}
 
 	/* This variant shouldn't need any capabilities, so should pass. */
-	if (xsk_umem__create_with_fd(&umem, sock_fd, b, UMEM_SIZE,
-				     &fq, &cq, &config) || !umem) {
-		perror("xsk_umem__create_with_fd failed");
+	DECLARE_LIBXDP_OPTS(xsk_umem_opts, opts,
+		.fd = sock_fd,
+		.size = UMEM_SIZE,
+		.fill_size = XSK_RING_PROD__DEFAULT_NUM_DESCS,
+		.comp_size = XSK_RING_CONS__DEFAULT_NUM_DESCS,
+		.frame_size = XSK_UMEM__DEFAULT_FRAME_SIZE,
+	);
+	umem = xsk_umem__create_opts(b, &fq, &cq, &opts);
+	if (!umem) {
+		perror("xsk_umem__create_opts failed");
 		exit(EXIT_FAILURE);
 	}
 
@@ -127,20 +135,22 @@ static struct xsk_socket *create_xsk_non_privileged(const char *ifname,
 						    struct xsk_umem *umem,
 						    int queue_id)
 {
-	struct xsk_socket_config cfg = {
+	struct xsk_socket *xsk = NULL;
+	struct xsk_ring_cons rx;
+	struct xsk_ring_prod tx;
+
+	DECLARE_LIBXDP_OPTS(xsk_socket_opts, opts, 
+		.rx = &rx,
+		.tx = &tx,
 		.rx_size = XSK_RING_CONS__DEFAULT_NUM_DESCS,
 		.tx_size = XSK_RING_PROD__DEFAULT_NUM_DESCS,
 		.libxdp_flags = XSK_LIBXDP_FLAGS__INHIBIT_PROG_LOAD,
 		.bind_flags = XDP_USE_NEED_WAKEUP,
 		.xdp_flags = XDP_FLAGS_UPDATE_IF_NOEXIST,
-	};
-	struct xsk_socket *xsk = NULL;
-	struct xsk_ring_cons rx;
-	struct xsk_ring_prod tx;
-
-	if (xsk_socket__create(&xsk, ifname, queue_id,
-			       umem, &rx, &tx, &cfg) || !xsk) {
-		perror("xsk_socket__create failed");
+	);
+	xsk = xsk_socket__create_opts(ifname, queue_id, umem, &opts);
+	if (!xsk) {
+		perror("xsk_socket__create_opts failed");
 		exit(EXIT_FAILURE);
 	}
 

@@ -2,9 +2,9 @@ name: Selftests
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   selftest:
@@ -12,8 +12,8 @@ jobs:
     strategy:
       matrix:
         KERNEL_VERSION:
-          - "6.12.0-0.rc2.24.fc42"
-          - "6.10.14-200.fc40"
+          - "6.12.8-200.fc41"
+          - "6.10.12-200.fc40"
           - "6.6.14-200.fc39"
           - "6.1.9-200.fc37"
           - "5.16.8-200.fc35"

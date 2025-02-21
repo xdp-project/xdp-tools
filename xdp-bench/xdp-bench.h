@@ -43,6 +43,7 @@ struct redirect_opts {
 	bool extended;
 	__u32 interval;
 	enum xdp_attach_mode mode;
+	enum basic_load_mode load_mode;
 	struct iface iface_in;
 	struct iface iface_out;
 };

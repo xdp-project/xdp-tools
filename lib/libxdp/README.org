@@ -267,10 +267,14 @@ BPF maps which is a must if users want to add their own XDP program.
 
 If there is already a socket created with socket(AF_XDP, SOCK_RAW, 0)
 not bound and not tied to any umem, file descriptor of this socket can
-be used in an xsk_umem__create_with_fd() variant of the umem creation
-function.
+be used in param opts of xsk_umem__create_opts(), which is a recommended
+way of umem creation.
 
 #+begin_src C
+struct xsk_umem *xsk_umem__create_opts(void *umem_area,
+				       struct xsk_ring_prod *fill,
+				       struct xsk_ring_cons *comp,
+				       struct xsk_umem_opts *opts);
 int xsk_umem__create(struct xsk_umem **umem,
 		     void *umem_area, __u64 size,
 		     struct xsk_ring_prod *fill,
@@ -315,7 +319,7 @@ from some form of control process that has the necessary privileges. The
 xsk_socket__create executed on the non-privileged process will then skip these
 two steps. For an example on how to use these, please take a look at the
 AF_XDP-example program in the bpf-examples repository:
-https://github.com/xdp-project/bpf-examples/tree/master/AF_XDP-example.
+https://github.com/xdp-project/bpf-examples/tree/main/AF_XDP-example.
 
 #+begin_src C
 int xsk_setup_xdp_prog(int ifindex, int *xsks_map_fd);
@@ -324,8 +328,8 @@ int xsk_socket__update_xskmap(struct xsk_socket *xsk, int xsks_map_fd);
 
 To further reduce required level of privileges, an AF_XDP socket can be created
 beforehand with socket(AF_XDP, SOCK_RAW, 0) and passed to a non-privileged
-process.  This socket can be used in xsk_umem__create_with_fd() and later
-in xsk_socket__create() with created umem.  xsk_socket__create_shared() would
+process.  This socket can be used in xsk_umem__create_opts() and later in
+xsk_socket__create() with created umem.  xsk_socket__create_shared() would
 still require privileges for AF_XDP socket creation.
 
 ** Data path

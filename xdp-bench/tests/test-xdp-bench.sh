@@ -35,10 +35,20 @@ test_xdp_load_bytes()
     export XDP_SAMPLE_IMMEDIATE_EXIT=1
 
     for action in drop pass tx; do
-        check_run $XDP_BENCH $action $NS -p parse-ip -l load-bytes -vv
+        check_run $XDP_BENCH $action $NS -l load-bytes -vv
         check_run $XDP_BENCH $action $NS -p read-data -l load-bytes -vv
+        check_run $XDP_BENCH $action $NS -p parse-ip -l load-bytes -vv
         check_run $XDP_BENCH $action $NS -p swap-macs -l load-bytes -vv
+        check_run $XDP_BENCH $action $NS -m skb -l load-bytes -vv
+        check_run $XDP_BENCH $action $NS -e -l load-bytes -vv
     done
+
+    check_run ip link add dev btest0 type veth peer name btest1
+    check_run $XDP_BENCH redirect btest0 btest1 -l load-bytes -vv
+    check_run $XDP_BENCH redirect btest0 btest1 -s -l load-bytes -vv
+    check_run $XDP_BENCH redirect btest0 btest1 -m skb -l load-bytes -vv
+    check_run $XDP_BENCH redirect btest0 btest1 -e -l load-bytes -vv
+    ip link del dev btest0
 }
 
 test_rxq_stats()

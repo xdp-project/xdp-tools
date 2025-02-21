@@ -194,6 +194,7 @@ int xsk_socket__fd(const struct xsk_socket *xsk);
 #define XSK_UMEM__DEFAULT_FRAME_SIZE     (1 << XSK_UMEM__DEFAULT_FRAME_SHIFT)
 #define XSK_UMEM__DEFAULT_FRAME_HEADROOM 0
 #define XSK_UMEM__DEFAULT_FLAGS 0
+#define XSK_UMEM__DEFAULT_TX_METADATA_LEN 0
 
 struct xsk_umem_config {
 	__u32 fill_size;
@@ -202,6 +203,31 @@ struct xsk_umem_config {
 	__u32 frame_headroom;
 	__u32 flags;
 };
+
+/* The following fields are optional:
+ * 
+ * @fd, @size, @fill_size, @comp_size, @frame_size, @frame_headroom,
+ * @flags, @tx_metadata_len
+ *  If @fd is unset, a new sockfd will be created.
+ *  If @size is unset, @umem_area must be page-aligned.
+ *  If the remaining fields are unset, they will be set to 
+ *  default value (see `xsk_set_umem_config()`).
+ * 
+ * Except for the fields mentioned above, no field can be set.
+ */
+struct xsk_umem_opts {
+	size_t sz;
+	int fd;
+	__u64 size;
+	__u32 fill_size;
+	__u32 comp_size;
+	__u32 frame_size;
+	__u32 frame_headroom;
+	__u32 flags;
+	__u32 tx_metadata_len;
+	size_t :0;
+};
+#define xsk_umem_opts__last_field tx_metadata_len
 
 int xsk_setup_xdp_prog(int ifindex, int *xsks_map_fd);
 int xsk_socket__update_xskmap(struct xsk_socket *xsk, int xsks_map_fd);
@@ -223,6 +249,39 @@ struct xsk_socket_config {
 	__u16 bind_flags;
 };
 
+/* 
+ * The following fields should not be NULL at the same time:
+ *
+ * @rx, @tx
+ *  At least one traffic direction should be assigned for an xsk.
+ * 
+ * The following fields are optional:
+ * 
+ * @fill, @comp, @rx_size, @tx_size, @libxdp_flags, @xdp_flags,
+ * @bind_flags
+ *  If @fill and @comp are both unset, they will be set to umem's
+ *  fill_save and comp_save respectively. Note that it is invalid
+ *  to set only one of them.
+ *  If the remaining fields are unset, they will be set to 
+ *  default value (see `xsk_set_xdp_socket_config()`).
+ * 
+ * Except for the fields mentioned above, no field can be set.
+ */
+struct xsk_socket_opts {
+	size_t sz;
+	struct xsk_ring_cons *rx;
+	struct xsk_ring_prod *tx;
+	struct xsk_ring_prod *fill;
+	struct xsk_ring_cons *comp;
+	__u32 rx_size;
+	__u32 tx_size;
+	__u32 libxdp_flags;
+	__u32 xdp_flags;
+	__u16 bind_flags;
+	size_t :0;
+};
+#define xsk_socket_opts__last_field bind_flags
+
 /* Set config to NULL to get the default configuration. */
 int xsk_umem__create(struct xsk_umem **umem,
 		     void *umem_area, __u64 size,
@@ -234,6 +293,12 @@ int xsk_umem__create_with_fd(struct xsk_umem **umem,
 			     struct xsk_ring_prod *fill,
 			     struct xsk_ring_cons *comp,
 			     const struct xsk_umem_config *config);
+/* Newer version to create umem by opts, recommended to use. */
+struct xsk_umem *xsk_umem__create_opts(void *umem_area,
+				       struct xsk_ring_prod *fill,
+				       struct xsk_ring_cons *comp,
+				       struct xsk_umem_opts *opts);
+
 int xsk_socket__create(struct xsk_socket **xsk,
 		       const char *ifname, __u32 queue_id,
 		       struct xsk_umem *umem,
@@ -248,6 +313,11 @@ int xsk_socket__create_shared(struct xsk_socket **xsk_ptr,
 			      struct xsk_ring_prod *fill,
 			      struct xsk_ring_cons *comp,
 			      const struct xsk_socket_config *config);
+/* Newer version to create xsk by opts, recommended to use. */				  
+struct xsk_socket *xsk_socket__create_opts(const char *ifname,
+					   __u32 queue_id,
+					   struct xsk_umem *umem,
+					   struct xsk_socket_opts *opts);		  
 
 /* Returns 0 for success and -EBUSY if the umem is still in use. */
 int xsk_umem__delete(struct xsk_umem *umem);

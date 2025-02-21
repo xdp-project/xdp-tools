@@ -78,13 +78,12 @@ flushing it back out if writing).
 The default for this option is =no-touch=.
 
 ** -l, --load-mode <MODE>
-Specify which mechanism xdp-bench should use to load the packet data when
-parsing the IP header (used with =-p parse-ip=). The following modes are
-available:
+Specify which mechanism xdp-bench should use to load (and store) the packet data.
+The following modes are available:
 
 #+begin_src sh
  dpa		- Use traditional Direct Packet Access from the XDP program
- load-bytes		- Use the xdp_load_bytes() helper function to load the data
+ load-bytes	- Use the xdp_load_bytes() and xdp_store_bytes() helper functions
 #+end_src
 
 This can be used to benchmark the various packet access modes supported by the
@@ -154,13 +153,12 @@ following actions are available:
 The default for this option is =no-touch=.
 
 ** -l, --load-mode <MODE>
-Specify which mechanism xdp-bench should use to load the packet data when
-parsing the IP header (used with =-p parse-ip=). The following modes are
-available:
+Specify which mechanism xdp-bench should use to load (and store) the packet data.
+The following modes are available:
 
 #+begin_src sh
  dpa		- Use traditional Direct Packet Access from the XDP program
- load-bytes		- Use the xdp_load_bytes() helper function to load the data
+ load-bytes	- Use the xdp_load_bytes() and xdp_store_bytes() helper functions
 #+end_src
 
 This can be used to benchmark the various packet access modes supported by the
@@ -234,13 +232,12 @@ allows this function to be turned off.
 The default for this option is =swap-macs=.
 
 ** -l, --load-mode <MODE>
-Specify which mechanism xdp-bench should use to load the packet data when
-parsing the IP header (used with =-p parse-ip=). The following modes are
-available:
+Specify which mechanism xdp-bench should use to load (and store) the packet data.
+The following modes are available:
 
 #+begin_src sh
  dpa		- Use traditional Direct Packet Access from the XDP program
- load-bytes		- Use the xdp_load_bytes() helper function to load the data
+ load-bytes	- Use the xdp_load_bytes() and xdp_store_bytes() helper functions
 #+end_src
 
 This can be used to benchmark the various packet access modes supported by the
@@ -292,6 +289,20 @@ Where =<ifname_in>= is the name of the input interface from where packets will
 be redirect to the output interface =<ifname_out>=.
 
 The supported options are:
+
+** -l, --load-mode <MODE>
+Specify which mechanism xdp-bench should use to load (and store) the packet data.
+The following modes are available:
+
+#+begin_src sh
+ dpa		- Use traditional Direct Packet Access from the XDP program
+ load-bytes	- Use the xdp_load_bytes() and xdp_store_bytes() helper functions
+#+end_src
+
+This can be used to benchmark the various packet access modes supported by the
+kernel.
+
+The default for this option is =dpa=.
 
 ** -i, --interval <SECONDS>
 Set the polling interval for collecting all statistics and displaying them to

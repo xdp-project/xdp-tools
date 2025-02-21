@@ -81,6 +81,10 @@ Enable dynamic port mode where the destination port is varied over a range of
 Number of packets to send before exiting. If not supplied, =xdp-trafficgen= will
 keep sending packets until interrupted.
 
+** -s, --pkt-size <bytes>
+Size of each UDP packet being sent, including the Ethernet header. The minimum
+size, which is also the default, is 64 bytes.
+
 ** -t, --threads <threads>
 Number of simultaneous threads to transmit from. Each thread will be pinned to a
 separate CPU core if possible. Defaults to 1.

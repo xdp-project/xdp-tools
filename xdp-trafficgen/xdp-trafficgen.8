@@ -1,4 +1,4 @@
-.TH "xdp-trafficgen" "8" "JULY 22, 2024" "V1.4.3" "An XDP-based traffic generator"
+.TH "xdp-trafficgen" "8" "JANUARY  9, 2025" "V1.5.2" "An XDP-based traffic generator"
 
 .SH "NAME"
 XDP-trafficgen \- an XDP-based traffic generator
@@ -93,6 +93,11 @@ Enable dynamic port mode where the destination port is varied over a range of
 .PP
 Number of packets to send before exiting. If not supplied, \fIxdp\-trafficgen\fP will
 keep sending packets until interrupted.
+
+.SS "-s, --pkt-size <bytes>"
+.PP
+Size of each UDP packet being sent, including the Ethernet header. The minimum
+size, which is also the default, is 64 bytes.
 
 .SS "-t, --threads <threads>"
 .PP

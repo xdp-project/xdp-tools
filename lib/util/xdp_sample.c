@@ -123,6 +123,7 @@ struct sample_output {
 		uint64_t drop;
 		uint64_t drop_xmit;
 		uint64_t err;
+		uint64_t err_pps;
 		uint64_t xmit;
 	} totals;
 	struct {
@@ -154,6 +155,7 @@ size_t sample_map_count[NUM_MAP];
 enum log_level sample_log_level;
 struct sample_output sample_out;
 unsigned long sample_interval;
+__u64 sample_start_time;
 bool sample_err_exp;
 int sample_xdp_cnt;
 int sample_n_cpus;
@@ -549,13 +551,6 @@ static double calc_period(struct record *r, struct record *p)
 	return period_;
 }
 
-static double sample_round(double val)
-{
-	if (val - floor(val) < 0.5)
-		return floor(val);
-	return ceil(val);
-}
-
 static __u64 calc_pps(struct datarec *r, struct datarec *p, double period_)
 {
 	__u64 packets = 0;
@@ -563,9 +558,19 @@ static __u64 calc_pps(struct datarec *r, struct datarec *p, double period_)
 
 	if (period_ > 0) {
 		packets = r->processed - p->processed;
-		pps = sample_round(packets / period_);
+		pps = round(packets / period_);
 	}
 	return pps;
+}
+
+static __u64 calc_pkts(struct datarec *r, struct datarec *p, double period_)
+{
+	__u64 packets = 0;
+
+	if (period_ > 0) {
+		packets = r->processed - p->processed;
+	}
+	return packets;
 }
 
 static __u64 calc_drop_pps(struct datarec *r, struct datarec *p, double period_)
@@ -575,9 +580,19 @@ static __u64 calc_drop_pps(struct datarec *r, struct datarec *p, double period_)
 
 	if (period_ > 0) {
 		packets = r->dropped - p->dropped;
-		pps = sample_round(packets / period_);
+		pps = round(packets / period_);
 	}
 	return pps;
+}
+
+static __u64 calc_drop_pkts(struct datarec *r, struct datarec *p, double period_)
+{
+	__u64 packets = 0;
+
+	if (period_ > 0) {
+		packets = r->dropped - p->dropped;
+	}
+	return packets;
 }
 
 static __u64 calc_errs_pps(struct datarec *r, struct datarec *p, double period_)
@@ -587,9 +602,19 @@ static __u64 calc_errs_pps(struct datarec *r, struct datarec *p, double period_)
 
 	if (period_ > 0) {
 		packets = r->issue - p->issue;
-		pps = sample_round(packets / period_);
+		pps = round(packets / period_);
 	}
 	return pps;
+}
+
+static __u64 calc_errs_pkts(struct datarec *r, struct datarec *p, double period_)
+{
+	__u64 packets = 0;
+
+	if (period_ > 0) {
+		packets = r->issue - p->issue;
+	}
+	return packets;
 }
 
 static __u64 calc_info_pps(struct datarec *r, struct datarec *p, double period_)
@@ -599,7 +624,7 @@ static __u64 calc_info_pps(struct datarec *r, struct datarec *p, double period_)
 
 	if (period_ > 0) {
 		packets = r->info - p->info;
-		pps = sample_round(packets / period_);
+		pps = round(packets / period_);
 	}
 	return pps;
 }
@@ -645,16 +670,16 @@ static void stats_get_rx_cnt(struct stats_record *stats_rec,
 	}
 
 	if (out) {
-		pps = calc_pps(&rec->total, &prev->total, t);
-		drop = calc_drop_pps(&rec->total, &prev->total, t);
 		err = calc_errs_pps(&rec->total, &prev->total, t);
 
-		out->rx_cnt.pps = pps;
-		out->rx_cnt.drop = drop;
+		out->rx_cnt.pps = calc_pps(&rec->total, &prev->total, t);
+		out->rx_cnt.drop = calc_drop_pps(&rec->total, &prev->total, t);
 		out->rx_cnt.err = err;
-		out->totals.rx += pps;
-		out->totals.drop += drop;
-		out->totals.err += err;
+
+		out->totals.rx += calc_pkts(&rec->total, &prev->total, t);
+		out->totals.drop += calc_drop_pkts(&rec->total, &prev->total, t);
+		out->totals.err += calc_errs_pkts(&rec->total, &prev->total, t);
+		out->totals.err_pps += err;
 	}
 }
 
@@ -845,9 +870,8 @@ static void stats_get_redirect_cnt(struct stats_record *stats_rec,
 	}
 
 	if (out) {
-		pps = calc_pps(&rec->total, &prev->total, t);
-		out->redir_cnt.suc = pps;
-		out->totals.redir += pps;
+		out->redir_cnt.suc = calc_pps(&rec->total, &prev->total, t);
+		out->totals.redir += calc_pkts(&rec->total, &prev->total, t);
 	}
 }
 
@@ -856,8 +880,8 @@ static void stats_get_redirect_err_cnt(struct stats_record *stats_rec,
 				       int nr_cpus,
 				       struct sample_output *out)
 {
+	double t, drop, sum_pps = 0, sum_pkts = 0;
 	struct record *rec, *prev;
-	double t, drop, sum = 0;
 	int rec_i, i;
 
 	for (rec_i = 1; rec_i < XDP_REDIRECT_ERR_MAX; rec_i++) {
@@ -891,12 +915,14 @@ static void stats_get_redirect_err_cnt(struct stats_record *stats_rec,
 				      ERR(drop));
 		}
 
-		sum += drop;
+		sum_pps += drop;
+		sum_pkts += calc_drop_pkts(&rec->total, &prev->total, t);
 	}
 
 	if (out) {
-		out->redir_cnt.err = sum;
-		out->totals.err += sum;
+		out->redir_cnt.err = sum_pps;
+		out->totals.err += sum_pkts;
+		out->totals.err_pps += sum_pps;
 	}
 }
 
@@ -905,7 +931,7 @@ static void stats_get_exception_cnt(struct stats_record *stats_rec,
 				    int nr_cpus,
 				    struct sample_output *out)
 {
-	double t, drop, sum = 0;
+	double t, drop, sum_pps = 0, sum_pkts = 0;
 	struct record *rec, *prev;
 	int rec_i, i;
 
@@ -915,9 +941,10 @@ static void stats_get_exception_cnt(struct stats_record *stats_rec,
 		t = calc_period(rec, prev);
 
 		drop = calc_drop_pps(&rec->total, &prev->total, t);
-		/* Fold out errors after heading */
-		sum += drop;
+		sum_pps += drop;
+		sum_pkts += calc_drop_pkts(&rec->total, &prev->total, t);
 
+		/* Fold out errors after heading */
 		if (drop > 0 && !out) {
 			print_always("    %-18s " FMT_COLUMNf "\n",
 				     xdp_action2str(rec_i), ERR(drop));
@@ -940,8 +967,9 @@ static void stats_get_exception_cnt(struct stats_record *stats_rec,
 	}
 
 	if (out) {
-		out->except_cnt.hits = sum;
-		out->totals.err += sum;
+		out->except_cnt.hits = sum_pps;
+		out->totals.err += sum_pkts;
+		out->totals.err_pps += sum_pps;
 	}
 }
 
@@ -982,18 +1010,20 @@ static void stats_get_devmap_xmit(struct stats_record *stats_rec,
 	if (out) {
 		pps = calc_pps(&rec->total, &prev->total, t);
 		drop = calc_drop_pps(&rec->total, &prev->total, t);
+		err = calc_errs_pps(&rec->total, &prev->total, t);
+
 		info = calc_info_pps(&rec->total, &prev->total, t);
 		if (info > 0)
-			info = (pps + drop) / info; /* calc avg bulk */
-		err = calc_errs_pps(&rec->total, &prev->total, t);
+			out->xmit_cnt.bavg = (pps + drop) / info; /* calc avg bulk */
 
 		out->xmit_cnt.pps = pps;
 		out->xmit_cnt.drop = drop;
-		out->xmit_cnt.bavg = info;
 		out->xmit_cnt.err = err;
-		out->totals.xmit += pps;
-		out->totals.drop_xmit += drop;
-		out->totals.err += err;
+
+		out->totals.xmit += calc_pkts(&rec->total, &prev->total, t);
+		out->totals.drop_xmit += calc_drop_pkts(&rec->total, &prev->total, t);;
+		out->totals.err += calc_errs_pkts(&rec->total, &prev->total, t);;
+		out->totals.err_pps += err;
 	}
 }
 
@@ -1041,20 +1071,22 @@ static void stats_get_devmap_xmit_multi(struct stats_record *stats_rec,
 		else
 			p = &beg;
 		t = calc_period(r, p);
+
+		if (out) {
+			/* We are responsible for filling out totals */
+			out->totals.xmit += calc_pkts(&r->total, &p->total, t);
+			out->totals.drop_xmit += calc_drop_pkts(&r->total, &p->total, t);
+			out->totals.err += calc_errs_pkts(&r->total, &p->total, t);
+			out->totals.err_pps += calc_errs_pps(&r->total, &p->total, t);
+			continue;
+		}
+
 		pps = calc_pps(&r->total, &p->total, t);
 		drop = calc_drop_pps(&r->total, &p->total, t);
 		info = calc_info_pps(&r->total, &p->total, t);
 		if (info > 0)
 			info = (pps + drop) / info; /* calc avg bulk */
 		err = calc_errs_pps(&r->total, &p->total, t);
-
-		if (out) {
-			/* We are responsible for filling out totals */
-			out->totals.xmit += pps;
-			out->totals.drop_xmit += drop;
-			out->totals.err += err;
-			continue;
-		}
 
 		fstr = tstr = NULL;
 		if (if_indextoname(from_idx, ifname_from))
@@ -1106,15 +1138,15 @@ static void stats_print(const char *prefix, int mask, struct stats_record *r,
 
 	print_always("%-23s", prefix ?: "Summary");
 	if (mask & SAMPLE_RX_CNT)
-		print_always(FMT_COLUMNl, RX(out->totals.rx));
+		print_always(FMT_COLUMNl, RX(out->rx_cnt.pps));
 	if (mask & SAMPLE_REDIRECT_CNT)
-		print_always(FMT_COLUMNl, REDIR(out->totals.redir));
+		print_always(FMT_COLUMNl, REDIR(out->redir_cnt.suc));
 	printf(FMT_COLUMNl,
-	       out->totals.err + ((out->totals.drop_xmit + out->totals.drop) * !(mask & SAMPLE_DROP_OK)),
+	       out->totals.err_pps + ((out->rx_cnt.drop + out->xmit_cnt.drop) * !(mask & SAMPLE_DROP_OK)),
 	       (mask & SAMPLE_DROP_OK) ? "err/s" : "err,drop/s");
 	if (mask & SAMPLE_DEVMAP_XMIT_CNT ||
 	    mask & SAMPLE_DEVMAP_XMIT_CNT_MULTI)
-		printf(FMT_COLUMNl, XMIT(out->totals.xmit));
+		printf(FMT_COLUMNl, XMIT(out->xmit_cnt.pps));
 	printf("\n");
 
 	if (mask & SAMPLE_RX_CNT) {
@@ -1317,15 +1349,18 @@ int __sample_init(int mask, int ifindex_from, int ifindex_to)
 
 static void sample_summary_print(void)
 {
-	double num = sample_out.rx_cnt.num;
+	__u64 start = sample_start_time;
+	__u64 now = gettime();
+	double dur_s = ((double)now - start) / NANOSEC_PER_SEC;
 
+	print_always("  Duration            : %.1fs\n", dur_s);
 	if (sample_out.totals.rx) {
 		double pkts = sample_out.totals.rx;
 
 		print_always("  Packets received    : %'-10" PRIu64 "\n",
 			     (uint64_t)sample_out.totals.rx);
 		print_always("  Average packets/s   : %'-10.0f\n",
-			     sample_round(pkts / num));
+			     round(pkts / dur_s));
 	}
 	if (sample_out.totals.redir) {
 		double pkts = sample_out.totals.redir;
@@ -1333,7 +1368,7 @@ static void sample_summary_print(void)
 		print_always("  Packets redirected  : %'-10" PRIu64 "\n",
 			     sample_out.totals.redir);
 		print_always("  Average redir/s     : %'-10.0f\n",
-			     sample_round(pkts / num));
+			     round(pkts / dur_s));
 	}
 	if (sample_out.totals.drop)
 		print_always("  Rx dropped          : %'-10" PRIu64 "\n",
@@ -1350,7 +1385,7 @@ static void sample_summary_print(void)
 		print_always("  Packets transmitted : %'-10" PRIu64 "\n",
 			     sample_out.totals.xmit);
 		print_always("  Average transmit/s  : %'-10.0f\n",
-			     sample_round(pkts / num));
+			     round(pkts / dur_s));
 	}
 }
 
@@ -1417,7 +1452,6 @@ static void sample_summary_update(struct sample_output *out)
 	sample_out.totals.drop_xmit += out->totals.drop_xmit;
 	sample_out.totals.err += out->totals.err;
 	sample_out.totals.xmit += out->totals.xmit;
-	sample_out.rx_cnt.num++;
 }
 
 static void sample_stats_print(int mask, struct stats_record *cur,
@@ -1479,16 +1513,10 @@ static void swap(struct stats_record **a, struct stats_record **b)
 	*b = tmp;
 }
 
-static int sample_timer_cb(int timerfd, struct stats_record **rec,
-			   struct stats_record **prev)
+static int print_stats(struct stats_record **rec, struct stats_record **prev)
 {
 	char line[64] = "Summary";
 	int ret;
-	__u64 t;
-
-	ret = read(timerfd, &t, sizeof(t));
-	if (ret < 0)
-		return -errno;
 
 	swap(prev, rec);
 	ret = sample_stats_collect(*rec);
@@ -1513,7 +1541,20 @@ static int sample_timer_cb(int timerfd, struct stats_record **rec,
 	return 0;
 }
 
-int sample_run(int interval, void (*post_cb)(void *), void *ctx)
+static int sample_timer_cb(int timerfd, struct stats_record **rec,
+			   struct stats_record **prev)
+{
+	int ret;
+	__u64 t;
+
+	ret = read(timerfd, &t, sizeof(t));
+	if (ret < 0)
+		return -errno;
+
+	return print_stats(rec, prev);
+}
+
+int sample_run(unsigned int interval, void (*post_cb)(void *), void *ctx)
 {
 	struct timespec ts = { interval, 0 };
 	struct itimerspec its = { ts, ts };
@@ -1556,6 +1597,8 @@ int sample_run(int interval, void (*post_cb)(void *), void *ctx)
 	if (!prev)
 		goto end_rec;
 
+	sample_start_time = gettime();
+
 	ret = sample_stats_collect(rec);
 	if (ret < 0)
 		goto end_rec_prev;
@@ -1572,9 +1615,11 @@ int sample_run(int interval, void (*post_cb)(void *), void *ctx)
 				break;
 		}
 
-		if (pfd[0].revents & POLLIN)
+		if (pfd[0].revents & POLLIN) {
 			ret = sample_signal_cb();
-		else if (pfd[1].revents & POLLIN)
+			if (ret)
+				print_stats(&rec, &prev);
+		} else if (pfd[1].revents & POLLIN)
 			ret = sample_timer_cb(timerfd, &rec, &prev);
 
 		if (ret)
