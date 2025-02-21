@@ -58,16 +58,6 @@ DEFINE_SAMPLE_INIT(xdp_trafficgen);
 
 static bool status_exited = false;
 
-void print_packet(const unsigned char *packet, int length) {
-    for (int i = 0; i < length; i++) {
-        printf("%02x ", packet[i]);
-        if ((i + 1) % 16 == 0) {
-            printf("\n"); // separate lines every 16 bytes
-        }
-    }
-    printf("\n");
-}
-
 struct udp_packet {
 	struct ethhdr eth;
 	struct ipv6hdr iph;
@@ -551,7 +541,6 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 	err = sample_run(cfg->interval, NULL, NULL);
 	status_exited = true;
 
-	print_packet((unsigned char *)&pkt_udp, sizeof(pkt_udp));
 	for (i = 0; i < cfg->threads; i++) {
 		pthread_join(runner_threads[i], NULL);
 		xdp_program__close(t[i].prog);
@@ -1347,7 +1336,6 @@ int do_gtpu(const void *opt, __unused const char *pin_root_path)
 	err = sample_run(cfg->interval, NULL, NULL);
 	status_exited = true;
 
-	print_packet((unsigned char *)&packet_buf, pkt_len);
 	for (i = 0; i < cfg->threads; i++) {
 		pthread_join(runner_threads[i], NULL);
 		xdp_program__close(t[i].prog);
