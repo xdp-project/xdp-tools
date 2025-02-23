@@ -99,7 +99,7 @@ usage()
 
 if [ "$EUID" -ne "0" ]; then
     if command -v sudo >/dev/null 2>&1; then
-        exec sudo env CC="$CC" CFLAGS="$CFLAGS" CPPFLAGS="$CPPFLAGS" LDLIBS="$LDLIBS" V=${VERBOSE_TESTS} "$0" "$@"
+        exec sudo env CC="$CC" CFLAGS="$CFLAGS" CPPFLAGS="$CPPFLAGS" LDLIBS="$LDLIBS" OBJDIR="$OBJDIR" V=${VERBOSE_TESTS} "$0" "$@"
     else
         die "Tests must be run as root"
     fi

@@ -25,12 +25,12 @@ USER_C := ${USER_TARGETS:=.c}
 USER_OBJ := ${USER_C:.c=.o}
 BPF_OBJS := $(BPF_TARGETS:=.o)
 
-LDFLAGS+=-L$(LIBXDP_DIR)
+LDFLAGS+=-L$(LIBXDP_DIR)/$(OBJDIR)
 ifeq ($(DYNAMIC_LIBXDP),1)
 	LDLIBS:=-lxdp $(LDLIBS)
 	OBJECT_LIBXDP:=$(LIBXDP_DIR)/libxdp.so.$(LIBXDP_VERSION)
 else
-	LDLIBS:=-l:libxdp.a $(LDLIBS)
+	LDLIBS:=-l:$(OBJDIR)/libxdp.a $(LDLIBS)
 	OBJECT_LIBXDP:=$(LIBXDP_DIR)/libxdp.a
 endif
 
@@ -83,4 +83,4 @@ $(BPF_OBJS): %.o: %.c $(BPF_HEADERS) $(LIBMK) $(EXTRA_DEPS)
 	$(QUIET_LLC)$(LLC) -march=$(BPF_TARGET) -filetype=obj -o $@ ${@:.o=.ll}
 
 run: all
-	$(Q)env CC="$(CC)" CFLAGS="$(CFLAGS) $(LDFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDLIBS="$(LDLIBS)" V=$(V) $(TEST_RUNNER) $(TEST_FILE) $(RUN_TESTS)
+	$(Q)env CC="$(CC)" CFLAGS="$(CFLAGS) $(LDFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDLIBS="$(LDLIBS)" OBJDIR="$(OBJDIR)" V=$(V) $(TEST_RUNNER) $(TEST_FILE) $(RUN_TESTS)
