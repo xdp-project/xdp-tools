@@ -1072,14 +1072,6 @@ static void stats_get_devmap_xmit_multi(struct stats_record *stats_rec,
 			p = &beg;
 		t = calc_period(r, p);
 
-		if (out) {
-			/* We are responsible for filling out totals */
-			out->totals.xmit += calc_pkts(&r->total, &p->total, t);
-			out->totals.drop_xmit += calc_drop_pkts(&r->total, &p->total, t);
-			out->totals.err += calc_errs_pkts(&r->total, &p->total, t);
-			out->totals.err_pps += calc_errs_pps(&r->total, &p->total, t);
-			continue;
-		}
 
 		pps = calc_pps(&r->total, &p->total, t);
 		drop = calc_drop_pps(&r->total, &p->total, t);
@@ -1087,6 +1079,19 @@ static void stats_get_devmap_xmit_multi(struct stats_record *stats_rec,
 		if (info > 0)
 			info = (pps + drop) / info; /* calc avg bulk */
 		err = calc_errs_pps(&r->total, &p->total, t);
+
+		if (out) {
+			out->xmit_cnt.pps += pps;
+			out->xmit_cnt.drop += drop;
+			out->xmit_cnt.err += err;
+
+			/* We are responsible for filling out totals */
+			out->totals.xmit += calc_pkts(&r->total, &p->total, t);
+			out->totals.drop_xmit += calc_drop_pkts(&r->total, &p->total, t);
+			out->totals.err += calc_errs_pkts(&r->total, &p->total, t);
+			out->totals.err_pps += calc_errs_pps(&r->total, &p->total, t);
+			continue;
+		}
 
 		fstr = tstr = NULL;
 		if (if_indextoname(from_idx, ifname_from))
