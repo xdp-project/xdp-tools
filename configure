@@ -96,11 +96,11 @@ check_toolchain()
     if ! command -v $EMACS >/dev/null 2>&1; then
         EMACS=""
     else
-        emacs_version=$($EMACS --version 2>/dev/null | head -n 1)
-        if echo $emacs_version | grep -Eq 'GNU Emacs 2[6789]'; then
-            echo "using emacs: $emacs_version"
+        emacs_major=$($EMACS -Q --batch --eval='(message "%s" emacs-major-version)')
+        if [ "$emacs_major" -ge 26 ]; then
+            echo "using emacs: $EMACS, version $emacs_major"
         else
-            echo "not using emacs: $emacs_version"
+            echo "not using emacs: $EMACS, as it is too old (wanted version >=26, got $emacs_major)"
             EMACS=""
         fi
     fi
