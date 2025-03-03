@@ -11,7 +11,7 @@
  ******************************************************************************/
 #define PERF_MAX_WAKEUP_EVENTS   64
 #define PERF_MMAP_PAGE_COUNT	256
-#define MAX_CPUS		256
+#define MAX_CPUS		512
 
 /******************************************************************************
  * General used macros
