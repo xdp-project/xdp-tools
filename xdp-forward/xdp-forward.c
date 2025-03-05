@@ -74,7 +74,8 @@ static int find_prog(struct iface *iface, bool detach)
 	check:
 		if (!strcmp(xdp_program__name(prog), "xdp_fwd_fib_full") ||
 		    !strcmp(xdp_program__name(prog), "xdp_fwd_fib_direct") ||
-		    !strcmp(xdp_program__name(prog), "xdp_fwd_flowtable")) {
+		    !strcmp(xdp_program__name(prog), "xdp_fwd_flow_full") ||
+		    !strcmp(xdp_program__name(prog), "xdp_fwd_flow_direct")) {
 			mode = xdp_multiprog__attach_mode(mp);
 			ret = 0;
 			if (detach) {
@@ -157,8 +158,8 @@ static int do_load(const void *cfg, __unused const char *pin_root_path)
 		break;
 	case FWD_FLOWTABLE:
 		opts.prog_name = opt->fib_mode == FIB_DIRECT
-				 ? "xdp_fwd_flowtable_direct"
-				 : "xdp_fwd_flowtable_full";
+				 ? "xdp_fwd_flow_direct"
+				 : "xdp_fwd_flow_full";
 		break;
 	default:
 		goto end;
@@ -201,9 +202,7 @@ static int do_load(const void *cfg, __unused const char *pin_root_path)
 	opts.obj = obj;
 	xdp_prog = xdp_program__create(&opts);
 	if (!xdp_prog) {
-		ret = -errno;
-		pr_warn("Couldn't open XDP program: %s\n",
-			strerror(-ret));
+		pr_warn("Couldn't open XDP program: %s\n", strerror(errno));
 		goto end_destroy;
 	}
 
@@ -244,6 +243,8 @@ static int do_load(const void *cfg, __unused const char *pin_root_path)
 		pr_info("Loaded on interface %s\n", iface->ifname);
 	}
 
+	ret = EXIT_SUCCESS;
+
 end_destroy:
 	if (opt->fwd_mode == FWD_FLOWTABLE)
 		xdp_flowtable__destroy(skel);
@@ -253,6 +254,7 @@ end:
 	return ret;
 
 end_detach:
+	ret = EXIT_FAILURE;
 	for (iface = opt->ifaces; iface; iface = iface->next)
 		xdp_program__detach(xdp_prog, iface->ifindex, opt->xdp_mode, 0);
 	goto end_destroy;

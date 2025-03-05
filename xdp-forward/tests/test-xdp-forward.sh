@@ -1,6 +1,6 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 XDP_FORWARD=${XDP_FORWARD:-./xdp-forward}
-ALL_TESTS="test_ping test_load test_fwd_full test_fwd_direct test_flowtable"
+ALL_TESTS="test_ping test_load test_load_high_ifindex test_fwd_full test_fwd_direct test_flowtable"
 
 test_ping()
 {
@@ -19,6 +19,19 @@ test_load()
 
     check_run $XDP_FORWARD load ${NS_NAMES[@]}
     check_run $XDP_FORWARD unload ${NS_NAMES[@]}
+}
+
+test_load_high_ifindex()
+{
+    # Add a bunch of interfaces to run up the ifindex counter
+    for i in $(seq 64); do
+        ip link add dev veth-forw-test type veth
+        ip link del dev veth-forw-test
+    done
+
+    ip link add dev veth-forw-test type veth
+    check_run $XDP_FORWARD load veth-forw-test
+    check_run $XDP_FORWARD unload veth-forw-test
 }
 
 test_fwd_full()
@@ -121,6 +134,8 @@ EOF
     PID=$(start_background_ns_devnull "socat -6 TCP-LISTEN:10000,reuseaddr,fork -")
     check_run ip netns exec ${NS_NAMES[0]} socat ${INPUT_FILE} TCP6:[${OUTSIDE_IP6}]:12345,connect-timeout=1
     stop_background $PID
+
+    check_run $XDP_FORWARD unload ${NS_NAMES[@]}
 }
 
 cleanup_tests()
@@ -135,5 +150,6 @@ cleanup_tests()
         $XDP_LOADER unload $NS --all
         check_run ip netns exec ${NS_NAMES[-1]} nft flush ruleset
         check_run nft flush ruleset
+        ip link del dev veth-forw-test
     } >/dev/null 2>&1
 }
