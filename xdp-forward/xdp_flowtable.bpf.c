@@ -19,7 +19,7 @@
 #define BIT(x)				(1 << (x))
 
 struct {
-	__uint(type, BPF_MAP_TYPE_DEVMAP);
+	__uint(type, BPF_MAP_TYPE_DEVMAP_HASH);
 	__uint(key_size, sizeof(int));
 	__uint(value_size, sizeof(int));
 	__uint(max_entries, 64);
