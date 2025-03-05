@@ -74,7 +74,8 @@ static int find_prog(struct iface *iface, bool detach)
 	check:
 		if (!strcmp(xdp_program__name(prog), "xdp_fwd_fib_full") ||
 		    !strcmp(xdp_program__name(prog), "xdp_fwd_fib_direct") ||
-		    !strcmp(xdp_program__name(prog), "xdp_fwd_flowtable")) {
+		    !strcmp(xdp_program__name(prog), "xdp_fwd_flow_full") ||
+		    !strcmp(xdp_program__name(prog), "xdp_fwd_flow_direct")) {
 			mode = xdp_multiprog__attach_mode(mp);
 			ret = 0;
 			if (detach) {
@@ -157,8 +158,8 @@ static int do_load(const void *cfg, __unused const char *pin_root_path)
 		break;
 	case FWD_FLOWTABLE:
 		opts.prog_name = opt->fib_mode == FIB_DIRECT
-				 ? "xdp_fwd_flowtable_direct"
-				 : "xdp_fwd_flowtable_full";
+				 ? "xdp_fwd_flow_direct"
+				 : "xdp_fwd_flow_full";
 		break;
 	default:
 		goto end;

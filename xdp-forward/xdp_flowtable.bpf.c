@@ -607,13 +607,13 @@ static __always_inline int xdp_flowtable_flags(struct xdp_md *ctx,
 }
 
 SEC("xdp")
-int xdp_fwd_flowtable_full(struct xdp_md *ctx)
+int xdp_fwd_flow_full(struct xdp_md *ctx)
 {
 	return xdp_flowtable_flags(ctx, 0);
 }
 
 SEC("xdp")
-int xdp_fwd_flowtable_direct(struct xdp_md *ctx)
+int xdp_fwd_flow_direct(struct xdp_md *ctx)
 {
 	return xdp_flowtable_flags(ctx, BPF_FIB_LOOKUP_DIRECT);
 }
