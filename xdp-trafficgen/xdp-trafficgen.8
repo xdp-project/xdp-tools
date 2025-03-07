@@ -1,5 +1,4 @@
 .TH "xdp-trafficgen" "8" "JANUARY  9, 2025" "V1.5.2" "An XDP-based traffic generator"
-
 .SH "NAME"
 XDP-trafficgen \- an XDP-based traffic generator
 .SH "SYNOPSIS"
@@ -13,7 +12,6 @@ performance (millions of packets per second per core).
 XDP-trafficgen supports generating UDP traffic with fixed or dynamic destination
 ports, and also has basic support for generating dummy TCP traffic on a single
 flow.
-
 .SS "Running xdp-traffigen"
 .PP
 The syntax for running xdp-trafficgen is:
@@ -32,7 +30,6 @@ COMMAND can be one of:
 .PP
 Each command, and its options are explained below. Or use \fIxdp\-trafficgen COMMAND
 \-\-help\fP to see the options for each command.
-
 .SH "The UDP command"
 .PP
 The UDP command generates UDP traffic to a given destination IP and either a
@@ -54,73 +51,57 @@ driver operation).
 
 .PP
 The supported options are:
-
 .SS "-m, --dst-mac <mac addr>"
 .PP
 Set the destination MAC address of generated packets. The default is to generate
 packets with an all-zero destination MAC.
-
 .SS "-M, --src-mac <mac addr>"
 .PP
 Set the source MAC address of the generated packets. The default is to use the
 MAC address of the interface packets are transmitted on.
-
 .SS "-a, --dst-addr <addr>"
 .PP
 Destination IP address of generated packets. The default is the link-local
 \fIfe80::2\fP address.
-
 .SS "-A, --src-addr <addr>"
 .PP
 Source IP address of generated packets. The default is the link-local \fIfe80::1\fP
 address.
-
 .SS "-p, --dst-port <port>"
 .PP
 Destination UDP port of generated packets, or the first port in the range if
 running with \fI\-\-dyn\-ports\fP set. Defaults to 1.
-
 .SS "-P, --src-port <port>"
 .PP
 Source UDP port of generated packets. Defaults to 1.
-
 .SS "-d, --dyn-ports <num ports>"
 .PP
 Enable dynamic port mode where the destination port is varied over a range of
 \fI<num ports>\fP starting from the \fI\-\-dst\-port\fP.
-
 .SS "-n, --num-packets <port>"
 .PP
 Number of packets to send before exiting. If not supplied, \fIxdp\-trafficgen\fP will
 keep sending packets until interrupted.
-
 .SS "-s, --pkt-size <bytes>"
 .PP
 Size of each UDP packet being sent, including the Ethernet header. The minimum
 size, which is also the default, is 64 bytes.
-
 .SS "-t, --threads <threads>"
 .PP
 Number of simultaneous threads to transmit from. Each thread will be pinned to a
 separate CPU core if possible. Defaults to 1.
-
 .SS "-I, --interval <s>"
 .PP
 Output transmission statistics with this interval (in seconds).
-
 .SS "-v, --verbose"
 .PP
 Enable verbose logging (-vv: more verbose).
-
 .SS "--version"
 .PP
 Display version information and exit.
-
 .SS "-h, --help"
 .PP
 Display a summary of the available options
-
-
 .SH "The TCP command"
 .PP
 The TCP command generates dummy TCP traffic in a single TCP flow. This relies on
@@ -153,41 +134,31 @@ must support being the target of XDP redirects (it must implement the
 
 .PP
 The supported options are:
-
 .SS "-p, --dst-port <port>"
 .PP
 Connect to destination <port>. Default 10000.
-
 .SS "-m, --mode <mode>"
 .PP
 Load ingress XDP program in <mode>; default native (valid values: native,skb,hw)
-
 .SS "-n, --num-packets <port>"
 .PP
 Number of packets to send before exiting. If not supplied, \fIxdp\-trafficgen\fP will
 keep sending packets until interrupted.
-
 .SS "-I, --interval <s>"
 .PP
 Output transmission statistics with this interval (in seconds).
-
 .SS "-v, --verbose"
 .PP
 Enable verbose logging (-vv: more verbose).
-
 .SS "--version"
 .PP
 Display version information and exit.
-
 .SS "-h, --help"
 .PP
 Display a summary of the available options
-
-
 .SH "BUGS"
 .PP
 Please report any bugs on Github: \fIhttps://github.com/xdp-project/xdp-tools/issues\fP
-
 .SH "AUTHOR"
 .PP
 xdp-trafficgen and this man page were written by Toke Høiland-Jørgensen.

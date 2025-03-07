@@ -1,5 +1,4 @@
 .TH "xdp-bench" "8" "NOVEMBER 19, 2024" "V1.5.2" "A simple XDP benchmarking tool"
-
 .SH "NAME"
 XDP-bench \- a simple XDP benchmarking tool
 .SH "SYNOPSIS"
@@ -21,7 +20,6 @@ to multiple devices.
 .PP
 There is more information on the meaning of the output in both default (terse)
 and extended output mode, in the \fBOutput Format Description\fP section below.
-
 .SS "Running xdp-bench"
 .PP
 The syntax for running xdp-bench is:
@@ -45,7 +43,6 @@ COMMAND can be one of:
 .PP
 Each command, and its options are explained below. Or use \fIxdp\-bench COMMAND
 \-\-help\fP to see the options for each command.
-
 .SH "The DROP command"
 .PP
 In this mode, \fIxdp\-bench\fP installs an XDP program on an interface that simply
@@ -66,7 +63,6 @@ installed on.
 
 .PP
 The supported options are:
-
 .SS "-p, --packet-operation <ACTION>"
 .PP
 Specify which operation should be taken on the packet before dropping it. The
@@ -89,7 +85,6 @@ flushing it back out if writing).
 
 .PP
 The default for this option is \fIno\-touch\fP.
-
 .SS "-l, --load-mode <MODE>"
 .PP
 Specify which mechanism xdp-bench should use to load (and store) the packet data.
@@ -109,45 +104,37 @@ kernel.
 
 .PP
 The default for this option is \fIdpa\fP.
-
 .SS "-r, --rxq-stats"
 .PP
 If set, the XDP program will also gather statistics on which receive queue index
 each packet was received on. This is displayed in the extended output mode along
 with per-CPU data (which, depending on the hardware configuration may or may not
 be equivalent).
-
 .SS "-i, --interval <SECONDS>"
 .PP
 Set the polling interval for collecting all statistics and displaying them to
 the output. The unit of interval is in seconds.
-
 .SS "-e, --extended"
 .PP
 Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
 "terse" mode. The output mode can be switched by hitting C-$\ while the program
 is running. See also the \fBOutput Format Description\fP section below.
-
 .SS "-m, --mode"
 .PP
 Selects the XDP program mode (native or skb). Note that native XDP mode is the
 default, and loading the redirect program in skb manner is neither performant,
 nor recommended. However, this option is useful if the interface driver lacks
 native XDP support, or when simply testing the tool.
-
 .SS "-v, --verbose"
 .PP
 Enable verbose logging. Supply twice to enable verbose logging from the
 underlying \fIlibxdp\fP and \fIlibbpf\fP libraries.
-
 .SS "--version"
 .PP
 Show the application version and exit.
-
 .SS "-h, --help"
 .PP
 Display a summary of the available options
-
 .SH "The PASS command"
 .PP
 In this mode, \fIxdp\-bench\fP installs an XDP program on an interface that passes
@@ -169,7 +156,6 @@ installed on.
 
 .PP
 The supported options are:
-
 .SS "-p, --packet-operation <ACTION>"
 .PP
 Specify which operation should be taken on the packet before passing it. The
@@ -187,7 +173,6 @@ swap-macs		- Swap the source and destination MAC addresses before passing
 
 .PP
 The default for this option is \fIno\-touch\fP.
-
 .SS "-l, --load-mode <MODE>"
 .PP
 Specify which mechanism xdp-bench should use to load (and store) the packet data.
@@ -207,45 +192,37 @@ kernel.
 
 .PP
 The default for this option is \fIdpa\fP.
-
 .SS "-r, --rxq-stats"
 .PP
 If set, the XDP program will also gather statistics on which receive queue index
 each packet was received on. This is displayed in the extended output mode along
 with per-CPU data (which, depending on the hardware configuration may or may not
 be equivalent).
-
 .SS "-i, --interval <SECONDS>"
 .PP
 Set the polling interval for collecting all statistics and displaying them to
 the output. The unit of interval is in seconds.
-
 .SS "-e, --extended"
 .PP
 Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
 "terse" mode. The output mode can be switched by hitting C-$\ while the program
 is running. See also the \fBOutput Format Description\fP section below.
-
 .SS "-m, --mode"
 .PP
 Selects the XDP program mode (native or skb). Note that native XDP mode is the
 default, and loading the redirect program in skb manner is neither performant,
 nor recommended. However, this option is useful if the interface driver lacks
 native XDP support, or when simply testing the tool.
-
 .SS "-v, --verbose"
 .PP
 Enable verbose logging. Supply twice to enable verbose logging from the
 underlying \fIlibxdp\fP and \fIlibbpf\fP libraries.
-
 .SS "--version"
 .PP
 Show the application version and exit.
-
 .SS "-h, --help"
 .PP
 Display a summary of the available options
-
 .SH "The TX command"
 .PP
 In this mode, \fIxdp\-bench\fP installs an XDP program on an interface that performs
@@ -266,7 +243,6 @@ installed on.
 
 .PP
 The supported options are:
-
 .SS "-p, --packet-operation <ACTION>"
 .PP
 Specify which operation should be taken on the packet before transmitting it. The
@@ -290,7 +266,6 @@ allows this function to be turned off.
 
 .PP
 The default for this option is \fIswap\-macs\fP.
-
 .SS "-l, --load-mode <MODE>"
 .PP
 Specify which mechanism xdp-bench should use to load (and store) the packet data.
@@ -310,45 +285,37 @@ kernel.
 
 .PP
 The default for this option is \fIdpa\fP.
-
 .SS "-r, --rxq-stats"
 .PP
 If set, the XDP program will also gather statistics on which receive queue index
 each packet was received on. This is displayed in the extended output mode along
 with per-CPU data (which, depending on the hardware configuration may or may not
 be equivalent).
-
 .SS "-i, --interval <SECONDS>"
 .PP
 Set the polling interval for collecting all statistics and displaying them to
 the output. The unit of interval is in seconds.
-
 .SS "-e, --extended"
 .PP
 Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
 "terse" mode. The output mode can be switched by hitting C-$\ while the program
 is running. See also the \fBOutput Format Description\fP section below.
-
 .SS "-m, --mode"
 .PP
 Selects the XDP program mode (native or skb). Note that native XDP mode is the
 default, and loading the redirect program in skb manner is neither performant,
 nor recommended. However, this option is useful if the interface driver lacks
 native XDP support, or when simply testing the tool.
-
 .SS "-v, --verbose"
 .PP
 Enable verbose logging. Supply twice to enable verbose logging from the
 underlying \fIlibxdp\fP and \fIlibbpf\fP libraries.
-
 .SS "--version"
 .PP
 Show the application version and exit.
-
 .SS "-h, --help"
 .PP
 Display a summary of the available options
-
 .SH "The REDIRECT command"
 .PP
 In this mode, \fIxdp\-bench\fP sets up packet redirection between the two
@@ -367,7 +334,6 @@ be redirect to the output interface \fI<ifname_out>\fP.
 
 .PP
 The supported options are:
-
 .SS "-l, --load-mode <MODE>"
 .PP
 Specify which mechanism xdp-bench should use to load (and store) the packet data.
@@ -387,43 +353,35 @@ kernel.
 
 .PP
 The default for this option is \fIdpa\fP.
-
 .SS "-i, --interval <SECONDS>"
 .PP
 Set the polling interval for collecting all statistics and displaying them to
 the output. The unit of interval is in seconds.
-
 .SS "-s, --stats"
 .PP
 Enable statistics for successful redirection. This option comes with a per
 packet tracing overhead, for recording all successful redirections.
-
 .SS "-e, --extended"
 .PP
 Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
 "terse" mode. The output mode can be switched by hitting C-$\ while the program
 is running. See also the \fBOutput Format Description\fP section below.
-
 .SS "-m, --mode"
 .PP
 Selects the XDP program mode (native or skb). Note that native XDP mode is the
 default, and loading the redirect program in skb manner is neither performant,
 nor recommended. However, this option is useful if the interface driver lacks
 native XDP support, or when simply testing the tool.
-
 .SS "-v, --verbose"
 .PP
 Enable verbose logging. Supply twice to enable verbose logging from the
 underlying \fIlibxdp\fP and \fIlibbpf\fP libraries.
-
 .SS "--version"
 .PP
 Show the application version and exit.
-
 .SS "-h, --help"
 .PP
 Display a summary of the available options
-
 .SH "The REDIRECT-CPU command"
 .PP
 In this mode, \fIxdp\-bench\fP sets up packet redirection using the
@@ -445,14 +403,12 @@ redirect to the target CPU list specified using \fI\-c\fP.
 
 .PP
 The supported options are:
-
 .SS "-c, --cpu <CPU>"
 .PP
 Specify a possible target CPU index. This option must be passed at least once,
 and can be passed multiple times to specify a list of CPUs. Which CPU is chosen
 for a given packet depends on the value of the \fI\-\-program\-mode\fP option,
 described below.
-
 .SS "-p, --program-mode <MODE>"
 .PP
 Specify a program that embeds a predefined policy deciding how packets are
@@ -482,7 +438,6 @@ to the order the actual CPUs are given on the command line).
 
 .PP
 The default for this option is \fIl4\-hash\fP.
-
 .SS "-r --remote-action <ACTION>"
 .PP
 If this option is set, a separate program is installed into the cpumap, which
@@ -495,58 +450,47 @@ device must be specified using \fI\-\-redirect\-device\fP.
 
 .PP
 The default for this option is \fIdisabled\fP.
-
 .SS "-r, --redirect-device <IFNAME>"
 .PP
 Specify the device to redirect the packet to when it is received on the target CPU.
 Note that this option can only be specified with \fI\-\-remote\-action redirect\fP.
-
 .SS "-q, --qsize <PACKETS>"
 .PP
 Set the queue size for the per-CPU cpumap ring buffer used for redirecting
 packets from multiple CPUs to one CPU. The default value is 2048 packets.
-
 .SS "-x, --stress-mode"
 .PP
 Stress the cpumap implementation by deallocating and reallocating the cpumap
 ring buffer on each polling interval.
-
 .SS "-i, --interval <SECONDS>"
 .PP
 Set the polling interval for collecting all statistics and displaying them to
 the output. The unit of interval is in seconds.
-
 .SS "-s, --stats"
 .PP
 Enable statistics for successful redirection. This option comes with a per
 packet tracing overhead, for recording all successful redirections.
-
 .SS "-e, --extended"
 .PP
 Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
 "terse" mode. The output mode can be switched by hitting C-$\ while the program
 is running. See also the \fBOutput Format Description\fP section below.
-
 .SS "-m, --mode"
 .PP
 Selects the XDP program mode (native or skb). Note that native XDP mode is the
 default, and loading the redirect program in skb manner is neither performant,
 nor recommended. However, this option is useful if the interface driver lacks
 native XDP support, or when simply testing the tool.
-
 .SS "-v, --verbose"
 .PP
 Enable verbose logging. Supply twice to enable verbose logging from the
 underlying \fIlibxdp\fP and \fIlibbpf\fP libraries.
-
 .SS "--version"
 .PP
 Show the application version and exit.
-
 .SS "-h, --help"
 .PP
 Display a summary of the available options
-
 .SH "The REDIRECT-MAP command"
 .PP
 In this mode, \fIxdp\-bench\fP sets up packet redirection between two interfaces
@@ -565,50 +509,41 @@ be redirect to the output interface \fI<ifname_out>\fP.
 
 .PP
 The supported options are:
-
 .SS "-X, --load-egress"
 .PP
 Load a program in the devmap entry used for redirection, so that it is invoked
 after the packet is redirected to the target device, before it is transmitted
 out of the output interface. The remote program will update the packet data so
 its source MAC address matches the one of the destination interface.
-
 .SS "-i, --interval <SECONDS>"
 .PP
 Set the polling interval for collecting all statistics and displaying them to
 the output. The unit of interval is in seconds.
-
 .SS "-s, --stats"
 .PP
 Enable statistics for successful redirection. This option comes with a per
 packet tracing overhead, for recording all successful redirections.
-
 .SS "-e, --extended"
 .PP
 Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
 "terse" mode. The output mode can be switched by hitting C-$\ while the program
 is running. See also the \fBOutput Format Description\fP section below.
-
 .SS "-m, --mode"
 .PP
 Selects the XDP program mode (native or skb). Note that native XDP mode is the
 default, and loading the redirect program in skb manner is neither performant,
 nor recommended. However, this option is useful if the interface driver lacks
 native XDP support, or when simply testing the tool.
-
 .SS "-v, --verbose"
 .PP
 Enable verbose logging. Supply twice to enable verbose logging from the
 underlying \fIlibxdp\fP and \fIlibbpf\fP libraries.
-
 .SS "--version"
 .PP
 Show the application version and exit.
-
 .SS "-h, --help"
 .PP
 Display a summary of the available options
-
 .SH "The REDIRECT-MULTI command"
 .PP
 In this mode, \fIxdp\-bench\fP sets up one-to-many packet redirection between
@@ -629,51 +564,41 @@ be redirect to one or many output interface(s).
 
 .PP
 The supported options are:
-
 .SS "-X, --load-egress"
 .PP
 Load a program in the devmap entry used for redirection, so that it is invoked
 after the packet is redirected to the target device, before it is transmitted
 out of the output interface. The remote program will update the packet data so
 its source MAC address matches the one of the destination interface.
-
 .SS "-i, --interval <SECONDS>"
 .PP
 Set the polling interval for collecting all statistics and displaying them to
 the output. The unit of interval is in seconds.
-
 .SS "-s, --stats"
 .PP
 Enable statistics for successful redirection. This option comes with a per
 packet tracing overhead, for recording all successful redirections.
-
 .SS "-e, --extended"
 .PP
 Start xdp-bench in "extended" output mode. If not set, xdp-bench will start in
 "terse" mode. The output mode can be switched by hitting C-$\ while the program
 is running. See also the \fBOutput Format Description\fP section below.
-
 .SS "-m, --mode"
 .PP
 Selects the XDP program mode (native or skb). Note that native XDP mode is the
 default, and loading the redirect program in skb manner is neither performant,
 nor recommended. However, this option is useful if the interface driver lacks
 native XDP support, or when simply testing the tool.
-
 .SS "-v, --verbose"
 .PP
 Enable verbose logging. Supply twice to enable verbose logging from the
 underlying \fIlibxdp\fP and \fIlibbpf\fP libraries.
-
 .SS "--version"
 .PP
 Show the application version and exit.
-
 .SS "-h, --help"
 .PP
 Display a summary of the available options
-
-
 .SH "Output Format Description"
 .PP
 By default, redirect success statistics are disabled, use \fI\-\-stats\fP to enable.
@@ -702,78 +627,76 @@ Extended output mode displays at most the following fields:
 \fCFIELD		  DESCRIPTION
 receive	       Displays the number of packets received and errors encountered
 
-                       Whenever an error or packet drop occurs, details of per CPU error
-                       and drop statistics will be expanded inline in terse mode.
-                                       pkt/s		- Packets received per second
-                                       drop/s		- Packets dropped per second
-                                       error/s		- Errors encountered per second
-                                       redirect	- Displays the number of packets successfully redirected
+                        Whenever an error or packet drop occurs, details of per CPU error
+                        and drop statistics will be expanded inline in terse mode.
+                                        pkt/s		- Packets received per second
+                                        drop/s		- Packets dropped per second
+                                        error/s		- Errors encountered per second
+                                        redirect	- Displays the number of packets successfully redirected
                        Errors encountered are expanded under redirect_err field
                        Note that passing -s to enable it has a per packet overhead
-                                       redir/s		- Packets redirected successfully per second
+                                        redir/s		- Packets redirected successfully per second
 
 
 redirect_err	  Displays the number of packets that failed redirection
 
-                       The errno is expanded under this field with per CPU count
+                        The errno is expanded under this field with per CPU count
                        The recognized errors are:
-                                       EINVAL:		Invalid redirection
-                                       ENETDOWN:	Device being redirected to is down
-                                       EMSGSIZE:	Packet length too large for device
-                                       EOPNOTSUPP:	Operation not supported
-                                       ENOSPC:		No space in ptr_ring of cpumap kthread
+                                        EINVAL:		Invalid redirection
+                                        ENETDOWN:	Device being redirected to is down
+                                        EMSGSIZE:	Packet length too large for device
+                                        EOPNOTSUPP:	Operation not supported
+                                        ENOSPC:		No space in ptr_ring of cpumap kthread
 
-                                       error/s		- Packets that failed redirection per second
+                                        error/s		- Packets that failed redirection per second
 
 
 enqueue to cpu N Displays the number of packets enqueued to bulk queue of CPU N
                        Expands to cpu:FROM->N to display enqueue stats for each CPU enqueuing to CPU N
                        Received packets can be associated with the CPU redirect program is enqueuing
                        packets to.
-                                       pkt/s		- Packets enqueued per second from other CPU to CPU N
-                                       drop/s		- Packets dropped when trying to enqueue to CPU N
-                                       bulk-avg	- Average number of packets processed for each event
+                                        pkt/s		- Packets enqueued per second from other CPU to CPU N
+                                        drop/s		- Packets dropped when trying to enqueue to CPU N
+                                        bulk-avg	- Average number of packets processed for each event
 
 
 kthread	       Displays the number of packets processed in CPUMAP kthread for each CPU
                        Packets consumed from ptr_ring in kthread, and its xdp_stats (after calling
                        CPUMAP bpf prog) are expanded below this. xdp_stats are expanded as a total and
                        then per-CPU to associate it to each CPU's pinned CPUMAP kthread.
-                                       pkt/s		- Packets consumed per second from ptr_ring
-                                       drop/s		- Packets dropped per second in kthread
-                                       sched		- Number of times kthread called schedule()
+                                        pkt/s		- Packets consumed per second from ptr_ring
+                                        drop/s		- Packets dropped per second in kthread
+                                        sched		- Number of times kthread called schedule()
 
                        xdp_stats (also expands to per-CPU counts)
-                                       pass/s		- XDP_PASS count for CPUMAP program execution
-                                       drop/s		- XDP_DROP count for CPUMAP program execution
-                                       redir/s		- XDP_REDIRECT count for CPUMAP program execution
+                                        pass/s		- XDP_PASS count for CPUMAP program execution
+                                        drop/s		- XDP_DROP count for CPUMAP program execution
+                                        redir/s		- XDP_REDIRECT count for CPUMAP program execution
 
 
 xdp_exception	  Displays xdp_exception tracepoint events
 
-                       This can occur due to internal driver errors, unrecognized
+                        This can occur due to internal driver errors, unrecognized
                        XDP actions and due to explicit user trigger by use of XDP_ABORTED
                        Each action is expanded below this field with its count
-                                       hit/s		- Number of times the tracepoint was hit per second
+                                        hit/s		- Number of times the tracepoint was hit per second
 
 
 devmap_xmit      Displays devmap_xmit tracepoint events
 
-                       This tracepoint is invoked for successful transmissions on output
+                        This tracepoint is invoked for successful transmissions on output
                        device but these statistics are not available for generic XDP mode,
                        hence they will be omitted from the output when using SKB mode
-                                       xmit/s		- Number of packets that were transmitted per second
-                                       drop/s		- Number of packets that failed transmissions per second
-                                       drv_err/s	- Number of internal driver errors per second
-                                       bulk-avg	- Average number of packets processed for each event
+                                        xmit/s		- Number of packets that were transmitted per second
+                                        drop/s		- Number of packets that failed transmissions per second
+                                        drv_err/s	- Number of internal driver errors per second
+                                        bulk-avg	- Average number of packets processed for each event
 \fP
 .fi
 .RE
-
 .SH "BUGS"
 .PP
 Please report any bugs on Github: \fIhttps://github.com/xdp-project/xdp-tools/issues\fP
-
 .SH "AUTHOR"
 .PP
 Earlier xdp-redirect tools were written by Jesper Dangaard Brouer and John

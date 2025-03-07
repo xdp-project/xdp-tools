@@ -1,5 +1,4 @@
 .TH "libxdp" "3" "January 14, 2025" "v1.5.2" "libxdp - library for loading XDP programs" 
-
 .SH "NAME"
 libxdp \- library for attaching XDP programs and using AF_XDP sockets
 .SH "SYNOPSIS"
@@ -22,7 +21,6 @@ well as reading and writing packets from these sockets.
 .PP
 Some of the functionality provided by libxdp depends on particular kernel
 features; see the "Kernel feature compatibility" section below for details.
-
 .SS "Using libxdp from an application"
 .PP
 Basic usage of libxdp from an application is quite straight forward. The
@@ -101,12 +99,10 @@ that program will have to be detached from the interface before libxdp can
 attach a new one. This can be done by calling \fIxdp_program__detach()\fP with a
 reference to the loaded program; but note that this will of course break any
 application relying on that other XDP program to be present.
-
 .SH "Program metadata"
 .PP
 To support multiple XDP programs on the same interface, libxdp uses two pieces
 of metadata for each XDP program: Run priority and chain call actions.
-
 .SS "Run priority"
 .PP
 This is the priority of the program and is a simple integer used
@@ -116,7 +112,6 @@ for this, while programs that want to run later (such as a packet forwarder or
 counter) should set higher values. Note that later programs are only run if the
 previous programs end with a return code that is part of its chain call actions
 (see below). If not specified, the default priority value is 50.
-
 .SS "Chain call actions"
 .PP
 These are the program return codes that the program indicate for packets that
@@ -125,7 +120,6 @@ programs in the call chain will be run, whereas if it returns any other action,
 processing will be interrupted, and the XDP dispatcher will return the verdict
 immediately. If not set, this defaults to just XDP_PASS, which is likely the
 value most programs should use.
-
 .SS "Specifying metadata"
 .PP
 The metadata outlined above is specified as BTF information embedded in the ELF
@@ -154,7 +148,6 @@ In a source file with multiple XDP programs in the same file, a definition like
 the above can be included for each program (main XDP function). Any program that
 does not specify any config information will use the default values outlined
 above.
-
 .SS "Inspecting and modifying metadata"
 .PP
 \fIlibxdp\fP exposes the following functions that an application can use to inspect
@@ -179,7 +172,6 @@ int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 \fP
 .fi
 .RE
-
 .SH "The dispatcher program"
 .PP
 To support multiple non-offloaded programs on the same network interface,
@@ -229,7 +221,6 @@ be acquired using \fIxdp_multiprog_hw_prog()\fP. Function
 \fIxdp_multiprog__attach_mode()\fP returns the attach mode of the non-offloaded
 program, whether an offloaded program is attached should be checked through
 \fIxdp_multiprog_hw_prog()\fP.
-
 .SS "Pinning in bpffs"
 .PP
 The kernel will automatically detach component programs from the dispatcher once
@@ -258,7 +249,6 @@ libxdp will consult the environment variable \fILIBXDP_BPFFS_AUTOMOUNT\fP. If th
 is set to \fI1\fP, libxdp will attempt to automount a bpffs. If not, libxdp will
 fall back to loading a single program without a dispatcher, as if the kernel did
 not support the features needed for multiprog attachment.
-
 .SH "Using AF_XDP sockets"
 .PP
 Libxdp implements helper functions for configuring AF_XDP sockets as
@@ -282,7 +272,6 @@ and the documentation in the Linux kernel
 For an example on how to use the interface, take a look at the AF_XDP-example
 and AF_XDP-forwarding programs in the bpf-examples repository:
 \fIhttps://github.com/xdp-project/bpf-examples\fP.
-
 .SS "Control path"
 .PP
 Libxdp provides helper functions for creating and destroying umems and
@@ -377,7 +366,6 @@ beforehand with socket(AF_XDP, SOCK_RAW, 0) and passed to a non-privileged
 process.  This socket can be used in xsk_umem__create_opts() and later in
 xsk_socket__create() with created umem.  xsk_socket__create_shared() would
 still require privileges for AF_XDP socket creation.
-
 .SS "Data path"
 .PP
 For performance reasons, all the data path functions are static inline
@@ -468,7 +456,6 @@ operation than the other two.
 For an example on how to use all these APIs, take a look at the AF_XDP-example
 and AF_XDP-forwarding programs in the bpf-examples repository:
 \fIhttps://github.com/xdp-project/bpf-examples\fP.
-
 .SH "Kernel and BPF program feature compatibility"
 .PP
 The features exposed by libxdp relies on certain kernel versions and BPF
@@ -513,11 +500,9 @@ Finally, XDP programs loaded using the multiprog facility must include type
 information (using the BPF Type Format, BTF). To get this, compile the programs
 with a recent version of Clang/LLVM (version 10+), and enable debug information
 when compiling (using the \fI\-g\fP option).
-
 .SH "BUGS"
 .PP
 Please report any bugs on Github: \fIhttps://github.com/xdp-project/xdp-tools/issues\fP
-
 .SH "AUTHORS"
 .PP
 libxdp and this man page were written by Toke

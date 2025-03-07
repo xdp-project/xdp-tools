@@ -1,5 +1,4 @@
 .TH "xdpdump" "8" "JANUARY 13, 2021" "V1.5.2" "a simple tcpdump like tool for capturing packets at the XDP layer"
-
 .SH "NAME"
 xdpdump \- a simple tcpdump like tool for capturing packets at the XDP layer
 .SH "SYNOPSIS"
@@ -19,7 +18,6 @@ XDP layer can be captured via this tool.
 function which stores the raw packet in a perf trace buffer. If no XDP program
 is loaded this approach can not be used and the tool will use a libpcap
 live-capture to be backward compatible.
-
 .SS "Running xdpdump"
 .PP
 The syntax for running \fIxdpdump\fP is:
@@ -46,12 +44,10 @@ Options:
 \fP
 .fi
 .RE
-
 .SH "The options explained"
 .PP
 The \fIxdpdump\fP tool tries to mimic the basic \fItcpdump\fP options, but just in case
 below each of the available options is explained:
-
 .SS "--rx-capture <mode>"
 .PP
 Specify where the ingress packet gets captured. Either at the entry of the XDP
@@ -132,7 +128,6 @@ Display \fIxpdump\fP version information and exit.
 .SS "-h, --help"
 .PP
 Display a summary of the available options
-
 .SH "Examples"
 .PP
 The below will load the \fIxdp\-filter\fP program on eth0, but it does not do any
@@ -244,11 +239,9 @@ listening on eth0, ingress XDP program ID 10558 func xdp_dispatcher, ID 10587 fu
 \fP
 .fi
 .RE
-
 .SH "BUGS"
 .PP
 Please report any bugs on Github: \fIhttps://github.com/xdp-project/xdp-tools/issues\fP
-
 .SH "AUTHOR"
 .PP
 \fIxdpdump\fP was written by Eelco Chaudron

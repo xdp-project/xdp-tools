@@ -1,5 +1,4 @@
 .TH "xdp-loader" "8" "SEPTEMBER 12, 2024" "V1.5.2" "XDP program loader"
-
 .SH "NAME"
 xdp-loader \- an XDP program loader
 .SH "SYNOPSIS"
@@ -8,7 +7,6 @@ XDP-loader is a simple loader for XDP programs with support for attaching
 multiple programs to the same interface. To achieve this it exposes the same
 load and unload semantics exposed by the libxdp library. See the \fIlibxdp(3)\fP man
 page for details of how this works, and what kernel features it relies on.
-
 .SS "Running xdp-loader"
 .PP
 The syntax for running xdp-loader is:
@@ -31,7 +29,6 @@ Where COMMAND can be one of:
 .PP
 Each command, and its options are explained below. Or use \fIxdp\-loader COMMAND
 \-\-help\fP to see the options for each command.
-
 .SH "The LOAD command"
 .PP
 The \fIload\fP command loads one or more XDP programs onto an interface.
@@ -50,7 +47,6 @@ specified by the program metadata (see \fBlibxdp(3)\fP).
 
 .PP
 The supported options are:
-
 .SS "-m, --mode <mode>"
 .PP
 Specifies which mode to load the XDP program to be loaded in. The valid values
@@ -63,7 +59,6 @@ can make it difficult to predict what mode a program will end up being loaded
 in. For this reason, the default is 'native'. Note that hardware with support
 for the 'hw' mode is rare: Netronome/Corigine cards (using the 'nfp' driver) are
 the only devices with support for this in the mainline Linux kernel.
-
 .SS "-p, --pin-path <path>"
 .PP
 This specifies a root path under which to pin any maps that define the 'pinning'
@@ -72,27 +67,23 @@ system. If not set, maps will not be pinned, even if they specify pinning in
 their definitions. When pinning maps, if the pinned location for a map already
 exist, the map pinned there will be reused if it is compatible with the type of
 the map being loaded.
-
 .SS "-s, --section <section>"
 .PP
 Specify which ELF section to load the XDP program(s) from in each file. The
 default is to use the first program in each file. If this option is set, it
 applies to all programs being loaded.
-
 .SS "-n, --prog-name <prog_name>"
 .PP
 Specify which BPF program with the name to load the XDP program(s) from in each
 file. The default is to use the first program in each file. Only one of
 --section and --prog-name may be specified. If this option is set, it applies to
 all programs being loaded.
-
 .SS "-P, --prio <priority>"
 .PP
 Specify the priority to load the XDP program(s) with (this affects the order of
 programs running on the interface). The default is to use the value from the metadata
 in the program ELF file, or a value of 50 if the program has no such metadata.
 If this option is set, it applies to all programs being loaded.
-
 .SS "-A, --actions <actions>"
 .PP
 Specify the "chain call actions" of the loaded XDP program(s). These are the XDP
@@ -100,15 +91,12 @@ actions that will cause the next program loaded on the interface to be called,
 instead of returning immediately. The default is to use the value set in the metadata
 in the program ELF file, or XDP_PASS if no such metadata is set. If this option is set,
 it applies to all programs being loaded.
-
 .SS "-v, --verbose"
 .PP
 Enable debug logging. Specify twice for even more verbosity.
-
 .SS "-h, --help"
 .PP
 Display a summary of the available options
-
 .SH "The UNLOAD command"
 .PP
 The \fIunload\fP command is used for unloading programs from an interface.
@@ -125,83 +113,67 @@ the \fI\-\-all\fP or \fI\-\-id\fP options must be used to specify which program(
 
 .PP
 The supported options are:
-
 .SS "-i, --id <id>"
 .PP
 Unload a single program from the interface by ID. Use \fIxdp\-loader status\fP to
 obtain the ID of the program being unloaded. If this program is the last program
 loaded on the interface, the dispatcher program will also be removed, which
 makes the operation equivalent to specifying \fI\-\-all\fP.
-
 .SS "-a, --all"
 .PP
 Unload all XDP programs on the interface, as well as the multi-program
 dispatcher.
-
 .SS "-v, --verbose"
 .PP
 Enable debug logging. Specify twice for even more verbosity.
-
 .SS "-h, --help"
 .PP
 Display a summary of the available options
-
 .SH "The STATUS command"
 .PP
 The \fIstatus\fP command displays a list of interfaces in the system, and the XDP
 program(s) loaded on each interface. For each interface, a list of programs are
 shown, with the run priority and "chain actions" for each program. See the
 section on program metadata for the meaning of this metadata.
-
 .SS "-v, --verbose"
 .PP
 Enable debug logging. Specify twice for even more verbosity.
-
 .SS "-h, --help"
 .PP
 Display a summary of the available options
-
 .SH "The FEATURES command"
 .PP
 The \fIfeatures\fP command displays the XDP features supported by the NIC.
 
 .PP
 Currently supported XDP features are:
-
 .SS "NETDEV_XDP_ACT_BASIC"
 .PP
 The networking device has basic support for running XDP programs, and can
 handle the base set of return codes (XDP_ABORTED, XDP_DROP, XDP_PASS, XDP_TX).
-
 .SS "NETDEV_XDP_ACT_REDIRECT"
 .PP
 The network device supports handling the XDP_REDIRECT return code. This means
 packets can be redirected from this device by XDP.
-
 .SS "NETDEV_XDP_ACT_NDO_XMIT"
 .PP
 The networking interfaces implements the ndo_xdp_xmit callback. This means
 packets can be redirected to this device by XDP.
-
 .SS "NETDEV_XDP_ACT_XSK_ZEROCOPY"
 .PP
 The networking device supports AF_XDP in zero copy mode.
-
 .SS "NETDEV_XDP_ACT_HW_OFFLOAD"
 .PP
 The networking device supports XDP hw offloading.
-
 .SS "NETDEV_XDP_ACT_RX_SG"
 .PP
 The networking device supports non-linear XDP frames on the receive side.
 This means XDP can be used with big MTUs on this device (if the XDP program
 is compiled with fragments support)
-
 .SS "NETDEV_XDP_ACT_NDO_XMIT_SG"
 .PP
 The networking device supports non-linear XDP frames on the transmit side. This
 means non-linear frames can be redirected to this device.
-
 .SH "The CLEAN command"
 .PP
 The syntax for the \fIclean\fP command is:
@@ -220,15 +192,12 @@ all interfaces are unlinked.
 
 .PP
 The supported options are:
-
 .SS "-v, --verbose"
 .PP
 Enable debug logging. Specify twice for even more verbosity.
-
 .SS "-h, --help"
 .PP
 Display a summary of the available options
-
 .SH "Examples"
 .PP
 To load an XDP program on the eth0 interface simply do:
@@ -287,16 +256,13 @@ And load it with the \fI\-\-pin\-path\fP attribute:
 This will pin the map at \fI/sys/fs/bpf/my\-prog/my_map\fP. If this already exists,
 the pinned map will be reused instead of creating a new one, which allows
 different BPF programs to share the map.
-
 .SH "SEE ALSO"
 .PP
 \fIlibxdp(3)\fP for details on the XDP loading semantics and kernel compatibility
 requirements.
-
 .SH "BUGS"
 .PP
 Please report any bugs on Github: \fIhttps://github.com/xdp-project/xdp-tools/issues\fP
-
 .SH "AUTHOR"
 .PP
 xdp-loader and this man page were written by Toke Høiland-Jørgensen.
