@@ -14,6 +14,9 @@
 #include <bpf/bpf_helpers.h>
 #include <xdp/xdp_helpers.h>
 
+#define NDISC_NEIGHBOUR_SOLICITATION	135
+#define NDISC_NEIGHBOUR_ADVERTISEMENT	136
+
 #include "common_kern_user.h"
 
 /* Defines xdp_stats_map */
@@ -41,6 +44,12 @@
 #define CHECK_VERDICT(type, param)                                           \
 	do {                                                                 \
 		if ((action = lookup_verdict_##type(param)) != VERDICT_MISS) \
+			goto out;                                            \
+	} while (0)
+
+#define CHECK_VERDICT_2(type, param1, param2)					\
+	do {                                                                 \
+		if ((action = lookup_verdict_##type(param1, param2)) != VERDICT_MISS) \
 			goto out;                                            \
 	} while (0)
 
@@ -109,21 +118,26 @@ struct {
 	__uint(pinning, LIBBPF_PIN_BY_NAME);
 } MAP_NAME_IPV4 SEC(".maps");
 
-static int __always_inline lookup_verdict_ipv4(struct iphdr *iphdr)
+static int __always_inline lookup_verdict_ipv4(__u32 *src_addr, __u32 *dst_addr)
 {
 	__u32 addr;
-	addr = iphdr->daddr;
-	CHECK_MAP(&filter_ipv4, &addr, MAP_FLAG_DST);
-	addr = iphdr->saddr;
-	CHECK_MAP(&filter_ipv4, &addr, MAP_FLAG_SRC);
+
+	if (dst_addr) {
+		addr = *dst_addr;
+		CHECK_MAP(&filter_ipv4, &addr, MAP_FLAG_DST);
+	}
+	if (src_addr) {
+		addr = *src_addr;
+		CHECK_MAP(&filter_ipv4, &addr, MAP_FLAG_SRC);
+	}
 	return VERDICT_MISS;
 }
 
-#define CHECK_VERDICT_IPV4(param) CHECK_VERDICT(ipv4, param)
+#define CHECK_VERDICT_IPV4(src, dst) CHECK_VERDICT_2(ipv4, src, dst)
 #define FEATURE_IPV4 FEAT_IPV4
 #else
 #define FEATURE_IPV4 0
-#define CHECK_VERDICT_IPV4(param)
+#define CHECK_VERDICT_IPV4(src, dst)
 #endif /* FILT_MODE_IPV4 */
 
 #ifdef FILT_MODE_IPV6
@@ -135,22 +149,26 @@ struct {
 	__uint(pinning, LIBBPF_PIN_BY_NAME);
 } MAP_NAME_IPV6 SEC(".maps");
 
-static int __always_inline lookup_verdict_ipv6(struct ipv6hdr *ipv6hdr)
+static int __always_inline lookup_verdict_ipv6(struct in6_addr *src_addr, struct in6_addr *dst_addr)
 {
 	struct in6_addr addr;
 
-	addr = ipv6hdr->daddr;
-	CHECK_MAP(&filter_ipv6, &addr, MAP_FLAG_DST);
-	addr = ipv6hdr->saddr;
-	CHECK_MAP(&filter_ipv6, &addr, MAP_FLAG_SRC);
+	if (dst_addr) {
+		addr = *dst_addr;
+		CHECK_MAP(&filter_ipv6, &addr, MAP_FLAG_DST);
+	}
+	if (src_addr) {
+		addr = *src_addr;
+		CHECK_MAP(&filter_ipv6, &addr, MAP_FLAG_SRC);
+	}
 	return VERDICT_MISS;
 }
 
-#define CHECK_VERDICT_IPV6(param) CHECK_VERDICT(ipv6, param)
+#define CHECK_VERDICT_IPV6(src, dst) CHECK_VERDICT_2(ipv6, src, dst)
 #define FEATURE_IPV6 FEAT_IPV6
 #else
 #define FEATURE_IPV6 0
-#define CHECK_VERDICT_IPV6(param)
+#define CHECK_VERDICT_IPV6(src, dst)
 #endif /* FILT_MODE_IPV6 */
 
 #ifdef FILT_MODE_ETHERNET
@@ -210,19 +228,53 @@ int FUNCNAME(struct xdp_md *ctx)
 
 #if defined(FILT_MODE_IPV4) || defined(FILT_MODE_IPV6) || \
 	defined(FILT_MODE_TCP) || defined(FILT_MODE_UDP)
-	struct iphdr *iphdr;
+	struct icmp6hdr *icmp6hdr;
 	struct ipv6hdr *ipv6hdr;
-	int ip_type;
+	struct arphdr *arphdr;
+	struct iphdr *iphdr;
+	int ip_type = 0, nh_op;
 	if (eth_type == bpf_htons(ETH_P_IP)) {
 		ip_type = parse_iphdr(&nh, data_end, &iphdr);
 		CHECK_RET(ip_type);
 
-		CHECK_VERDICT_IPV4(iphdr);
+		CHECK_VERDICT_IPV4(&iphdr->saddr, &iphdr->daddr);
+	} else if (eth_type == bpf_htons(ETH_P_ARP)) {
+		nh_op = parse_arphdr(&nh, data_end, &arphdr);
+		CHECK_RET(nh_op);
+
+		// Always check the verdict of the ARP sender
+		CHECK_VERDICT_IPV4(&arphdr->ar_sip, NULL);
+		if (nh_op == bpf_htons(ARPOP_REQUEST)) {
+			// Someone wants to talk to TARGET, so target is a DST IP
+			CHECK_VERDICT_IPV4(NULL, &arphdr->ar_tip);
+		} else {
+			// Someone at has addr TARGET, so target is a SRC IP
+			CHECK_VERDICT_IPV4(&arphdr->ar_tip, NULL);
+		}
 	} else if (eth_type == bpf_htons(ETH_P_IPV6)) {
 		ip_type = parse_ip6hdr(&nh, data_end, &ipv6hdr);
 		CHECK_RET(ip_type);
 
-		CHECK_VERDICT_IPV6(ipv6hdr);
+		CHECK_VERDICT_IPV6(&ipv6hdr->saddr, &ipv6hdr->daddr);
+
+		if (ip_type == IPPROTO_ICMPV6) {
+			nh_op = parse_icmp6hdr(&nh, data_end, &icmp6hdr);
+			CHECK_RET(nh_op);
+
+			if (nh_op == NDISC_NEIGHBOUR_SOLICITATION ||
+			    nh_op == NDISC_NEIGHBOUR_ADVERTISEMENT) {
+				struct in6_addr *addr = nh.pos;
+
+				if (addr + 1 > data_end) {
+					action = XDP_ABORTED;
+					goto out;
+				}
+				if (nh_op == NDISC_NEIGHBOUR_SOLICITATION)
+					CHECK_VERDICT_IPV6(NULL, addr);
+				else
+					CHECK_VERDICT_IPV6(addr, NULL);
+			}
+		}
 	} else {
 		goto out;
 	}
