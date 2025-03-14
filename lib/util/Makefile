@@ -18,17 +18,7 @@ clean:
 BPF_CFLAGS += -I$(HEADER_DIR) $(ARCH_INCLUDES)
 
 $(UTIL_BPF_OBJS): %.o: %.c $(KERN_USER_H) $(BPF_HEADERS) $(LIBMK)
-	$(QUIET_CLANG)$(CLANG) -S \
-	    -target $(BPF_TARGET) \
-	    -D __BPF_TRACING__ \
-	    $(BPF_CFLAGS) \
-	    -Wall \
-	    -Wno-unused-value \
-	    -Wno-pointer-sign \
-	    -Wno-compare-distinct-pointer-types \
-	    -Werror \
-	    -O2 -emit-llvm -c -g -o ${@:.o=.ll} $<
-	$(QUIET_LLC)$(LLC) -march=$(BPF_TARGET) -filetype=obj -o $@ ${@:.o=.ll}
+	$(QUIET_CLANG)$(CLANG) -target $(BPF_TARGET) $(BPF_CFLAGS) -O2 -c -g -o $@ $<
 
 $(UTIL_SKEL_H): %.skel.h: %.bpf.o
 	$(QUIET_GEN)$(BPFTOOL) gen skeleton $< name ${@:.skel.h=} > $@

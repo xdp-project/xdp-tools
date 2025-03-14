@@ -135,17 +135,7 @@ $(EMBEDDED_XDP_OBJS): %.embed.o: %.o
 	$(Q)$(OBJCOPY)  --rename-section .data=.rodata,alloc,load,readonly,data,contents $@
 
 $(XDP_OBJS): %.o: %.c $(BPF_HEADERS) $(LIBMK)
-	$(QUIET_CLANG)$(CLANG) -S \
-	    -target $(BPF_TARGET) \
-	    -D __BPF_TRACING__ \
-	    $(BPF_CFLAGS) \
-	    -Wall \
-	    -Wno-unused-value \
-	    -Wno-pointer-sign \
-	    -Wno-compare-distinct-pointer-types \
-	    -Werror \
-	    -O2 -emit-llvm -c -g -o ${@:.o=.ll} $<
-	$(QUIET_LLC)$(LLC) -march=$(BPF_TARGET) -filetype=obj -o $@ ${@:.o=.ll}
+	$(QUIET_CLANG)$(CLANG) -target $(BPF_TARGET) $(BPF_CFLAGS) -O2 -c -g -o $@ $<
 
 .PHONY: man
 ifeq ($(EMACS),)

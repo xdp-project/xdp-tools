@@ -1,5 +1,7 @@
 CFLAGS ?= -O2 -g
-BPF_CFLAGS ?= -Wno-visibility -fno-stack-protector
+BPF_CFLAGS ?= -Wall -Wno-unused-value -Wno-pointer-sign \
+	      -Wno-compare-distinct-pointer-types \
+	      -Wno-visibility -Werror -fno-stack-protector
 BPF_TARGET ?= bpf
 
 HAVE_FEATURES :=
