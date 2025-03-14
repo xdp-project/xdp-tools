@@ -30,7 +30,6 @@ jobs:
       KERNEL_VERSION: ${{ matrix.KERNEL_VERSION }}
       LLVM_VERSION: ${{ matrix.LLVM_VERSION }}
       CLANG: clang-${{ matrix.LLVM_VERSION }}
-      LLC: llc-${{ matrix.LLVM_VERSION }}
       LLVM_STRIP: llvm-strip-${{ matrix.LLVM_VERSION }}
       # can't use unshare on old kernels
       DID_UNSHARE: ${{ (startsWith(matrix.KERNEL_VERSION, '5.6') || startsWith(matrix.KERNEL_VERSION, '5.11')) && 1 || 0 }}

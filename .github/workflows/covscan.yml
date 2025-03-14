@@ -11,7 +11,6 @@ jobs:
     env:
       LLVM_VERSION: 19
       CLANG: clang-19
-      LLC: llc-19
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4

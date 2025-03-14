@@ -61,7 +61,6 @@ check_toolchain()
     : ${CC=gcc}
     : ${OBJCOPY=objcopy}
     : ${CLANG=clang}
-    : ${LLC=llc}
     : ${M4=m4}
     : ${EMACS=emacs}
     : ${BPFTOOL=bpftool}
@@ -70,9 +69,8 @@ check_toolchain()
     : ${ARCH_NAME=}
 
     CLANG=$(find_tool clang "$CLANG")
-    LLC=$(find_tool llc "$LLC")
 
-    for TOOL in $PKG_CONFIG $CC $OBJCOPY $CLANG $LLC $M4 $READELF; do
+    for TOOL in $PKG_CONFIG $CC $OBJCOPY $CLANG $M4 $READELF; do
         if [ ! $(command -v ${TOOL} 2>/dev/null) ]; then
             echo "*** ERROR: Cannot find tool ${TOOL}" ;
             exit 1;
@@ -131,7 +129,6 @@ check_toolchain()
     echo "CC:=${CC}" >>$CONFIG
     echo "OBJCOPY:=${OBJCOPY}" >>$CONFIG
     echo "CLANG:=${CLANG}" >>$CONFIG
-    echo "LLC:=${LLC}" >>$CONFIG
     echo "M4:=${M4}" >>$CONFIG
     echo "EMACS:=${EMACS}" >>$CONFIG
     echo "ARCH_INCLUDES:=$ARCH_INCLUDES" >> $CONFIG
@@ -447,7 +444,6 @@ endif
 ifeq (\$(VERBOSE), 0)
     QUIET_CC       = @echo '    CC       '\$@;
     QUIET_CLANG    = @echo '    CLANG    '\$@;
-    QUIET_LLC      = @echo '    LLC      '\$@;
     QUIET_LINK     = @echo '    LINK     '\$@;
     QUIET_INSTALL  = @echo '    INSTALL  '\$@;
     QUIET_M4       = @echo '    M4       '\$@;
