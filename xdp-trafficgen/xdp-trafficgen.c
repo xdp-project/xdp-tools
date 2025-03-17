@@ -140,8 +140,9 @@ static int probe_kernel_support(void)
 	DECLARE_LIBXDP_OPTS(xdp_program_opts, opts);
 	struct xdp_trafficgen *skel;
 	struct xdp_program *prog;
-	int data = 0, err;
+	__u8 data[ETH_HLEN] = {};
 	bool status = 0;
+	int err;
 
 	skel = xdp_trafficgen__open();
 	if (!skel) {
@@ -167,7 +168,7 @@ static int probe_kernel_support(void)
 	}
 
 	const struct thread_config cfg = {
-		.pkt = &data,
+		.pkt = data,
 		.pkt_size = sizeof(data),
 		.num_pkts = 1,
 		.batch_size = 1,
