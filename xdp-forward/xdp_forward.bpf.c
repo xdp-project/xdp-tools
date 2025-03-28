@@ -94,6 +94,7 @@ static int xdp_timer_cb(struct bpf_map *map, __u64 *key, struct bpf_timer *timer
 
 		bpf_printk("xdp_timer_cb: Sending to ifindex %d\n", tgt_ifindex);
 		xdp_packet_send(pkt, tgt_ifindex, 0);
+                state->outstanding_bytes += pkt->len;
 	}
 
 	xdp_packet_flush();
