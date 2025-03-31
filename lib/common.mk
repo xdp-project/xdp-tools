@@ -38,12 +38,12 @@ LIB_OBJS += $(foreach obj,$(UTIL_OBJS),$(LIB_DIR)/util/$(obj))
 EXTRA_DEPS +=
 EXTRA_USER_DEPS +=
 
-LDFLAGS+=-L$(LIBXDP_DIR)
+LDFLAGS+=-L$(LIBXDP_DIR)/$(OBJDIR)
 ifeq ($(DYNAMIC_LIBXDP),1)
 	LDLIBS:=-lxdp $(LDLIBS)
 	OBJECT_LIBXDP:=$(LIBXDP_DIR)/libxdp.so.$(LIBXDP_VERSION)
 else
-	LDLIBS:=-l:libxdp.a $(LDLIBS)
+	LDLIBS:=-l:$(OBJDIR)/libxdp.a $(LDLIBS)
 	OBJECT_LIBXDP:=$(LIBXDP_DIR)/libxdp.a
 endif
 
