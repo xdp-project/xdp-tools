@@ -31,6 +31,7 @@
 #include <linux/in6.h>
 #include <linux/udp.h>
 #include <linux/tcp.h>
+#include <linux/netdev.h>
 
 #include "params.h"
 #include "logging.h"
@@ -53,6 +54,42 @@ static int mask = SAMPLE_DEVMAP_XMIT_CNT_MULTI | SAMPLE_DROP_OK;
 DEFINE_SAMPLE_INIT(xdp_trafficgen);
 
 static bool status_exited = false;
+
+static const char *driver_pass_list[] = {
+	"bnxt",
+	"ena",
+	"gve",
+	"i40e",
+	"ice",
+	"igb",
+	"igc"
+	"ixgbe",
+	"octeontx2",
+	"stmmac",
+};
+
+static bool driver_needs_xdp_pass(const struct iface *iface)
+{
+	const char *name = get_driver_name(iface->ifindex);
+	__u64 feature_flags;
+	size_t i;
+	int err;
+
+	/* If the interface already has the NDO_XMIT feature, we don't need to load anything */
+	err = iface_get_xdp_feature_flags(iface->ifindex, &feature_flags);
+	if (!err && feature_flags & NETDEV_XDP_ACT_NDO_XMIT)
+		return false;
+
+	for (i = 0; i < ARRAY_SIZE(driver_pass_list); i++) {
+		if (!strcmp(name, driver_pass_list[i])) {
+			pr_debug("Driver %s on interface %s needs an xdp_pass program to use XDP_REDIRECT\n",
+				 name, iface->ifname);
+			return true;
+		}
+	}
+
+	return false;
+}
 
 struct udp_packet {
 	struct ethhdr eth;
@@ -400,6 +437,7 @@ static struct prog_option udp_options[] = {
 
 int do_udp(const void *opt, __unused const char *pin_root_path)
 {
+	struct xdp_program *prog = NULL, *pass_prog = NULL;
 	const struct udpopt *cfg = opt;
 
 	DECLARE_LIBXDP_OPTS(xdp_program_opts, opts);
@@ -411,7 +449,6 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 	struct xdp_trafficgen *skel = NULL;
 	struct udp_packet *payload = NULL;
 	pthread_t *runner_threads = NULL;
-	struct xdp_program *prog = NULL;
 	int err = 0, i;
 	char buf[100];
 	__u32 key = 0;
@@ -459,9 +496,30 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 		goto out;
 	}
 
+	if (driver_needs_xdp_pass(&cfg->iface)) {
+		opts.prog_name = "xdp_pass";
+		pass_prog = xdp_program__create(&opts);
+		if (!pass_prog) {
+			err = -errno;
+			pr_warn("Couldn't load xdp_pass program\n");
+			goto out;
+		}
+	}
+
 	err = xdp_trafficgen__load(skel);
 	if (err)
 		goto out;
+
+	if (pass_prog) {
+		err = xdp_program__attach(pass_prog, cfg->iface.ifindex,
+					  XDP_MODE_NATIVE, 0);
+		if (err) {
+			pr_warn("Couldn't attach xdp_pass program");
+			xdp_program__close(pass_prog);
+			pass_prog = NULL;
+			goto out;
+		}
+	}
 
 	err = bpf_map_update_elem(bpf_map__fd(skel->maps.state_map),
 				  &key, &bpf_state, BPF_EXIST);
@@ -493,6 +551,11 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 	}
 
 out:
+	if (pass_prog) {
+		xdp_program__detach(pass_prog, cfg->iface.ifindex,
+				    XDP_MODE_NATIVE, 0);
+		xdp_program__close(pass_prog);
+	}
 	xdp_program__close(prog);
 	xdp_trafficgen__destroy(skel);
 	free(runner_threads);
