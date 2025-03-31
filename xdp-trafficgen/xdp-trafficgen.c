@@ -1023,14 +1023,25 @@ out:
 }
 
 static const struct probeopt {
+	struct iface iface;
 } defaults_probe = {};
 
-static struct prog_option probe_options[] = {};
+static struct prog_option probe_options[] = {
+	DEFINE_OPTION("interface", OPT_IFNAME, struct probeopt, iface,
+		      .metavar = "<ifname>",
+		      .short_opt = 'i',
+		      .help = "Probe features of device <ifname>"),
+};
 
-int do_probe(__unused const void *cfg, __unused const char *pin_root_path)
+int do_probe(const void *opt, __unused const char *pin_root_path)
 {
-	int err = probe_kernel_support();
+	const struct probeopt *cfg = opt;
+	int err;
 
+	if (cfg->iface.ifindex)
+		check_iface_support(&cfg->iface);
+
+	err = probe_kernel_support();
 	if (!err)
 		pr_info("Kernel supports live packet mode for XDP BPF_PROG_RUN.\n");
 	return err;
