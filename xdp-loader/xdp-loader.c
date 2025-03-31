@@ -391,16 +391,20 @@ static struct prog_option features_options[] = {
 	END_OPTIONS
 };
 
-#define CHECK_XDP_FEATURE(f)	(opts.feature_flags & (f) ? "yes" : "no")
+#define CHECK_XDP_FEATURE(f)	(feature_flags & (f) ? "yes" : "no")
 static int iface_print_xdp_features(const struct iface *iface)
 {
-#ifdef HAVE_LIBBPF_BPF_XDP_QUERY
-	LIBBPF_OPTS(bpf_xdp_query_opts, opts);
+	__u64 feature_flags;
 	int err;
 
-	err = bpf_xdp_query(iface->ifindex, 0, &opts);
+#ifndef HAVE_LIBBPF_BPF_XDP_QUERY
+	pr_warn("Cannot display features, because xdp-tools was compiled against an "
+		"old version of libbpf without support for querying features.\n");
+#endif
+
+	err = iface_get_xdp_feature_flags(iface->ifindex, &feature_flags);
 	if (err) {
-		pr_warn("The running kernel doesn't support querying XDP features (%d).\n", err);
+		pr_warn("Couldn't query XDP features (%d).\n", err);
 		return err;
 	}
 
@@ -420,19 +424,11 @@ static int iface_print_xdp_features(const struct iface *iface)
 	printf("NETDEV_XDP_ACT_NDO_XMIT_SG:\t%s\n",
 	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_NDO_XMIT_SG));
 
-	if (opts.feature_flags & ~NETDEV_XDP_ACT_MASK)
+	if (feature_flags & ~NETDEV_XDP_ACT_MASK)
 		pr_debug("unknown reported xdp features: 0x%lx\n",
-			 (unsigned long)opts.feature_flags & ~NETDEV_XDP_ACT_MASK);
+			 (unsigned long)feature_flags & ~NETDEV_XDP_ACT_MASK);
 
 	return 0;
-#else
-	__unused const void *i = iface;
-
-	pr_warn("Cannot display features, because xdp-loader was compiled against an "
-		"old version of libbpf without support for querying features.\n");
-
-	return -EOPNOTSUPP;
-#endif
 }
 
 int do_features(const void *cfg, __unused const char *pin_root_path)

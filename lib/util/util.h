@@ -93,5 +93,7 @@ int prog_lock_release(int lock_fd);
 
 const char *get_libbpf_version(void);
 int iface_print_status(const struct iface *iface);
+int iface_get_xdp_feature_flags(int ifindex, __u64 *feature_flags);
+
 
 #endif
