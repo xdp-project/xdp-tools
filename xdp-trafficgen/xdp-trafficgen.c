@@ -91,6 +91,25 @@ static bool driver_needs_xdp_pass(const struct iface *iface)
 	return false;
 }
 
+static int check_iface_support(const struct iface *iface)
+{
+	__u64 feature_flags;
+	int err;
+
+	err = iface_get_xdp_feature_flags(iface->ifindex, &feature_flags);
+	if (err) {
+		pr_warn("Couldn't query XDP interface features (%d).\n"
+			"Continuing anyway, but running may fail!\n", -err);
+	} else if (!(feature_flags & NETDEV_XDP_ACT_NDO_XMIT)) {
+		pr_warn("Interface %s does not support sending packets via XDP.\n"
+			"Most likely the driver is missing support in this kernel version.\n",
+			iface->ifname);
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
 struct udp_packet {
 	struct ethhdr eth;
 	struct ipv6hdr iph;
@@ -521,6 +540,10 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 		}
 	}
 
+	err = check_iface_support(&cfg->iface);
+	if (err)
+		goto out;
+
 	err = bpf_map_update_elem(bpf_map__fd(skel->maps.state_map),
 				  &key, &bpf_state, BPF_EXIST);
 	if (err) {
@@ -813,6 +836,10 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 		goto out;
 	}
 	attached = true;
+
+	err = check_iface_support(&cfg->iface);
+	if (err)
+		goto out;
 
 	err = bpf_map_update_elem(bpf_map__fd(state_map),
 				  &key, &bpf_state, BPF_EXIST);
