@@ -356,3 +356,9 @@ out:
 ret:
 	return action;
 }
+
+SEC("xdp")
+int xdp_pass(struct xdp_md *ctx)
+{
+	return XDP_PASS;
+}
