@@ -91,6 +91,32 @@ static bool driver_needs_xdp_pass(const struct iface *iface)
 	return false;
 }
 
+static int check_iface_support(const struct iface *iface)
+{
+	__u64 feature_flags = 0;
+	int err;
+
+	err = iface_get_xdp_feature_flags(iface->ifindex, &feature_flags);
+	if (err || !feature_flags) {
+		/* The libbpf query function, doesn't distinguish between
+		 * "querying is not supported" and "no feature flags are set",
+		 * so treat a 0-value feature_flags as a failure to query
+		 * instead of refuring to run because the NDO_XMIT bit is not
+		 * set.
+		 */
+		pr_warn("Couldn't query XDP features for interface %s (%d).\n"
+			"Continuing anyway, but running may fail!\n",
+			iface->ifname, -err);
+	} else if (!(feature_flags & NETDEV_XDP_ACT_NDO_XMIT)) {
+		pr_warn("Interface %s does not support sending packets via XDP.\n"
+			"Most likely the driver is missing support in this kernel version.\n",
+			iface->ifname);
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
 struct udp_packet {
 	struct ethhdr eth;
 	struct ipv6hdr iph;
@@ -521,6 +547,10 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 		}
 	}
 
+	err = check_iface_support(&cfg->iface);
+	if (err)
+		goto out;
+
 	err = bpf_map_update_elem(bpf_map__fd(skel->maps.state_map),
 				  &key, &bpf_state, BPF_EXIST);
 	if (err) {
@@ -813,6 +843,10 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 		goto out;
 	}
 	attached = true;
+
+	err = check_iface_support(&cfg->iface);
+	if (err)
+		goto out;
 
 	err = bpf_map_update_elem(bpf_map__fd(state_map),
 				  &key, &bpf_state, BPF_EXIST);
