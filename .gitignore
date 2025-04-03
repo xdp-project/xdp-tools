@@ -66,3 +66,5 @@ compile_commands.json
 
 # BPF skeleton files
 *.skel.h
+
+.vscode
