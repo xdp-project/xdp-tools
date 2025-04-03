@@ -90,6 +90,9 @@ int xdp_program__print_chain_call_actions(const struct xdp_program *prog,
 					  size_t buf_len);
 bool xdp_program__xdp_frags_support(const struct xdp_program *prog);
 int xdp_program__set_xdp_frags_support(struct xdp_program *prog, bool frags);
+bool xdp_program__xdp_dev_bound(const struct xdp_program *prog);
+int xdp_program__set_xdp_dev_bound(struct xdp_program *prog, unsigned int ifindex);
+bool xdp_multiprog__xdp_dev_bound(const struct xdp_multiprog *mp);
 
 int xdp_program__pin(struct xdp_program *xdp_prog, const char *pin_path);
 int xdp_program__attach(struct xdp_program *xdp_prog,
