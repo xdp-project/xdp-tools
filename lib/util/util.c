@@ -852,3 +852,21 @@ int iface_print_status(const struct iface *iface)
 out:
 	return err;
 }
+
+int iface_get_xdp_feature_flags(int ifindex, __u64 *feature_flags)
+{
+#ifdef HAVE_LIBBPF_BPF_XDP_QUERY
+	LIBBPF_OPTS(bpf_xdp_query_opts, opts);
+	int err;
+
+	err = bpf_xdp_query(ifindex, 0, &opts);
+	if (err)
+		return err;
+
+	*feature_flags = opts.feature_flags;
+	return 0;
+#else
+	return -EOPNOTSUPP;
+#endif
+
+}
