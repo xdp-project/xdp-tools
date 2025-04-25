@@ -5,6 +5,11 @@ CFLAGS += -DVLANS_PATCHED
 BPF_CFLAGS += -DVLANS_PATCHED
 endif
 
+ifdef VLANS_USERSPACE
+CFLAGS += -DVLANS_USERSPACE
+BPF_CFLAGS += -DVLANS_USERSPACE
+endif
+
 XDP_TARGETS := xdp_forward.bpf xdp_flowtable.bpf xdp_flowtable_sample.bpf
 BPF_SKEL_TARGETS := $(XDP_TARGETS)
 
