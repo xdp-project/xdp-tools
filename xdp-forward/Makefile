@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0
 
+ifdef VLANS_PATCHED
+CFLAGS += -DVLANS_PATCHED
+BPF_CFLAGS += -DVLANS_PATCHED
+endif
+
 XDP_TARGETS := xdp_forward.bpf xdp_flowtable.bpf xdp_flowtable_sample.bpf
 BPF_SKEL_TARGETS := $(XDP_TARGETS)
 

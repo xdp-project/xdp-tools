@@ -164,6 +164,21 @@ EOF
 #xdp-forward load -f flowtable n0 n1
 #+end_src
 
+
+* VLAN support
+Vlan support adds ~4% overhead for packet processing. Therefore, it's disabled
+by default. To enable it, compilation flag is required.
+
+** Kernel mode
+This mode requires specific kernel patch, that extends FIB lookup to support
+VLANS. This is not yet upstream, therefore this mode needs to be manually enabled
+by compilation vlag =-DVLANS_PATCHED=:
+
+#+begin_src sh
+VLANs_PATCHED=1 make
+#+end_src
+
+
 * SEE ALSO
 =libxdp(3)= for details on the XDP loading semantics and kernel compatibility
 requirements.
