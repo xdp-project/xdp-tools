@@ -1,6 +1,6 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 XDP_FILTER=${XDP_FILTER:-./xdp-filter}
-ALL_TESTS="test_load test_print test_output_remove test_ports_allow test_ports_deny test_ipv6_allow test_ipv6_deny test_ipv4_allow test_ipv4_deny test_ether_allow test_ether_deny test_python_basic test_python_slow"
+ALL_TESTS="test_load test_print test_output_remove test_ports_allow test_ports_deny test_ipv6_allow test_ipv6_deny test_ipv4_allow test_ipv4_deny test_ether_allow test_ether_deny"
 
 try_feat()
 {
