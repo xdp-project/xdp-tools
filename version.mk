@@ -1,4 +1,4 @@
-TOOLS_VERSION := "1.5.3"
+TOOLS_VERSION := "1.5.4"
 
 # Conditionally defined make target makes it possible to print the version
 # defined above by running 'make -f version.mk'
