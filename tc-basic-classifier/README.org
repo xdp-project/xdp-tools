@@ -1,0 +1,66 @@
+#+TITLE: eBPF Qdisc classifier example
+
+This example demonstrates how to write a simple eBPF Qdisc classifier that
+classifies flows depending on their destination TCP port. The example script,
+runner.sh shows how you can use the eBPF Qdisc classifier and implement the same
+functionality using u32. The script creates two network namespaces called
+Left and Right, representing two different hosts, as seen in Figure 1. The
+script then illustrates the classifiers in action using iperf3.
+
+#+CAPTION: The figure depicts the network and classifier setup of the two network namespaces setup provided by the runner.sh script.
+#+NAME: fig:Figure 1
+[[./overview.png]]
+
+The Left namespace loads a Qdisc classifier that rate-limit TCP ports 8080 and
+8082 to get a higher rate than default traffic. The runner.sh script shows the
+higher rate limits by connecting to both target ports and TCP port 8082 to
+establish the default rate limit of 20 Mbps.
+
+To run the application, choose either the "bpf" or "u32" parameters:
+
+#+BEGIN_SRC bash
+[root@bpfexamples]# ./runner.sh bpf
+bash-5.0# ./runner.sh bpf
+Starting setup
+Starting iperf3
+Connecting to host 172.16.16.20, port 8080
+[  5] local 172.16.16.10 port 56332 connected to 172.16.16.20 port 8080
+[ ID] Interval           Transfer     Bitrate         Retr  Cwnd
+[  5]   0.00-1.00   sec  9.51 MBytes  79.8 Mbits/sec    0   86.3 KBytes
+[  5]   1.00-2.00   sec  9.38 MBytes  78.7 Mbits/sec    0    112 KBytes
+[  5]   2.00-3.00   sec  8.95 MBytes  75.1 Mbits/sec    0    112 KBytes
+[  5]   3.00-4.00   sec  9.20 MBytes  77.2 Mbits/sec    0    112 KBytes
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate         Retr
+[  5]   0.00-4.00   sec  37.0 MBytes  77.7 Mbits/sec    0             sender
+[  5]   0.00-4.01   sec  36.5 MBytes  76.4 Mbits/sec                  receiver
+
+iperf Done.
+Connecting to host 172.16.16.20, port 8081
+[  5] local 172.16.16.10 port 45084 connected to 172.16.16.20 port 8081
+[ ID] Interval           Transfer     Bitrate         Retr  Cwnd
+[  5]   0.00-1.00   sec  4.92 MBytes  41.3 Mbits/sec    0   62.2 KBytes
+[  5]   1.00-2.00   sec  4.47 MBytes  37.5 Mbits/sec    0   62.2 KBytes
+[  5]   2.00-3.00   sec  4.66 MBytes  39.1 Mbits/sec    0   62.2 KBytes
+[  5]   3.00-4.00   sec  4.47 MBytes  37.5 Mbits/sec    0   62.2 KBytes
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate         Retr
+[  5]   0.00-4.00   sec  18.5 MBytes  38.9 Mbits/sec    0             sender
+[  5]   0.00-4.01   sec  18.3 MBytes  38.2 Mbits/sec                  receiver
+
+iperf Done.
+Connecting to host 172.16.16.20, port 8082
+[  5] local 172.16.16.10 port 33196 connected to 172.16.16.20 port 8082
+[ ID] Interval           Transfer     Bitrate         Retr  Cwnd
+[  5]   0.00-1.00   sec  2.94 MBytes  24.6 Mbits/sec    0    153 KBytes
+[  5]   1.00-2.00   sec  2.49 MBytes  20.9 Mbits/sec    0    153 KBytes
+[  5]   2.00-3.00   sec  2.17 MBytes  18.2 Mbits/sec    0    153 KBytes
+[  5]   3.00-4.00   sec  2.17 MBytes  18.2 Mbits/sec    0    153 KBytes
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate         Retr
+[  5]   0.00-4.00   sec  9.77 MBytes  20.5 Mbits/sec    0             sender
+[  5]   0.00-4.01   sec  9.14 MBytes  19.1 Mbits/sec                  receiver
+
+iperf Done.
+[root@bpfexamples]# ./runner.sh bpf
+#+END_SRC
