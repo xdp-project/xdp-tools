@@ -12,6 +12,8 @@
 #
 XDP_C = ${XDP_TARGETS:=.c}
 XDP_OBJ = ${XDP_C:.c=.o}
+TC_C = ${TC_TARGETS:=.c}
+TC_OBJ = ${TC_C:.c=.o}
 BPF_SKEL_OBJ = ${BPF_SKEL_TARGETS:=.o}
 BPF_SKEL_H = ${BPF_SKEL_OBJ:.bpf.o=.skel.h}
 USER_C := ${USER_TARGETS:=.c}
@@ -19,6 +21,18 @@ USER_OBJ := ${USER_C:.c=.o}
 TEST_C := ${TEST_TARGETS:=.c}
 TEST_OBJ := ${TEST_C:.c=.o}
 XDP_OBJ_INSTALL ?= $(XDP_OBJ)
+TC_OBJ_INSTALL ?= $(TC_OBJ)
+MAN_FILES := $(MAN_PAGE)
+
+# Expect this is defined by including Makefile, but define if not
+BPF_SKEL_OBJ = ${BPF_SKEL_TARGETS:=.o}
+BPF_SKEL_H = ${BPF_SKEL_OBJ:.bpf.o=.skel.h}
+USER_C := ${USER_TARGETS:=.c}
+USER_OBJ := ${USER_C:.c=.o}
+TEST_C := ${TEST_TARGETS:=.c}
+TEST_OBJ := ${TEST_C:.c=.o}
+XDP_OBJ_INSTALL ?= $(XDP_OBJ)
+TC_OBJ_INSTALL ?= $(TC_OBJ)
 MAN_FILES := $(MAN_PAGE)
 
 # Expect this is defined by including Makefile, but define if not
@@ -62,11 +76,11 @@ BPF_CFLAGS += -I$(HEADER_DIR) $(ARCH_INCLUDES)
 
 BPF_HEADERS := $(wildcard $(HEADER_DIR)/bpf/*.h) $(wildcard $(HEADER_DIR)/xdp/*.h)
 
-all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) $(TEST_TARGETS) man
+all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) $(TEST_TARGETS) man $(TC_OBJ)
 
 .PHONY: clean
 clean::
-	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(TEST_TARGETS) $(USER_OBJ) $(TEST_OBJ) $(USER_GEN) $(BPF_SKEL_H) *.ll
+	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(TEST_TARGETS) $(USER_OBJ) $(TEST_OBJ) $(USER_GEN) $(BPF_SKEL_H) *.ll $(TC_OBJ)
 
 .PHONY: install
 install: all install_local
@@ -74,6 +88,7 @@ install: all install_local
 	install -m 0755 -d $(DESTDIR)$(BPF_OBJECT_DIR)
 	$(if $(USER_TARGETS),install -m 0755 $(USER_TARGETS) $(DESTDIR)$(SBINDIR))
 	$(if $(XDP_OBJ_INSTALL),install -m 0644 $(XDP_OBJ_INSTALL) $(DESTDIR)$(BPF_OBJECT_DIR))
+	$(if $(TC_OBJ_INSTALL),install -m 0644 $(TC_OBJ_INSTALL) $(DESTDIR)$(BPF_OBJECT_DIR))
 	$(if $(MAN_FILES),install -m 0755 -d $(DESTDIR)$(MANDIR)/man8)
 	$(if $(MAN_FILES),install -m 0644 $(MAN_FILES) $(DESTDIR)$(MANDIR)/man8)
 	$(if $(SCRIPTS_FILES),install -m 0755 -d $(DESTDIR)$(SCRIPTSDIR))
@@ -108,6 +123,9 @@ $(ALL_EXEC_TARGETS): %: %.c  $(OBJECT_LIBBPF) $(OBJECT_LIBXDP) $(LIBMK) $(LIB_OB
 	 $< $(USER_EXTRA_C) $(LDLIBS)
 
 $(XDP_OBJ): %.o: %.c $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEADERS) $(LIBMK)
+	$(QUIET_CLANG)$(CLANG) -target $(BPF_TARGET) $(BPF_CFLAGS) -O2 -c -g -o $@ $<
+
+$(TC_OBJ): %.o: %.c $(KERN_USER_H) $(EXTRA_DEPS) $(BPF_HEADERS) $(LIBMK)
 	$(QUIET_CLANG)$(CLANG) -target $(BPF_TARGET) $(BPF_CFLAGS) -O2 -c -g -o $@ $<
 
 $(BPF_SKEL_H): %.skel.h: %.bpf.o
