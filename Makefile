@@ -16,10 +16,10 @@ endif
 include version.mk
 include config.mk
 
-UTILS := xdp-filter xdp-loader xdp-dump
+UTILS := xdp-filter xdp-loader xdp-dump tc-loader
 
 ifneq ($(BPFTOOL),)
-UTILS += xdp-bench xdp-forward xdp-monitor xdp-trafficgen xdp-synproxy xdp-dnsrrl xdp-udp xdp-dns xdp-sni xdp-geoip xdp-udpddos xdp-tailcall xdp-synproxy-tailcall xdp-ddos
+UTILS += xdp-bench xdp-forward xdp-monitor xdp-trafficgen xdp-synproxy xdp-dnsrrl xdp-udp xdp-dns xdp-sni xdp-geoip xdp-udpddos xdp-tailcall xdp-synproxy-tailcall xdp-ddos tc-basic-classifier
 endif
 
 SUBDIRS := lib $(UTILS)
