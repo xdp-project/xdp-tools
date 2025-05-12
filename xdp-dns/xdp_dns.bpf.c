@@ -242,30 +242,23 @@ static __always_inline void log_debug_info(struct xdp_md *ctx, const char *qname
 SEC("xdp")
 int xdp_dns_denylist(struct xdp_md *ctx)
 {
-	struct meta_data *md = (void *)(long)ctx->data_meta;
 	struct cursor c;
 	struct ethhdr *eth;
 	struct iphdr *ipv4;
 	struct udphdr *udp;
 	struct dnshdr *dns;
 	char *qname;
+	__u16 eth_proto;
 	__u8 len = 0;
 
 	struct domain_key dkey = { 0 }; // LPM trie key
 
-	if (bpf_xdp_adjust_meta(ctx, -(int)sizeof(struct meta_data)))
-		return XDP_PASS;
-
 	cursor_init(&c, ctx);
-	md = (void *)(long)ctx->data_meta;
-	if ((void *)(md + 1) > c.pos)
+
+	if (!(eth = parse_eth(&c, &eth_proto)))
 		return XDP_PASS;
 
-	if (!(eth = parse_eth(&c, &md->eth_proto)))
-		return XDP_PASS;
-	md->ip_pos = c.pos - (void *)eth;
-
-	if (md->eth_proto == __bpf_htons(ETH_P_IP)) {
+	if (eth_proto == __bpf_htons(ETH_P_IP)) {
 		if (!(ipv4 = parse_iphdr(&c)))
 			return XDP_PASS; /* Not IPv4 */
 		switch (ipv4->protocol) {
