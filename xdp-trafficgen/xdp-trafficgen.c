@@ -62,7 +62,7 @@ static const char *driver_pass_list[] = {
 	"i40e",
 	"ice",
 	"igb",
-	"igc"
+	"igc",
 	"ixgbe",
 	"octeontx2",
 	"stmmac",
