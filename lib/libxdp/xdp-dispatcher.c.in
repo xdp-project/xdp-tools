@@ -27,6 +27,10 @@ static volatile const struct xdp_dispatcher_config conf = {};
 
 /* The volatile return value prevents the compiler from assuming it knows the
  * return value and optimising based on that.
+ *
+ * The function includes a no-op xdp_adjust_tail() call before returning, to
+ * make sure the verifier doesn't disallow freplace with programs that
+ * invalidate the packet data pointer.
  */
 forloop(`i', `0', NUM_PROGS,
 `__attribute__ ((noinline))
@@ -35,6 +39,8 @@ int format(`prog%d', i)(struct xdp_md *ctx) {
 
         if (!ctx)
           return XDP_ABORTED;
+
+        bpf_xdp_adjust_tail(ctx, 0);
         return ret;
 }
 ')
