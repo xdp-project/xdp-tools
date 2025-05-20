@@ -1,5 +1,5 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
-ALL_TESTS="test_load test_section test_prog_name test_load_multi test_load_incremental test_load_clobber test_features"
+ALL_TESTS="test_load test_section test_prog_name test_load_adjust_tail test_load_multi test_load_incremental test_load_clobber test_features"
 
 test_load()
 {
@@ -17,6 +17,19 @@ test_prog_name()
 {
 	check_run $XDP_LOADER load $NS $TEST_PROG_DIR/xdp_drop.o -n xdp_drop -vv
 	check_run $XDP_LOADER unload $NS --all -vv
+}
+
+test_load_adjust_tail()
+{
+    check_run $XDP_LOADER load $NS $TEST_PROG_DIR/xdp_adjust_tail.o -vv
+
+    # Need to load twice to test freplace of both the top-level dispatcher
+    # function as well as sub-functions for multi-prog; but only do this if we
+    # the kernel actually supports loading multiple programs
+    if is_multiprog_supported; then
+        check_run $XDP_LOADER load $NS $TEST_PROG_DIR/xdp_adjust_tail.o -vv
+    fi
+    check_run $XDP_LOADER unload $NS --all -vv
 }
 
 check_progs_loaded()
