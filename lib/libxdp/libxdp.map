@@ -84,3 +84,9 @@ LIBXDP_1.5.0 {
 		xsk_umem__create_opts;
 		xsk_socket__create_opts;
 } LIBXDP_1.4.0;
+
+LIBXDP_1.6.0 {
+		xdp_multiprog__xdp_dev_bound;
+		xdp_program__xdp_dev_bound;
+		xdp_program__set_xdp_dev_bound;
+} LIBXDP_1.5.0;

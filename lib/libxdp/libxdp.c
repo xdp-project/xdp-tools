@@ -73,6 +73,7 @@ struct xdp_program {
 	__u64 load_time;
 	bool from_external_obj;
 	bool is_frags;
+	bool is_devbound;
 	unsigned int run_prio;
 	unsigned int chain_call_actions; /* bitmap */
 
@@ -90,6 +91,7 @@ struct xdp_multiprog {
 	bool is_loaded;
 	bool is_legacy;
 	bool kernel_frags_support;
+    bool kernel_devbound_support;
 	bool checked_compat;
 	enum xdp_attach_mode attach_mode;
 	int ifindex;
@@ -100,6 +102,17 @@ struct xdp_dispatcher_config_v1 {
 	__u8 num_progs_enabled;             /* Number of active program slots */
 	__u32 chain_call_actions[MAX_DISPATCHER_ACTIONS];
 	__u32 run_prios[MAX_DISPATCHER_ACTIONS];
+};
+
+#define XDP_DISPATCHER_VERSION_V2 2
+struct xdp_dispatcher_config_v2 {
+	__u8 magic;                         /* Set to XDP_DISPATCHER_MAGIC */
+	__u8 dispatcher_version;            /* Set to XDP_DISPATCHER_VERSION */
+	__u8 num_progs_enabled;             /* Number of active program slots */
+	__u8 is_xdp_frags;                  /* Whether this dispatcher is loaded with XDP frags support */
+	__u32 chain_call_actions[MAX_DISPATCHER_ACTIONS];
+	__u32 run_prios[MAX_DISPATCHER_ACTIONS];
+	__u32 program_flags[MAX_DISPATCHER_ACTIONS];
 };
 
 static const char *xdp_action_names[] = {
@@ -727,11 +740,35 @@ bool xdp_program__xdp_frags_support(const struct xdp_program *prog)
 	return !!(bpf_program__flags(prog->bpf_prog) & BPF_F_XDP_HAS_FRAGS);
 }
 
+bool xdp_program__xdp_dev_bound(const struct xdp_program *prog)
+{
+	if (IS_ERR_OR_NULL(prog))
+		return false;
+
+	/* Until we load the program we just check the bpf_program__flags() to
+	 * ensure any changes made to those are honoured on the libxdp side. For
+	 * loaded programs we keep our own state variable which is populated
+	 * either by copying over the program flags in xdp_program__load(), or
+	 * by loading the state from the dispatcher state variables if
+	 * instantiating the object from the kernel.
+	  */
+	if (!prog->bpf_prog || prog->prog_fd >= 0)
+		return prog->is_devbound;
+
+	return !!(bpf_program__flags(prog->bpf_prog) & BPF_F_XDP_DEV_BOUND_ONLY);
+}
+
 #ifndef HAVE_LIBBPF_BPF_PROGRAM__FLAGS
 int xdp_program__set_xdp_frags_support(__unused struct xdp_program *prog, __unused bool frags)
 {
 	return libxdp_err(-EOPNOTSUPP);
 }
+
+int xdp_program__set_xdp_dev_bound(__unused struct xdp_program *prog, __unused int ifindex)
+{
+	return libxdp_err(-EOPNOTSUPP);
+}
+
 #else
 int xdp_program__set_xdp_frags_support(struct xdp_program *prog, bool frags)
 {
@@ -753,6 +790,30 @@ int xdp_program__set_xdp_frags_support(struct xdp_program *prog, bool frags)
 		prog->is_frags = frags;
 
 	return ret;
+}
+
+int xdp_program__set_xdp_dev_bound(struct xdp_program *prog, unsigned int ifindex)
+{
+	__u32 prog_flags;
+	int ret;
+	bool devbound = !!ifindex;
+
+	if (IS_ERR_OR_NULL(prog) || !prog->bpf_prog || prog->prog_fd >= 0)
+		return libxdp_err(-EINVAL);
+
+	prog_flags = bpf_program__flags(prog->bpf_prog);
+
+	if (devbound)
+		prog_flags |= BPF_F_XDP_DEV_BOUND_ONLY;
+	else
+		prog_flags &= ~BPF_F_XDP_DEV_BOUND_ONLY;
+
+	ret = bpf_program__set_flags(prog->bpf_prog, prog_flags);
+	bpf_program__set_ifindex(prog->bpf_prog, ifindex);
+	if (!ret)
+		prog->is_devbound = devbound;
+
+	return 0;
 }
 #endif // HAVE_LIBBPF_BPF_PROGRAM__FLAGS
 
@@ -1600,22 +1661,26 @@ static int xdp_program__load(struct xdp_program *prog)
 			 xdp_program__name(prog), bpf_program__fd(prog->bpf_prog));
 
 		prog->is_frags = !!(bpf_program__flags(prog->bpf_prog) & BPF_F_XDP_HAS_FRAGS);
+		prog->is_devbound = !!(bpf_program__flags(prog->bpf_prog) & BPF_F_XDP_DEV_BOUND_ONLY);
 	} else {
 		/* We got an explicit load request, make sure we actually load */
 		if (!autoload)
 			bpf_program__set_autoload(prog->bpf_prog, true);
 
-		/* Make sure we sync is_frags to internal state variable (in case it was
+		/* Make sure we sync BPF flags to internal state variable (in case it was
 		 * changed on bpf_prog since creation), and unset flag if we're loading
 		 * an EXT program (the dispatcher will have the flag set instead in this
 		 * case)
 		 */
 		prog->is_frags = xdp_program__xdp_frags_support(prog);
+		prog->is_devbound = xdp_program__xdp_dev_bound(prog);
 
 #ifdef HAVE_LIBBPF_BPF_PROGRAM__FLAGS
-		if (bpf_program__type(prog->bpf_prog) == BPF_PROG_TYPE_EXT)
+		if (bpf_program__type(prog->bpf_prog) == BPF_PROG_TYPE_EXT) {
 			bpf_program__set_flags(prog->bpf_prog,
-					       bpf_program__flags(prog->bpf_prog) & ~BPF_F_XDP_HAS_FRAGS);
+				bpf_program__flags(prog->bpf_prog) & ~(BPF_F_XDP_HAS_FRAGS | BPF_F_XDP_DEV_BOUND_ONLY));
+			bpf_program__set_ifindex(prog->bpf_prog, 0);
+		}
 #endif
 
 		err = bpf_object__load(prog->bpf_obj);
@@ -1647,15 +1712,32 @@ struct xdp_program *xdp_program__clone(struct xdp_program *prog, unsigned int fl
 					    prog->prog_name, true);
 }
 
+static const char* get_bpf_flag_name(__u32 flag) {
+	switch (flag)
+	{
+	case BPF_F_XDP_DEV_BOUND_ONLY:
+		return "BPF_F_XDP_DEV_BOUND_ONLY";
+	case BPF_F_XDP_HAS_FRAGS:
+		return "BPF_F_XDP_HAS_FRAGS";
+	default:
+		return NULL;
+	}
+}
+
 #ifndef HAVE_LIBBPF_BPF_PROGRAM__FLAGS
 static bool kernel_has_frags_support(void)
 {
 	pr_debug("Can't support frags with old version of libbpf that doesn't support setting program flags.\n");
 	return false;
 }
-#else
-static bool kernel_has_frags_support(void)
+
+static bool kernel_has_dev_bound(void)
 {
+	pr_debug("Can't bind to device with old version of libbpf that doesn't support setting program flags.\n");
+	return false;
+}
+#else
+static bool kernel_has_bpf_flag(__u32 flag) {
 	struct xdp_program *test_prog;
 	bool ret = false;
 	int err;
@@ -1668,16 +1750,26 @@ static bool kernel_has_frags_support(void)
 		return false;
 	}
 
-	bpf_program__set_flags(test_prog->bpf_prog, BPF_F_XDP_HAS_FRAGS);
+	bpf_program__set_flags(test_prog->bpf_prog, flag);
 	err = xdp_program__load(test_prog);
 	if (!err) {
-		pr_debug("Kernel supports XDP programs with frags\n");
+		pr_debug("Kernel supports XDP programs with flag: %s\n", get_bpf_flag_name(flag));
 		ret = true;
 	} else {
-		pr_debug("Kernel DOES NOT support XDP programs with frags\n");
+		pr_debug("Kernel DOES NOT support XDP programs with flag: %s\n", get_bpf_flag_name(flag));
 	}
 	xdp_program__close(test_prog);
 	return ret;
+}
+
+static bool kernel_has_frags_support(void)
+{
+	return kernel_has_bpf_flag(BPF_F_XDP_HAS_FRAGS);
+}
+
+static bool kernel_has_dev_bound(void)
+{
+	return kernel_has_bpf_flag(BPF_F_XDP_DEV_BOUND_ONLY);
 }
 #endif // HAVE_LIBBPF_BPF_PROGRAM__FLAGS
 
@@ -1689,6 +1781,9 @@ static int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
 	if (prog->prog_fd < 0) {
 		if (!kernel_has_frags_support())
 			xdp_program__set_xdp_frags_support(prog, false);
+
+		if (!kernel_has_dev_bound())
+			xdp_program__set_xdp_dev_bound(prog, 0);
 
 		bpf_program__set_type(prog->bpf_prog, BPF_PROG_TYPE_XDP);
 		err = xdp_program__load(prog);
@@ -2131,6 +2226,14 @@ static int xdp_multiprog__load(struct xdp_multiprog *mp)
 	if (mp->config.is_xdp_frags)
 		xdp_program__set_xdp_frags_support(mp->main_prog, true);
 
+	pr_debug("Loading multiprog dispatcher for %d programs %s binding to device index %d\n",
+		 mp->config.num_progs_enabled,
+		 mp->config.is_xdp_devbound ? "with" : "without",
+		 mp->ifindex);
+
+	if (mp->config.is_xdp_devbound)
+		xdp_program__set_xdp_dev_bound(mp->main_prog, mp->ifindex);
+
 	err = xdp_program__load(mp->main_prog);
 	if (err) {
 		pr_info("Failed to load dispatcher: %s\n",
@@ -2237,6 +2340,22 @@ static int check_dispatcher_version(struct xdp_multiprog *mp,
 		mp->config.num_progs_enabled = config->num_progs_enabled;
 		break;
 	}
+	case XDP_DISPATCHER_VERSION_V2: 
+	{
+		struct xdp_dispatcher_config_v2 *config = (void *)buf;
+
+		for (i = 0; i < MAX_DISPATCHER_ACTIONS; i++) {
+			mp->config.chain_call_actions[i] = config->chain_call_actions[i];
+			mp->config.run_prios[i] = config->run_prios[i];
+			mp->config.program_flags[i] = config->program_flags[i];
+		}
+		
+		mp->config.num_progs_enabled = config->num_progs_enabled;
+		mp->config.is_xdp_frags = config->is_xdp_frags;
+		mp->config.dispatcher_version = config->dispatcher_version;
+		mp->config.magic = config->magic;
+		break;
+	}
 	case XDP_DISPATCHER_VERSION:
 		if (map_info.value_size != sizeof(mp->config)) {
 			pr_warn("Dispatcher version matches, but map size %u != expected %zu\n",
@@ -2322,6 +2441,7 @@ static int xdp_multiprog__link_pinned_progs(struct xdp_multiprog *mp)
 					    ~(1U << XDP_DISPATCHER_RETVAL));
 		prog->run_prio = mp->config.run_prios[i];
 		prog->is_frags = !!(mp->config.program_flags[i] & BPF_F_XDP_HAS_FRAGS);
+		prog->is_devbound = !!(mp->config.program_flags[i] & BPF_F_XDP_DEV_BOUND_ONLY);
 
 		if (!p) {
 			mp->first_prog = prog;
@@ -2941,6 +3061,7 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 		return mp;
 
 	mp->kernel_frags_support = kernel_has_frags_support();
+	mp->kernel_devbound_support = kernel_has_dev_bound();
 
 	if (old_mp) {
 		struct xdp_program *prog;
@@ -3025,6 +3146,8 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 	mp->config.dispatcher_version = mp->version;
 	mp->config.num_progs_enabled = num_new_progs;
 	mp->config.is_xdp_frags = mp->kernel_frags_support;
+	mp->config.is_xdp_devbound = mp->kernel_devbound_support;
+
 	for (i = 0; i < num_new_progs; i++) {
 		mp->config.chain_call_actions[i] =
 			(new_progs[i]->chain_call_actions |
@@ -3032,9 +3155,14 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 		mp->config.run_prios[i] = new_progs[i]->run_prio;
 
 		if (xdp_program__xdp_frags_support(new_progs[i]))
-			mp->config.program_flags[i] = BPF_F_XDP_HAS_FRAGS;
+			mp->config.program_flags[i] |= BPF_F_XDP_HAS_FRAGS;
 		else
 			mp->config.is_xdp_frags = false;
+
+		if (xdp_program__xdp_dev_bound(new_progs[i]))
+			mp->config.program_flags[i] |= BPF_F_XDP_DEV_BOUND_ONLY;
+		else
+			mp->config.is_xdp_devbound = false;
 	}
 
 	if (mp->kernel_frags_support) {
@@ -3044,6 +3172,16 @@ static struct xdp_multiprog *xdp_multiprog__generate(struct xdp_program **progs,
 				 "dispatcher\n");
 		else
 			pr_debug("All attached programs support frags, "
+				 "enabling it for the dispatcher\n");
+	}
+
+	if (mp->kernel_devbound_support) {
+		if (!mp->config.is_xdp_devbound)
+			pr_debug("At least one attached program doesn't "
+				 "support device binding, disabling it for the "
+				 "dispatcher\n");
+		else
+			pr_debug("All attached programs support device binding, "
 				 "enabling it for the dispatcher\n");
 	}
 
@@ -3402,6 +3540,11 @@ int xdp_multiprog__program_count(const struct xdp_multiprog *mp)
 bool xdp_multiprog__xdp_frags_support(const struct xdp_multiprog *mp)
 {
 	return !xdp_multiprog__is_legacy(mp) && mp->config.is_xdp_frags;
+}
+
+bool xdp_multiprog__xdp_dev_bound(const struct xdp_multiprog *mp)
+{
+	return !xdp_multiprog__is_legacy(mp) && mp->config.is_xdp_devbound;
 }
 
 static int remove_pin_dir(const char *subdir)
