@@ -77,7 +77,7 @@ Source UDP port of generated packets. Defaults to 1.
 Enable dynamic port mode where the destination port is varied over a range of
 =<num ports>= starting from the =--dst-port=.
 
-** -n, --num-packets <port>
+** -n, --num-packets <num packets>
 Number of packets to send before exiting. If not supplied, =xdp-trafficgen= will
 keep sending packets until interrupted.
 
