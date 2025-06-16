@@ -24,7 +24,7 @@
 #include "xdp_sample.h"
 #include "xdp_redirect_devmap.skel.h"
 
-static int mask = SAMPLE_RX_CNT | SAMPLE_REDIRECT_ERR_MAP_CNT |
+static int mask = SAMPLE_RX_CNT |
 		  SAMPLE_EXCEPTION_CNT | SAMPLE_DEVMAP_XMIT_CNT_MULTI;
 
 DEFINE_SAMPLE_INIT(xdp_redirect_devmap);

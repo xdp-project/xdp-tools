@@ -32,7 +32,7 @@ static int map_fd;
 static int avail_fd;
 static int count_fd;
 
-static int mask = SAMPLE_RX_CNT | SAMPLE_REDIRECT_ERR_MAP_CNT |
+static int mask = SAMPLE_RX_CNT |
 		  SAMPLE_CPUMAP_ENQUEUE_CNT | SAMPLE_CPUMAP_KTHREAD_CNT |
 		  SAMPLE_EXCEPTION_CNT;
 
@@ -202,9 +202,6 @@ int do_redirect_cpumap(const void *cfg, __unused const char *pin_root_path)
 
 	if (opt->extended)
 		sample_switch_mode();
-
-	if (opt->stats)
-		mask |= SAMPLE_REDIRECT_MAP_CNT;
 
 	if (opt->redir_iface.ifindex)
 		mask |= SAMPLE_DEVMAP_XMIT_CNT_MULTI;
