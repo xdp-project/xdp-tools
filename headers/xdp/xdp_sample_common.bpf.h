@@ -107,24 +107,8 @@ int BPF_PROG(tp_xdp_redirect_err, const struct net_device *dev,
 	return xdp_redirect_collect_stat(dev->ifindex, err);
 }
 
-SEC("tp_btf/xdp_redirect_map_err")
-int BPF_PROG(tp_xdp_redirect_map_err, const struct net_device *dev,
-	     const struct bpf_prog *xdp, const void *tgt, int err,
-	     const struct bpf_map *map, __u32 index)
-{
-	return xdp_redirect_collect_stat(dev->ifindex, err);
-}
-
 SEC("tp_btf/xdp_redirect")
 int BPF_PROG(tp_xdp_redirect, const struct net_device *dev,
-	     const struct bpf_prog *xdp, const void *tgt, int err,
-	     const struct bpf_map *map, __u32 index)
-{
-	return xdp_redirect_collect_stat(dev->ifindex, err);
-}
-
-SEC("tp_btf/xdp_redirect_map")
-int BPF_PROG(tp_xdp_redirect_map, const struct net_device *dev,
 	     const struct bpf_prog *xdp, const void *tgt, int err,
 	     const struct bpf_map *map, __u32 index)
 {
