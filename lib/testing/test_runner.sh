@@ -421,6 +421,8 @@ teardown()
         teardown_ns $ns
     done
 
+    [ -d "$STATEDIR" ] || return 0
+
     for f in ${STATEDIR}/proc/*; do
         if [ -f "$f" ]; then
             local pid="${f/${STATEDIR}\/proc\//}"
