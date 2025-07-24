@@ -1031,6 +1031,7 @@ static struct prog_option probe_options[] = {
 		      .metavar = "<ifname>",
 		      .short_opt = 'i',
 		      .help = "Probe features of device <ifname>"),
+	END_OPTIONS
 };
 
 int do_probe(const void *opt, __unused const char *pin_root_path)
