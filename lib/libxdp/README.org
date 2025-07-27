@@ -423,12 +423,13 @@ kernel and first appeared in kernel release 5.6. To *incrementally* attach
 multiple programs, a further refinement added by commit 4a1e7c0c63e0 ("bpf:
 Support attaching freplace programs to multiple attach points") is needed; this
 first appeared in the upstream kernel version 5.10. The functionality relies on
-the "BPF trampolines" feature which is unfortunately only available on the
-x86_64 architecture. In other words, kernels before 5.6 can only attach a single
-XDP program to each interface, kernels 5.6+ can attach multiple programs if they
-are all attached at the same time, and kernels 5.10 have full support for XDP
-multiprog on x86_64. On other architectures, only a single program can be
-attached to each interface.
+the "BPF trampolines" feature which is available on architectures that support it.
+
+The support matrix is as follows:
+- Kernels before 5.6 can only attach a single XDP program to each interface
+- Kernels 5.6+ can attach multiple programs if they are all attached at the same time
+- Kernels 5.10+ have full support for XDP multiprog on architectures supporting BPF trampolines
+- On architectures without BPF trampoline support, only a single program can be attached to each interface
 
 To load AF_XDP programs, kernel support for AF_XDP sockets needs to be included
 and enabled in the kernel build. In addition, when using AF_XDP sockets, an XDP
