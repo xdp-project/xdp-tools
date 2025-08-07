@@ -864,9 +864,9 @@ out:
 	return err;
 }
 
+#ifdef HAVE_LIBBPF_BPF_XDP_QUERY
 int iface_get_xdp_feature_flags(int ifindex, __u64 *feature_flags)
 {
-#ifdef HAVE_LIBBPF_BPF_XDP_QUERY
 	LIBBPF_OPTS(bpf_xdp_query_opts, opts);
 	int err;
 
@@ -876,8 +876,10 @@ int iface_get_xdp_feature_flags(int ifindex, __u64 *feature_flags)
 
 	*feature_flags = opts.feature_flags;
 	return 0;
-#else
-	return -EOPNOTSUPP;
-#endif
-
 }
+#else
+int iface_get_xdp_feature_flags(__unused int ifindex, __unused __u64 *feature_flags)
+{
+	return -EOPNOTSUPP;
+}
+#endif
