@@ -108,8 +108,7 @@ static int check_iface_support(const struct iface *iface)
 			"Continuing anyway, but running may fail!\n",
 			iface->ifname, -err);
 	} else if (!(feature_flags & NETDEV_XDP_ACT_NDO_XMIT)) {
-		pr_warn("Interface %s does not support sending packets via XDP.\n"
-			"Most likely the driver is missing support in this kernel version.\n",
+		pr_warn("Interface %s does not support sending packets via XDP.\n",
 			iface->ifname);
 		return -EOPNOTSUPP;
 	}
