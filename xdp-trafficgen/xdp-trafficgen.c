@@ -1056,6 +1056,7 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 		"COMMAND can be one of:\n"
 		"       udp         - run in UDP mode\n"
 		"       tcp         - run in TCP mode\n"
+		"       probe       - probe kernel support\n"
 		"       help        - show this help message\n"
 		"\n"
 		"Use 'xdp-trafficgen COMMAND --help' to see options for each command\n");
