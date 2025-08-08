@@ -1038,8 +1038,23 @@ int do_probe(const void *opt, __unused const char *pin_root_path)
 	const struct probeopt *cfg = opt;
 	int err1 = 0, err2;
 
-	if (cfg->iface.ifindex)
+	if (cfg->iface.ifindex) {
 		err1 = check_iface_support(&cfg->iface);
+		if (err1) {
+			const char *name = get_driver_name(cfg->iface.ifindex);
+			if (driver_needs_xdp_pass(&cfg->iface)) {
+				pr_info(" Note that this driver (%s) needs an XDP program "
+					"loaded to use XDP_REDIRECT.\n"
+					" Loading a dummy XDP program on the interface "
+					"may enable support.\n", name);
+			} else {
+
+				if (!strcmp(name, "veth"))
+					pr_info(" Note that enabling GRO on both ends of a "
+						"veth pair may enable XDP support\n");
+			}
+		}
+	}
 
 	err2 = probe_kernel_support();
 	if (!err2)
