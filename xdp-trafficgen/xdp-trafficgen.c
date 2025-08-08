@@ -1037,15 +1037,16 @@ static struct prog_option probe_options[] = {
 int do_probe(const void *opt, __unused const char *pin_root_path)
 {
 	const struct probeopt *cfg = opt;
-	int err;
+	int err1 = 0, err2;
 
 	if (cfg->iface.ifindex)
-		check_iface_support(&cfg->iface);
+		err1 = check_iface_support(&cfg->iface);
 
-	err = probe_kernel_support();
-	if (!err)
+	err2 = probe_kernel_support();
+	if (!err2)
 		pr_info("Kernel supports live packet mode for XDP BPF_PROG_RUN.\n");
-	return err;
+
+	return !(!err1 && !err2);
 }
 
 int do_help(__unused const void *cfg, __unused const char *pin_root_path)
