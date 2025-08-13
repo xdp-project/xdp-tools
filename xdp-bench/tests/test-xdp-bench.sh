@@ -83,12 +83,13 @@ test_redirect_cpu()
     check_run $XDP_BENCH redirect-cpu btest0 -c 0 -p l4-proto -vv
     check_run $XDP_BENCH redirect-cpu btest0 -c 0 -p l4-filter -vv
     check_run $XDP_BENCH redirect-cpu btest0 -c 0 -p l4-hash -vv
-
-    is_progmap_supported || export LIBXDP_SKIP_DISPATCHER=1
-    check_run $XDP_BENCH redirect-cpu btest0 -c 0 -r drop -vv
-    check_run $XDP_BENCH redirect-cpu btest0 -c 0 -r pass -vv
-    check_run $XDP_BENCH redirect-cpu btest0 -c 0 -r redirect -D btest1  -vv
     ip link del dev btest0
+
+    if is_progmap_supported; then
+        check_run $XDP_BENCH redirect-cpu btest0 -c 0 -r drop -vv
+        check_run $XDP_BENCH redirect-cpu btest0 -c 0 -r pass -vv
+        check_run $XDP_BENCH redirect-cpu btest0 -c 0 -r redirect -D btest1  -vv
+    fi
 }
 
 test_redirect_map()
@@ -108,8 +109,9 @@ test_redirect_map_egress()
 
     export XDP_SAMPLE_IMMEDIATE_EXIT=1
     check_run ip link add dev btest0 type veth peer name btest1
-    is_progmap_supported || export LIBXDP_SKIP_DISPATCHER=1
-    check_run $XDP_BENCH redirect-map btest0 btest1 -X -vv
+    if is_progmap_supported; then
+        check_run $XDP_BENCH redirect-map btest0 btest1 -X -vv
+    fi
     ip link del dev btest0
 }
 
