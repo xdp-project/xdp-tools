@@ -71,6 +71,7 @@ static const char *driver_pass_list[] = {
 static bool driver_needs_xdp_pass(const struct iface *iface)
 {
 	const char *name = get_driver_name(iface->ifindex);
+	struct xdp_multiprog *mp;
 	__u64 feature_flags;
 	size_t i;
 	int err;
@@ -79,6 +80,13 @@ static bool driver_needs_xdp_pass(const struct iface *iface)
 	err = iface_get_xdp_feature_flags(iface->ifindex, &feature_flags);
 	if (!err && feature_flags & NETDEV_XDP_ACT_NDO_XMIT)
 		return false;
+
+	mp = xdp_multiprog__get_from_ifindex(iface->ifindex);
+	if (!IS_ERR_OR_NULL(mp)) {
+		pr_debug("Interface %s already has an XDP program loaded\n", iface->ifname);
+		xdp_multiprog__close(mp);
+		return false;
+	}
 
 	for (i = 0; i < ARRAY_SIZE(driver_pass_list); i++) {
 		if (!strcmp(name, driver_pass_list[i])) {
@@ -522,8 +530,10 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 	}
 
 	if (driver_needs_xdp_pass(&cfg->iface)) {
-		opts.prog_name = "xdp_pass";
-		pass_prog = xdp_program__create(&opts);
+		DECLARE_LIBXDP_OPTS(xdp_program_opts, pass_opts);
+		pass_opts.prog_name = "xdp_pass";
+		pass_opts.find_filename = "xdp-dispatcher.o";
+		pass_prog = xdp_program__create(&pass_opts);
 		if (!pass_prog) {
 			err = -errno;
 			pr_warn("Couldn't load xdp_pass program\n");
@@ -539,7 +549,7 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 		err = xdp_program__attach(pass_prog, cfg->iface.ifindex,
 					  XDP_MODE_NATIVE, 0);
 		if (err) {
-			pr_warn("Couldn't attach xdp_pass program");
+			pr_warn("Couldn't attach xdp_pass program\n");
 			xdp_program__close(pass_prog);
 			pass_prog = NULL;
 			goto out;
