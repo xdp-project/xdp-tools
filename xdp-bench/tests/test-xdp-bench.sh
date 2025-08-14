@@ -83,13 +83,13 @@ test_redirect_cpu()
     check_run $XDP_BENCH redirect-cpu btest0 -c 0 -p l4-proto -vv
     check_run $XDP_BENCH redirect-cpu btest0 -c 0 -p l4-filter -vv
     check_run $XDP_BENCH redirect-cpu btest0 -c 0 -p l4-hash -vv
-    ip link del dev btest0
 
     if is_progmap_supported; then
         check_run $XDP_BENCH redirect-cpu btest0 -c 0 -r drop -vv
         check_run $XDP_BENCH redirect-cpu btest0 -c 0 -r pass -vv
         check_run $XDP_BENCH redirect-cpu btest0 -c 0 -r redirect -D btest1  -vv
     fi
+    ip link del dev btest0
 }
 
 test_redirect_map()
