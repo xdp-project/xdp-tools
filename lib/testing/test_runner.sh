@@ -373,14 +373,16 @@ teardown()
         teardown_ns $ns
     done
 
-    for f in ${STATEDIR}/proc/*; do
-        if [ -f "$f" ]; then
-            local pid="${f/${STATEDIR}\/proc\//}"
-            stop_background "$pid" &> /dev/null || true
-        fi
-    done
+    if ! [ -z ${STATEDIR} ]; then
+        for f in ${STATEDIR}/proc/*; do
+            if [ -f "$f" ]; then
+                local pid="${f/${STATEDIR}\/proc\//}"
+                stop_background "$pid" &> /dev/null || true
+            fi
+        done
 
-    rm -rf "$STATEDIR"
+        rm -rf "$STATEDIR"
+    fi
 }
 
 ns_exec()
