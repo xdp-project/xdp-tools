@@ -6,7 +6,7 @@
 #include <linux/types.h>
 
 #define XDP_METADATA_SECTION "xdp_metadata"
-#define XDP_DISPATCHER_VERSION 2
+#define XDP_DISPATCHER_VERSION 3
 
 /* magic byte is 'X' + 'D' + 'P' (88+68+80=236) */
 #define XDP_DISPATCHER_MAGIC 236
@@ -29,6 +29,7 @@ struct xdp_dispatcher_config {
 	__u32 chain_call_actions[MAX_DISPATCHER_ACTIONS];
 	__u32 run_prios[MAX_DISPATCHER_ACTIONS];
 	__u32 program_flags[MAX_DISPATCHER_ACTIONS];
+	__u8 is_xdp_devbound;              /* Whether this dispatcher is bounded to a device */
 };
 
 #endif
