@@ -179,7 +179,7 @@ struct prog_option redirect_cpumap_options[] = {
 	DEFINE_OPTION("stats", OPT_BOOL, struct cpumap_opts, stats,
 		      .short_opt = 's',
 		      .help = "Enable statistics for transmitted packets (not just errors)"),
-	DEFINE_OPTION("extended", OPT_BOOL, struct basic_opts, extended,
+	DEFINE_OPTION("extended", OPT_BOOL, struct cpumap_opts, extended,
 		      .short_opt = 'e',
 		      .help = "Start running in extended output mode (C^\\ to toggle)"),
 	DEFINE_OPTION("xdp-mode", OPT_ENUM, struct cpumap_opts, mode,
