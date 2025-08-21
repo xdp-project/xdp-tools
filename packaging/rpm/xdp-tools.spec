@@ -28,9 +28,6 @@ ExcludeArch:      i386 i686
 # Always keep xdp-tools and libxdp packages in sync
 Requires:         libxdp = %{version}-%{release}
 
-# find-debuginfo produces empty debugsourcefiles.list
-# disable the debug package to avoid rpmbuild error'ing out because of this
-%global debug_package %{nil}
 %global _hardened_build 1
 
 %description
