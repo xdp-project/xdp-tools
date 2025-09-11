@@ -71,9 +71,9 @@ test_xsk_prog_refcnt_legacy()
 
 test_xdp_frags()
 {
+        check_mount_bpffs || return 1
         skip_if_missing_libxdp_compat
 
-        check_mount_bpffs || return 1
         ip link add xdp_veth_big0 mtu 5000 type veth peer name xdp_veth_big1 mtu 5000
         ip link add xdp_veth_small0 type veth peer name xdp_veth_small1
         check_run $TESTS_DIR/test_xdp_frags xdp_veth_big0 xdp_veth_small0 2>&1
@@ -83,9 +83,9 @@ test_xdp_frags()
 
 test_old_dispatcher()
 {
+        check_mount_bpffs || return 1
         skip_if_missing_libxdp_compat
 
-        check_mount_bpffs || return 1
         ip link add xdp_veth0 type veth peer name xdp_veth1
         check_run $TESTS_DIR/test_dispatcher_versions xdp_veth0
         ip link delete xdp_veth0
