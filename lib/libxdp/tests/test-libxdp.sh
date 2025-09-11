@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
     return 0;
 }
 EOF
-        $CC -o $TMPDIR/libxdptest $TMPDIR/libxdptest.c $CFLAGS $CPPFLAGS -l:libxdp.a $LDLIBS 2>&1
+        $CC -o $TMPDIR/libxdptest $TMPDIR/libxdptest.c $CFLAGS $CPPFLAGS -l:$OBJDIR/libxdp.a $LDLIBS 2>&1
         retval=$?
         rm -rf "$TMPDIR"
         return $retval
