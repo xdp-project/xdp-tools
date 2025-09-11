@@ -21,6 +21,7 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 		"       redirect-cpu   - XDP CPU redirect using BPF_MAP_TYPE_CPUMAP\n"
 		"       redirect-map   - XDP redirect using BPF_MAP_TYPE_DEVMAP\n"
 		"       redirect-multi - XDP multi-redirect using BPF_MAP_TYPE_DEVMAP and the BPF_F_BROADCAST flag\n"
+		"       xsk            - AF_XDP socket-based benchmarks (from xdpsock)\n"
 		"       help           - show this help message\n"
 		"\n"
 		"Use 'xdp-bench COMMAND --help' to see options for each command\n");
@@ -71,6 +72,33 @@ struct enum_val cpumap_program_modes[] = {
 struct enum_val devmap_egress_actions[] = {
        {"forward", DEVMAP_EGRESS_FORWARD },
        {"drop", DEVMAP_EGRESS_DROP },
+       {NULL, 0}
+};
+
+struct enum_val xsk_program_modes[] = {
+       {"rxdrop", XSK_RXDROP},
+       {"swap-macs", XSK_SWAP_MACS},
+       {NULL, 0}
+};
+
+struct enum_val xsk_copy_modes[] = {
+       {"auto", XSK_COPY_AUTO},
+       {"copy", XSK_COPY_COPY},
+       {"zero-copy", XSK_COPY_ZEROCOPY},
+       {NULL, 0}
+};
+
+struct enum_val xsk_clocks[] = {
+       {"MONOTONIC", XSK_CLOCK_MONOTONIC},
+       {"REALTIME", XSK_CLOCK_REALTIME},
+       {"TAI", XSK_CLOCK_TAI},
+       {"BOOTTIME", XSK_CLOCK_BOOTTIME},
+       {NULL, 0}
+};
+
+struct enum_val xsk_sched_policies[] = {
+       {"SCHED_OTHER", XSK_SCHED_OTHER},
+       {"SCHED_FIFO", XSK_SCHED_FIFO},
        {NULL, 0}
 };
 
@@ -266,6 +294,97 @@ struct prog_option redirect_devmap_multi_options[] = {
 	END_OPTIONS
 };
 
+struct prog_option xsk_options[] = {
+	DEFINE_OPTION("queue", OPT_U32, struct xsk_opts, queue_idx,
+		      .short_opt = 'q',
+		      .metavar = "<queue>",
+		      .help = "Queue index to use (default 0)"),
+	DEFINE_OPTION("interval", OPT_U32, struct xsk_opts, interval,
+		      .short_opt = 'i',
+		      .metavar = "<seconds>",
+		      .help = "Statistics update interval (default 2)"),
+	DEFINE_OPTION("retries", OPT_U32, struct xsk_opts, retries,
+		      .short_opt = 'O',
+		      .metavar = "<number>",
+		      .help = "Number of time-out retries per 1s interval (default 3)"),
+	DEFINE_OPTION("frame-size", OPT_U32, struct xsk_opts, frame_size,
+		      .short_opt = 'f',
+		      .metavar = "<size>",
+		      .help = "Data frame size (must be a power of two in aligned mode); (default 4096)"),
+	DEFINE_OPTION("duration", OPT_U32, struct xsk_opts, duration,
+		      .short_opt = 'd',
+		      .metavar = "<seconds>",
+		      .help = "Duration to run; default 0 (forever)"),
+	DEFINE_OPTION("batch-size", OPT_U32, struct xsk_opts, batch_size,
+		      .short_opt = 'b',
+		      .metavar = "<packets>",
+		      .help = "Batch size for receive loop; default 64"),
+	DEFINE_OPTION("irq-string", OPT_STRING, struct xsk_opts, irq_string,
+		      .short_opt = 'I',
+		      .metavar = "<irq-string>",
+		      .help = "Display driver interrupt statistics for interface associated with <irq-string>"),
+	DEFINE_OPTION("poll", OPT_BOOL, struct xsk_opts, use_poll,
+		      .short_opt = 'p',
+		      .help = "Use poll syscall"),
+	DEFINE_OPTION("no-need-wakeup", OPT_BOOL, struct xsk_opts, no_need_wakeup,
+		      .short_opt = 'm',
+		      .help = "Turn off use of driver need wakeup flag"),
+	DEFINE_OPTION("unaligned", OPT_BOOL, struct xsk_opts, unaligned,
+		      .short_opt = 'u',
+		      .help = "Enable unaligned chunk placement"),
+	DEFINE_OPTION("shared-umem", OPT_BOOL, struct xsk_opts, shared_umem,
+		      .short_opt = 'M',
+		      .help = "Enable XDP_SHARED_UMEM (cannot be used with -R)"),
+	DEFINE_OPTION("reduce-cap", OPT_BOOL, struct xsk_opts, reduce_cap,
+		      .short_opt = 'R',
+		      .help = "Use reduced capabilities (cannot be used with -M)"),
+	DEFINE_OPTION("extra-stats", OPT_BOOL, struct xsk_opts, extra_stats,
+		      .short_opt = 'x',
+		      .help = "Display extra statistics"),
+	DEFINE_OPTION("quiet", OPT_BOOL, struct xsk_opts, quiet,
+		      .short_opt = 'Q',
+		      .help = "Do not display any stats"),
+	DEFINE_OPTION("app-stats", OPT_BOOL, struct xsk_opts, app_stats,
+		      .short_opt = 'a',
+		      .help = "Display application (syscall) statistics"),
+	DEFINE_OPTION("busy-poll", OPT_BOOL, struct xsk_opts, busy_poll,
+		      .short_opt = 'B',
+		      .help = "Enable busy polling"),
+	DEFINE_OPTION("frags", OPT_BOOL, struct xsk_opts, frags,
+		      .short_opt = 'F',
+		      .help = "Enable frags (multi-buffer) support"),
+	DEFINE_OPTION("copy_mode", OPT_ENUM, struct xsk_opts, copy_mode,
+		      .short_opt = 'C',
+		      .typearg = xsk_copy_modes,
+		      .metavar = "<mode>",
+		      .help = "Use <mode> for copying data packets to userspace; default auto"),
+	DEFINE_OPTION("clock", OPT_ENUM, struct xsk_opts, clock,
+		      .short_opt = 'w',
+		      .typearg = xsk_clocks,
+		      .metavar = "<clock>",
+		      .help = "Clock name to use; default MONOTONIC"),
+	DEFINE_OPTION("policy", OPT_ENUM, struct xsk_opts, sched_policy,
+		      .short_opt = 'W',
+		      .typearg = xsk_sched_policies,
+		      .metavar = "<policy>",
+		      .help = "Scheduler policy; default SCHED_OTHER"),
+	DEFINE_OPTION("schpri", OPT_U32, struct xsk_opts, sched_prio,
+		      .short_opt = 'U',
+		      .metavar = "<priority>",
+		      .help = "Scheduler priority; default 0"),
+	DEFINE_OPTION("attach-mode", OPT_ENUM, struct xsk_opts, mode,
+		      .short_opt = 'A',
+		      .typearg = xdp_modes,
+		      .metavar = "<mode>",
+		      .help = "Load XDP program in <mode>; default native"),
+	DEFINE_OPTION("dev", OPT_IFNAME, struct xsk_opts, iface_in,
+		      .positional = true,
+		      .metavar = "<ifname>",
+		      .required = true,
+		      .help = "Load on device <ifname>"),
+	END_OPTIONS
+};
+
 static const struct prog_command cmds[] = {
 	{ .name = "drop",
 	  .func = do_drop,
@@ -291,6 +410,8 @@ static const struct prog_command cmds[] = {
 	DEFINE_COMMAND_NAME(
 		"redirect-multi", redirect_devmap_multi,
 		"XDP multi-redirect using BPF_MAP_TYPE_DEVMAP and the BPF_F_BROADCAST flag"),
+	DEFINE_COMMAND_NAME("xsk", xsk,
+			    "AF_XDP socket-based benchmarks (from xdpsock)"),
 	{ .name = "help", .func = do_help, .no_cfg = true },
 	END_COMMANDS
 };
@@ -300,6 +421,7 @@ union all_opts {
 	struct cpumap_opts cpumap;
 	struct devmap_opts devmap;
 	struct devmap_multi_opts devmap_multi;
+	struct xsk_opts xsk;
 };
 
 int main(int argc, char **argv)

@@ -2,6 +2,8 @@
 #ifndef XDP_REDIRECT_H
 #define XDP_REDIRECT_H
 
+#include <time.h>
+#include <sched.h>
 #include <xdp/libxdp.h>
 #include "params.h"
 #include "util.h"
@@ -15,6 +17,7 @@ int do_redirect_basic(const void *cfg, const char *pin_root_path);
 int do_redirect_cpumap(const void *cfg, const char *pin_root_path);
 int do_redirect_devmap(const void *cfg, const char *pin_root_path);
 int do_redirect_devmap_multi(const void *cfg, const char *pin_root_path);
+int do_xsk(const void *cfg, const char *pin_root_path);
 
 enum basic_program_mode {
 	BASIC_NO_TOUCH,
@@ -107,6 +110,56 @@ struct cpumap_opts {
 	struct iface redir_iface;
 };
 
+enum xsk_program_mode {
+	XSK_RXDROP,
+	XSK_SWAP_MACS,
+};
+
+enum xsk_copy_mode {
+	XSK_COPY_AUTO,
+	XSK_COPY_COPY,
+	XSK_COPY_ZEROCOPY,
+};
+
+enum xsk_clock {
+	XSK_CLOCK_MONOTONIC = CLOCK_MONOTONIC,
+	XSK_CLOCK_REALTIME = CLOCK_REALTIME,
+	XSK_CLOCK_TAI = CLOCK_TAI,
+	XSK_CLOCK_BOOTTIME = CLOCK_BOOTTIME,
+};
+
+enum xsk_sched_policy {
+	XSK_SCHED_OTHER = SCHED_OTHER,
+	XSK_SCHED_FIFO = SCHED_FIFO,
+};
+
+struct xsk_opts {
+	__u32 queue_idx;
+	__u32 interval;
+	__u32 retries;
+	__u32 frame_size;
+	__u32 duration;
+	__u32 batch_size;
+	__u32 sched_prio;
+	bool use_poll;
+	bool no_need_wakeup;
+	bool unaligned;
+	bool extra_stats;
+	bool quiet;
+	bool app_stats;
+	bool busy_poll;
+	bool reduce_cap;
+	bool frags;
+	bool shared_umem;
+	char *irq_string;
+	enum xdp_attach_mode mode;
+	enum xsk_program_mode program_mode;
+	enum xsk_copy_mode copy_mode;
+	enum xsk_clock clock;
+	enum xsk_sched_policy sched_policy;
+	struct iface iface_in;
+};
+
 extern const struct basic_opts defaults_drop;
 extern const struct basic_opts defaults_pass;
 extern const struct basic_opts defaults_tx;
@@ -114,5 +167,6 @@ extern const struct redirect_opts defaults_redirect_basic;
 extern const struct cpumap_opts defaults_redirect_cpumap;
 extern const struct devmap_opts defaults_redirect_devmap;
 extern const struct devmap_multi_opts defaults_redirect_devmap_multi;
+extern const struct xsk_opts defaults_xsk;
 
 #endif
