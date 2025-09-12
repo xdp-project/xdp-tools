@@ -15,7 +15,7 @@
 
 #include "test_utils.h"
 #include "../libxdp_internal.h"
-#include "xdp_dispatcher_v1.h"
+#include "xdp_dispatcher.h"
 
 #include <xdp/libxdp.h>
 #include <bpf/libbpf.h>
@@ -29,6 +29,15 @@
 
 #define PROG_RUN_PRIO 42
 #define PROG_CHAIN_CALL_ACTIONS (1 << XDP_DROP)
+#define DISPATCHER_V1_FILE "xdp_dispatcher_v1.o"
+#define DISPATCHER_V2_FILE "xdp_dispatcher_v2.o"
+
+static void print_test_result(const char *func, int ret)
+{
+	fflush(stderr);
+	fprintf(stderr, "%s:\t%s\n", func, ret ? "FAILED" : "PASSED");
+	fflush(stdout);
+}
 
 int get_prog_id(int prog_fd)
 {
@@ -43,21 +52,38 @@ int get_prog_id(int prog_fd)
 	return info.id;
 }
 
-int load_dispatcher_v1(int ifindex)
+static char* get_dispatcher_file(unsigned int dispatcher_version)
 {
-	struct xdp_dispatcher_config_v1 dispatcher_config = {};
+	switch (dispatcher_version) {
+	case XDP_DISPATCHER_VERSION_V1:
+		return DISPATCHER_V1_FILE;
+
+	case XDP_DISPATCHER_VERSION_V2:
+		return DISPATCHER_V2_FILE;
+
+	default:
+		break;
+	}
+	return NULL;
+}
+
+int load_dispatcher(int ifindex, unsigned int dispatcher_version)
+{
+	struct xdp_dispatcher_config_v1 dispatcher_config_v1 = {};
+	struct xdp_dispatcher_config_v2 dispatcher_config_v2 = {};
+	char *dispatcher_file = get_dispatcher_file(dispatcher_version);
 	struct bpf_object *obj_dispatcher, *obj_prog = NULL;
 	DECLARE_LIBBPF_OPTS(bpf_link_create_opts, opts);
 	struct bpf_program *dispatcher_prog, *xdp_prog;
-	int ret, btf_id, lfd = -1, dispatcher_id;
+	int ret = 0, btf_id, lfd = -1, dispatcher_id;
 	char pin_path[PATH_MAX], buf[PATH_MAX];
 	const char *attach_func = "prog0";
 	struct bpf_map *map;
 
-	if (!ifindex)
+	if (!ifindex || !dispatcher_file)
 		return -ENOENT;
 
-	obj_dispatcher = open_bpf_file("xdp_dispatcher_v1.o", NULL);
+	obj_dispatcher = open_bpf_file(dispatcher_file, NULL);
 	if (IS_ERR_OR_NULL(obj_dispatcher))
 		return -errno;
 
@@ -76,21 +102,37 @@ int load_dispatcher_v1(int ifindex)
 	}
 
 	dispatcher_prog = bpf_object__find_program_by_name(obj_dispatcher,
-							  "xdp_dispatcher");
+							   "xdp_dispatcher");
 	if (!dispatcher_prog) {
 		ret = -errno;
 		goto out;
 	}
 
-	dispatcher_config.num_progs_enabled = 1;
-	dispatcher_config.chain_call_actions[0] = PROG_CHAIN_CALL_ACTIONS;
-	dispatcher_config.run_prios[0] = PROG_RUN_PRIO;
+	switch (dispatcher_version) {
+	case XDP_DISPATCHER_VERSION_V1:
+		dispatcher_config_v1.num_progs_enabled = 1;
+		dispatcher_config_v1.chain_call_actions[0] = PROG_CHAIN_CALL_ACTIONS;
+		dispatcher_config_v1.run_prios[0] = PROG_RUN_PRIO;
 
-	ret = bpf_map__set_initial_value(map, &dispatcher_config,
-					 sizeof(dispatcher_config));
+		ret = bpf_map__set_initial_value(map, &dispatcher_config_v1,
+						 sizeof(dispatcher_config_v1));
+		break;
+
+	case XDP_DISPATCHER_VERSION_V2:
+		dispatcher_config_v2.magic = XDP_DISPATCHER_MAGIC;
+		dispatcher_config_v2.num_progs_enabled = 1;
+		dispatcher_config_v2.chain_call_actions[0] = PROG_CHAIN_CALL_ACTIONS;
+		dispatcher_config_v2.run_prios[0] = PROG_RUN_PRIO;
+		dispatcher_config_v2.is_xdp_frags = 0;
+		dispatcher_config_v2.program_flags[0] = 0;
+		dispatcher_config_v2.dispatcher_version = XDP_DISPATCHER_VERSION_V2;
+
+		ret = bpf_map__set_initial_value(map, &dispatcher_config_v2,
+						 sizeof(dispatcher_config_v2));
+	}
+
 	if (ret)
 		goto out;
-
 
 	ret = bpf_object__load(obj_dispatcher);
 	if (ret)
@@ -190,14 +232,14 @@ err_unpin:
 	goto out;
 }
 
-int check_old_dispatcher(int ifindex)
+int check_old_dispatcher(int ifindex, unsigned int dispatcher_version)
 {
 	struct xdp_multiprog *mp = NULL;
 	struct xdp_program *xdp_prog;
 	char buf[100];
 	int ret;
 
-	ret = load_dispatcher_v1(ifindex);
+	ret = load_dispatcher(ifindex, dispatcher_version);
 	if (ret)
 		goto out;
 
@@ -279,6 +321,20 @@ static void usage(char *progname)
 	exit(EXIT_FAILURE);
 }
 
+int check_old_dispatcher_v1(int ifindex)
+{
+	int ret = check_old_dispatcher(ifindex, XDP_DISPATCHER_VERSION_V1);
+	print_test_result(__func__, ret);
+	return ret;
+}
+
+int check_old_dispatcher_v2(int ifindex)
+{
+	int ret = check_old_dispatcher(ifindex, XDP_DISPATCHER_VERSION_V2);
+	print_test_result(__func__, ret);
+	return ret;
+}
+
 int main(int argc, char **argv)
 {
 	int ifindex, ret;
@@ -297,7 +353,8 @@ int main(int argc, char **argv)
 
 	ifindex = if_nametoindex(argv[1]);
 
-	ret = check_old_dispatcher(ifindex);
+	ret = check_old_dispatcher_v1(ifindex);
+	ret = check_old_dispatcher_v2(ifindex) || ret;
 
 	return ret;
 }

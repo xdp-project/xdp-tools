@@ -10,9 +10,9 @@
 #define XDP_DISPATCHER_RETVAL 31
 
 
-static volatile const struct xdp_dispatcher_config_v1 conf = {};
+static volatile const struct xdp_dispatcher_config_v2 conf = {};
 
-__attribute__ ((__noinline__))
+__attribute__ ((noinline))
 int prog0(struct xdp_md *ctx) {
         volatile int ret = XDP_DISPATCHER_RETVAL;
 
@@ -20,7 +20,7 @@ int prog0(struct xdp_md *ctx) {
           return XDP_ABORTED;
         return ret;
 }
-__attribute__ ((__noinline__))
+__attribute__ ((noinline))
 
 SEC("xdp")
 int xdp_dispatcher(struct xdp_md *ctx)
@@ -39,4 +39,4 @@ out:
 }
 
 char _license[] SEC("license") = "GPL";
-__uint(dispatcher_version, XDP_DISPATCHER_VERSION_V1) SEC(XDP_METADATA_SECTION);
+__uint(dispatcher_version, XDP_DISPATCHER_VERSION_V2) SEC(XDP_METADATA_SECTION);
