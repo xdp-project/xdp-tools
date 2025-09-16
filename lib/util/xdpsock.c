@@ -78,11 +78,6 @@
 #define SCHED_PRI__DEFAULT	0
 #define STRERR_BUFSIZE          1024
 
-typedef __u64 u64;
-typedef __u32 u32;
-typedef __u16 u16;
-typedef __u8  u8;
-
 static unsigned long prev_time;
 static long tx_cycle_diff_min;
 static long tx_cycle_diff_max;
@@ -103,13 +98,13 @@ static int opt_queue;
 static unsigned long opt_duration;
 static unsigned long start_time;
 static bool benchmark_done;
-static u32 opt_batch_size = 64;
+static __u32 opt_batch_size = 64;
 static int opt_pkt_count;
-static u16 opt_pkt_size = MIN_PKT_SIZE;
-static u32 opt_pkt_fill_pattern = 0x12345678;
+static __u16 opt_pkt_size = MIN_PKT_SIZE;
+static __u32 opt_pkt_fill_pattern = 0x12345678;
 static bool opt_vlan_tag;
-static u16 opt_pkt_vlan_id = VLAN_VID__DEFAULT;
-static u16 opt_pkt_vlan_pri = VLAN_PRI__DEFAULT;
+static __u16 opt_pkt_vlan_id = VLAN_VID__DEFAULT;
+static __u16 opt_pkt_vlan_pri = VLAN_PRI__DEFAULT;
 static struct ether_addr opt_txdmac = {{ 0x3c, 0xfd, 0xfe,
 					 0x9e, 0x7f, 0x71 }};
 static struct ether_addr opt_txsmac = {{ 0xec, 0xb1, 0xd7,
@@ -118,21 +113,21 @@ static bool opt_extra_stats;
 static bool opt_quiet;
 static bool opt_app_stats;
 static const char *opt_irq_str = "";
-static u32 irq_no;
+static __u32 irq_no;
 static int irqs_at_init = -1;
-static u32 sequence;
+static __u32 sequence;
 static int opt_poll;
 static int opt_interval = 1;
 static int opt_retries = 3;
-static u32 opt_xdp_bind_flags = XDP_USE_NEED_WAKEUP;
-static u32 opt_umem_flags;
+static __u32 opt_xdp_bind_flags = XDP_USE_NEED_WAKEUP;
+static __u32 opt_umem_flags;
 static int opt_unaligned_chunks;
 static int opt_mmap_flags;
 static int opt_xsk_frame_size = XSK_UMEM__DEFAULT_FRAME_SIZE;
 static int frames_per_pkt;
 static int opt_timeout = 1000;
 static bool opt_need_wakeup = true;
-static u32 opt_num_xsks = 1;
+static __u32 opt_num_xsks = 1;
 static bool opt_busy_poll;
 static bool opt_reduced_cap;
 static clockid_t opt_clock = CLOCK_MONOTONIC;
@@ -216,7 +211,7 @@ struct xsk_socket_info {
 	struct xsk_ring_stats ring_stats;
 	struct xsk_app_stats app_stats;
 	struct xsk_driver_stats drv_stats;
-	u32 outstanding_tx;
+	__u32 outstanding_tx;
 };
 
 static const struct clockid_map {
@@ -496,8 +491,8 @@ static void dump_stats(void)
 		printf("\n");
 
 		if (opt_frags) {
-			u64 rx_frags = xsks[i]->ring_stats.rx_frags;
-			u64 tx_frags = xsks[i]->ring_stats.tx_frags;
+			__u64 rx_frags = xsks[i]->ring_stats.rx_frags;
+			__u64 tx_frags = xsks[i]->ring_stats.tx_frags;
 			double rx_fps = (rx_frags - xsks[i]->ring_stats.prev_rx_frags) *
 				1000000000. / dt;
 			double tx_fps = (tx_frags - xsks[i]->ring_stats.prev_tx_frags) *
@@ -659,7 +654,7 @@ static void swap_mac_addresses(void *data)
 	*dst_addr = tmp;
 }
 
-static void hex_dump(void *pkt, size_t length, u64 addr)
+static void hex_dump(void *pkt, size_t length, __u64 addr)
 {
 	const unsigned char *address = (unsigned char *)pkt;
 	const unsigned char *line = address;
@@ -694,10 +689,10 @@ static void hex_dump(void *pkt, size_t length, u64 addr)
 	printf("\n");
 }
 
-static void *memset32_htonl(void *dest, u32 val, u32 size)
+static void *memset32_htonl(void *dest, __u32 val, __u32 size)
 {
-	u32 *ptr = (u32 *)dest;
-	u32 i;
+	__u32 *ptr = (__u32 *)dest;
+	__u32 i;
 
 	val = htonl(val);
 
@@ -802,7 +797,7 @@ static inline __sum16 ip_fast_csum(const void *iph, unsigned int ihl)
  */
 static inline __sum16 csum_fold(__wsum csum)
 {
-	u32 sum = (u32)csum;
+	__u32 sum = (__u32)csum;
 
 	sum = (sum & 0xffff) + (sum >> 16);
 	sum = (sum & 0xffff) + (sum >> 16);
@@ -813,13 +808,13 @@ static inline __sum16 csum_fold(__wsum csum)
  * This function code has been taken from
  * Linux kernel lib/checksum.c
  */
-static inline u32 from64to32(u64 x)
+static inline __u32 from64to32(__u64 x)
 {
 	/* add up 32-bit and 32-bit for 32+c bit */
 	x = (x & 0xffffffff) + (x >> 32);
 	/* add up carry.. */
 	x = (x & 0xffffffff) + (x >> 32);
-	return (u32)x;
+	return (__u32)x;
 }
 
 __wsum csum_tcpudp_nofold(__be32 saddr, __be32 daddr,
@@ -832,10 +827,10 @@ __wsum csum_tcpudp_nofold(__be32 saddr, __be32 daddr,
 __wsum csum_tcpudp_nofold(__be32 saddr, __be32 daddr,
 			  __u32 len, __u8 proto, __wsum sum)
 {
-	unsigned long long s = (u32)sum;
+	unsigned long long s = (__u32)sum;
 
-	s += (u32)saddr;
-	s += (u32)daddr;
+	s += (__u32)saddr;
+	s += (__u32)daddr;
 #ifdef __BIG_ENDIAN__
 	s += proto + len;
 #else
@@ -855,11 +850,11 @@ csum_tcpudp_magic(__be32 saddr, __be32 daddr, __u32 len,
 	return csum_fold(csum_tcpudp_nofold(saddr, daddr, len, proto, sum));
 }
 
-static inline u16 udp_csum(u32 saddr, u32 daddr, u32 len,
-			   u8 proto, u16 *udp_pkt)
+static inline __u16 udp_csum(__u32 saddr, __u32 daddr, __u32 len,
+			   __u8 proto, __u16 *udp_pkt)
 {
-	u32 csum = 0;
-	u32 cnt = 0;
+	__u32 csum = 0;
+	__u32 cnt = 0;
 
 	/* udp hdr and data */
 	for (; cnt < len; cnt += 2)
@@ -886,7 +881,7 @@ static inline u16 udp_csum(u32 saddr, u32 daddr, u32 len,
 #define UDP_PKT_DATA_SIZE	(UDP_PKT_SIZE - \
 				 (sizeof(struct udphdr) + PKTGEN_HDR_SIZE))
 
-static u8 pkt_data[MAX_PKT_SIZE];
+static __u8 pkt_data[MAX_PKT_SIZE];
 
 static void gen_eth_hdr_data(void)
 {
@@ -896,7 +891,7 @@ static void gen_eth_hdr_data(void)
 
 	if (opt_vlan_tag) {
 		struct vlan_ethhdr *veth_hdr = (struct vlan_ethhdr *)pkt_data;
-		u16 vlan_tci = 0;
+		__u16 vlan_tci = 0;
 
 		udp_hdr = (struct udphdr *)(pkt_data +
 					    sizeof(struct vlan_ethhdr) +
@@ -965,13 +960,13 @@ static void gen_eth_hdr_data(void)
 	/* UDP header checksum */
 	udp_hdr->check = 0;
 	udp_hdr->check = udp_csum(ip_hdr->saddr, ip_hdr->daddr, UDP_PKT_SIZE,
-				  IPPROTO_UDP, (u16 *)udp_hdr);
+				  IPPROTO_UDP, (__u16 *)udp_hdr);
 }
 
-static void gen_eth_frame(struct xsk_umem_info *umem, u64 addr)
+static void gen_eth_frame(struct xsk_umem_info *umem, __u64 addr)
 {
-	static u32 len;
-	u32 copy_len = opt_xsk_frame_size;
+	static __u32 len;
+	__u32 copy_len = opt_xsk_frame_size;
 
 	if (!len)
 		len = PKT_SIZE;
@@ -983,7 +978,7 @@ static void gen_eth_frame(struct xsk_umem_info *umem, u64 addr)
 	len -= copy_len;
 }
 
-static struct xsk_umem_info *xsk_configure_umem(void *buffer, u64 size)
+static struct xsk_umem_info *xsk_configure_umem(void *buffer, __u64 size)
 {
 	struct xsk_umem_info *umem;
 	struct xsk_umem_config cfg = {
@@ -1020,7 +1015,7 @@ static struct xsk_umem_info *xsk_configure_umem(void *buffer, u64 size)
 static void xsk_populate_fill_ring(struct xsk_umem_info *umem)
 {
 	int ret, i;
-	u32 idx;
+	__u32 idx;
 
 	ret = xsk_ring_prod__reserve(&umem->fq,
 				     XSK_RING_PROD__DEFAULT_NUM_DESCS * 2, &idx);
@@ -1388,7 +1383,7 @@ static void kick_tx(struct xsk_socket_info *xsk)
 static inline void complete_tx_l2fwd(struct xsk_socket_info *xsk)
 {
 	struct xsk_umem_info *umem = xsk->umem;
-	u32 idx_cq = 0, idx_fq = 0;
+	__u32 idx_cq = 0, idx_fq = 0;
 	unsigned int rcvd;
 	size_t ndescs;
 
@@ -1440,7 +1435,7 @@ static inline void complete_tx_only(struct xsk_socket_info *xsk,
 				    int batch_size)
 {
 	unsigned int rcvd;
-	u32 idx;
+	__u32 idx;
 
 	if (!xsk->outstanding_tx)
 		return;
@@ -1460,7 +1455,7 @@ static inline void complete_tx_only(struct xsk_socket_info *xsk,
 static void rx_drop(struct xsk_socket_info *xsk)
 {
 	unsigned int rcvd, i, eop_cnt = 0;
-	u32 idx_rx = 0, idx_fq = 0;
+	__u32 idx_rx = 0, idx_fq = 0;
 	int ret;
 
 	rcvd = xsk_ring_cons__peek(&xsk->rx, opt_batch_size, &idx_rx);
@@ -1485,9 +1480,9 @@ static void rx_drop(struct xsk_socket_info *xsk)
 
 	for (i = 0; i < rcvd; i++) {
 		const struct xdp_desc *desc = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx++);
-		u64 addr = desc->addr;
-		u32 len = desc->len;
-		u64 orig = xsk_umem__extract_addr(addr);
+		__u64 addr = desc->addr;
+		__u32 len = desc->len;
+		__u64 orig = xsk_umem__extract_addr(addr);
 		eop_cnt += IS_EOP_DESC(desc->options);
 
 		addr = xsk_umem__add_offset_to_addr(addr);
@@ -1530,10 +1525,10 @@ static void rx_drop_all(void)
 	}
 }
 
-static int tx_only(struct xsk_socket_info *xsk, u32 *frame_nb,
+static int tx_only(struct xsk_socket_info *xsk, __u32 *frame_nb,
 		   unsigned int batch_size, unsigned long tx_ns)
 {
-	u32 idx, tv_sec, tv_usec;
+	__u32 idx, tv_sec, tv_usec;
 	unsigned int i;
 
 	while (xsk_ring_prod__reserve(&xsk->tx, batch_size, &idx) <
@@ -1544,12 +1539,12 @@ static int tx_only(struct xsk_socket_info *xsk, u32 *frame_nb,
 	}
 
 	if (opt_tstamp) {
-		tv_sec = (u32)(tx_ns / NSEC_PER_SEC);
-		tv_usec = (u32)((tx_ns % NSEC_PER_SEC) / 1000);
+		tv_sec = (__u32)(tx_ns / NSEC_PER_SEC);
+		tv_usec = (__u32)((tx_ns % NSEC_PER_SEC) / 1000);
 	}
 
 	for (i = 0; i < batch_size; ) {
-		u32 len = PKT_SIZE;
+		__u32 len = PKT_SIZE;
 
 		do {
 			struct xdp_desc *tx_desc = xsk_ring_prod__tx_desc(&xsk->tx,
@@ -1569,7 +1564,7 @@ static int tx_only(struct xsk_socket_info *xsk, u32 *frame_nb,
 
 			if (opt_tstamp) {
 				struct pktgen_hdr *pktgen_hdr;
-				u64 addr = tx_desc->addr;
+				__u64 addr = tx_desc->addr;
 				char *pkt;
 
 				pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
@@ -1623,7 +1618,7 @@ static void complete_tx_only_all(void)
 static void tx_only_all(void)
 {
 	struct pollfd fds[MAX_SOCKS] = {};
-	u32 frame_nb[MAX_SOCKS] = {};
+	__u32 frame_nb[MAX_SOCKS] = {};
 	unsigned long next_tx_ns = 0;
 	int pkt_cnt = 0;
 	int i, ret;
@@ -1715,9 +1710,9 @@ static void tx_only_all(void)
 
 static void l2fwd(struct xsk_socket_info *xsk)
 {
-	u32 idx_rx = 0, idx_tx = 0, frags_done = 0;
+	__u32 idx_rx = 0, idx_tx = 0, frags_done = 0;
 	unsigned int rcvd, i, eop_cnt = 0;
-	static u32 nb_frags;
+	static __u32 nb_frags;
 	int ret;
 
 	complete_tx_l2fwd(xsk);
@@ -1746,9 +1741,9 @@ static void l2fwd(struct xsk_socket_info *xsk)
 	for (i = 0; i < rcvd; i++) {
 		const struct xdp_desc *desc = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx++);
 		bool eop = IS_EOP_DESC(desc->options);
-		u64 addr = desc->addr;
-		u32 len = desc->len;
-		u64 orig = addr;
+		__u64 addr = desc->addr;
+		__u32 len = desc->len;
+		__u64 orig = addr;
 
 		addr = xsk_umem__add_offset_to_addr(addr);
 		char *pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
