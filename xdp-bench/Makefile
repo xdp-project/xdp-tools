@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 
 XDP_TARGETS := xdp_redirect_basic.bpf xdp_redirect_cpumap.bpf xdp_redirect_devmap.bpf \
-	       xdp_redirect_devmap_multi.bpf xdp_basic.bpf xdp_socket.bpf
+	       xdp_redirect_devmap_multi.bpf xdp_basic.bpf
 BPF_SKEL_TARGETS := $(XDP_TARGETS)
 
 # Don't install skeleton object files

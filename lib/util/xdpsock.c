@@ -22,7 +22,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/capability.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
@@ -60,8 +59,6 @@
 #endif
 
 #define NUM_FRAMES (4 * 1024)
-#define MIN_PKT_SIZE 64
-#define MAX_PKT_SIZE 9728 /* Max frame size supported by many NICs */
 #define IS_EOP_DESC(options) (!((options) & XDP_PKT_CONTD))
 
 #define DEBUG_HEXDUMP 0
@@ -1074,300 +1071,6 @@ static struct xsk_socket_info *xsk_configure_socket(struct xsk_umem_info *umem,
 	return xsk;
 }
 
-static struct option long_options[] = {
-	{"rxdrop", no_argument, 0, 'r'},
-	{"txonly", no_argument, 0, 't'},
-	{"l2fwd", no_argument, 0, 'l'},
-	{"interface", required_argument, 0, 'i'},
-	{"queue", required_argument, 0, 'q'},
-	{"poll", no_argument, 0, 'p'},
-	{"xdp-skb", no_argument, 0, 'S'},
-	{"xdp-native", no_argument, 0, 'N'},
-	{"interval", required_argument, 0, 'n'},
-	{"retries", required_argument, 0, 'O'},
-	{"zero-copy", no_argument, 0, 'z'},
-	{"copy", no_argument, 0, 'c'},
-	{"frame-size", required_argument, 0, 'f'},
-	{"no-need-wakeup", no_argument, 0, 'm'},
-	{"unaligned", no_argument, 0, 'u'},
-	{"shared-umem", no_argument, 0, 'M'},
-	{"force", no_argument, 0, 'F'},
-	{"duration", required_argument, 0, 'd'},
-	{"clock", required_argument, 0, 'w'},
-	{"batch-size", required_argument, 0, 'b'},
-	{"tx-pkt-count", required_argument, 0, 'C'},
-	{"tx-pkt-size", required_argument, 0, 's'},
-	{"tx-pkt-pattern", required_argument, 0, 'P'},
-	{"tx-vlan", no_argument, 0, 'V'},
-	{"tx-vlan-id", required_argument, 0, 'J'},
-	{"tx-vlan-pri", required_argument, 0, 'K'},
-	{"tx-dmac", required_argument, 0, 'G'},
-	{"tx-smac", required_argument, 0, 'H'},
-	{"tx-cycle", required_argument, 0, 'T'},
-	{"tstamp", no_argument, 0, 'y'},
-	{"policy", required_argument, 0, 'W'},
-	{"schpri", required_argument, 0, 'U'},
-	{"extra-stats", no_argument, 0, 'x'},
-	{"quiet", no_argument, 0, 'Q'},
-	{"app-stats", no_argument, 0, 'a'},
-	{"irq-string", no_argument, 0, 'I'},
-	{"busy-poll", no_argument, 0, 'B'},
-	{"reduce-cap", no_argument, 0, 'R'},
-	{0, 0, 0, 0}
-};
-
-static void usage(const char *prog)
-{
-	const char *str =
-		"  Usage: %s [OPTIONS]\n"
-		"  Options:\n"
-		"  -r, --rxdrop		Discard all incoming packets (default)\n"
-		"  -t, --txonly		Only send packets\n"
-		"  -l, --l2fwd		MAC swap L2 forwarding\n"
-		"  -i, --interface=n	Run on interface n\n"
-		"  -q, --queue=n	Use queue n (default 0)\n"
-		"  -p, --poll		Use poll syscall\n"
-		"  -S, --xdp-skb=n	Use XDP skb-mod\n"
-		"  -N, --xdp-native=n	Enforce XDP native mode\n"
-		"  -n, --interval=n	Specify statistics update interval (default 1 sec).\n"
-		"  -O, --retries=n	Specify time-out retries (1s interval) attempt (default 3).\n"
-		"  -z, --zero-copy      Force zero-copy mode.\n"
-		"  -c, --copy           Force copy mode.\n"
-		"  -m, --no-need-wakeup Turn off use of driver need wakeup flag.\n"
-		"  -f, --frame-size=n   Set the frame size (must be a power of two in aligned mode, default is %d).\n"
-		"  -u, --unaligned	Enable unaligned chunk placement\n"
-		"  -M, --shared-umem	Enable XDP_SHARED_UMEM (cannot be used with -R)\n"
-		"  -d, --duration=n	Duration in secs to run command.\n"
-		"			Default: forever.\n"
-		"  -w, --clock=CLOCK	Clock NAME (default MONOTONIC).\n"
-		"  -b, --batch-size=n	Batch size for sending or receiving\n"
-		"			packets. Default: %d\n"
-		"  -C, --tx-pkt-count=n	Number of packets to send.\n"
-		"			Default: Continuous packets.\n"
-		"  -s, --tx-pkt-size=n	Transmit packet size.\n"
-		"			(Default: %d bytes)\n"
-		"			Min size: %d, Max size %d.\n"
-		"  -P, --tx-pkt-pattern=nPacket fill pattern. Default: 0x%x\n"
-		"  -V, --tx-vlan        Send VLAN tagged  packets (For -t|--txonly)\n"
-		"  -J, --tx-vlan-id=n   Tx VLAN ID [1-4095]. Default: %d (For -V|--tx-vlan)\n"
-		"  -K, --tx-vlan-pri=n  Tx VLAN Priority [0-7]. Default: %d (For -V|--tx-vlan)\n"
-		"  -G, --tx-dmac=<MAC>  Dest MAC addr of TX frame in aa:bb:cc:dd:ee:ff format (For -V|--tx-vlan)\n"
-		"  -H, --tx-smac=<MAC>  Src MAC addr of TX frame in aa:bb:cc:dd:ee:ff format (For -V|--tx-vlan)\n"
-		"  -T, --tx-cycle=n     Tx cycle time in micro-seconds (For -t|--txonly).\n"
-		"  -y, --tstamp         Add time-stamp to packet (For -t|--txonly).\n"
-		"  -W, --policy=POLICY  Schedule policy. Default: SCHED_OTHER\n"
-		"  -U, --schpri=n       Schedule priority. Default: %d\n"
-		"  -x, --extra-stats	Display extra statistics.\n"
-		"  -Q, --quiet          Do not display any stats.\n"
-		"  -a, --app-stats	Display application (syscall) statistics.\n"
-		"  -I, --irq-string	Display driver interrupt statistics for interface associated with irq-string.\n"
-		"  -B, --busy-poll      Busy poll.\n"
-		"  -R, --reduce-cap	Use reduced capabilities (cannot be used with -M)\n"
-		"  -F, --frags		Enable frags (multi-buffer) support\n"
-		"\n";
-	fprintf(stderr, str, prog, XSK_UMEM__DEFAULT_FRAME_SIZE,
-		opt_batch_size, MIN_PKT_SIZE, MIN_PKT_SIZE,
-		MAX_PKT_SIZE, opt_pkt_fill_pattern,
-		VLAN_VID__DEFAULT, VLAN_PRI__DEFAULT,
-		SCHED_PRI__DEFAULT);
-
-	exit(EXIT_FAILURE);
-}
-
-static void parse_command_line(int argc, char **argv)
-{
-	int option_index, c;
-
-	opterr = 0;
-
-	for (;;) {
-		c = getopt_long(argc, argv,
-				"rtli:q:pSNn:w:O:czf:muMd:b:C:s:P:VJ:K:G:H:T:yW:U:xQaI:BRF",
-				long_options, &option_index);
-		if (c == -1)
-			break;
-
-		switch (c) {
-		case 'r':
-			opt_bench = BENCH_RXDROP;
-			break;
-		case 't':
-			opt_bench = BENCH_TXONLY;
-			break;
-		case 'l':
-			opt_bench = BENCH_L2FWD;
-			break;
-		case 'i':
-			opt_if = optarg;
-			break;
-		case 'q':
-			opt_queue = atoi(optarg);
-			break;
-		case 'p':
-			opt_poll = 1;
-			break;
-		case 'S':
-			opt_attach_mode = XDP_MODE_SKB;
-			opt_xdp_bind_flags |= XDP_COPY;
-			break;
-		case 'N':
-			/* default, set below */
-			break;
-		case 'n':
-			opt_interval = atoi(optarg);
-			break;
-		case 'w':
-			if (get_clockid(&opt_clock, optarg)) {
-				fprintf(stderr,
-					"ERROR: Invalid clock %s. Default to CLOCK_MONOTONIC.\n",
-					optarg);
-				opt_clock = CLOCK_MONOTONIC;
-			}
-			break;
-		case 'O':
-			opt_retries = atoi(optarg);
-			break;
-		case 'z':
-			opt_xdp_bind_flags |= XDP_ZEROCOPY;
-			break;
-		case 'c':
-			opt_xdp_bind_flags |= XDP_COPY;
-			break;
-		case 'u':
-			opt_umem_flags |= XDP_UMEM_UNALIGNED_CHUNK_FLAG;
-			opt_unaligned_chunks = 1;
-			opt_mmap_flags = MAP_HUGETLB;
-			break;
-		case 'f':
-			opt_xsk_frame_size = atoi(optarg);
-			break;
-		case 'm':
-			opt_need_wakeup = false;
-			opt_xdp_bind_flags &= ~XDP_USE_NEED_WAKEUP;
-			break;
-		case 'M':
-			opt_num_xsks = MAX_SOCKS;
-			break;
-		case 'd':
-			opt_duration = atoi(optarg);
-			opt_duration *= 1000000000;
-			break;
-		case 'b':
-			opt_batch_size = atoi(optarg);
-			break;
-		case 'C':
-			opt_pkt_count = atoi(optarg);
-			break;
-		case 's':
-			opt_pkt_size = atoi(optarg);
-			if (opt_pkt_size > (MAX_PKT_SIZE) ||
-			    opt_pkt_size < MIN_PKT_SIZE) {
-				fprintf(stderr,
-					"ERROR: Invalid frame size %d\n",
-					opt_pkt_size);
-				usage(basename(argv[0]));
-			}
-			break;
-		case 'P':
-			opt_pkt_fill_pattern = strtol(optarg, NULL, 16);
-			break;
-		case 'V':
-			opt_vlan_tag = true;
-			break;
-		case 'J':
-			opt_pkt_vlan_id = atoi(optarg);
-			break;
-		case 'K':
-			opt_pkt_vlan_pri = atoi(optarg);
-			break;
-		case 'G':
-			if (!ether_aton_r(optarg,
-					  (struct ether_addr *)&opt_txdmac)) {
-				fprintf(stderr, "Invalid dmac address:%s\n",
-					optarg);
-				usage(basename(argv[0]));
-			}
-			break;
-		case 'H':
-			if (!ether_aton_r(optarg,
-					  (struct ether_addr *)&opt_txsmac)) {
-				fprintf(stderr, "Invalid smac address:%s\n",
-					optarg);
-				usage(basename(argv[0]));
-			}
-			break;
-		case 'T':
-			opt_tx_cycle_ns = atoi(optarg);
-			opt_tx_cycle_ns *= NSEC_PER_USEC;
-			break;
-		case 'y':
-			opt_tstamp = 1;
-			break;
-		case 'W':
-			if (get_schpolicy(&opt_schpolicy, optarg)) {
-				fprintf(stderr,
-					"ERROR: Invalid policy %s. Default to SCHED_OTHER.\n",
-					optarg);
-				opt_schpolicy = SCHED_OTHER;
-			}
-			break;
-		case 'U':
-			opt_schprio = atoi(optarg);
-			break;
-		case 'x':
-			opt_extra_stats = 1;
-			break;
-		case 'Q':
-			opt_quiet = 1;
-			break;
-		case 'a':
-			opt_app_stats = 1;
-			break;
-		case 'I':
-			opt_irq_str = optarg;
-			if (get_interrupt_number())
-				irqs_at_init = get_irqs();
-			if (irqs_at_init < 0) {
-				fprintf(stderr, "ERROR: Failed to get irqs for %s\n", opt_irq_str);
-				usage(basename(argv[0]));
-			}
-			break;
-		case 'B':
-			opt_busy_poll = 1;
-			break;
-		case 'R':
-			opt_reduced_cap = true;
-			break;
-		case 'F':
-			opt_frags = true;
-			break;
-		default:
-			usage(basename(argv[0]));
-		}
-	}
-
-	opt_ifindex = if_nametoindex(opt_if);
-	if (!opt_ifindex) {
-		fprintf(stderr, "ERROR: interface \"%s\" does not exist\n",
-			opt_if);
-		usage(basename(argv[0]));
-	}
-
-	if ((opt_xsk_frame_size & (opt_xsk_frame_size - 1)) &&
-	    !opt_unaligned_chunks) {
-		fprintf(stderr, "--frame-size=%d is not a power of two\n",
-			opt_xsk_frame_size);
-		usage(basename(argv[0]));
-	}
-
-	if (opt_reduced_cap && opt_num_xsks > 1) {
-		fprintf(stderr, "ERROR: -M and -R cannot be used together\n");
-		usage(basename(argv[0]));
-	}
-	load_xdp_prog = (opt_num_xsks > 1 || opt_frags);
-	if (opt_frags)
-		opt_xdp_bind_flags |= XDP_USE_SG;
-}
 
 static void kick_tx(struct xsk_socket_info *xsk)
 {
@@ -2144,6 +1847,36 @@ out:
 	xdpsock_cleanup();
 
 	munmap(bufs, NUM_FRAMES * opt_xsk_frame_size);
+
+	return 0;
+}
+
+int xsk_validate_opts(const struct xsk_opts *opt)
+{
+	if (opt->attach_mode == XDP_MODE_SKB && opt->copy_mode == XSK_COPY_ZEROCOPY) {
+		pr_warn("Can't use zero-copy and skb mode together.\n");
+		return -EINVAL;
+	}
+
+	if (!opt->unaligned && opt->frame_size & (opt->frame_size -1)) {
+		pr_warn("Frame size %u is not a power of two.\n", opt->frame_size);
+		return -EINVAL;
+	}
+
+	if (opt->use_poll && opt->tx_cycle_us) {
+		pr_warn("Error: --poll and --tx-cycles are both set\n");
+		return -EINVAL;
+	}
+	if (opt->timestamp && opt->tx_pkt_size < PKTGEN_SIZE_MIN(opt)) {
+		pr_warn("TX packet size %d less than minimum %lu bytes when timestamps are enabled\n",
+			opt->tx_pkt_size, PKTGEN_SIZE_MIN(opt));
+		return -EINVAL;
+	}
+	if (opt->tx_pkt_size > MAX_PKT_SIZE || opt->tx_pkt_size < MIN_PKT_SIZE) {
+		pr_warn("Invalid packet size %d (min %d max %x)\n",
+			opt->tx_pkt_size, MIN_PKT_SIZE, MAX_PKT_SIZE);
+		return -EINVAL;
+	}
 
 	return 0;
 }
