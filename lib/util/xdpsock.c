@@ -37,6 +37,10 @@
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 #include "xdpsock.h"
+#include "logging.h"
+#include "util.h"
+
+#include "xdpsock.skel.h"
 
 #ifndef SOL_XDP
 #define SOL_XDP 283
@@ -466,10 +470,10 @@ static void dump_stats(struct xsk_ctx *ctx)
 
 static bool is_benchmark_done(struct xsk_ctx *ctx)
 {
-	if (ctx->opt.duration > 0) {
+	if (ctx->duration > 0) {
 		unsigned long dt = (get_nsecs(ctx->opt.clock) - ctx->start_time);
 
-		if (dt >= ctx->opt.duration)
+		if (dt >= ctx->duration)
 			ctx->benchmark_done = true;
 	}
 	return ctx->benchmark_done;
@@ -713,7 +717,7 @@ csum_tcpudp_magic(__be32 saddr, __be32 daddr, __u32 len,
 }
 
 static inline __u16 udp_csum(__u32 saddr, __u32 daddr, __u32 len,
-			   __u8 proto, __u16 *udp_pkt)
+			     __u8 proto, __u16 *udp_pkt)
 {
 	__u32 csum = 0;
 	__u32 cnt = 0;
@@ -1397,351 +1401,248 @@ void xsk_l2fwd_all(struct xsk_ctx *ctx)
 	}
 }
 
-static void load_xdp_program(void)
+static struct xdp_program *load_xdp_program(struct xsk_ctx *ctx,
+					    const struct xsk_opts *opt,
+					    bool populate_map)
 {
+	DECLARE_LIBBPF_OPTS(xdp_program_opts, opts,
+			    .prog_name = "xdp_sock_prog");
+	struct xdp_program *xdp_prog = NULL, *ret_prog;
 	char errmsg[STRERR_BUFSIZE];
+	struct xdpsock *skel;
+	unsigned int i;
 	int err;
 
-	xdp_prog = xdp_program__open_file("xdpsock_kern.o", NULL, NULL);
-	err = libxdp_get_error(xdp_prog);
+	skel = xdpsock__open();
+	if (!skel) {
+		err = -errno;
+		pr_warn("Failed to load skeleton: %s\n", strerror(-err));
+		goto err;
+	}
+
+	opts.obj = skel->obj;
+	xdp_prog = xdp_program__create(&opts);
+	if (!xdp_prog) {
+		err = -errno;
+		pr_warn("Failed to create XDP program: %s\n", strerror(-err));
+		goto err;
+	}
+
+	err = xdp_program__attach(xdp_prog, opt->iface.ifindex, opt->attach_mode, 0);
 	if (err) {
 		libxdp_strerror(err, errmsg, sizeof(errmsg));
-		fprintf(stderr, "ERROR: program loading failed: %s\n", errmsg);
-		exit(EXIT_FAILURE);
+		pr_warn("ERROR: attaching program failed: %s\n", errmsg);
+		goto err;
 	}
 
-	err = xdp_program__set_xdp_frags_support(xdp_prog, opt_frags);
-	if (err) {
-		libxdp_strerror(err, errmsg, sizeof(errmsg));
-		fprintf(stderr, "ERROR: Enable frags support failed: %s\n", errmsg);
-		exit(EXIT_FAILURE);
-	}
+	if (populate_map) {
+		skel->bss->num_socks = ctx->num_socks;
 
-	err = xdp_program__attach(xdp_prog, opt_ifindex, opt_attach_mode, 0);
-	if (err) {
-		libxdp_strerror(err, errmsg, sizeof(errmsg));
-		fprintf(stderr, "ERROR: attaching program failed: %s\n", errmsg);
-		exit(EXIT_FAILURE);
-	}
-}
+		for (i = 0; i < ctx->num_socks; i++) {
+			int fd = xsk_socket__fd(ctx->xsks[i]->xsk);
+			int key = i;
 
-static int lookup_bpf_map(int prog_fd)
-{
-	__u32 i, *map_ids, num_maps, prog_len = sizeof(struct bpf_prog_info);
-	__u32 map_len = sizeof(struct bpf_map_info);
-	struct bpf_prog_info prog_info = {};
-	int fd, err, xsks_map_fd = -ENOENT;
-	struct bpf_map_info map_info;
-
-	err = bpf_obj_get_info_by_fd(prog_fd, &prog_info, &prog_len);
-	if (err)
-		return err;
-
-	num_maps = prog_info.nr_map_ids;
-
-	map_ids = calloc(prog_info.nr_map_ids, sizeof(*map_ids));
-	if (!map_ids)
-		return -ENOMEM;
-
-	memset(&prog_info, 0, prog_len);
-	prog_info.nr_map_ids = num_maps;
-	prog_info.map_ids = (__u64)(unsigned long)map_ids;
-
-	err = bpf_obj_get_info_by_fd(prog_fd, &prog_info, &prog_len);
-	if (err) {
-		free(map_ids);
-		return err;
-	}
-
-	for (i = 0; i < prog_info.nr_map_ids; i++) {
-		fd = bpf_map_get_fd_by_id(map_ids[i]);
-		if (fd < 0)
-			continue;
-
-		memset(&map_info, 0, map_len);
-		err = bpf_obj_get_info_by_fd(fd, &map_info, &map_len);
-		if (err) {
-			close(fd);
-			continue;
-		}
-
-		if (!strncmp(map_info.name, "xsks_map", sizeof(map_info.name)) &&
-		    map_info.key_size == 4 && map_info.value_size == 4) {
-			xsks_map_fd = fd;
-			break;
-		}
-
-		close(fd);
-	}
-
-	free(map_ids);
-	return xsks_map_fd;
-}
-
-static void enter_xsks_into_map(void)
-{
-	struct bpf_map *data_map;
-	int i, xsks_map;
-	int key = 0;
-
-	data_map = bpf_object__find_map_by_name(xdp_program__bpf_obj(xdp_prog), ".bss");
-	if (!data_map || !bpf_map__is_internal(data_map)) {
-		fprintf(stderr, "ERROR: bss map found!\n");
-		exit(EXIT_FAILURE);
-	}
-	if (bpf_map_update_elem(bpf_map__fd(data_map), &key, &num_socks, BPF_ANY)) {
-		fprintf(stderr, "ERROR: bpf_map_update_elem num_socks %d!\n", num_socks);
-		exit(EXIT_FAILURE);
-	}
-	xsks_map = lookup_bpf_map(xdp_program__fd(xdp_prog));
-	if (xsks_map < 0) {
-		fprintf(stderr, "ERROR: no xsks map found: %s\n",
-			strerror(xsks_map));
-			exit(EXIT_FAILURE);
-	}
-
-	for (i = 0; i < num_socks; i++) {
-		int fd = xsk_socket__fd(xsks[i]->xsk);
-		int ret;
-
-		key = i;
-		ret = bpf_map_update_elem(xsks_map, &key, &fd, 0);
-		if (ret) {
-			fprintf(stderr, "ERROR: bpf_map_update_elem %d\n", i);
-			exit(EXIT_FAILURE);
-		}
-	}
-}
-
-static void apply_setsockopt(struct xsk_socket_info *xsk)
-{
-	int sock_opt;
-
-	if (!opt_busy_poll)
-		return;
-
-	sock_opt = 1;
-	if (setsockopt(xsk_socket__fd(xsk->xsk), SOL_SOCKET, SO_PREFER_BUSY_POLL,
-		       (void *)&sock_opt, sizeof(sock_opt)) < 0)
-		exit_with_error(errno);
-
-	sock_opt = 20;
-	if (setsockopt(xsk_socket__fd(xsk->xsk), SOL_SOCKET, SO_BUSY_POLL,
-		       (void *)&sock_opt, sizeof(sock_opt)) < 0)
-		exit_with_error(errno);
-
-	sock_opt = opt_batch_size;
-	if (setsockopt(xsk_socket__fd(xsk->xsk), SOL_SOCKET, SO_BUSY_POLL_BUDGET,
-		       (void *)&sock_opt, sizeof(sock_opt)) < 0)
-		exit_with_error(errno);
-}
-
-static int recv_xsks_map_fd_from_ctrl_node(int sock, int *_fd)
-{
-	char cms[CMSG_SPACE(sizeof(int))];
-	struct cmsghdr *cmsg;
-	struct msghdr msg;
-	struct iovec iov;
-	int value;
-	int len;
-
-	iov.iov_base = &value;
-	iov.iov_len = sizeof(int);
-
-	msg.msg_name = 0;
-	msg.msg_namelen = 0;
-	msg.msg_iov = &iov;
-	msg.msg_iovlen = 1;
-	msg.msg_flags = 0;
-	msg.msg_control = (caddr_t)cms;
-	msg.msg_controllen = sizeof(cms);
-
-	len = recvmsg(sock, &msg, 0);
-
-	if (len < 0) {
-		fprintf(stderr, "Recvmsg failed length incorrect.\n");
-		return -EINVAL;
-	}
-
-	if (len == 0) {
-		fprintf(stderr, "Recvmsg failed no data\n");
-		return -EINVAL;
-	}
-
-	cmsg = CMSG_FIRSTHDR(&msg);
-	*_fd = *(int *)CMSG_DATA(cmsg);
-
-	return 0;
-}
-
-static int
-recv_xsks_map_fd(int *xsks_map_fd)
-{
-	struct sockaddr_un server;
-	int err;
-
-	sock = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (sock < 0) {
-		fprintf(stderr, "Error opening socket stream: %s", strerror(errno));
-		return errno;
-	}
-
-	server.sun_family = AF_UNIX;
-	strcpy(server.sun_path, SOCKET_NAME);
-
-	if (connect(sock, (struct sockaddr *)&server, sizeof(struct sockaddr_un)) < 0) {
-		close(sock);
-		fprintf(stderr, "Error connecting stream socket: %s", strerror(errno));
-		return errno;
-	}
-
-	err = recv_xsks_map_fd_from_ctrl_node(sock, xsks_map_fd);
-	if (err) {
-		fprintf(stderr, "Error %d receiving fd\n", err);
-		return err;
-	}
-	return 0;
-}
-
-int main(int argc, char **argv)
-{
-	struct __user_cap_header_struct hdr = { _LINUX_CAPABILITY_VERSION_3, 0 };
-	struct __user_cap_data_struct data[2] = { { 0 } };
-	struct rlimit r = {RLIM_INFINITY, RLIM_INFINITY};
-	bool rx = false, tx = false;
-	struct sched_param schparam;
-	struct xsk_umem_info *umem;
-	int xsks_map_fd = 0;
-	pthread_t pt;
-	int i, ret;
-	void *bufs;
-
-	parse_command_line(argc, argv);
-
-	if (opt_reduced_cap) {
-		if (capget(&hdr, data)  < 0)
-			fprintf(stderr, "Error getting capabilities\n");
-
-		data->effective &= CAP_TO_MASK(CAP_NET_RAW);
-		data->permitted &= CAP_TO_MASK(CAP_NET_RAW);
-
-		if (capset(&hdr, data) < 0)
-			fprintf(stderr, "Setting capabilities failed\n");
-
-		if (capget(&hdr, data)  < 0) {
-			fprintf(stderr, "Error getting capabilities\n");
-		} else {
-			fprintf(stderr, "Capabilities EFF %x Caps INH %x Caps Per %x\n",
-				data[0].effective, data[0].inheritable, data[0].permitted);
-			fprintf(stderr, "Capabilities EFF %x Caps INH %x Caps Per %x\n",
-				data[1].effective, data[1].inheritable, data[1].permitted);
-		}
-	} else {
-		if (setrlimit(RLIMIT_MEMLOCK, &r)) {
-			fprintf(stderr, "ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n",
-				strerror(errno));
-			exit(EXIT_FAILURE);
-		}
-
-		if (load_xdp_prog)
-			load_xdp_program();
-	}
-
-	/* Reserve memory for the umem. Use hugepages if unaligned chunk mode */
-	bufs = mmap(NULL, NUM_FRAMES * opt_xsk_frame_size,
-		    PROT_READ | PROT_WRITE,
-		    MAP_PRIVATE | MAP_ANONYMOUS | opt_mmap_flags, -1, 0);
-	if (bufs == MAP_FAILED) {
-		printf("ERROR: mmap failed\n");
-		exit(EXIT_FAILURE);
-	}
-
-	/* Create sockets... */
-	umem = xsk_configure_umem(bufs, NUM_FRAMES * opt_xsk_frame_size);
-	if (opt_bench == BENCH_RXDROP || opt_bench == BENCH_L2FWD) {
-		rx = true;
-		xsk_populate_fill_ring(umem);
-	}
-	if (opt_bench == BENCH_L2FWD || opt_bench == BENCH_TXONLY)
-		tx = true;
-	for (i = 0; i < (int)opt_num_xsks; i++)
-		xsks[num_socks++] = xsk_configure_socket(umem, rx, tx);
-
-	for (i = 0; i < (int)opt_num_xsks; i++)
-		apply_setsockopt(xsks[i]);
-
-	if (opt_bench == BENCH_TXONLY) {
-		if (opt_tstamp && opt_pkt_size < PKTGEN_SIZE_MIN)
-			opt_pkt_size = PKTGEN_SIZE_MIN;
-
-		gen_eth_hdr_data();
-
-		for (i = 0; i < NUM_FRAMES; i++)
-			gen_eth_frame(umem, i * opt_xsk_frame_size);
-	}
-	frames_per_pkt = (opt_pkt_size - 1) / XSK_UMEM__DEFAULT_FRAME_SIZE + 1;
-
-	if (load_xdp_prog && opt_bench != BENCH_TXONLY)
-		enter_xsks_into_map();
-
-	if (opt_reduced_cap) {
-		ret = recv_xsks_map_fd(&xsks_map_fd);
-		if (ret) {
-			fprintf(stderr, "Error %d receiving xsks_map_fd\n", ret);
-			exit_with_error(ret);
-		}
-		if (xsks[0]->xsk) {
-			ret = xsk_socket__update_xskmap(xsks[0]->xsk, xsks_map_fd);
-			if (ret) {
-				fprintf(stderr, "Update of BPF map failed(%d)\n", ret);
-				exit_with_error(ret);
+			err = bpf_map_update_elem(
+				bpf_map__fd(skel->maps.xsks_map),
+				&key, &fd, 0);
+			if (err) {
+				pr_warn("ERROR: bpf_map_update_elem %d\n", i);
+				goto err;
 			}
 		}
 	}
 
-	signal(SIGINT, int_exit);
-	signal(SIGTERM, int_exit);
-	signal(SIGABRT, int_exit);
-
-	setlocale(LC_ALL, "");
-
-	prev_time = get_nsecs();
-	start_time = prev_time;
-
-	if (!opt_quiet) {
-		ret = pthread_create(&pt, NULL, poller, NULL);
-		if (ret)
-			exit_with_error(ret);
+	/* Clone the xdp_prog before returning to avoid having a dangling
+	 * reference to the skeleton.
+	 */
+	ret_prog = xdp_program__clone(xdp_prog, 0);
+	if (!ret_prog) {
+		err = -errno;
+		pr_warn("Couldn't clone xdp_program: %s\n", strerror(-err));
+		goto err;
 	}
+	xdp_program__close(xdp_prog);
+	xdpsock__destroy(skel);
+	return ret_prog;
+err:
+	xdp_program__close(xdp_prog);
+	xdpsock__destroy(skel);
+	return ERR_PTR(err);
+}
 
-	/* Configure sched priority for better wake-up accuracy */
-	memset(&schparam, 0, sizeof(schparam));
-	schparam.sched_priority = opt_schprio;
-	ret = sched_setscheduler(0, opt_schpolicy, &schparam);
-	if (ret) {
-		fprintf(stderr, "Error(%d) in setting priority(%d): %s\n",
-			errno, opt_schprio, strerror(errno));
-		goto out;
-	}
+static int apply_busy_poll_opts(struct xsk_socket_info *xsk, __u32 batch_size)
+{
+	int sock_opt;
 
-	if (opt_bench == BENCH_RXDROP)
-		rx_drop_all();
-	else if (opt_bench == BENCH_TXONLY)
-		tx_only_all();
-	else
-		l2fwd_all();
+	sock_opt = 1;
+	if (setsockopt(xsk_socket__fd(xsk->xsk), SOL_SOCKET, SO_PREFER_BUSY_POLL,
+		       (void *)&sock_opt, sizeof(sock_opt)) < 0)
+		return -errno;
 
-out:
-	benchmark_done = true;
+	sock_opt = 20;
+	if (setsockopt(xsk_socket__fd(xsk->xsk), SOL_SOCKET, SO_BUSY_POLL,
+		       (void *)&sock_opt, sizeof(sock_opt)) < 0)
+		return -errno;
 
-	if (!opt_quiet)
-		pthread_join(pt, NULL);
-
-	xdpsock_cleanup();
-
-	munmap(bufs, NUM_FRAMES * opt_xsk_frame_size);
+	sock_opt = batch_size;
+	if (setsockopt(xsk_socket__fd(xsk->xsk), SOL_SOCKET, SO_BUSY_POLL_BUDGET,
+		       (void *)&sock_opt, sizeof(sock_opt)) < 0)
+		return -errno;
 
 	return 0;
+}
+
+static int xsk_set_sched_priority(enum xsk_sched_policy sched_policy,
+				  unsigned int sched_prio)
+{
+	struct sched_param schparam = {
+		.sched_priority = sched_prio,
+	};
+	int ret;
+
+	/* Configure sched priority for better wake-up accuracy */
+	ret = sched_setscheduler(0, sched_policy, &schparam);
+	if (ret)
+		pr_warn("Error(%d) in setting priority(%d): %s\n",
+			errno, sched_prio, strerror(errno));
+
+	return ret;
+}
+
+struct xsk_ctx *xsk_ctx__create(const struct xsk_opts *opt, enum xsk_benchmark_type bench)
+{
+	unsigned int mmap_flags = 0, umem_flags = 0, num_xsks = 1, i;
+	struct xsk_umem_info *umem = NULL;
+	bool rx = false, tx = false;
+	struct xsk_ctx *ctx;
+	int ret = -ENOMEM;
+	void *bufs;
+
+	switch (bench) {
+	case XSK_BENCH_RXDROP:
+		rx = true;
+		break;
+	case XSK_BENCH_TXONLY:
+		tx = true;
+		break;
+	case XSK_BENCH_L2FWD:
+		rx = true;
+		tx = true;
+		break;
+	}
+
+	if (opt->unaligned) {
+		mmap_flags = MAP_HUGETLB;
+		umem_flags = XDP_UMEM_UNALIGNED_CHUNK_FLAG;
+	}
+
+	if (opt->shared_umem)
+		num_xsks = MAX_SOCKS;
+
+	ctx = calloc(1, sizeof(*ctx));
+	if (!ctx)
+		return ERR_PTR(-ENOMEM);
+
+	bufs = mmap(NULL, NUM_FRAMES * opt->frame_size,
+		    PROT_READ | PROT_WRITE,
+		    MAP_PRIVATE | MAP_ANONYMOUS | mmap_flags, -1, 0);
+	if (bufs == MAP_FAILED) {
+		pr_warn("ERROR: mmap failed\n");
+		goto err;
+	}
+
+	/* Create sockets... */
+	umem = xsk_configure_umem(bufs, NUM_FRAMES * opt->frame_size,
+				  opt->frame_size, umem_flags);
+	if (IS_ERR(umem)) {
+		ret = PTR_ERR(umem);
+		umem = NULL;
+		goto err;
+	}
+
+	if (rx) {
+		ret = xsk_populate_fill_ring(umem, opt->frame_size);
+		if (ret)
+			goto err;
+	}
+
+	for (i = 0; i < num_xsks; i++) {
+		struct xsk_socket_info *xsk = xsk_configure_socket(opt, umem, rx, tx);
+		if (IS_ERR(xsk)) {
+			ret = PTR_ERR(xsk);
+			goto err;
+		}
+		ctx->xsks[ctx->num_socks++] = xsk;
+	}
+
+	if (opt->busy_poll) {
+		for (i = 0; i < num_xsks; i++) {
+			ret = apply_busy_poll_opts(ctx->xsks[i], opt->batch_size);
+			if (ret) {
+				pr_warn("ERROR: Couldn't apply busy poll options: %s\n",
+					strerror(-ret));
+				goto err;
+			}
+		}
+	}
+
+	if (opt->irq_string) {
+		ret = -ENOENT;
+		if (get_interrupt_number(ctx, opt->irq_string))
+			ret = get_irqs(ctx);
+		if (ret < 0) {
+			pr_warn("ERROR: Failed to get irqs for %s\n", opt->irq_string);
+			goto err;
+		}
+		ctx->irqs_at_init = ret;
+	}
+
+	ret = xsk_set_sched_priority(opt->sched_policy, opt->sched_prio);
+	if (ret)
+		goto err;
+
+	memcpy((void *)&ctx->opt, opt, sizeof(ctx->opt));
+
+	if (bench == XSK_BENCH_TXONLY) {
+		gen_eth_hdr_data(ctx);
+		gen_eth_frames(ctx, umem, opt->frame_size);
+	}
+	ctx->frames_per_pkt = (opt->tx_pkt_size - 1) / XSK_UMEM__DEFAULT_FRAME_SIZE + 1;
+
+	if (opt->shared_umem || opt->frags) {
+		struct xdp_program *xdp_prog = load_xdp_program(ctx, opt, rx);
+		if (IS_ERR(xdp_prog)) {
+			ret = PTR_ERR(xdp_prog);
+			goto err;
+		}
+		ctx->xdp_prog = xdp_prog;
+	}
+
+	ctx->bufs = bufs;
+	ctx->umem = umem;
+	ctx->bench = bench;
+
+	ctx->prev_time = ctx->start_time = get_nsecs(ctx->opt.clock);
+	ctx->tx_cycle_ns = opt->tx_cycle_us * NSEC_PER_USEC;
+	ctx->poll_timeout = POLL_TIMEOUT;
+	ctx->duration = opt->duration * NSEC_PER_SEC;
+	ctx->retries = opt->retries;
+	return ctx;
+
+err:
+	for (i = 0; i < ctx->num_socks; i++) {
+		xsk_socket__delete(ctx->xsks[i]->xsk);
+		free(ctx->xsks[i]);
+	}
+	free(umem);
+	munmap(bufs, NUM_FRAMES * opt->frame_size);
+	free(ctx);
+	return ERR_PTR(ret);
+}
+
+int xsk_start_poller_thread(struct xsk_ctx *ctx, pthread_t *pt)
+{
+	return pthread_create(pt, NULL, poller, ctx);
 }
 
 int xsk_validate_opts(const struct xsk_opts *opt)
