@@ -85,6 +85,37 @@ struct xsk_opts {
 	struct mac_addr src_mac;
 };
 
+struct xsk_ctx {
+	const struct xsk_opts opt;
+
+	unsigned long prev_time;
+	long tx_cycle_diff_min;
+	long tx_cycle_diff_max;
+	double tx_cycle_diff_ave;
+	long tx_cycle_cnt;
+	unsigned long tx_cycle_ns;
+
+	unsigned long start_time;
+	bool benchmark_done;
+
+	__u32 irq_no;
+	int irqs_at_init;
+	__u32 sequence;
+	int frames_per_pkt;
+	int poll_timeout;
+	__u32 retries;
+
+	struct xdp_program *xdp_prog;
+	struct xsk_umem_info *umem;
+	void *bufs;
+
+	unsigned int num_socks;
+	struct xsk_socket_info *xsks[MAX_SOCKS];
+	__u8 pkt_data[MAX_PKT_SIZE];
+	int sock;
+	enum xsk_benchmark_type bench;
+};
+
 int xsk_validate_opts(const struct xsk_opts *opt);
 
 #endif /* XDPSOCK_H */
