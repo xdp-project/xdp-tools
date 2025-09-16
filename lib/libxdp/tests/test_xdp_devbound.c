@@ -18,6 +18,7 @@
 #include <bpf/libbpf.h>
 
 #define ARRAY_SIZE(_x) (sizeof(_x) / sizeof((_x)[0]))
+#define EXIT_SKIPPED 249
 
 static bool kern_compat;
 
@@ -32,12 +33,6 @@ static int check_attached_progs(int ifindex, int count, bool devbound)
 {
 	struct xdp_multiprog *mp;
 	int ret;
-
-	/* If the kernel does not support device binding, we always expect
-	 * device binding support to be disabled on a returned dispatcher
-	*/
-	if (!kern_compat)
-		devbound = false;
 
 	mp = xdp_multiprog__get_from_ifindex(ifindex);
 	ret = libxdp_get_error(mp);
@@ -81,7 +76,8 @@ out:
 static void print_test_result(const char *func, int ret)
 {
 	fflush(stderr);
-	fprintf(stderr, "%s:\t%s\n", func, ret ? "FAILED" : "PASSED");
+	fprintf(stderr, "%s:\t%s\n", func,
+		ret ? (ret == EXIT_SKIPPED ? "SKIPPED" : "FAILED") : "PASSED");
 	fflush(stdout);
 }
 
@@ -104,8 +100,13 @@ static int load_attach_prog(struct xdp_program **prog, int ifindex,
 static int _check_load(int ifindex, bool devbound, bool should_succeed)
 {
 	struct xdp_program *prog = NULL;
-	bool attached;
+	bool attached = false;
 	int ret;
+
+	if (!kern_compat && devbound) {
+		ret = EXIT_SKIPPED;
+		goto out;
+	}
 
 	ret = load_attach_prog(&prog, ifindex, devbound);
 	attached = !ret;
@@ -146,6 +147,11 @@ static int check_load_devbound_multi(int ifindex)
 	struct xdp_program *prog1 = NULL, *prog2 = NULL;
 	int ret;
 
+	if (!kern_compat) {
+		ret = EXIT_SKIPPED;
+		goto out;
+	}
+
 	ret = load_attach_prog(&prog1, ifindex, true);
 	if (ret)
 		goto out;
@@ -170,6 +176,11 @@ static int _check_load_mix(int ifindex, bool devbound1, bool devbound2)
 {
 	struct xdp_program *prog1 = NULL, *prog2 = NULL;
 	int ret;
+
+	if (!kern_compat && (devbound1 || devbound2)) {
+		ret = EXIT_SKIPPED;
+		goto out;
+	}
 
 	ret = load_attach_prog(&prog1, ifindex, devbound1);
 	if (ret)
@@ -218,6 +229,11 @@ static int check_load_devbound_multiple_ifindex(int ifindex1, int ifindex2)
 	struct xdp_program *prog = NULL;
 	int ret;
 
+	if (!kern_compat) {
+		ret = EXIT_SKIPPED;
+		goto out;
+	}
+
 	prog = load_prog();
 
 	ret = xdp_program__attach(prog, ifindex1, XDP_MODE_NATIVE,
@@ -243,7 +259,7 @@ static int check_load_devbound_multiple_ifindex(int ifindex1, int ifindex2)
 out:
 	xdp_program__detach(prog, ifindex1, XDP_MODE_NATIVE, 0);
 	xdp_program__close(prog);
-	print_test_result(__func__, !ret);
+	print_test_result(__func__, ret == EXIT_SKIPPED ? ret : !ret);
 	return !ret;
 }
 
@@ -251,6 +267,11 @@ static int check_load_mixed_multiple_ifindex(int ifindex1, int ifindex2)
 {
 	struct xdp_program *prog = NULL;
 	int ret;
+
+	if (!kern_compat) {
+		ret = EXIT_SKIPPED;
+		goto out;
+	}
 
 	prog = load_prog();
 
@@ -274,7 +295,7 @@ out_prog1:
 	xdp_program__detach(prog, ifindex1, XDP_MODE_NATIVE, 0);
 out:
 	xdp_program__close(prog);
-	print_test_result(__func__, !ret);
+	print_test_result(__func__, ret == EXIT_SKIPPED ? ret : !ret);
 	return !ret;
 }
 
@@ -282,6 +303,11 @@ static int check_load2_mixed_multiple_ifindex(int ifindex1, int ifindex2)
 {
 	struct xdp_program *prog1 = NULL, *prog2 = NULL;
 	int ret;
+
+	if (!kern_compat) {
+		ret = EXIT_SKIPPED;
+		goto out;
+	}
 
 	ret = load_attach_prog(&prog1, ifindex1, true);
 	if (ret)
@@ -389,17 +415,14 @@ int main(int argc, char **argv)
 	}
 
 	kern_compat = check_devbound_compat();
+	ret = check_load_devbound(ifindex1);
+	ret |= check_load_nodevbound_success(ifindex1);
+	ret |= check_load_devbound_multi(ifindex1);
+	ret |= check_load_mix_devbound_nodevbound(ifindex1);
+	ret |= check_load_mix_nodevbound_devbound(ifindex1);
+	ret |= check_load_devbound_multiple_ifindex(ifindex1, ifindex2);
+	ret |= check_load_mixed_multiple_ifindex(ifindex1, ifindex2);
+	ret |= check_load2_mixed_multiple_ifindex(ifindex1, ifindex2);
 
-	ret = check_load_devbound(kern_compat ? ifindex1 : 0);
-	ret = check_load_nodevbound_success(ifindex1) || ret;
-	if (kern_compat) {
-		ret = check_load_devbound_multi(ifindex1) || ret;
-		ret = check_load_mix_devbound_nodevbound(ifindex1) || ret;
-		ret = check_load_mix_nodevbound_devbound(ifindex1) || ret;
-		ret = check_load_devbound_multiple_ifindex(ifindex1, ifindex2) || ret;
-		ret = check_load_mixed_multiple_ifindex(ifindex1, ifindex2) || ret;
-		ret = check_load2_mixed_multiple_ifindex(ifindex1, ifindex2) || ret;
-	}
-
-	return ret;
+	return ret == EXIT_SKIPPED ? 0 : ret;
 }
