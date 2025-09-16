@@ -75,66 +75,7 @@
 #define SCHED_PRI__DEFAULT	0
 #define STRERR_BUFSIZE          1024
 
-static unsigned long prev_time;
-static long tx_cycle_diff_min;
-static long tx_cycle_diff_max;
-static double tx_cycle_diff_ave;
-static long tx_cycle_cnt;
-
-enum benchmark_type {
-	BENCH_RXDROP = 0,
-	BENCH_TXONLY = 1,
-	BENCH_L2FWD = 2,
-};
-
-static enum benchmark_type opt_bench = BENCH_RXDROP;
-static enum xdp_attach_mode opt_attach_mode = XDP_MODE_NATIVE;
-static const char *opt_if = "";
-static int opt_ifindex;
-static int opt_queue;
-static unsigned long opt_duration;
-static unsigned long start_time;
-static bool benchmark_done;
-static __u32 opt_batch_size = 64;
-static int opt_pkt_count;
-static __u16 opt_pkt_size = MIN_PKT_SIZE;
-static __u32 opt_pkt_fill_pattern = 0x12345678;
-static bool opt_vlan_tag;
-static __u16 opt_pkt_vlan_id = VLAN_VID__DEFAULT;
-static __u16 opt_pkt_vlan_pri = VLAN_PRI__DEFAULT;
-static struct ether_addr opt_txdmac = {{ 0x3c, 0xfd, 0xfe,
-					 0x9e, 0x7f, 0x71 }};
-static struct ether_addr opt_txsmac = {{ 0xec, 0xb1, 0xd7,
-					 0x98, 0x3a, 0xc0 }};
-static bool opt_extra_stats;
-static bool opt_quiet;
-static bool opt_app_stats;
-static const char *opt_irq_str = "";
-static __u32 irq_no;
-static int irqs_at_init = -1;
-static __u32 sequence;
-static int opt_poll;
-static int opt_interval = 1;
-static int opt_retries = 3;
-static __u32 opt_xdp_bind_flags = XDP_USE_NEED_WAKEUP;
-static __u32 opt_umem_flags;
-static int opt_unaligned_chunks;
-static int opt_mmap_flags;
-static int opt_xsk_frame_size = XSK_UMEM__DEFAULT_FRAME_SIZE;
-static int frames_per_pkt;
-static int opt_timeout = 1000;
-static bool opt_need_wakeup = true;
-static __u32 opt_num_xsks = 1;
-static bool opt_busy_poll;
-static bool opt_reduced_cap;
-static clockid_t opt_clock = CLOCK_MONOTONIC;
-static unsigned long opt_tx_cycle_ns;
-static int opt_schpolicy = SCHED_OTHER;
-static int opt_schprio = SCHED_PRI__DEFAULT;
-static bool opt_tstamp;
-static struct xdp_program *xdp_prog;
-static bool opt_frags;
-static bool load_xdp_prog;
+#define POLL_TIMEOUT 1000
 
 struct vlan_ethhdr {
 	unsigned char h_dest[6];
@@ -209,88 +150,37 @@ struct xsk_socket_info {
 	struct xsk_app_stats app_stats;
 	struct xsk_driver_stats drv_stats;
 	__u32 outstanding_tx;
+	bool copy_mode;
 };
 
-static const struct clockid_map {
-	const char *name;
-	clockid_t clockid;
-} clockids_map[] = {
-	{ "REALTIME", CLOCK_REALTIME },
-	{ "TAI", CLOCK_TAI },
-	{ "BOOTTIME", CLOCK_BOOTTIME },
-	{ "MONOTONIC", CLOCK_MONOTONIC },
-	{ NULL }
-};
-
-static const struct sched_map {
-	const char *name;
-	int policy;
-} schmap[] = {
-	{ "OTHER", SCHED_OTHER },
-	{ "FIFO", SCHED_FIFO },
-	{ NULL }
-};
-
-static int num_socks;
-struct xsk_socket_info *xsks[MAX_SOCKS];
-int sock;
-
-static int get_clockid(clockid_t *id, const char *name)
-{
-	const struct clockid_map *clk;
-
-	for (clk = clockids_map; clk->name; clk++) {
-		if (strcasecmp(clk->name, name) == 0) {
-			*id = clk->clockid;
-			return 0;
-		}
-	}
-
-	return -1;
-}
-
-static int get_schpolicy(int *policy, const char *name)
-{
-	const struct sched_map *sch;
-
-	for (sch = schmap; sch->name; sch++) {
-		if (strcasecmp(sch->name, name) == 0) {
-			*policy = sch->policy;
-			return 0;
-		}
-	}
-
-	return -1;
-}
-
-static unsigned long get_nsecs(void)
+static unsigned long get_nsecs(clockid_t clock)
 {
 	struct timespec ts;
 
-	clock_gettime(opt_clock, &ts);
+	clock_gettime(clock, &ts);
 	return ts.tv_sec * 1000000000UL + ts.tv_nsec;
 }
 
-static void print_benchmark(bool running)
+static void print_benchmark(const struct xsk_ctx *ctx, bool running)
 {
 	const char *bench_str = "INVALID";
 
-	if (opt_bench == BENCH_RXDROP)
+	if (ctx->bench == XSK_BENCH_RXDROP)
 		bench_str = "rxdrop";
-	else if (opt_bench == BENCH_TXONLY)
+	else if (ctx->bench == XSK_BENCH_TXONLY)
 		bench_str = "txonly";
-	else if (opt_bench == BENCH_L2FWD)
+	else if (ctx->bench == XSK_BENCH_L2FWD)
 		bench_str = "l2fwd";
 
-	printf("%s:%d %s ", opt_if, opt_queue, bench_str);
-	if (opt_attach_mode == XDP_MODE_SKB)
+	printf("%s:%d %s ", ctx->opt.iface.ifname, ctx->opt.queue_idx, bench_str);
+	if (ctx->opt.attach_mode == XDP_MODE_SKB)
 		printf("xdp-skb ");
-	else if (opt_attach_mode == XDP_MODE_NATIVE)
+	else if (ctx->opt.attach_mode == XDP_MODE_NATIVE)
 		printf("xdp-drv ");
 	else
 		printf("	");
 
-	if (opt_poll)
+	if (ctx->opt.use_poll)
 		printf("poll() ");
 
 	if (running) {
@@ -323,55 +213,55 @@ static int xsk_get_xdp_stats(int fd, struct xsk_socket_info *xsk)
 	return -EINVAL;
 }
 
-static void dump_app_stats(long dt)
+static void dump_app_stats(const struct xsk_ctx *ctx, long dt)
 {
-	int i;
+	unsigned int i;
 
-	for (i = 0; i < num_socks && xsks[i]; i++) {
+	for (i = 0; i < ctx->num_socks && ctx->xsks[i]; i++) {
 		char *fmt = "%-18s %'-14.0f %'-14lu\n";
 		double rx_empty_polls_ps, fill_fail_polls_ps, copy_tx_sendtos_ps,
 				tx_wakeup_sendtos_ps, opt_polls_ps;
 
-		rx_empty_polls_ps = (xsks[i]->app_stats.rx_empty_polls -
-					xsks[i]->app_stats.prev_rx_empty_polls) * 1000000000. / dt;
-		fill_fail_polls_ps = (xsks[i]->app_stats.fill_fail_polls -
-					xsks[i]->app_stats.prev_fill_fail_polls) * 1000000000. / dt;
-		copy_tx_sendtos_ps = (xsks[i]->app_stats.copy_tx_sendtos -
-					xsks[i]->app_stats.prev_copy_tx_sendtos) * 1000000000. / dt;
-		tx_wakeup_sendtos_ps = (xsks[i]->app_stats.tx_wakeup_sendtos -
-					xsks[i]->app_stats.prev_tx_wakeup_sendtos)
+		rx_empty_polls_ps = (ctx->xsks[i]->app_stats.rx_empty_polls -
+					ctx->xsks[i]->app_stats.prev_rx_empty_polls) * 1000000000. / dt;
+		fill_fail_polls_ps = (ctx->xsks[i]->app_stats.fill_fail_polls -
+					ctx->xsks[i]->app_stats.prev_fill_fail_polls) * 1000000000. / dt;
+		copy_tx_sendtos_ps = (ctx->xsks[i]->app_stats.copy_tx_sendtos -
+					ctx->xsks[i]->app_stats.prev_copy_tx_sendtos) * 1000000000. / dt;
+		tx_wakeup_sendtos_ps = (ctx->xsks[i]->app_stats.tx_wakeup_sendtos -
+					ctx->xsks[i]->app_stats.prev_tx_wakeup_sendtos)
 										* 1000000000. / dt;
-		opt_polls_ps = (xsks[i]->app_stats.opt_polls -
-					xsks[i]->app_stats.prev_opt_polls) * 1000000000. / dt;
+		opt_polls_ps = (ctx->xsks[i]->app_stats.opt_polls -
+					ctx->xsks[i]->app_stats.prev_opt_polls) * 1000000000. / dt;
 
 		printf("\n%-18s %-14s %-14s\n", "", "calls/s", "count");
-		printf(fmt, "rx empty polls", rx_empty_polls_ps, xsks[i]->app_stats.rx_empty_polls);
+		printf(fmt, "rx empty polls", rx_empty_polls_ps, ctx->xsks[i]->app_stats.rx_empty_polls);
 		printf(fmt, "fill fail polls", fill_fail_polls_ps,
-							xsks[i]->app_stats.fill_fail_polls);
+							ctx->xsks[i]->app_stats.fill_fail_polls);
 		printf(fmt, "copy tx sendtos", copy_tx_sendtos_ps,
-							xsks[i]->app_stats.copy_tx_sendtos);
+							ctx->xsks[i]->app_stats.copy_tx_sendtos);
 		printf(fmt, "tx wakeup sendtos", tx_wakeup_sendtos_ps,
-							xsks[i]->app_stats.tx_wakeup_sendtos);
-		printf(fmt, "opt polls", opt_polls_ps, xsks[i]->app_stats.opt_polls);
+							ctx->xsks[i]->app_stats.tx_wakeup_sendtos);
+		printf(fmt, "opt polls", opt_polls_ps, ctx->xsks[i]->app_stats.opt_polls);
 
-		xsks[i]->app_stats.prev_rx_empty_polls = xsks[i]->app_stats.rx_empty_polls;
-		xsks[i]->app_stats.prev_fill_fail_polls = xsks[i]->app_stats.fill_fail_polls;
-		xsks[i]->app_stats.prev_copy_tx_sendtos = xsks[i]->app_stats.copy_tx_sendtos;
-		xsks[i]->app_stats.prev_tx_wakeup_sendtos = xsks[i]->app_stats.tx_wakeup_sendtos;
-		xsks[i]->app_stats.prev_opt_polls = xsks[i]->app_stats.opt_polls;
+		ctx->xsks[i]->app_stats.prev_rx_empty_polls = ctx->xsks[i]->app_stats.rx_empty_polls;
+		ctx->xsks[i]->app_stats.prev_fill_fail_polls = ctx->xsks[i]->app_stats.fill_fail_polls;
+		ctx->xsks[i]->app_stats.prev_copy_tx_sendtos = ctx->xsks[i]->app_stats.copy_tx_sendtos;
+		ctx->xsks[i]->app_stats.prev_tx_wakeup_sendtos = ctx->xsks[i]->app_stats.tx_wakeup_sendtos;
+		ctx->xsks[i]->app_stats.prev_opt_polls = ctx->xsks[i]->app_stats.opt_polls;
 	}
 
-	if (opt_tx_cycle_ns) {
+	if (ctx->tx_cycle_ns) {
 		printf("\n%-18s %-10s %-10s %-10s %-10s %-10s\n",
 		       "", "period", "min", "ave", "max", "cycle");
 		printf("%-18s %-10lu %-10lu %-10lu %-10lu %-10lu\n",
-		       "Cyclic TX", opt_tx_cycle_ns, tx_cycle_diff_min,
-		       (long)(tx_cycle_diff_ave / tx_cycle_cnt),
-		       tx_cycle_diff_max, tx_cycle_cnt);
+		       "Cyclic TX", ctx->tx_cycle_ns, ctx->tx_cycle_diff_min,
+		       (long)(ctx->tx_cycle_diff_ave / ctx->tx_cycle_cnt),
+		       ctx->tx_cycle_diff_max, ctx->tx_cycle_cnt);
 	}
 }
 
-static bool get_interrupt_number(void)
+static bool get_interrupt_number(struct xsk_ctx *ctx, const char *irq_string)
 {
 	FILE *f_int_proc;
 	char line[4096];
@@ -392,8 +282,8 @@ static bool get_interrupt_number(void)
 		}
 
 		/* Extract interrupt number from line */
-		if (strstr(line, opt_irq_str) != NULL) {
-			irq_no = atoi(line);
+		if (strstr(line, irq_string) != NULL) {
+			ctx->irq_no = atoi(line);
 			found = true;
 			break;
 		}
@@ -404,239 +294,214 @@ static bool get_interrupt_number(void)
 	return found;
 }
 
-static int get_irqs(void)
+static int get_irqs(const struct xsk_ctx *ctx)
 {
 	char count_path[PATH_MAX];
-	int total_intrs = -1;
 	FILE *f_count_proc;
 	char line[4096];
+	char *p = NULL;
+	int ret;
 
 	snprintf(count_path, sizeof(count_path),
-		"/sys/kernel/irq/%i/per_cpu_count", irq_no);
+		"/sys/kernel/irq/%i/per_cpu_count", ctx->irq_no);
 	f_count_proc = fopen(count_path, "r");
 	if (f_count_proc == NULL) {
-		printf("Failed to open %s\n", count_path);
-		return total_intrs;
+		ret = -errno;
+		pr_warn("Failed to open %s: %s\n", count_path, strerror(-ret));
+		return ret;
 	}
 
 	if (fgets(line, sizeof(line), f_count_proc) == NULL ||
 			line[strlen(line) - 1] != '\n') {
-		printf("Error reading from %s\n", count_path);
+		pr_warn("Error reading from %s\n", count_path);
+		ret = -ENOENT;
 	} else {
 		static const char com[2] = ",";
 		char *token;
 
-		total_intrs = 0;
-		token = strtok(line, com);
+		ret = 0;
+		token = strtok_r(line, com, &p);
 		while (token != NULL) {
 			/* sum up interrupts across all cores */
-			total_intrs += atoi(token);
-			token = strtok(NULL, com);
+			ret += atoi(token);
+			token = strtok_r(NULL, com, &p);
 		}
 	}
 
 	fclose(f_count_proc);
 
-	return total_intrs;
+	return ret;
 }
 
-static void dump_driver_stats(long dt)
+static void dump_driver_stats(struct xsk_ctx *ctx, long dt)
 {
-	int i;
+	unsigned int i;
 
-	for (i = 0; i < num_socks && xsks[i]; i++) {
+	for (i = 0; i < ctx->num_socks && ctx->xsks[i]; i++) {
 		char *fmt = "%-18s %'-14.0f %'-14lu\n";
 		double intrs_ps;
-		int n_ints = get_irqs();
+		int n_ints = get_irqs(ctx);
 
 		if (n_ints < 0) {
-			printf("error getting intr info for intr %i\n", irq_no);
+			printf("error getting intr info for intr %i\n", ctx->irq_no);
 			return;
 		}
-		xsks[i]->drv_stats.intrs = n_ints - irqs_at_init;
+		ctx->xsks[i]->drv_stats.intrs = n_ints - ctx->irqs_at_init;
 
-		intrs_ps = (xsks[i]->drv_stats.intrs - xsks[i]->drv_stats.prev_intrs) *
+		intrs_ps = (ctx->xsks[i]->drv_stats.intrs - ctx->xsks[i]->drv_stats.prev_intrs) *
 			 1000000000. / dt;
 
 		printf("\n%-18s %-14s %-14s\n", "", "intrs/s", "count");
-		printf(fmt, "irqs", intrs_ps, xsks[i]->drv_stats.intrs);
+		printf(fmt, "irqs", intrs_ps, ctx->xsks[i]->drv_stats.intrs);
 
-		xsks[i]->drv_stats.prev_intrs = xsks[i]->drv_stats.intrs;
+		ctx->xsks[i]->drv_stats.prev_intrs = ctx->xsks[i]->drv_stats.intrs;
 	}
 }
 
-static void dump_stats(void)
+static void dump_stats(struct xsk_ctx *ctx)
 {
-	unsigned long now = get_nsecs();
-	long dt = now - prev_time;
-	int i;
+	unsigned long now = get_nsecs(ctx->opt.clock);
+	long dt = now - ctx->prev_time;
+	unsigned int i;
 
-	prev_time = now;
+	ctx->prev_time = now;
 
-	for (i = 0; i < num_socks && xsks[i]; i++) {
+	for (i = 0; i < ctx->num_socks && ctx->xsks[i]; i++) {
 		char *fmt = "%-18s %'-14.0f %'-14lu\n";
 		double rx_pps, tx_pps, dropped_pps, rx_invalid_pps, full_pps, fill_empty_pps,
 			tx_invalid_pps, tx_empty_pps;
 
-		rx_pps = (xsks[i]->ring_stats.rx_npkts - xsks[i]->ring_stats.prev_rx_npkts) *
+		rx_pps = (ctx->xsks[i]->ring_stats.rx_npkts - ctx->xsks[i]->ring_stats.prev_rx_npkts) *
 			 1000000000. / dt;
-		tx_pps = (xsks[i]->ring_stats.tx_npkts - xsks[i]->ring_stats.prev_tx_npkts) *
+		tx_pps = (ctx->xsks[i]->ring_stats.tx_npkts - ctx->xsks[i]->ring_stats.prev_tx_npkts) *
 			 1000000000. / dt;
 
 		printf("\n sock%d@", i);
-		print_benchmark(false);
+		print_benchmark(ctx, false);
 		printf("\n");
 
-		if (opt_frags) {
-			__u64 rx_frags = xsks[i]->ring_stats.rx_frags;
-			__u64 tx_frags = xsks[i]->ring_stats.tx_frags;
-			double rx_fps = (rx_frags - xsks[i]->ring_stats.prev_rx_frags) *
+		if (ctx->opt.frags) {
+			__u64 rx_frags = ctx->xsks[i]->ring_stats.rx_frags;
+			__u64 tx_frags = ctx->xsks[i]->ring_stats.tx_frags;
+			double rx_fps = (rx_frags - ctx->xsks[i]->ring_stats.prev_rx_frags) *
 				1000000000. / dt;
-			double tx_fps = (tx_frags - xsks[i]->ring_stats.prev_tx_frags) *
+			double tx_fps = (tx_frags - ctx->xsks[i]->ring_stats.prev_tx_frags) *
 				1000000000. / dt;
 			char *ffmt = "%-18s %'-14.0f %'-14lu %'-14.0f %'-14lu\n";
 
 			printf("%-18s %-14s %-14s %-14s %-14s %-14.2f\n", "", "pps", "pkts",
 					"fps", "frags", dt / 1000000000.);
-			printf(ffmt, "rx", rx_pps, xsks[i]->ring_stats.rx_npkts, rx_fps, rx_frags);
-			printf(ffmt, "tx", tx_pps, xsks[i]->ring_stats.tx_npkts, tx_fps, tx_frags);
-			xsks[i]->ring_stats.prev_rx_frags = rx_frags;
-			xsks[i]->ring_stats.prev_tx_frags = tx_frags;
+			printf(ffmt, "rx", rx_pps, ctx->xsks[i]->ring_stats.rx_npkts, rx_fps, rx_frags);
+			printf(ffmt, "tx", tx_pps, ctx->xsks[i]->ring_stats.tx_npkts, tx_fps, tx_frags);
+			ctx->xsks[i]->ring_stats.prev_rx_frags = rx_frags;
+			ctx->xsks[i]->ring_stats.prev_tx_frags = tx_frags;
 		} else {
 
 			printf("%-18s %-14s %-14s %-14.2f\n", "", "pps", "pkts",
 					dt / 1000000000.);
-			printf(fmt, "rx", rx_pps, xsks[i]->ring_stats.rx_npkts);
-			printf(fmt, "tx", tx_pps, xsks[i]->ring_stats.tx_npkts);
+			printf(fmt, "rx", rx_pps, ctx->xsks[i]->ring_stats.rx_npkts);
+			printf(fmt, "tx", tx_pps, ctx->xsks[i]->ring_stats.tx_npkts);
 		}
 
-		xsks[i]->ring_stats.prev_rx_npkts = xsks[i]->ring_stats.rx_npkts;
-		xsks[i]->ring_stats.prev_tx_npkts = xsks[i]->ring_stats.tx_npkts;
+		ctx->xsks[i]->ring_stats.prev_rx_npkts = ctx->xsks[i]->ring_stats.rx_npkts;
+		ctx->xsks[i]->ring_stats.prev_tx_npkts = ctx->xsks[i]->ring_stats.tx_npkts;
 
-		if (opt_extra_stats) {
-			if (!xsk_get_xdp_stats(xsk_socket__fd(xsks[i]->xsk), xsks[i])) {
-				dropped_pps = (xsks[i]->ring_stats.rx_dropped_npkts -
-						xsks[i]->ring_stats.prev_rx_dropped_npkts) *
+		if (ctx->opt.extra_stats) {
+			if (!xsk_get_xdp_stats(xsk_socket__fd(ctx->xsks[i]->xsk), ctx->xsks[i])) {
+				dropped_pps = (ctx->xsks[i]->ring_stats.rx_dropped_npkts -
+						ctx->xsks[i]->ring_stats.prev_rx_dropped_npkts) *
 							1000000000. / dt;
-				rx_invalid_pps = (xsks[i]->ring_stats.rx_invalid_npkts -
-						xsks[i]->ring_stats.prev_rx_invalid_npkts) *
+				rx_invalid_pps = (ctx->xsks[i]->ring_stats.rx_invalid_npkts -
+						ctx->xsks[i]->ring_stats.prev_rx_invalid_npkts) *
 							1000000000. / dt;
-				tx_invalid_pps = (xsks[i]->ring_stats.tx_invalid_npkts -
-						xsks[i]->ring_stats.prev_tx_invalid_npkts) *
+				tx_invalid_pps = (ctx->xsks[i]->ring_stats.tx_invalid_npkts -
+						ctx->xsks[i]->ring_stats.prev_tx_invalid_npkts) *
 							1000000000. / dt;
-				full_pps = (xsks[i]->ring_stats.rx_full_npkts -
-						xsks[i]->ring_stats.prev_rx_full_npkts) *
+				full_pps = (ctx->xsks[i]->ring_stats.rx_full_npkts -
+						ctx->xsks[i]->ring_stats.prev_rx_full_npkts) *
 							1000000000. / dt;
-				fill_empty_pps = (xsks[i]->ring_stats.rx_fill_empty_npkts -
-						xsks[i]->ring_stats.prev_rx_fill_empty_npkts) *
+				fill_empty_pps = (ctx->xsks[i]->ring_stats.rx_fill_empty_npkts -
+						ctx->xsks[i]->ring_stats.prev_rx_fill_empty_npkts) *
 							1000000000. / dt;
-				tx_empty_pps = (xsks[i]->ring_stats.tx_empty_npkts -
-						xsks[i]->ring_stats.prev_tx_empty_npkts) *
+				tx_empty_pps = (ctx->xsks[i]->ring_stats.tx_empty_npkts -
+						ctx->xsks[i]->ring_stats.prev_tx_empty_npkts) *
 							1000000000. / dt;
 
 				printf(fmt, "rx dropped", dropped_pps,
-				       xsks[i]->ring_stats.rx_dropped_npkts);
+				       ctx->xsks[i]->ring_stats.rx_dropped_npkts);
 				printf(fmt, "rx invalid", rx_invalid_pps,
-				       xsks[i]->ring_stats.rx_invalid_npkts);
+				       ctx->xsks[i]->ring_stats.rx_invalid_npkts);
 				printf(fmt, "tx invalid", tx_invalid_pps,
-				       xsks[i]->ring_stats.tx_invalid_npkts);
+				       ctx->xsks[i]->ring_stats.tx_invalid_npkts);
 				printf(fmt, "rx queue full", full_pps,
-				       xsks[i]->ring_stats.rx_full_npkts);
+				       ctx->xsks[i]->ring_stats.rx_full_npkts);
 				printf(fmt, "fill ring empty", fill_empty_pps,
-				       xsks[i]->ring_stats.rx_fill_empty_npkts);
+				       ctx->xsks[i]->ring_stats.rx_fill_empty_npkts);
 				printf(fmt, "tx ring empty", tx_empty_pps,
-				       xsks[i]->ring_stats.tx_empty_npkts);
+				       ctx->xsks[i]->ring_stats.tx_empty_npkts);
 
-				xsks[i]->ring_stats.prev_rx_dropped_npkts =
-					xsks[i]->ring_stats.rx_dropped_npkts;
-				xsks[i]->ring_stats.prev_rx_invalid_npkts =
-					xsks[i]->ring_stats.rx_invalid_npkts;
-				xsks[i]->ring_stats.prev_tx_invalid_npkts =
-					xsks[i]->ring_stats.tx_invalid_npkts;
-				xsks[i]->ring_stats.prev_rx_full_npkts =
-					xsks[i]->ring_stats.rx_full_npkts;
-				xsks[i]->ring_stats.prev_rx_fill_empty_npkts =
-					xsks[i]->ring_stats.rx_fill_empty_npkts;
-				xsks[i]->ring_stats.prev_tx_empty_npkts =
-					xsks[i]->ring_stats.tx_empty_npkts;
+				ctx->xsks[i]->ring_stats.prev_rx_dropped_npkts =
+					ctx->xsks[i]->ring_stats.rx_dropped_npkts;
+				ctx->xsks[i]->ring_stats.prev_rx_invalid_npkts =
+					ctx->xsks[i]->ring_stats.rx_invalid_npkts;
+				ctx->xsks[i]->ring_stats.prev_tx_invalid_npkts =
+					ctx->xsks[i]->ring_stats.tx_invalid_npkts;
+				ctx->xsks[i]->ring_stats.prev_rx_full_npkts =
+					ctx->xsks[i]->ring_stats.rx_full_npkts;
+				ctx->xsks[i]->ring_stats.prev_rx_fill_empty_npkts =
+					ctx->xsks[i]->ring_stats.rx_fill_empty_npkts;
+				ctx->xsks[i]->ring_stats.prev_tx_empty_npkts =
+					ctx->xsks[i]->ring_stats.tx_empty_npkts;
 			} else {
 				printf("%-15s\n", "Error retrieving extra stats");
 			}
 		}
 	}
 
-	if (opt_app_stats)
-		dump_app_stats(dt);
-	if (irq_no)
-		dump_driver_stats(dt);
+	if (ctx->opt.app_stats)
+		dump_app_stats(ctx, dt);
+	if (ctx->irq_no)
+		dump_driver_stats(ctx, dt);
 }
 
-static bool is_benchmark_done(void)
+static bool is_benchmark_done(struct xsk_ctx *ctx)
 {
-	if (opt_duration > 0) {
-		unsigned long dt = (get_nsecs() - start_time);
+	if (ctx->opt.duration > 0) {
+		unsigned long dt = (get_nsecs(ctx->opt.clock) - ctx->start_time);
 
-		if (dt >= opt_duration)
-			benchmark_done = true;
+		if (dt >= ctx->opt.duration)
+			ctx->benchmark_done = true;
 	}
-	return benchmark_done;
+	return ctx->benchmark_done;
 }
 
 static void *poller(void *arg)
 {
-	(void)arg;
-	while (!is_benchmark_done()) {
-		sleep(opt_interval);
-		dump_stats();
+	struct xsk_ctx *ctx = arg;
+	while (!is_benchmark_done(ctx)) {
+		sleep(ctx->opt.interval);
+		dump_stats(ctx);
 	}
 
 	return NULL;
 }
 
-static void remove_xdp_program(void)
+void xsk_ctx__destroy(struct xsk_ctx *ctx)
 {
-	int err;
+	struct xsk_umem *umem = ctx->xsks[0]->umem->umem;
+	unsigned int i;
 
-	err = xdp_program__detach(xdp_prog, opt_ifindex, opt_attach_mode, 0);
-	if (err)
-		fprintf(stderr, "Could not detach XDP program. Error: %s\n", strerror(-err));
-}
-
-static void int_exit(__attribute((unused)) int sig)
-{
-	benchmark_done = true;
-}
-
-static void __exit_with_error(int error, const char *file, const char *func,
-			      int line)
-{
-	fprintf(stderr, "%s:%s:%i: errno: %d/\"%s\"\n", file, func,
-		line, error, strerror(error));
-
-	if (load_xdp_prog)
-		remove_xdp_program();
-	exit(EXIT_FAILURE);
-}
-
-#define exit_with_error(error) __exit_with_error(error, __FILE__, __func__, __LINE__)
-
-static void xdpsock_cleanup(void)
-{
-	struct xsk_umem *umem = xsks[0]->umem->umem;
-	int i, cmd = CLOSE_CONN;
-
-	dump_stats();
-	for (i = 0; i < num_socks; i++)
-		xsk_socket__delete(xsks[i]->xsk);
+	dump_stats(ctx);
+	for (i = 0; i < ctx->num_socks; i++)
+		xsk_socket__delete(ctx->xsks[i]->xsk);
 	(void)xsk_umem__delete(umem);
 
-	if (opt_reduced_cap) {
-		if (write(sock, &cmd, sizeof(int)) < 0)
-			exit_with_error(errno);
-	}
+	if (ctx->xdp_prog)
+		xdp_program__detach(ctx->xdp_prog, ctx->opt.iface.ifindex,
+				    ctx->opt.attach_mode, 0);
 
-	if (load_xdp_prog)
-		remove_xdp_program();
+	munmap(ctx->bufs, NUM_FRAMES * ctx->opt.frame_size);
+	free(ctx);
 }
 
 static void swap_mac_addresses(void *data)
@@ -862,66 +727,64 @@ static inline __u16 udp_csum(__u32 saddr, __u32 daddr, __u32 len,
 
 #define ETH_FCS_SIZE 4
 
-#define ETH_HDR_SIZE (opt_vlan_tag ? sizeof(struct vlan_ethhdr) : \
+#define ETH_HDR_SIZE(opt) ((opt)->vlan_tag ? sizeof(struct vlan_ethhdr) : \
 		      sizeof(struct ethhdr))
-#define PKTGEN_HDR_SIZE (opt_tstamp ? sizeof(struct pktgen_hdr) : 0)
-#define PKT_HDR_SIZE (ETH_HDR_SIZE + sizeof(struct iphdr) + \
-		      sizeof(struct udphdr) + PKTGEN_HDR_SIZE)
-#define PKTGEN_HDR_OFFSET (ETH_HDR_SIZE + sizeof(struct iphdr) + \
+#define PKTGEN_HDR_SIZE(opt) ((opt)->timestamp ? sizeof(struct pktgen_hdr) : 0)
+#define PKT_HDR_SIZE(opt) (ETH_HDR_SIZE(opt) + sizeof(struct iphdr) +	\
+			   sizeof(struct udphdr) + PKTGEN_HDR_SIZE(opt))
+#define PKTGEN_HDR_OFFSET(opt) (ETH_HDR_SIZE(opt) + sizeof(struct iphdr) + \
 			   sizeof(struct udphdr))
-#define PKTGEN_SIZE_MIN (PKTGEN_HDR_OFFSET + sizeof(struct pktgen_hdr) + \
+#define PKTGEN_SIZE_MIN(opt) (PKTGEN_HDR_OFFSET(opt) + sizeof(struct pktgen_hdr) + \
 			 ETH_FCS_SIZE)
 
-#define PKT_SIZE		(opt_pkt_size - ETH_FCS_SIZE)
-#define IP_PKT_SIZE		(PKT_SIZE - ETH_HDR_SIZE)
-#define UDP_PKT_SIZE		(IP_PKT_SIZE - sizeof(struct iphdr))
-#define UDP_PKT_DATA_SIZE	(UDP_PKT_SIZE - \
-				 (sizeof(struct udphdr) + PKTGEN_HDR_SIZE))
+#define PKT_SIZE(opt)		((opt)->tx_pkt_size - ETH_FCS_SIZE)
+#define IP_PKT_SIZE(opt)		(PKT_SIZE(opt) - ETH_HDR_SIZE(opt))
+#define UDP_PKT_SIZE(opt)		(IP_PKT_SIZE(opt) - sizeof(struct iphdr))
+#define UDP_PKT_DATA_SIZE(opt)	(UDP_PKT_SIZE(opt) -			\
+				 (sizeof(struct udphdr) + PKTGEN_HDR_SIZE(opt)))
 
-static __u8 pkt_data[MAX_PKT_SIZE];
-
-static void gen_eth_hdr_data(void)
+static void gen_eth_hdr_data(struct xsk_ctx *ctx)
 {
 	struct pktgen_hdr *pktgen_hdr;
 	struct udphdr *udp_hdr;
 	struct iphdr *ip_hdr;
 
-	if (opt_vlan_tag) {
-		struct vlan_ethhdr *veth_hdr = (struct vlan_ethhdr *)pkt_data;
+	if (ctx->opt.vlan_tag) {
+		struct vlan_ethhdr *veth_hdr = (struct vlan_ethhdr *)ctx->pkt_data;
 		__u16 vlan_tci = 0;
 
-		udp_hdr = (struct udphdr *)(pkt_data +
+		udp_hdr = (struct udphdr *)(ctx->pkt_data +
 					    sizeof(struct vlan_ethhdr) +
 					    sizeof(struct iphdr));
-		ip_hdr = (struct iphdr *)(pkt_data +
+		ip_hdr = (struct iphdr *)(ctx->pkt_data +
 					  sizeof(struct vlan_ethhdr));
-		pktgen_hdr = (struct pktgen_hdr *)(pkt_data +
+		pktgen_hdr = (struct pktgen_hdr *)(ctx->pkt_data +
 						   sizeof(struct vlan_ethhdr) +
 						   sizeof(struct iphdr) +
 						   sizeof(struct udphdr));
 		/* ethernet & VLAN header */
-		memcpy(veth_hdr->h_dest, &opt_txdmac, ETH_ALEN);
-		memcpy(veth_hdr->h_source, &opt_txsmac, ETH_ALEN);
+		memcpy(veth_hdr->h_dest, &ctx->opt.dst_mac, ETH_ALEN);
+		memcpy(veth_hdr->h_source, &ctx->opt.src_mac, ETH_ALEN);
 		veth_hdr->h_vlan_proto = htons(ETH_P_8021Q);
-		vlan_tci = opt_pkt_vlan_id & VLAN_VID_MASK;
-		vlan_tci |= (opt_pkt_vlan_pri << VLAN_PRIO_SHIFT) & VLAN_PRIO_MASK;
+		vlan_tci = ctx->opt.vlan_id & VLAN_VID_MASK;
+		vlan_tci |= (ctx->opt.vlan_pri << VLAN_PRIO_SHIFT) & VLAN_PRIO_MASK;
 		veth_hdr->h_vlan_TCI = htons(vlan_tci);
 		veth_hdr->h_vlan_encapsulated_proto = htons(ETH_P_IP);
 	} else {
-		struct ethhdr *eth_hdr = (struct ethhdr *)pkt_data;
+		struct ethhdr *eth_hdr = (struct ethhdr *)ctx->pkt_data;
 
-		udp_hdr = (struct udphdr *)(pkt_data +
+		udp_hdr = (struct udphdr *)(ctx->pkt_data +
 					    sizeof(struct ethhdr) +
 					    sizeof(struct iphdr));
-		ip_hdr = (struct iphdr *)(pkt_data +
+		ip_hdr = (struct iphdr *)(ctx->pkt_data +
 					  sizeof(struct ethhdr));
-		pktgen_hdr = (struct pktgen_hdr *)(pkt_data +
+		pktgen_hdr = (struct pktgen_hdr *)(ctx->pkt_data +
 						   sizeof(struct ethhdr) +
 						   sizeof(struct iphdr) +
 						   sizeof(struct udphdr));
 		/* ethernet header */
-		memcpy(eth_hdr->h_dest, &opt_txdmac, ETH_ALEN);
-		memcpy(eth_hdr->h_source, &opt_txsmac, ETH_ALEN);
+		memcpy(eth_hdr->h_dest, &ctx->opt.dst_mac, ETH_ALEN);
+		memcpy(eth_hdr->h_source, &ctx->opt.src_mac, ETH_ALEN);
 		eth_hdr->h_proto = htons(ETH_P_IP);
 	}
 
@@ -930,7 +793,7 @@ static void gen_eth_hdr_data(void)
 	ip_hdr->version = IPVERSION;
 	ip_hdr->ihl = 0x5; /* 20 byte header */
 	ip_hdr->tos = 0x0;
-	ip_hdr->tot_len = htons(IP_PKT_SIZE);
+	ip_hdr->tot_len = htons(IP_PKT_SIZE(&ctx->opt));
 	ip_hdr->id = 0;
 	ip_hdr->frag_off = 0;
 	ip_hdr->ttl = IPDEFTTL;
@@ -945,37 +808,47 @@ static void gen_eth_hdr_data(void)
 	/* UDP header */
 	udp_hdr->source = htons(0x1000);
 	udp_hdr->dest = htons(0x1000);
-	udp_hdr->len = htons(UDP_PKT_SIZE);
+	udp_hdr->len = htons(UDP_PKT_SIZE(&ctx->opt));
 
-	if (opt_tstamp)
+	if (ctx->opt.timestamp)
 		pktgen_hdr->pgh_magic = htonl(PKTGEN_MAGIC);
 
 	/* UDP data */
-	memset32_htonl(pkt_data + PKT_HDR_SIZE, opt_pkt_fill_pattern,
-		       UDP_PKT_DATA_SIZE);
+	memset32_htonl(ctx->pkt_data + PKT_HDR_SIZE(&ctx->opt), ctx->opt.pkt_fill_pattern,
+		       UDP_PKT_DATA_SIZE(&ctx->opt));
 
 	/* UDP header checksum */
 	udp_hdr->check = 0;
-	udp_hdr->check = udp_csum(ip_hdr->saddr, ip_hdr->daddr, UDP_PKT_SIZE,
+	udp_hdr->check = udp_csum(ip_hdr->saddr, ip_hdr->daddr, UDP_PKT_SIZE(&ctx->opt),
 				  IPPROTO_UDP, (__u16 *)udp_hdr);
 }
 
-static void gen_eth_frame(struct xsk_umem_info *umem, __u64 addr)
+static void gen_eth_frames(struct xsk_ctx *ctx, struct xsk_umem_info *umem, __u32 frame_size)
 {
-	static __u32 len;
-	__u32 copy_len = opt_xsk_frame_size;
+	__u32 copy_len = frame_size;
+	__u32 len = 0;
+	unsigned int i;
 
-	if (!len)
-		len = PKT_SIZE;
+	for (i = 0; i < NUM_FRAMES; i++) {
+		__u64 addr = i * frame_size;
 
-	if ((int)len < opt_xsk_frame_size)
-		copy_len = len;
-	memcpy(xsk_umem__get_data(umem->buffer, addr),
-			pkt_data + PKT_SIZE - len, copy_len);
-	len -= copy_len;
+		if (!len) {
+			len = PKT_SIZE(&ctx->opt);
+			copy_len = frame_size;
+		}
+
+		if (len < frame_size)
+			copy_len = len;
+
+		memcpy(xsk_umem__get_data(umem->buffer, addr),
+		       ctx->pkt_data + PKT_SIZE(&ctx->opt) - len, copy_len);
+
+		len -= copy_len;
+	}
 }
 
-static struct xsk_umem_info *xsk_configure_umem(void *buffer, __u64 size)
+static struct xsk_umem_info *xsk_configure_umem(void *buffer, __u64 size,
+						__u32 frame_size, __u32 umem_flags)
 {
 	struct xsk_umem_info *umem;
 	struct xsk_umem_config cfg = {
@@ -990,26 +863,28 @@ static struct xsk_umem_info *xsk_configure_umem(void *buffer, __u64 size)
 		 */
 		.fill_size = XSK_RING_PROD__DEFAULT_NUM_DESCS * 2,
 		.comp_size = XSK_RING_CONS__DEFAULT_NUM_DESCS,
-		.frame_size = opt_xsk_frame_size,
+		.frame_size = frame_size,
 		.frame_headroom = XSK_UMEM__DEFAULT_FRAME_HEADROOM,
-		.flags = opt_umem_flags
+		.flags = umem_flags
 	};
 	int ret;
 
 	umem = calloc(1, sizeof(*umem));
 	if (!umem)
-		exit_with_error(errno);
+		return ERR_PTR(-errno);
 
 	ret = xsk_umem__create(&umem->umem, buffer, size, &umem->fq, &umem->cq,
 			       &cfg);
-	if (ret)
-		exit_with_error(-ret);
+	if (ret) {
+		free(umem);
+		return ERR_PTR(ret);
+	}
 
 	umem->buffer = buffer;
 	return umem;
 }
 
-static void xsk_populate_fill_ring(struct xsk_umem_info *umem)
+static int xsk_populate_fill_ring(struct xsk_umem_info *umem, __u32 frame_size)
 {
 	int ret, i;
 	__u32 idx;
@@ -1017,45 +892,55 @@ static void xsk_populate_fill_ring(struct xsk_umem_info *umem)
 	ret = xsk_ring_prod__reserve(&umem->fq,
 				     XSK_RING_PROD__DEFAULT_NUM_DESCS * 2, &idx);
 	if (ret != XSK_RING_PROD__DEFAULT_NUM_DESCS * 2)
-		exit_with_error(-ret);
+		return -ret;
+
 	for (i = 0; i < XSK_RING_PROD__DEFAULT_NUM_DESCS * 2; i++)
 		*xsk_ring_prod__fill_addr(&umem->fq, idx++) =
-			i * opt_xsk_frame_size;
+			i * frame_size;
 	xsk_ring_prod__submit(&umem->fq, XSK_RING_PROD__DEFAULT_NUM_DESCS * 2);
+
+	return 0;
 }
 
-static struct xsk_socket_info *xsk_configure_socket(struct xsk_umem_info *umem,
+static struct xsk_socket_info *xsk_configure_socket(const struct xsk_opts *opt,
+						    struct xsk_umem_info *umem,
 						    bool rx, bool tx)
 {
-	struct xsk_socket_config cfg;
+	__u32 xdp_bind_flags = opt->no_need_wakeup ? 0 : XDP_USE_NEED_WAKEUP;
+	struct xsk_socket_config cfg = {};
 	struct xsk_socket_info *xsk;
 	struct xsk_ring_cons *rxr;
 	struct xsk_ring_prod *txr;
 	int ret;
 
+	if (opt->attach_mode == XDP_MODE_SKB)
+		xdp_bind_flags |= XDP_COPY;
+	xdp_bind_flags |= opt->copy_mode;
+
 	xsk = calloc(1, sizeof(*xsk));
 	if (!xsk)
-		exit_with_error(errno);
+		return ERR_PTR(-errno);
 
 	xsk->umem = umem;
+	xsk->copy_mode = !!(xdp_bind_flags & XDP_COPY);
 	cfg.rx_size = XSK_RING_CONS__DEFAULT_NUM_DESCS;
 	cfg.tx_size = XSK_RING_PROD__DEFAULT_NUM_DESCS;
-	if (load_xdp_prog || opt_reduced_cap)
+	if (opt->shared_umem || opt->frags)
 		cfg.libxdp_flags = XSK_LIBXDP_FLAGS__INHIBIT_PROG_LOAD;
 	else
 		cfg.libxdp_flags = 0;
-	if (opt_attach_mode == XDP_MODE_SKB)
+	if (opt->attach_mode == XDP_MODE_SKB)
 		cfg.xdp_flags = XDP_FLAGS_SKB_MODE;
 	else
 		cfg.xdp_flags = XDP_FLAGS_DRV_MODE;
-	cfg.bind_flags = opt_xdp_bind_flags;
+	cfg.bind_flags = xdp_bind_flags;
 
 	rxr = rx ? &xsk->rx : NULL;
 	txr = tx ? &xsk->tx : NULL;
-	ret = xsk_socket__create(&xsk->xsk, opt_if, opt_queue, umem->umem,
-				 rxr, txr, &cfg);
+	ret = xsk_socket__create(&xsk->xsk, opt->iface.ifname, opt->queue_idx,
+				 umem->umem, rxr, txr, &cfg);
 	if (ret)
-		exit_with_error(-ret);
+		goto err;
 
 	xsk->app_stats.rx_empty_polls = 0;
 	xsk->app_stats.fill_fail_polls = 0;
@@ -1069,42 +954,47 @@ static struct xsk_socket_info *xsk_configure_socket(struct xsk_umem_info *umem,
 	xsk->app_stats.prev_opt_polls = 0;
 
 	return xsk;
+err:
+	free(xsk);
+	return ERR_PTR(ret);
 }
 
-
-static void kick_tx(struct xsk_socket_info *xsk)
+static int kick_tx(struct xsk_socket_info *xsk)
 {
 	int ret;
 	ret = sendto(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, 0);
 
 	if (ret >= 0 || errno == ENOBUFS || errno == EAGAIN ||
 	    errno == EBUSY || errno == ENETDOWN)
-		return;
-	exit_with_error(errno);
+		return 0;
+	return -errno;
 }
 
-static inline void complete_tx_l2fwd(struct xsk_socket_info *xsk)
+static inline int complete_tx_l2fwd(struct xsk_socket_info *xsk,
+				    __u32 batch_size, bool busy_poll)
 {
 	struct xsk_umem_info *umem = xsk->umem;
 	__u32 idx_cq = 0, idx_fq = 0;
 	unsigned int rcvd;
 	size_t ndescs;
+	int ret;
 
 	if (!xsk->outstanding_tx)
-		return;
+		return 0;
 
 	/* In copy mode, Tx is driven by a syscall so we need to use e.g. sendto() to
 	 * really send the packets. In zero-copy mode we do not have to do this, since Tx
 	 * is driven by the NAPI loop. So as an optimization, we do not have to call
 	 * sendto() all the time in zero-copy mode for l2fwd.
 	 */
-	if (opt_xdp_bind_flags & XDP_COPY) {
+	if (xsk->copy_mode) {
 		xsk->app_stats.copy_tx_sendtos++;
-		kick_tx(xsk);
+		ret = kick_tx(xsk);
+		if (ret)
+			return ret;
 	}
 
-	ndescs = (xsk->outstanding_tx > opt_batch_size) ? opt_batch_size :
-		xsk->outstanding_tx;
+	ndescs = min(xsk->outstanding_tx, batch_size);
 
 	/* re-add completed Tx buffers */
 	rcvd = xsk_ring_cons__peek(&umem->cq, ndescs, &idx_cq);
@@ -1115,8 +1005,8 @@ static inline void complete_tx_l2fwd(struct xsk_socket_info *xsk)
 		ret = xsk_ring_prod__reserve(&umem->fq, rcvd, &idx_fq);
 		while (ret != (int)rcvd) {
 			if (ret < 0)
-				exit_with_error(-ret);
-			if (opt_busy_poll || xsk_ring_prod__needs_wakeup(&umem->fq)) {
+				return ret;
+			if (busy_poll || xsk_ring_prod__needs_wakeup(&umem->fq)) {
 				xsk->app_stats.fill_fail_polls++;
 				recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL,
 					 NULL);
@@ -1132,10 +1022,11 @@ static inline void complete_tx_l2fwd(struct xsk_socket_info *xsk)
 		xsk_ring_cons__release(&xsk->umem->cq, rcvd);
 		xsk->outstanding_tx -= rcvd;
 	}
+	return 0;
 }
 
 static inline void complete_tx_only(struct xsk_socket_info *xsk,
-				    int batch_size)
+				    int batch_size, bool need_wakeup)
 {
 	unsigned int rcvd;
 	__u32 idx;
@@ -1143,7 +1034,7 @@ static inline void complete_tx_only(struct xsk_socket_info *xsk,
 	if (!xsk->outstanding_tx)
 		return;
 
-	if (!opt_need_wakeup || xsk_ring_prod__needs_wakeup(&xsk->tx)) {
+	if (!need_wakeup || xsk_ring_prod__needs_wakeup(&xsk->tx)) {
 		xsk->app_stats.tx_wakeup_sendtos++;
 		kick_tx(xsk);
 	}
@@ -1155,26 +1046,26 @@ static inline void complete_tx_only(struct xsk_socket_info *xsk,
 	}
 }
 
-static void rx_drop(struct xsk_socket_info *xsk)
+static int rx_drop(struct xsk_socket_info *xsk, __u32 batch_size, bool busy_poll)
 {
 	unsigned int rcvd, i, eop_cnt = 0;
 	__u32 idx_rx = 0, idx_fq = 0;
 	int ret;
 
-	rcvd = xsk_ring_cons__peek(&xsk->rx, opt_batch_size, &idx_rx);
+	rcvd = xsk_ring_cons__peek(&xsk->rx, batch_size, &idx_rx);
 	if (!rcvd) {
-		if (opt_busy_poll || xsk_ring_prod__needs_wakeup(&xsk->umem->fq)) {
+		if (busy_poll || xsk_ring_prod__needs_wakeup(&xsk->umem->fq)) {
 			xsk->app_stats.rx_empty_polls++;
 			recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
 		}
-		return;
+		return 0;
 	}
 
 	ret = xsk_ring_prod__reserve(&xsk->umem->fq, rcvd, &idx_fq);
 	while ((unsigned int)ret != rcvd) {
 		if (ret < 0)
-			exit_with_error(-ret);
-		if (opt_busy_poll || xsk_ring_prod__needs_wakeup(&xsk->umem->fq)) {
+			return ret;
+		if (busy_poll || xsk_ring_prod__needs_wakeup(&xsk->umem->fq)) {
 			xsk->app_stats.fill_fail_polls++;
 			recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
 		}
@@ -1199,62 +1090,65 @@ static void rx_drop(struct xsk_socket_info *xsk)
 	xsk_ring_cons__release(&xsk->rx, rcvd);
 	xsk->ring_stats.rx_npkts += eop_cnt;
 	xsk->ring_stats.rx_frags += rcvd;
+
+	return 0;
 }
 
-static void rx_drop_all(void)
+void xsk_rx_drop_all(struct xsk_ctx *ctx)
 {
 	struct pollfd fds[MAX_SOCKS] = {};
-	int i, ret;
+	unsigned int i;
+	int ret;
 
-	for (i = 0; i < num_socks; i++) {
-		fds[i].fd = xsk_socket__fd(xsks[i]->xsk);
+	for (i = 0; i < ctx->num_socks; i++) {
+		fds[i].fd = xsk_socket__fd(ctx->xsks[i]->xsk);
 		fds[i].events = POLLIN;
 	}
 
 	for (;;) {
-		if (opt_poll) {
-			for (i = 0; i < num_socks; i++)
-				xsks[i]->app_stats.opt_polls++;
-			ret = poll(fds, num_socks, opt_timeout);
+		if (ctx->opt.use_poll) {
+			for (i = 0; i < ctx->num_socks; i++)
+				ctx->xsks[i]->app_stats.opt_polls++;
+			ret = poll(fds, ctx->num_socks, ctx->poll_timeout);
 			if (ret <= 0)
 				continue;
 		}
 
-		for (i = 0; i < num_socks; i++)
-			rx_drop(xsks[i]);
+		for (i = 0; i < ctx->num_socks; i++)
+			rx_drop(ctx->xsks[i], ctx->opt.batch_size, ctx->opt.busy_poll);
 
-		if (benchmark_done)
+		if (ctx->benchmark_done)
 			break;
 	}
 }
 
-static int tx_only(struct xsk_socket_info *xsk, __u32 *frame_nb,
-		   unsigned int batch_size, unsigned long tx_ns)
+static int tx_only(struct xsk_ctx *ctx, struct xsk_socket_info *xsk, __u32 *frame_nb,
+		   int batch_size, unsigned long tx_ns)
 {
 	__u32 idx, tv_sec, tv_usec;
-	unsigned int i;
+	int i;
 
 	while (xsk_ring_prod__reserve(&xsk->tx, batch_size, &idx) <
-				      batch_size) {
-		complete_tx_only(xsk, batch_size);
-		if (benchmark_done)
+	       (unsigned int)batch_size) {
+		complete_tx_only(xsk, batch_size, !ctx->opt.no_need_wakeup);
+		if (ctx->benchmark_done)
 			return 0;
 	}
 
-	if (opt_tstamp) {
+	if (ctx->opt.timestamp) {
 		tv_sec = (__u32)(tx_ns / NSEC_PER_SEC);
 		tv_usec = (__u32)((tx_ns % NSEC_PER_SEC) / 1000);
 	}
 
 	for (i = 0; i < batch_size; ) {
-		__u32 len = PKT_SIZE;
+		__u32 len = PKT_SIZE(&ctx->opt);
 
 		do {
 			struct xdp_desc *tx_desc = xsk_ring_prod__tx_desc(&xsk->tx,
 									  idx + i);
-			tx_desc->addr = *frame_nb * opt_xsk_frame_size;
-			if (len > (unsigned int)opt_xsk_frame_size) {
-				tx_desc->len = opt_xsk_frame_size;
+			tx_desc->addr = *frame_nb * ctx->opt.frame_size;
+			if (len > ctx->opt.frame_size) {
+				tx_desc->len = ctx->opt.frame_size;
 				tx_desc->options = XDP_PKT_CONTD;
 			} else {
 				tx_desc->len = len;
@@ -1265,19 +1159,19 @@ static int tx_only(struct xsk_socket_info *xsk, __u32 *frame_nb,
 			*frame_nb = (*frame_nb + 1) % NUM_FRAMES;
 			i++;
 
-			if (opt_tstamp) {
+			if (ctx->opt.timestamp) {
 				struct pktgen_hdr *pktgen_hdr;
 				__u64 addr = tx_desc->addr;
 				char *pkt;
 
 				pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
-				pktgen_hdr = (struct pktgen_hdr *)(pkt + PKTGEN_HDR_OFFSET);
+				pktgen_hdr = (struct pktgen_hdr *)(pkt + PKTGEN_HDR_OFFSET(&ctx->opt));
 
-				pktgen_hdr->seq_num = htonl(sequence++);
+				pktgen_hdr->seq_num = htonl(ctx->sequence++);
 				pktgen_hdr->tv_sec = htonl(tv_sec);
 				pktgen_hdr->tv_usec = htonl(tv_usec);
 
-				hex_dump(pkt, PKT_SIZE, addr);
+				hex_dump(pkt, PKT_SIZE(&ctx->opt), addr);
 			}
 		} while (len);
 	}
@@ -1285,82 +1179,76 @@ static int tx_only(struct xsk_socket_info *xsk, __u32 *frame_nb,
 	xsk_ring_prod__submit(&xsk->tx, batch_size);
 	xsk->outstanding_tx += batch_size;
 	xsk->ring_stats.tx_frags += batch_size;
-	complete_tx_only(xsk, batch_size);
+	complete_tx_only(xsk, batch_size, !ctx->opt.no_need_wakeup);
 
-	return batch_size / frames_per_pkt;
+	return batch_size / ctx->frames_per_pkt;
 }
 
-static inline int get_batch_size(unsigned int pkt_cnt)
+static inline int get_batch_size(const struct xsk_ctx *ctx, int pkt_cnt)
 {
-	if (!opt_pkt_count)
-		return opt_batch_size * frames_per_pkt;
+	if (!ctx->opt.pkt_count)
+		return ctx->opt.batch_size * ctx->frames_per_pkt;
 
-	if (pkt_cnt + opt_batch_size <= (unsigned int)opt_pkt_count)
-		return opt_batch_size * frames_per_pkt;
+	if (pkt_cnt + ctx->opt.batch_size <= ctx->opt.pkt_count)
+		return ctx->opt.batch_size * ctx->frames_per_pkt;
 
-	return (opt_pkt_count - pkt_cnt) * frames_per_pkt;
+	return (ctx->opt.pkt_count - pkt_cnt) * ctx->frames_per_pkt;
 }
 
-static void complete_tx_only_all(void)
+static void complete_tx_only_all(struct xsk_ctx *ctx)
 {
 	bool pending;
-	int i;
+	unsigned int i;
 
 	do {
 		pending = false;
-		for (i = 0; i < num_socks; i++) {
-			if (xsks[i]->outstanding_tx) {
-				complete_tx_only(xsks[i], opt_batch_size);
-				pending = !!xsks[i]->outstanding_tx;
+		for (i = 0; i < ctx->num_socks; i++) {
+
+			if (ctx->xsks[i]->outstanding_tx) {
+				complete_tx_only(ctx->xsks[i], ctx->opt.batch_size, !ctx->opt.no_need_wakeup);
+				pending = !!ctx->xsks[i]->outstanding_tx;
 			}
 		}
 		sleep(1);
-	} while (pending && opt_retries-- > 0);
+	} while (pending && ctx->retries-- > 0);
 }
 
-static void tx_only_all(void)
+int xsk_tx_only_all(struct xsk_ctx *ctx)
 {
 	struct pollfd fds[MAX_SOCKS] = {};
 	__u32 frame_nb[MAX_SOCKS] = {};
 	unsigned long next_tx_ns = 0;
-	int pkt_cnt = 0;
-	int i, ret;
+	unsigned int pkt_cnt = 0, i;
+	int ret;
 
-	if (opt_poll && opt_tx_cycle_ns) {
-		fprintf(stderr,
-			"Error: --poll and --tx-cycles are both set\n");
-		return;
-	}
-
-	for (i = 0; i < num_socks; i++) {
-		fds[0].fd = xsk_socket__fd(xsks[i]->xsk);
+	for (i = 0; i < ctx->num_socks; i++) {
+		fds[0].fd = xsk_socket__fd(ctx->xsks[i]->xsk);
 		fds[0].events = POLLOUT;
 	}
 
-	if (opt_tx_cycle_ns) {
+	if (ctx->tx_cycle_ns) {
 		/* Align Tx time to micro-second boundary */
-		next_tx_ns = (get_nsecs() / NSEC_PER_USEC + 1) *
-			     NSEC_PER_USEC;
-		next_tx_ns += opt_tx_cycle_ns;
+		next_tx_ns = (get_nsecs(ctx->opt.clock) / NSEC_PER_USEC + 1) * NSEC_PER_USEC;
+		next_tx_ns += ctx->tx_cycle_ns;
 
 		/* Initialize periodic Tx scheduling variance */
-		tx_cycle_diff_min = 1000000000;
-		tx_cycle_diff_max = 0;
-		tx_cycle_diff_ave = 0.0;
+		ctx->tx_cycle_diff_min = 1000000000;
+		ctx->tx_cycle_diff_max = 0;
+		ctx->tx_cycle_diff_ave = 0.0;
 	}
 
-	while ((opt_pkt_count && pkt_cnt < opt_pkt_count) || !opt_pkt_count) {
-		int batch_size = get_batch_size(pkt_cnt);
+	while ((ctx->opt.pkt_count && pkt_cnt < ctx->opt.pkt_count) || !ctx->opt.pkt_count) {
+		int batch_size = get_batch_size(ctx, pkt_cnt);
 		unsigned long tx_ns = 0;
 		struct timespec next;
 		int tx_cnt = 0;
 		long diff;
 		int err;
 
-		if (opt_poll) {
-			for (i = 0; i < num_socks; i++)
-				xsks[i]->app_stats.opt_polls++;
-			ret = poll(fds, num_socks, opt_timeout);
+		if (ctx->opt.use_poll) {
+			for (i = 0; i < ctx->num_socks; i++)
+				ctx->xsks[i]->app_stats.opt_polls++;
+			ret = poll(fds, ctx->num_socks, ctx->poll_timeout);
 			if (ret <= 0)
 				continue;
 
@@ -1368,75 +1256,77 @@ static void tx_only_all(void)
 				continue;
 		}
 
-		if (opt_tx_cycle_ns) {
+		if (ctx->tx_cycle_ns) {
 			next.tv_sec = next_tx_ns / NSEC_PER_SEC;
 			next.tv_nsec = next_tx_ns % NSEC_PER_SEC;
-			err = clock_nanosleep(opt_clock, TIMER_ABSTIME, &next, NULL);
+			err = clock_nanosleep(ctx->opt.clock, TIMER_ABSTIME, &next, NULL);
 			if (err) {
 				if (err != EINTR)
-					fprintf(stderr,
-						"clock_nanosleep failed. Err:%d errno:%d\n",
+					pr_warn("clock_nanosleep failed. Err:%d errno:%d\n",
 						err, errno);
-				break;
+				return err;
 			}
 
 			/* Measure periodic Tx scheduling variance */
-			tx_ns = get_nsecs();
+			tx_ns = get_nsecs(ctx->opt.clock);
 			diff = tx_ns - next_tx_ns;
-			if (diff < tx_cycle_diff_min)
-				tx_cycle_diff_min = diff;
+			if (diff < ctx->tx_cycle_diff_min)
+				ctx->tx_cycle_diff_min = diff;
 
-			if (diff > tx_cycle_diff_max)
-				tx_cycle_diff_max = diff;
+			if (diff > ctx->tx_cycle_diff_max)
+				ctx->tx_cycle_diff_max = diff;
 
-			tx_cycle_diff_ave += (double)diff;
-			tx_cycle_cnt++;
-		} else if (opt_tstamp) {
-			tx_ns = get_nsecs();
+			ctx->tx_cycle_diff_ave += (double)diff;
+			ctx->tx_cycle_cnt++;
+		} else if (ctx->opt.timestamp) {
+			tx_ns = get_nsecs(ctx->opt.clock);
 		}
 
-		for (i = 0; i < num_socks; i++)
-			tx_cnt += tx_only(xsks[i], &frame_nb[i], batch_size, tx_ns);
+		for (i = 0; i < ctx->num_socks; i++)
+			tx_cnt += tx_only(ctx, ctx->xsks[i], &frame_nb[i], batch_size, tx_ns);
 
 		pkt_cnt += tx_cnt;
 
-		if (benchmark_done)
+		if (ctx->benchmark_done)
 			break;
 
-		if (opt_tx_cycle_ns)
-			next_tx_ns += opt_tx_cycle_ns;
+		if (ctx->tx_cycle_ns)
+			next_tx_ns += ctx->tx_cycle_ns;
 	}
 
-	if (opt_pkt_count)
-		complete_tx_only_all();
+	if (ctx->opt.pkt_count)
+		complete_tx_only_all(ctx);
+	return 0;
 }
 
-static void l2fwd(struct xsk_socket_info *xsk)
+static int l2fwd(struct xsk_ctx *ctx, struct xsk_socket_info *xsk)
 {
 	__u32 idx_rx = 0, idx_tx = 0, frags_done = 0;
 	unsigned int rcvd, i, eop_cnt = 0;
 	static __u32 nb_frags;
 	int ret;
 
-	complete_tx_l2fwd(xsk);
+	complete_tx_l2fwd(xsk, ctx->opt.batch_size, ctx->opt.busy_poll);
 
-	rcvd = xsk_ring_cons__peek(&xsk->rx, opt_batch_size, &idx_rx);
+	rcvd = xsk_ring_cons__peek(&xsk->rx, ctx->opt.batch_size, &idx_rx);
 	if (!rcvd) {
-		if (opt_busy_poll || xsk_ring_prod__needs_wakeup(&xsk->umem->fq)) {
+		if (ctx->opt.busy_poll || xsk_ring_prod__needs_wakeup(&xsk->umem->fq)) {
 			xsk->app_stats.rx_empty_polls++;
 			recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
 		}
-		return;
+		return 0;
 	}
 
 	ret = xsk_ring_prod__reserve(&xsk->tx, rcvd, &idx_tx);
 	while ((unsigned int)ret != rcvd) {
 		if (ret < 0)
-			exit_with_error(-ret);
-		complete_tx_l2fwd(xsk);
-		if (opt_busy_poll || xsk_ring_prod__needs_wakeup(&xsk->tx)) {
+			return ret;
+		complete_tx_l2fwd(xsk, ctx->opt.batch_size, ctx->opt.busy_poll);
+		if (ctx->opt.busy_poll || xsk_ring_prod__needs_wakeup(&xsk->tx)) {
 			xsk->app_stats.tx_wakeup_sendtos++;
-			kick_tx(xsk);
+			ret = kick_tx(xsk);
+			if (ret)
+				return ret;
 		}
 		ret = xsk_ring_prod__reserve(&xsk->tx, rcvd, &idx_tx);
 	}
@@ -1477,29 +1367,32 @@ static void l2fwd(struct xsk_socket_info *xsk)
 	xsk->ring_stats.rx_frags += rcvd;
 	xsk->ring_stats.tx_frags += rcvd;
 	xsk->outstanding_tx += frags_done;
+
+	return 0;
 }
 
-static void l2fwd_all(void)
+void xsk_l2fwd_all(struct xsk_ctx *ctx)
 {
 	struct pollfd fds[MAX_SOCKS] = {};
-	int i, ret;
+	unsigned int i;
+	int ret;
 
 	for (;;) {
-		if (opt_poll) {
-			for (i = 0; i < num_socks; i++) {
-				fds[i].fd = xsk_socket__fd(xsks[i]->xsk);
+		if (ctx->opt.use_poll) {
+			for (i = 0; i < ctx->num_socks; i++) {
+				fds[i].fd = xsk_socket__fd(ctx->xsks[i]->xsk);
 				fds[i].events = POLLOUT | POLLIN;
-				xsks[i]->app_stats.opt_polls++;
+				ctx->xsks[i]->app_stats.opt_polls++;
 			}
-			ret = poll(fds, num_socks, opt_timeout);
+			ret = poll(fds, ctx->num_socks, ctx->poll_timeout);
 			if (ret <= 0)
 				continue;
 		}
 
-		for (i = 0; i < num_socks; i++)
-			l2fwd(xsks[i]);
+		for (i = 0; i < ctx->num_socks; i++)
+			l2fwd(ctx, ctx->xsks[i]);
 
-		if (benchmark_done)
+		if (ctx->benchmark_done)
 			break;
 	}
 }
