@@ -2,11 +2,10 @@
 #ifndef XDP_REDIRECT_H
 #define XDP_REDIRECT_H
 
-#include <time.h>
-#include <sched.h>
 #include <xdp/libxdp.h>
 #include "params.h"
 #include "util.h"
+#include "xdpsock.h"
 
 #define MAX_IFACE_NUM 32
 
@@ -108,56 +107,6 @@ struct cpumap_opts {
 	enum cpumap_program_mode program_mode;
 	struct iface iface_in;
 	struct iface redir_iface;
-};
-
-enum xsk_program_mode {
-	XSK_RXDROP,
-	XSK_SWAP_MACS,
-};
-
-enum xsk_copy_mode {
-	XSK_COPY_AUTO,
-	XSK_COPY_COPY,
-	XSK_COPY_ZEROCOPY,
-};
-
-enum xsk_clock {
-	XSK_CLOCK_MONOTONIC = CLOCK_MONOTONIC,
-	XSK_CLOCK_REALTIME = CLOCK_REALTIME,
-	XSK_CLOCK_TAI = CLOCK_TAI,
-	XSK_CLOCK_BOOTTIME = CLOCK_BOOTTIME,
-};
-
-enum xsk_sched_policy {
-	XSK_SCHED_OTHER = SCHED_OTHER,
-	XSK_SCHED_FIFO = SCHED_FIFO,
-};
-
-struct xsk_opts {
-	__u32 queue_idx;
-	__u32 interval;
-	__u32 retries;
-	__u32 frame_size;
-	__u32 duration;
-	__u32 batch_size;
-	__u32 sched_prio;
-	bool use_poll;
-	bool no_need_wakeup;
-	bool unaligned;
-	bool extra_stats;
-	bool quiet;
-	bool app_stats;
-	bool busy_poll;
-	bool reduce_cap;
-	bool frags;
-	bool shared_umem;
-	char *irq_string;
-	enum xdp_attach_mode mode;
-	enum xsk_program_mode program_mode;
-	enum xsk_copy_mode copy_mode;
-	enum xsk_clock clock;
-	enum xsk_sched_policy sched_policy;
-	struct iface iface_in;
 };
 
 extern const struct basic_opts defaults_drop;
