@@ -17,7 +17,8 @@ struct {
 int num_socks = 0;
 static unsigned int rr;
 
-SEC("xdp_sock") int xdp_sock_prog(struct xdp_md *ctx)
+SEC("xdp.frags")
+int xdp_sock_prog(struct xdp_md *ctx)
 {
 	rr = (rr + 1) & (num_socks - 1);
 	return bpf_redirect_map(&xsks_map, rr, XDP_DROP);

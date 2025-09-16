@@ -117,5 +117,12 @@ struct xsk_ctx {
 };
 
 int xsk_validate_opts(const struct xsk_opts *opt);
+struct xsk_ctx *xsk_ctx__create(const struct xsk_opts *opt,
+				enum xsk_benchmark_type bench);
+void xsk_ctx__destroy(struct xsk_ctx *ctx);
+void xsk_rx_drop_all(struct xsk_ctx *ctx);
+int xsk_tx_only_all(struct xsk_ctx *ctx);
+void xsk_l2fwd_all(struct xsk_ctx *ctx);
+int xsk_start_poller_thread(struct xsk_ctx *ctx, pthread_t *pt);
 
 #endif /* XDPSOCK_H */
