@@ -122,17 +122,14 @@ table inet filter {
     }
 }
 EOF
-    # wait a bit to configure nft
-    sleep 2
-
     check_run $XDP_FORWARD load -f flowtable ${NS_NAMES[@]}
 
-    PID=$(start_background_ns_devnull "socat -4 TCP-LISTEN:10000,reuseaddr,fork -")
-    check_run ip netns exec ${NS_NAMES[0]} socat ${INPUT_FILE} TCP4:${OUTSIDE_IP4}:12345,connect-timeout=1
+    PID=$(start_socat_ns "socat -dd -4 TCP-LISTEN:10000,reuseaddr,fork -")
+    check_run ip netns exec ${NS_NAMES[0]} socat ${INPUT_FILE} TCP4:${OUTSIDE_IP4}:12345,connect-timeout=0.2
     stop_background $PID
 
-    PID=$(start_background_ns_devnull "socat -6 TCP-LISTEN:10000,reuseaddr,fork -")
-    check_run ip netns exec ${NS_NAMES[0]} socat ${INPUT_FILE} TCP6:[${OUTSIDE_IP6}]:12345,connect-timeout=1
+    PID=$(start_socat_ns "socat -dd -6 TCP-LISTEN:10000,reuseaddr,fork -")
+    check_run ip netns exec ${NS_NAMES[0]} socat ${INPUT_FILE} TCP6:[${OUTSIDE_IP6}]:12345,connect-timeout=0.2
     stop_background $PID
 
     check_run $XDP_FORWARD unload ${NS_NAMES[@]}
