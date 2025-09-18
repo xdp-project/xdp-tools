@@ -670,6 +670,7 @@ static bool capture_on_legacy_interface(struct dumpopt *cfg)
 	}
 	exit_pcap = NULL;
 	rc = true;
+	fflush(stdout);
 
 	fprintf(stderr, "\n%"PRIu64" packets captured\n", captured_packets);
 	if (pcap_stats(pcap, &ps) == 0) {
@@ -1859,6 +1860,7 @@ static bool capture_on_interface(struct dumpopt *cfg)
 	perf_buffer__consume(perf_buf);
 #endif
 
+	fflush(stdout);
 	fprintf(stderr, "\n%"PRIu64" packets captured\n",
 		perf_ctx.captured_packets);
 	fprintf(stderr, "%"PRIu64" packets dropped by perf ring\n",
