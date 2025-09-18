@@ -50,25 +50,37 @@ exec_test()
     local testn="$1"
     local output
     local ret
+    local prefix
 
-    printf "     %-30s" "[$testn]"
+    prefix=$(printf "     %-30s" "[$testn]")
     if ! is_func "$testn"; then
-        echo "INVALID"
+        echo "${prefix}INVALID"
         return 1
     fi
 
-    output=$($testn 2>&1)
-    ret=$?
+    if [ "$VERBOSE_TESTS" -eq "1" ]; then
+        echo "${prefix}START:"
+        ($testn 2>&1) | sed -u 's/^/          /'
+        ret=${PIPESTATUS[0]}
+        echo "          Test $testn exited with return code: $ret"
+    else
+        echo -n "$prefix"
+        output=$($testn 2>&1)
+        ret=$?
+        prefix=
+    fi
+
     if [ "$ret" -eq "0" ]; then
-        echo "PASS"
+        echo "${prefix}PASS"
     elif [ "$ret" -eq "$SKIPPED_TEST" ]; then
-        echo "SKIPPED"
+        echo "${prefix}SKIPPED"
         ret=0
     else
-        echo "FAIL"
+        echo "${prefix}FAIL"
     fi
-    if [ "$ret" -ne "0" ] || [ "$VERBOSE_TESTS" -eq "1" ]; then
-        echo "$output" | sed 's/^/\t/'
+    if [ "$ret" -ne "0" ] && [ "$VERBOSE_TESTS" -ne "1" ]; then
+        echo "$output" | sed  's/^/          /'
+        echo "          Test $testn exited with return code: $ret"
     fi
     return $ret
 }
