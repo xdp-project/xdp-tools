@@ -312,6 +312,9 @@ init_ns()
     ethtool -K "$nsname" rxvlan off txvlan off gro on
     ethtool -K "$peername" rxvlan off txvlan off gro on
 
+    ip link set dev "$peername" arp off multicast off
+    ip link set dev "$nsname" arp off multicast off
+
     ip link set dev "$peername" netns "$nsname"
     ip link set dev "$nsname" up
     ip addr add dev "$nsname" "${OUTSIDE_IP6}/${IP6_PREFIX_SIZE}"
