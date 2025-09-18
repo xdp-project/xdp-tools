@@ -1768,19 +1768,6 @@ static bool capture_on_interface(struct dumpopt *cfg)
 		}
 	}
 
-	/* No more error conditions, display some capture information */
-	fprintf(stderr, "listening on %s, ingress XDP program ",
-		cfg->iface.ifname);
-
-	for (unsigned int i = 0; i < tgt_progs.nr_of_progs; i++)
-		fprintf(stderr, "ID %u func %s, ",
-			xdp_program__id(tgt_progs.progs[i].prog),
-			tgt_progs.progs[i].func);
-
-	fprintf(stderr, "capture mode %s, capture size %d bytes\n",
-		get_capture_mode_string(tgt_progs.progs[0].rx_capture),
-		cfg->snaplen);
-
 	/* Setup perf context */
 	memset(&perf_ctx, 0, sizeof(perf_ctx));
 	perf_ctx.cfg = cfg;
@@ -1846,6 +1833,20 @@ static bool capture_on_interface(struct dumpopt *cfg)
 			strerror(errno), errno);
 		goto error_exit;
 	}
+
+	/* No more error conditions, display some capture information */
+	fprintf(stderr, "listening on %s, ingress XDP program ",
+		cfg->iface.ifname);
+
+	for (unsigned int i = 0; i < tgt_progs.nr_of_progs; i++)
+		fprintf(stderr, "ID %u func %s, ",
+			xdp_program__id(tgt_progs.progs[i].prog),
+			tgt_progs.progs[i].func);
+
+	fprintf(stderr, "capture mode %s, capture size %d bytes\n",
+		get_capture_mode_string(tgt_progs.progs[0].rx_capture),
+		cfg->snaplen);
+	fflush(stderr);
 
 	/* Loop trough the dumper */
 	while (!exit_xdpdump) {
