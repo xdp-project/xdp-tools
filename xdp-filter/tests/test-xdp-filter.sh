@@ -59,10 +59,9 @@ check_packet()
     local command="$2"
     local expect="$3"
     echo "Checking command '$command' filter '$filter'"
-    PID=$(start_background tcpdump --immediate-mode -epni $NS "$filter")
+    PID=$(start_tcpdump tcpdump --immediate-mode -epni $NS "$filter")
     echo "Started listener as $PID"
     ns_exec bash -c "$command"
-    sleep 1
     output=$(stop_background $PID)
     echo "$output"
 
@@ -87,7 +86,7 @@ check_port()
     local port=$2
     local expect=$3
     echo "$type port $port $expect"
-    [[ "$type" == "tcp" ]] && command="echo test | socat - TCP6:[$OUTSIDE_IP6]:$port,connect-timeout=1"
+    [[ "$type" == "tcp" ]] && command="echo test | socat - TCP6:[$OUTSIDE_IP6]:$port,connect-timeout=0.1"
     [[ "$type" == "udp" ]] && command="echo test | socat - UDP6:[$OUTSIDE_IP6]:$port"
 
     check_packet "$type dst port $port" "$command" $expect
@@ -132,7 +131,7 @@ test_ports_deny()
 
 check_ping6()
 {
-    check_packet "dst $OUTSIDE_IP6" "$PING6 -c 1 $OUTSIDE_IP6" $1
+    check_packet "dst $OUTSIDE_IP6" "$PING6 -W 0.1 -c 1 $OUTSIDE_IP6" $1
 }
 
 test_ipv6_allow()
@@ -167,7 +166,7 @@ test_ipv6_deny()
 
 check_ping4()
 {
-    check_packet "dst $OUTSIDE_IP4" "ping -c 1 $OUTSIDE_IP4" $1
+    check_packet "dst $OUTSIDE_IP4" "ping -W 0.1 -c 1 $OUTSIDE_IP4" $1
 }
 
 test_ipv4_allow()
