@@ -204,15 +204,27 @@ start_background_ns_devnull()
     echo $PID
 }
 
+kill_process_group()
+{
+    local PID=$1
+
+    kill -SIGINT -$PID
+    for i in $(seq 10); do
+        ps --ppid $PID -p $PID > /dev/null || return 0
+        sleep 0.1
+    done
+    kill -TERM -$PID
+}
+
 stop_background()
 {
     local PID=$1
 
     local OUTPUT_FILE="${STATEDIR}/proc/${PID}"
-    if kill -SIGINT "-$PID" 2>/dev/null; then
-       sleep 2 # Wait to make sure the buffer is flushed after the shutdown
-       kill -SIGTERM "-$PID" 2>/dev/null && sleep 1 # just in case SIGINT was not enough
-    fi
+    local pids
+
+    kill_process_group $PID
+
 
     if [ -f "$OUTPUT_FILE" ]; then
         cat "$OUTPUT_FILE"
