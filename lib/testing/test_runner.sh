@@ -174,19 +174,44 @@ start_background()
     local TMP_FILE="${STATEDIR}/tmp_proc_$$_$RANDOM"
     setsid bash -c "$*" &> ${TMP_FILE} &
     local PID=$!
-    sleep 2 # Wait to make sure the command is executed in the background
 
     mv "$TMP_FILE" "${STATEDIR}/proc/${PID}" >& /dev/null
 
     echo "$PID"
 }
 
+start_background_wait_output()
+{
+    local bg_func="$1"
+    local out_grep="$2"
+    local PID
+    local outfile
+    shift 2
+
+    PID=$($bg_func "$@")
+    outfile="${STATEDIR}/proc/${PID}"
+    local MAXWAIT=100
+    while ! grep -q "$out_grep" $outfile; do
+        echo "Waiting for output '$out_grep' from PID $PID">&2
+        cat $outfile >&2
+        sleep 0.1
+        MAXWAIT=$[$MAXWAIT - 1]
+        [ "$MAXWAIT" -eq 0 ] && break
+    done
+    echo "$PID"
+}
+
+start_tcpdump()
+{
+    start_background_wait_output start_background "listening on" "$@"
+}
+
+
 start_background_no_stderr()
 {
     local TMP_FILE="${STATEDIR}/tmp_proc_$$_$RANDOM"
     setsid bash -c "$*" 1> ${TMP_FILE} 2>/dev/null &
     local PID=$!
-    sleep 2 # Wait to make sure the command is executed in the background
 
     mv "$TMP_FILE" "${STATEDIR}/proc/${PID}" >& /dev/null
 
@@ -198,10 +223,14 @@ start_background_ns_devnull()
     local TMP_FILE="${STATEDIR}/tmp_proc_$$_$RANDOM"
     setsid ip netns exec "$NS" env TESTENV_NAME="$NS" "$SETUP_SCRIPT" bash -c "$*" 1>/dev/null 2>${TMP_FILE} &
     local PID=$!
-    sleep 2 # Wait to make sure the command is executed in the background
 
     mv "$TMP_FILE" "${STATEDIR}/proc/${PID}" >& /dev/null
     echo $PID
+}
+
+start_socat_ns()
+{
+    start_background_wait_output start_background_ns_devnull "listening on" "$@"
 }
 
 kill_process_group()
