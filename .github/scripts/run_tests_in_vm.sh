@@ -11,7 +11,7 @@ done
 touch TEST_OUTPUT
 tail -f TEST_OUTPUT &
 
-sudo virtme-run --kdir kernel --script-exec .github/scripts/run_tests.sh --pwd --rw --mods=auto --qemu-opts -cpu qemu64 -machine accel=tcg -m 2G
+sudo virtme-ng --run kernel --exec .github/scripts/run_tests.sh --rw --memory 2G
 
 kill %1
 
