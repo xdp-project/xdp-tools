@@ -562,10 +562,10 @@ test_pname_parse()
 
     PID=$(start_background "$XDPDUMP -D")
     RESULT=$(stop_background "$PID")
-    PROG_ID_1=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 1p | tr -d ' ')
-    PROG_ID_2=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 2p | tr -d ' ')
-    PROG_ID_3=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 3p | tr -d ' ')
-    PROG_ID_4=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 4p | tr -d ' ')
+    PROG_ID_1=$(echo "$RESULT" | grep "$NS" -A4 | awk '{print $4}' | sed -n 1p | tr -d ' ')
+    PROG_ID_2=$(echo "$RESULT" | grep "$NS" -A4 | awk '{print $4}' | sed -n 2p | tr -d ' ')
+    PROG_ID_3=$(echo "$RESULT" | grep "$NS" -A4 | awk '{print $4}' | sed -n 3p | tr -d ' ')
+    PROG_ID_4=$(echo "$RESULT" | grep "$NS" -A4 | awk '{print $4}' | sed -n 4p | tr -d ' ')
 
     PID=$(start_background "$XDPDUMP -i $NS -p all")
     RESULT=$(stop_background "$PID")
@@ -614,9 +614,9 @@ test_pname_parse()
 
     PID=$(start_background "$XDPDUMP -D")
     RESULT=$(stop_background "$PID")
-    PROG_ID_1=$(echo "$RESULT" | grep "$NS" -A2 | cut -c51-55 | sed -n 1p | tr -d ' ')
-    PROG_ID_2=$(echo "$RESULT" | grep "$NS" -A2 | cut -c51-55 | sed -n 2p | tr -d ' ')
-    PROG_ID_3=$(echo "$RESULT" | grep "$NS" -A2 | cut -c51-55 | sed -n 2p | tr -d ' ')
+    PROG_ID_1=$(echo "$RESULT" | grep "$NS" -A2 | awk '{print $4}' | sed -n 1p | tr -d ' ')
+    PROG_ID_2=$(echo "$RESULT" | grep "$NS" -A2 | awk '{print $4}' | sed -n 2p | tr -d ' ')
+    PROG_ID_3=$(echo "$RESULT" | grep "$NS" -A2 | awk '{print $4}' | sed -n 2p | tr -d ' ')
 
     PID=$(start_background "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name")
     RESULT=$(stop_background "$PID")
@@ -645,8 +645,8 @@ test_multi_prog()
 
     PID=$(start_background "$XDPDUMP -D")
     RESULT=$(stop_background "$PID")
-    PROG_ID_1=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 1p | tr -d ' ')
-    PROG_ID_4=$(echo "$RESULT" | grep "$NS" -A4 | cut -c51-55 | sed -n 4p | tr -d ' ')
+    PROG_ID_1=$(echo "$RESULT" | grep "$NS" -A4 | awk '{print $4}' | sed -n 1p | tr -d ' ')
+    PROG_ID_4=$(echo "$RESULT" | grep "$NS" -A4 | awk '{print $4}' | sed -n 4p | tr -d ' ')
 
     PID=$(start_tcpdump "$XDPDUMP -i $NS -p xdp_dispatcher,xdp_pass@$PROG_ID_4 -vv")
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
