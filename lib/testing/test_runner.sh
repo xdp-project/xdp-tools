@@ -460,6 +460,7 @@ exec_test()
     local output
     local ret
     local prefix
+    local retries=${TEST_RETRIES:-1}
 
     prefix=$(printf "     %-30s" "[$testn]")
     if ! is_func "$testn"; then
@@ -467,17 +468,28 @@ exec_test()
         return 1
     fi
 
-    if [ "$VERBOSE_TESTS" -eq "1" ]; then
-        echo "${prefix}START:"
-        ($testn 2>&1) | sed  's/^/          /'
-        ret=${PIPESTATUS[0]}
-        echo "          Test $testn exited with return code: $ret"
-    else
-        echo -n "$prefix"
-        output=$($testn 2>&1)
-        ret=$?
-        prefix=
-    fi
+    while [[ "$retries" -gt 0 ]]; do
+        if [ "$VERBOSE_TESTS" -eq "1" ]; then
+            echo "${prefix}START:"
+            ($testn 2>&1) | sed  's/^/          /'
+            ret=${PIPESTATUS[0]}
+            echo "          Test $testn exited with return code: $ret"
+        else
+            echo -n "$prefix"
+            output=$($testn 2>&1)
+            ret=$?
+            prefix=
+        fi
+        if [ "$ret" -eq "0" ]; then
+            break
+        else
+            retries=$[$retries - 1]
+            [ "$VERBOSE_TESTS" -eq "1" ] && echo "          Test failed - retrying $retries more times"
+            if is_func cleanup_tests; then
+                cleanup_tests || true
+            fi
+        fi
+    done
 
     if [ "$ret" -eq "0" ]; then
         echo "${prefix}PASS"

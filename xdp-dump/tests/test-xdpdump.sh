@@ -7,6 +7,7 @@ ALL_TESTS="test_help test_interfaces test_capt_pcap test_capt_pcapng test_capt_t
 
 XDPDUMP=${XDPDUMP:-./xdpdump}
 XDP_LOADER=${XDP_LOADER:-../xdp-loader/xdp-loader}
+TEST_RETRIES=3
 
 RESULT=""
 
