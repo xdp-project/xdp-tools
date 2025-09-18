@@ -261,7 +261,10 @@ gen_nsname()
 iface_macaddr()
 {
     local iface="$1"
-    ip -br link show dev "$iface" | awk '{print $3}'
+    local ns="${2:-}"
+
+    [ -n "$ns" ] && ns="-n $ns"
+    ip $ns -br link show dev "$iface" | awk '{print $3}'
 }
 
 set_sysctls()
@@ -309,8 +312,6 @@ init_ns()
     ethtool -K "$nsname" rxvlan off txvlan off gro on
     ethtool -K "$peername" rxvlan off txvlan off gro on
 
-    OUTSIDE_MAC=$(iface_macaddr "$nsname")
-    INSIDE_MAC=$(iface_macaddr "$peername")
     ip link set dev "$peername" netns "$nsname"
     ip link set dev "$nsname" up
     ip addr add dev "$nsname" "${OUTSIDE_IP6}/${IP6_PREFIX_SIZE}"
@@ -320,6 +321,9 @@ init_ns()
     ip -n "$nsname" link set dev veth0 up
     set_sysctls veth0 "$nsname"
     ip -n "$nsname" addr add dev veth0 "${INSIDE_IP6}/${IP6_PREFIX_SIZE}"
+
+    OUTSIDE_MAC=$(iface_macaddr "$nsname")
+    INSIDE_MAC=$(iface_macaddr "veth0" "$nsname")
 
     # Prevent neighbour queries on the link
     ip neigh add "$INSIDE_IP6" lladdr "$INSIDE_MAC" dev "$nsname" nud permanent
