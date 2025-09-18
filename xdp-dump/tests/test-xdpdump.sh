@@ -51,7 +51,7 @@ Options:
 END
           )
 
-    $XDPDUMP --help | grep -q "\-\-perf-wakeup"
+    $XDPDUMP --help | grep -q -- "--perf-wakeup"
     if [ $? -eq 1 ]; then
         XDPDUMP_HELP_TEXT=$(echo "$XDPDUMP_HELP_TEXT" | sed '/--perf-wakeup <events>/d')
     fi
