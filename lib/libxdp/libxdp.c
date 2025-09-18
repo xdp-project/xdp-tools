@@ -3251,16 +3251,16 @@ static int xdp_detach_link(__u32 ifindex, __u32 prog_id) {
 		err = bpf_obj_get_info_by_fd(fd, &link_info, &link_info_len);
 		if (err) {
 			err = -errno;
-			pr_debug("Can't get link info for %u: %s", id, strerror(errno));
+			pr_debug("Can't get link info for %u: %s\n", id, strerror(errno));
 			break;
 		}
 
 		if (link_info.type == BPF_LINK_TYPE_XDP && link_info.xdp.ifindex == ifindex && link_info.prog_id == prog_id) {
-			pr_debug("Detach link for id %u for prog %u on interface %u", id, prog_id, ifindex);
+			pr_debug("Detach link for id %u for prog %u on interface %u\n", id, prog_id, ifindex);
 			err = bpf_link_detach(fd);
 			if (err) {
 				err = -errno;
-				pr_warn("Can't detach link %u: %s", id, strerror(errno));
+				pr_warn("Can't detach link %u: %s\n", id, strerror(errno));
 			}
 			break;
 		}
