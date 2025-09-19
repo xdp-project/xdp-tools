@@ -23,6 +23,9 @@ extern "C" {
 #define XDP_BPFFS_MOUNT_ENVVAR "LIBXDP_BPFFS_AUTOMOUNT"
 #define XDP_OBJECT_ENVVAR "LIBXDP_OBJECT_PATH"
 
+#define XDP_ATTACH_DEVBIND (1 << 0)
+#define XDP_ATTACH_FLAGS (XDP_ATTACH_DEVBIND)
+
 enum xdp_attach_mode {
 	XDP_MODE_UNSPEC = 0,
 	XDP_MODE_NATIVE,
@@ -116,6 +119,7 @@ struct xdp_program *xdp_multiprog__hw_prog(const struct xdp_multiprog *mp);
 bool xdp_multiprog__is_legacy(const struct xdp_multiprog *mp);
 int xdp_multiprog__program_count(const struct xdp_multiprog *mp);
 bool xdp_multiprog__xdp_frags_support(const struct xdp_multiprog *mp);
+bool xdp_multiprog__xdp_dev_bound(const struct xdp_multiprog *mp);
 
 /* Only following members can be set at once:
  *
