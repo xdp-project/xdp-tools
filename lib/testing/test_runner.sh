@@ -25,7 +25,7 @@ ALL_TESTS=""
 VERBOSE_TESTS=${V:-0}
 NUM_NS=2
 
-NEEDED_TOOLS="capinfos ethtool ip ping sed tc tcpdump timeout tshark nft socat"
+NEEDED_TOOLS="capinfos ethtool ip ping sed tc tcpdump timeout tshark nft socat ndisc6 arping"
 
 if [ -f "$TEST_CONFIG" ]; then
     source "$TEST_CONFIG"
@@ -353,8 +353,8 @@ init_ns()
     ethtool -K "$nsname" rxvlan off txvlan off gro on
     ethtool -K "$peername" rxvlan off txvlan off gro on
 
-    ip link set dev "$peername" arp off multicast off
-    ip link set dev "$nsname" arp off multicast off
+    ip link set dev "$peername" multicast off
+    ip link set dev "$nsname" multicast off
 
     ip link set dev "$peername" netns "$nsname"
     ip link set dev "$nsname" up
