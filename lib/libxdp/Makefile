@@ -41,12 +41,14 @@ endif
 
 all: $(STATIC_LIBS) $(SHARED_LIBS) $(XDP_OBJS) $(PC_FILE) check man build_tests
 
+.PHONY: clean
 clean:
 	$(Q)rm -f $(STATIC_LIBS) $(STATIC_OBJS) $(SHARED_LIBS) $(SHARED_OBJS) $(XDP_OBJS) $(PC_FILE) $(MAN_OBJ) $(TEMPLATED_SOURCES) *.ll
 	$(Q)for d in $(SHARED_OBJDIR) $(STATIC_OBJDIR); do \
 		[ -d "$$d" ] && rmdir "$$d"; done || true
 	$(Q)$(MAKE) -C $(TEST_DIR) clean
 
+.PHONY: install
 install: all
 	$(Q)install -d -m 0755 $(DESTDIR)$(HDRDIR)
 	$(Q)install -d -m 0755 $(DESTDIR)$(LIBDIR)
