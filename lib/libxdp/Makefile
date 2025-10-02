@@ -144,7 +144,6 @@ else
 man: $(MAN_PAGE)
 $(MAN_OBJ): README.org $(LIBMK)
 	$(Q)$(EMACS) -Q --batch --find-file $< --eval "(progn (require 'ox-man)(org-man-export-to-man))"
-	$(Q)touch -r $< $@
 
 $(MAN_PAGE): $(MAN_OBJ) $(LIBMK)
 	$(QUIET_GEN)MODDATE=$$(git log -1 --pretty="format:%cI" README.org 2>/dev/null); \
