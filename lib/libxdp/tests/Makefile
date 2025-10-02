@@ -55,6 +55,13 @@ all: $(USER_TARGETS) $(STATIC_LINK_TARGETS) $(BPF_OBJS)
 clean::
 	$(Q)rm -f $(USER_TARGETS) $(USER_OBJ)
 
+.PHONY: install
+install: all
+	install -m 0755 -d $(DESTDIR)$(SCRIPTSDIR)/tests/libxdp
+	install -m 0644 $(TEST_FILE) $(DESTDIR)$(SCRIPTSDIR)/tests/libxdp
+	install -m 0755 $(USER_TARGETS) $(STATIC_LINK_TARGETS) $(DESTDIR)$(SCRIPTSDIR)/tests/libxdp
+	install -m 0644 $(BPF_OBJS) $(DESTDIR)$(SCRIPTSDIR)/tests/libxdp
+
 $(OBJECT_LIBBPF): $(LIBBPF_SOURCES)
 	$(Q)$(MAKE) -C $(LIB_DIR) libbpf
 
