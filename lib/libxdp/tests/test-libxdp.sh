@@ -4,6 +4,13 @@ ALL_TESTS="test_link_so test_link_a test_old_dispatcher test_xdp_frags test_xsk_
 
 TESTS_DIR=$(dirname "${BASH_SOURCE[0]}")
 
+skip_if_missing_libxdp_compat()
+{
+    if ! $TESTS_DIR/check_kern_compat; then
+        exit "$SKIPPED_TEST"
+    fi
+}
+
 test_link_so()
 {
         TMPDIR=$(mktemp --tmpdir -d libxdp-test.XXXXXX)
