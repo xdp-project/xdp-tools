@@ -13,6 +13,7 @@ TEST_RUNNER := ./test_runner.sh
 LIB_DIR := ../..
 LDLIBS += $(USER_LIBS)
 
+include $(LIB_DIR)/libxdp/libxdp.mk
 include $(LIB_DIR)/defines.mk
 
 ifeq ($(HAVE_CAP_NG),y)
