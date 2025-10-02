@@ -60,6 +60,7 @@ install: all
 	$(Q)install -m 0644 $(XDP_OBJS) $(DESTDIR)$(BPF_OBJECT_DIR)
 	$(if $(MAN_FILES),$(Q)install -m 0755 -d $(DESTDIR)$(MANDIR)/man3)
 	$(if $(MAN_FILES),$(Q)install -m 0644 $(MAN_FILES) $(DESTDIR)$(MANDIR)/man3)
+	$(Q)$(MAKE) -C $(TEST_DIR) install
 
 
 $(OBJDIR)/libxdp.a: $(STATIC_OBJS)
