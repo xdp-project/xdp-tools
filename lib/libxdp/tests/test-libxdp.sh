@@ -97,6 +97,8 @@ test_old_dispatcher()
         check_mount_bpffs || return 1
         skip_if_missing_libxdp_compat
 
+        export LIBXDP_OBJECT_PATH=$TESTS_DIR
+
         ip link add xdp_veth0 type veth peer name xdp_veth1
         check_run $TESTS_DIR/test_dispatcher_versions xdp_veth0
         ip link delete xdp_veth0
@@ -118,6 +120,8 @@ test_link_detach()
         if test ! -f $TESTS_DIR/test_link_detach; then
 		exit "$SKIPPED_TEST"
 	fi
+        export LIBXDP_OBJECT_PATH=$TESTS_DIR
+
 	ip link add xdp_veth0 type veth peer name xdp_veth1
 	check_run $TESTS_DIR/test_link_detach xdp_veth0
 	ip link delete xdp_veth0
