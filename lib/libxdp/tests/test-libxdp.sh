@@ -66,7 +66,9 @@ check_mount_bpffs()
 
 check_unmount_bpffs()
 {
-	mount | grep -q /sys/fs/bpf && umount /sys/fs/bpf/ || echo "Unable to unmount /sys/fs/bpf"
+	while mount | grep -q /sys/fs/bpf; do
+            umount /sys/fs/bpf/ || break
+        done
 	! mount | grep -q /sys/fs/bpf
 }
 
