@@ -180,12 +180,12 @@ check_ping4()
 
 check_arp()
 {
-    check_packet "arp" "arping ${2:-} -c 1 -I veth0 $OUTSIDE_IP4" $1
+    check_packet "arp" "arping -c 1 -I veth0 $OUTSIDE_IP4" $1
 }
 
 check_arp_src()
 {
-    check_arp $1 -A
+    check_packet "arp" "arping -A -c 1 -I veth0 $INSIDE_IP4" $1
 }
 
 test_ipv4_allow()
