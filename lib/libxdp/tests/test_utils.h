@@ -6,6 +6,10 @@
 #include <bpf/libbpf.h>
 #include <xdp/libxdp.h>
 
+#ifndef BPF_OBJECT_PATH
+#define BPF_OBJECT_PATH "/usr/lib/bpf"
+#endif
+
 #define __unused __attribute__((unused))
 
 static int libbpf_silent_func(__unused enum libbpf_print_level level,
@@ -45,5 +49,9 @@ static inline void verbose_libxdp_logging(void)
 {
 	libxdp_set_print(libxdp_verbose_func);
 }
+
+int find_bpf_file(char *buf, size_t buf_size, const char *progname);
+struct bpf_object *open_bpf_file(const char *progname,
+				 struct bpf_object_open_opts *opts);
 
 #endif

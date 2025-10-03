@@ -4,9 +4,10 @@ USER_TARGETS := test_xsk_refcnt test_xdp_frags test_link_detach test_xsk_umem_fl
 STATIC_LINK_TARGETS := check_kern_compat test_dispatcher_versions
 BPF_TARGETS := xdp_dispatcher_v1 xdp_pass
 USER_LIBS := -lpthread
+USER_EXTRA_C := test_utils.c
 
 EXTRA_DEPS += xdp_dispatcher_v1.h
-EXTRA_USER_DEPS += test_utils.h
+EXTRA_USER_DEPS += test_utils.h $(USER_EXTRA_C)
 
 TEST_FILE := ./test-libxdp.sh
 TEST_RUNNER := ./test_runner.sh
@@ -77,11 +78,11 @@ $(LIB_OBJS): %.o: %.c %.h $(LIB_H)
 
 $(USER_TARGETS): %: %.c  $(OBJECT_LIBBPF) $(OBJECT_LIBXDP) $(LIBMK) $(LIB_OBJS) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
 	$(QUIET_CC)$(CC) -Wall $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -o $@ $(LIB_OBJS) \
-	 $< $(LDLIBS)
+	 $< $(USER_EXTRA_C) $(LDLIBS)
 
 $(STATIC_LINK_TARGETS): %: %.c  $(OBJECT_LIBBPF) $(STATIC_OBJECT_LIBXDP) $(LIBMK) $(LIB_OBJS) $(EXTRA_DEPS) $(EXTRA_USER_DEPS)
 	$(QUIET_CC)$(CC) -Wall $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -o $@ $(LIB_OBJS) \
-	 $< $(STATIC_LDLIBS)
+	 $< $(USER_EXTRA_C) $(STATIC_LDLIBS)
 
 $(BPF_OBJS): %.o: %.c $(BPF_HEADERS) $(LIBMK) $(EXTRA_DEPS)
 	$(QUIET_CLANG)$(CLANG) -target $(BPF_TARGET) $(BPF_CFLAGS) -O2 -c -g -o $@ $<
