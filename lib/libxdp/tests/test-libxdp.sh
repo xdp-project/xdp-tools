@@ -13,6 +13,8 @@ skip_if_missing_libxdp_compat()
 
 test_link_so()
 {
+        [ -n "${CC:-}" ] || return $SKIPPED_TEST
+
         TMPDIR=$(mktemp --tmpdir -d libxdp-test.XXXXXX)
         cat >$TMPDIR/libxdptest.c <<EOF
 #include <xdp/libxdp.h>
@@ -30,6 +32,8 @@ EOF
 
 test_link_a()
 {
+        [ -n "${CC:-}" ] || return $SKIPPED_TEST
+
         TMPDIR=$(mktemp --tmpdir -d libxdp-test.XXXXXX)
         cat >$TMPDIR/libxdptest.c <<EOF
 #include <xdp/libxdp.h>
@@ -100,7 +104,7 @@ test_old_dispatcher()
 
 test_xsk_non_privileged()
 {
-	if test ! -f $TEST_PROG_DIR/test_xsk_non_privileged; then
+	if test ! -f $TESTS_DIR/test_xsk_non_privileged; then
 		exit "$SKIPPED_TEST"
 	fi
 
@@ -111,7 +115,7 @@ test_xsk_non_privileged()
 
 test_link_detach()
 {
-        if test ! -f $TEST_PROG_DIR/test_link_detach; then
+        if test ! -f $TESTS_DIR/test_link_detach; then
 		exit "$SKIPPED_TEST"
 	fi
 	ip link add xdp_veth0 type veth peer name xdp_veth1
