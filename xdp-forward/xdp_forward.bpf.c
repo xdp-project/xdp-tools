@@ -4,6 +4,7 @@
 
 #include <bpf/vmlinux.h>
 #include <linux/bpf.h>
+#include <linux/if_vlan.h>
 #include <bpf/bpf_helpers.h>
 #include <xdp/parsing_helpers.h>
 
@@ -11,6 +12,22 @@
 #define AF_INET6	10
 
 #define IPV6_FLOWINFO_MASK              bpf_htons(0x0FFFFFFF)
+
+#define BPF_FIB_LOOKUP_VLAN            (1U << 6)
+#define BPF_FIB_LOOKUP_RESOLVE_VLAN    (1U << 7)
+
+struct vlan_info {
+    __u16 vlan_id;          // VLAN ID
+    int   phys_ifindex;     // Physical interface index
+    int   vlan_ifindex;     // VLAN interface index
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);  // it's read only, no need for locks at bpf side
+    __uint(key_size, sizeof(int));
+    __uint(value_size, sizeof(struct vlan_info));
+    __uint(max_entries, 16*64);  // 16 vlans per interface, 64 interfaces
+} vlan_map SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_DEVMAP_HASH);
@@ -29,11 +46,37 @@ static __always_inline int ip_decrease_ttl(struct iphdr *iph)
 	return --iph->ttl;
 }
 
+#ifdef VLANS_USERSPACE
+static __always_inline int set_vlan_params(struct bpf_fib_lookup *fib_params, __u32 vlan_ifindex)
+{
+	/**
+	 * set_vlan_params - When unpatched kernel is used, routing
+	 * lookup for VLANed networks returns ifindex of VLAN interface.
+	 * XDP doesn't support VLAN interfaces, physical needs to be used.
+	 * This functions lookups the physical interface and VLAN id
+	 * in the map (provided by userspace) and sets them in the
+	 * fib_params struct, which are set to 0 by bpf_fib_lookup().
+	 */
+	struct vlan_info *vinfo;
+	vinfo = bpf_map_lookup_elem(&vlan_map, &vlan_ifindex);
+	if (!vinfo)
+		return -1;
+
+	fib_params->ifindex = vinfo->phys_ifindex;
+	fib_params->h_vlan_TCI = vinfo->vlan_id;
+
+	return 0;
+}
+#endif
+
 static __always_inline int xdp_fwd_flags(struct xdp_md *ctx, __u32 flags)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
 	struct bpf_fib_lookup fib_params;
+#if defined(VLANS_USERSPACE) || defined(VLANS_PATCHED)
+	struct vlan_hdr *vhdr = NULL;
+#endif
 	struct ethhdr *eth = data;
 	struct ipv6hdr *ip6h;
 	struct iphdr *iph;
@@ -48,6 +91,22 @@ static __always_inline int xdp_fwd_flags(struct xdp_md *ctx, __u32 flags)
 	__builtin_memset(&fib_params, 0, sizeof(fib_params));
 
 	h_proto = eth->h_proto;
+#if defined(VLANS_USERSPACE) || defined(VLANS_PATCHED)
+	if (h_proto == bpf_htons(ETH_P_8021Q)) {
+		vhdr = data + nh_off;
+		if (vhdr + 1 > data_end)
+			return XDP_DROP;
+
+		fib_params.h_vlan_proto = bpf_ntohs(h_proto);
+		fib_params.h_vlan_TCI = bpf_ntohs(vhdr->h_vlan_TCI);
+
+		h_proto = vhdr->h_vlan_encapsulated_proto;
+		nh_off += sizeof(struct vlan_hdr);
+	}
+#endif
+#ifdef VLANS_PATCHED
+	flags |= BPF_FIB_LOOKUP_RESOLVE_VLAN; // works for all the inf type combinations
+#endif
 	if (h_proto == bpf_htons(ETH_P_IP)) {
 		iph = data + nh_off;
 
@@ -116,6 +175,10 @@ static __always_inline int xdp_fwd_flags(struct xdp_md *ctx, __u32 flags)
 		 * If not supported will fail with:
 		 *  cannot pass map_type 14 into func bpf_map_lookup_elem#1:
 		 */
+#ifdef VLANS_USERSPACE
+		set_vlan_params(&fib_params, fib_params.ifindex);
+#endif
+
 		if (!bpf_map_lookup_elem(&xdp_tx_ports, &fib_params.ifindex))
 			return XDP_PASS;
 
@@ -123,6 +186,51 @@ static __always_inline int xdp_fwd_flags(struct xdp_md *ctx, __u32 flags)
 			ip_decrease_ttl(iph);
 		else if (h_proto == bpf_htons(ETH_P_IPV6))
 			ip6h->hop_limit--;
+
+#if defined(VLANS_USERSPACE) || defined(VLANS_PATCHED)
+		if (vhdr && fib_params.h_vlan_TCI) {
+			// case: tagged inf to tagged inf, requires just rewritting vlan hdr
+			vhdr->h_vlan_TCI = bpf_htons(fib_params.h_vlan_TCI); // TODO: why??? shouldnt h_vlan_TCI be in network order?
+			vhdr->h_vlan_encapsulated_proto = fib_params.h_vlan_proto;
+
+		} else if (vhdr && !fib_params.h_vlan_TCI) {
+			// case: tagged inf to untagged inf, requires removing vlan hdr
+			__be16 inner_proto = vhdr->h_vlan_encapsulated_proto;
+
+			if (bpf_xdp_adjust_head(ctx, sizeof(struct vlan_hdr)))
+				return XDP_PASS; // can't remove header
+
+			data = (void *)(long)ctx->data;  // ptrs are now invalid, re-evaluate
+			data_end = (void *)(long)ctx->data_end;
+
+			if (data + sizeof(struct ethhdr) > data_end)
+				return XDP_PASS;
+
+			eth = data;
+			eth->h_proto = inner_proto;
+
+		} else if (!vhdr && fib_params.h_vlan_TCI) {
+			// case: untagged inf to tagged inf, requires adding vlan hdr
+			__be16 orig_proto = eth->h_proto;
+
+			// Negative value adds space at the beginning
+			if (bpf_xdp_adjust_head(ctx, -((__s32)sizeof(struct vlan_hdr))))
+				return XDP_PASS; // can't add header
+
+			data = (void *)(long)ctx->data;  // ptrs are now invalid, re-evaluate
+			data_end = (void *)(long)ctx->data_end;
+
+			if (data + sizeof(struct ethhdr) + sizeof(struct vlan_hdr) > data_end)
+				return XDP_PASS;  // not enough space for vhdr, let kernel process it
+
+			eth = data;
+			eth->h_proto = bpf_htons(ETH_P_8021Q);
+
+			vhdr = data + sizeof(struct ethhdr);
+			vhdr->h_vlan_TCI = bpf_htons(fib_params.h_vlan_TCI);
+			vhdr->h_vlan_encapsulated_proto = orig_proto;
+		}
+#endif
 
 		__builtin_memcpy(eth->h_dest, fib_params.dmac, ETH_ALEN);
 		__builtin_memcpy(eth->h_source, fib_params.smac, ETH_ALEN);
