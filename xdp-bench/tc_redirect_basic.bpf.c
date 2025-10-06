@@ -11,14 +11,27 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 #include <linux/if_ether.h>
-// #include "xdp_sample_shared.h"
-// #include "xdp_sample.bpf.h"
 #include <linux/pkt_cls.h>
 #include <xdp/xdp_sample_common.bpf.h>
 
 // Read-only global variable for the output interface index.
 // This will be set by the userspace application before loading.
 const volatile int ifindex_out;
+
+static int record_stats()
+{
+	__u32 key = bpf_get_smp_processor_id();
+	struct datarec *rec;
+
+	rec = bpf_map_lookup_elem(&rx_cnt, &key);
+	if (!rec)
+		return -1;
+	
+	// Atomically increment the 'processed' counter for this CPU.
+	NO_TEAR_INC(rec->processed);
+
+	return 0;
+}
 
 SEC("tc/ingress")
 int tc_redirect_prog(struct __sk_buff *skb)
@@ -27,8 +40,6 @@ int tc_redirect_prog(struct __sk_buff *skb)
 	void *data_end = (void *)(long)skb->data_end;
 	void *data = (void *)(long)skb->data;
 	struct ethhdr *eth = data;
-	struct datarec *rec;
-    __u32 key; // Key for the per-CPU statistics map.
 
     // Boundary check: ensure the Ethernet header is within the packet.
 	if (data + sizeof(*eth) > data_end)
@@ -39,15 +50,32 @@ int tc_redirect_prog(struct __sk_buff *skb)
 		bpf_ntohs(eth->h_proto) == ETH_P_RARP)
 		return TC_ACT_OK;
 
-    // Use the CPU ID as the key to update per-CPU counters.
-	key = bpf_get_smp_processor_id();
-	rec = bpf_map_lookup_elem(&rx_cnt, &key);
-	if (!rec)
-        // If the map entry doesn't exist, let the packet pass through.
+    if (record_stats())
+		return TC_ACT_SHOT;
+
+    // Redirect the packet to the specified output interface.
+	return bpf_redirect(ifindex_out, 0);
+}
+
+SEC("tc/ingress")
+int tc_swap_macs_redirect_prog(struct __sk_buff *skb)
+{
+    // Get pointers to the start and end of the packet data.
+	void *data_end = (void *)(long)skb->data_end;
+	void *data = (void *)(long)skb->data;
+	struct ethhdr *eth = data;
+
+    // Boundary check: ensure the Ethernet header is within the packet.
+	if (data + sizeof(*eth) > data_end)
+		return TC_ACT_SHOT; // Drop packet if it's too small.
+
+	// If it's arp, pass it
+	if (bpf_ntohs(eth->h_proto) == ETH_P_ARP || 
+		bpf_ntohs(eth->h_proto) == ETH_P_RARP)
 		return TC_ACT_OK;
 
-    // Atomically increment the 'processed' counter for this CPU.
-	NO_TEAR_INC(rec->processed);
+    if (record_stats())
+		return TC_ACT_SHOT;
 
     // Swap the source and destination MAC addresses in the Ethernet header.
 	swap_src_dst_mac(data);

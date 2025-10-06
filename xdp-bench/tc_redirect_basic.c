@@ -30,14 +30,14 @@ DEFINE_SAMPLE_INIT(tc_redirect_basic);
 // const struct redirect_opts defaults_redirect_basic = { .interval = 2 };
 
 // Helper function to attach/detach the clsact qdisc.
-static int attach_clsact_qdisc(struct tc_redirect_basic *skel, int ifindex, bool attach)
+static int attach_clsact_qdisc(struct tc_redirect_basic *skel, int ifindex, char* section_name, bool attach)
 {
     struct bpf_program *bpf_prog;
     DECLARE_LIBBPF_OPTS(bpf_tc_hook, hook, .ifindex = ifindex,
                         .attach_point = BPF_TC_INGRESS);
     DECLARE_LIBBPF_OPTS(bpf_tc_opts, tc_opts, .handle = 1, .priority = 1);
 
-    bpf_prog = bpf_object__find_program_by_name(skel->obj, "tc_redirect_prog");
+    bpf_prog = bpf_object__find_program_by_name(skel->obj, section_name);
     tc_opts.prog_fd = bpf_program__fd(bpf_prog);
     if (!tc_opts.prog_fd) {
         pr_warn("Failed to find program fd for tc_redirect_prog\n");
@@ -71,6 +71,7 @@ int do_tc_redirect_basic(const void *cfg, __unused const char *pin_root_path)
 	char str[2 * IF_NAMESIZE + 1];
     DECLARE_LIBBPF_OPTS(bpf_tc_opts, tc_opts);
 	int ret = EXIT_FAIL_OPTION;
+    char* section_name;
 
     // Open the BPF skeleton.
 	skel = tc_redirect_basic__open();
@@ -98,7 +99,20 @@ int do_tc_redirect_basic(const void *cfg, __unused const char *pin_root_path)
         goto end_destroy;
     }
 
-    ret = attach_clsact_qdisc(skel, opt->iface_in.ifindex, true);
+    switch (opt->program_mode)
+    {
+    case BASIC_NO_TOUCH:
+        section_name = "tc_redirect_prog";
+        break;
+    case BASIC_SWAP_MACS:
+        section_name = "tc_swap_macs_redirect_prog";
+        break;
+    default:
+        section_name = "tc_swap_macs_redirect_prog";
+        break;
+    }
+
+    ret = attach_clsact_qdisc(skel, opt->iface_in.ifindex, section_name, true);
     if (ret)
         goto end_destroy;
     // ret = attach_clsact_qdisc(skel, opt->iface_out.ifindex, true);
@@ -137,7 +151,7 @@ end_detach:
     }, &tc_opts);
     // attach_clsact_qdisc(skel, opt->iface_out.ifindex, false);
 // end_detach_qdisc_in:
-    attach_clsact_qdisc(skel, opt->iface_in.ifindex, false);
+    attach_clsact_qdisc(skel, opt->iface_in.ifindex, section_name, false);
 end_destroy:
 	tc_redirect_basic__destroy(skel);
 end:

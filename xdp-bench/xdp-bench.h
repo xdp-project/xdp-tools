@@ -11,8 +11,9 @@
 int do_drop(const void *cfg, const char *pin_root_path);
 int do_pass(const void *cfg, const char *pin_root_path);
 int do_tx(const void *cfg, const char *pin_root_path);
-int do_redirect_dispatch(const void *cfg, const char *pin_root_path);
+int do_tx_dispatch(const void *cfg, const char *pin_root_path);
 int do_redirect_basic(const void *cfg, const char *pin_root_path);
+int do_redirect_dispatch(const void *cfg, const char *pin_root_path);
 int do_tc_redirect_basic(const void *cfg, const char *pin_root_path);
 int do_redirect_cpumap(const void *cfg, const char *pin_root_path);
 int do_redirect_devmap(const void *cfg, const char *pin_root_path);
@@ -52,6 +53,7 @@ struct redirect_opts {
 	__u32 interval;
 	enum xdp_attach_mode mode;
 	enum hook_type hook;
+	enum basic_program_mode program_mode;
 	enum basic_load_mode load_mode;
 	struct iface iface_in;
 	struct iface iface_out;
