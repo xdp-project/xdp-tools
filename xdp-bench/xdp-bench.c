@@ -34,6 +34,12 @@ struct enum_val xdp_modes[] = {
        {NULL, 0}
 };
 
+struct enum_val hook_types[] = {
+       {"xdp", HOOK_XDP},
+       {"tc", HOOK_TC},
+       {NULL, 0}
+ };
+
 struct enum_val basic_program_modes[] = {
        {"no-touch", BASIC_NO_TOUCH},
        {"read-data", BASIC_READ_DATA},
@@ -119,6 +125,11 @@ struct prog_option redirect_basic_options[] = {
 	DEFINE_OPTION("stats", OPT_BOOL, struct redirect_opts, stats,
 		      .short_opt = 's',
 		      .help = "Enable statistics for transmitted packets (not just errors)"),
+	DEFINE_OPTION("hook", OPT_ENUM, struct redirect_opts, hook,
+		      .short_opt = 'H',
+		      .metavar = "<type>",
+		      .typearg = hook_types,
+		      .help = "Mechanism to use for redirection; default xdp. Use 'tc' for TC-based redirect."),
 	DEFINE_OPTION("extended", OPT_BOOL, struct redirect_opts, extended,
 		      .short_opt = 'e',
 		      .help = "Start running in extended output mode (C^\\ to toggle)"),
@@ -267,8 +278,11 @@ static const struct prog_command cmds[] = {
 	  .options = basic_options,
 	  .default_cfg = &defaults_tx,
 	  .doc = "Transmit packets back out an interface (hairpin forwarding)" },
-	DEFINE_COMMAND_NAME("redirect", redirect_basic,
-			    "XDP redirect using the bpf_redirect() helper"),
+	{ .name = "redirect",
+	  .func = do_redirect_dispatch,
+	  .options = redirect_basic_options,
+	  .default_cfg = &defaults_redirect_basic,
+	  .doc = "Redirect packets using XDP or TC" },
 	DEFINE_COMMAND_NAME("redirect-cpu", redirect_cpumap,
 			    "XDP CPU redirect using BPF_MAP_TYPE_CPUMAP"),
 	DEFINE_COMMAND_NAME("redirect-map", redirect_devmap,
@@ -282,10 +296,26 @@ static const struct prog_command cmds[] = {
 
 union all_opts {
 	struct basic_opts basic;
+	struct redirect_opts redirect;
 	struct cpumap_opts cpumap;
 	struct devmap_opts devmap;
 	struct devmap_multi_opts devmap_multi;
 };
+
+const struct redirect_opts defaults_redirect_basic = {
+	.hook = HOOK_XDP,
+	.mode = XDP_MODE_NATIVE,
+	.interval = 2
+};
+
+int do_redirect_dispatch(const void *cfg, const char *pin_root_path)
+{
+	const struct redirect_opts *opt = cfg;
+
+	if (opt->hook == HOOK_TC)
+		return do_tc_redirect_basic(cfg, pin_root_path);
+	return do_redirect_basic(cfg, pin_root_path);
+}
 
 int main(int argc, char **argv)
 {

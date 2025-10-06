@@ -355,6 +355,16 @@ kernel.
 The default for this option is \fIdpa\fP.
 .SS "-i, --interval <SECONDS>"
 .PP
+.SS "-H, --hook <TYPE>"
+.PP
+Specify which kernel mechanism to use for redirection. The following types are available:
+.RS
+.nf
+\fCxdp	- Use an XDP program with the bpf_redirect() helper (default)
+tc	- Use a TC (Traffic Control) ingress program with the bpf_redirect() helper
+\fP
+.fi
+.RE
 Set the polling interval for collecting all statistics and displaying them to
 the output. The unit of interval is in seconds.
 .SS "-s, --stats"

@@ -246,4 +246,13 @@ int xdp_parse_load_bytes_prog(struct xdp_md *ctx)
 	return ret;
 }
 
+SEC("tc/ingress")
+int tc_basic_tx_prog(struct __sk_buff *skb)
+{
+	if (record_stats(skb->queue_mapping, true))
+		return TC_ACT_SHOT;
+	
+	return bpf_redirect(skb->ifindex, 0);
+}
+
 char _license[] SEC("license") = "GPL";
