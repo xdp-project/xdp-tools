@@ -169,13 +169,28 @@ die()
     exit 1
 }
 
+mv_tmpfile()
+{
+    local src="$1"
+    local dst="$2"
+    local MAXWAIT=100
+
+    while ! [ -f "$src" ]; do
+        sleep 0.1
+        MAXWAIT=$[$MAXWAIT - 1]
+        [ "$MAXWAIT" -eq 0 ] && break
+    done
+
+    mv "$src" "$dst"
+}
+
 start_background()
 {
     local TMP_FILE="${STATEDIR}/tmp_proc_$$_$RANDOM"
     setsid bash -c "$*" &> ${TMP_FILE} &
     local PID=$!
 
-    mv "$TMP_FILE" "${STATEDIR}/proc/${PID}" >& /dev/null
+    mv_tmpfile "$TMP_FILE" "${STATEDIR}/proc/${PID}"
 
     echo "$PID"
 }
@@ -213,7 +228,7 @@ start_background_no_stderr()
     setsid bash -c "$*" 1> ${TMP_FILE} 2>/dev/null &
     local PID=$!
 
-    mv "$TMP_FILE" "${STATEDIR}/proc/${PID}" >& /dev/null
+    mv_tmpfile "$TMP_FILE" "${STATEDIR}/proc/${PID}"
 
     echo "$PID"
 }
@@ -224,7 +239,7 @@ start_background_ns_devnull()
     setsid ip netns exec "$NS" env TESTENV_NAME="$NS" "$SETUP_SCRIPT" bash -c "$*" 1>/dev/null 2>${TMP_FILE} &
     local PID=$!
 
-    mv "$TMP_FILE" "${STATEDIR}/proc/${PID}" >& /dev/null
+    mv_tmpfile "$TMP_FILE" "${STATEDIR}/proc/${PID}"
     echo $PID
 }
 
