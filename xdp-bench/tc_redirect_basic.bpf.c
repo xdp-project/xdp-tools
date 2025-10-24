@@ -45,11 +45,6 @@ int tc_redirect_prog(struct __sk_buff *skb)
 	if (data + sizeof(*eth) > data_end)
 		return TC_ACT_SHOT; // Drop packet if it's too small.
 
-	// If it's arp, pass it
-	if (bpf_ntohs(eth->h_proto) == ETH_P_ARP || 
-		bpf_ntohs(eth->h_proto) == ETH_P_RARP)
-		return TC_ACT_OK;
-
     if (record_stats())
 		return TC_ACT_SHOT;
 
@@ -68,11 +63,6 @@ int tc_swap_macs_redirect_prog(struct __sk_buff *skb)
     // Boundary check: ensure the Ethernet header is within the packet.
 	if (data + sizeof(*eth) > data_end)
 		return TC_ACT_SHOT; // Drop packet if it's too small.
-
-	// If it's arp, pass it
-	if (bpf_ntohs(eth->h_proto) == ETH_P_ARP || 
-		bpf_ntohs(eth->h_proto) == ETH_P_RARP)
-		return TC_ACT_OK;
 
     if (record_stats())
 		return TC_ACT_SHOT;
