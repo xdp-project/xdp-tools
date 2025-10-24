@@ -57,9 +57,9 @@ int load_dispatcher_v1(int ifindex)
         if (!ifindex)
                 return -ENOENT;
 
-	obj_dispatcher = bpf_object__open("xdp_dispatcher_v1.o");
-        if (!obj_dispatcher)
-                return -errno;
+	obj_dispatcher = open_bpf_file("xdp_dispatcher_v1.o", NULL);
+	if (IS_ERR_OR_NULL(obj_dispatcher))
+		return -errno;
 
 	btf_id = btf__find_by_name_kind(bpf_object__btf(obj_dispatcher),
                                         attach_func, BTF_KIND_FUNC);
@@ -102,7 +102,7 @@ int load_dispatcher_v1(int ifindex)
 		goto out;
 	}
 
-	obj_prog = bpf_object__open("xdp_pass.o");
+	obj_prog = open_bpf_file("xdp_pass.o", NULL);
 	if (!obj_prog) {
 		ret = -errno;
 		goto out;
@@ -249,7 +249,10 @@ int check_old_dispatcher(int ifindex)
 		goto out;
 	}
 
-        xdp_prog = xdp_program__open_file("xdp_pass.o", "xdp", NULL);
+        DECLARE_LIBXDP_OPTS(xdp_program_opts, pass_opts);
+        pass_opts.prog_name = "xdp_pass";
+        pass_opts.find_filename = "xdp-dispatcher.o";
+        xdp_prog = xdp_program__create(&pass_opts);
         ret = libxdp_get_error(xdp_prog);
         if (ret)
                 goto out;

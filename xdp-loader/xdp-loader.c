@@ -51,6 +51,20 @@ struct flag_val load_actions[] = {
 	{}
 };
 
+#define XDP_FEATURE(FLAG) {#FLAG, FLAG}
+static const struct flag_val xdp_feature_flags[] = {
+	/* NETDEV_XDP features are defined in <linux/netdev.h> kernel header */
+	XDP_FEATURE(NETDEV_XDP_ACT_BASIC),
+	XDP_FEATURE(NETDEV_XDP_ACT_REDIRECT),
+	XDP_FEATURE(NETDEV_XDP_ACT_NDO_XMIT),
+	XDP_FEATURE(NETDEV_XDP_ACT_XSK_ZEROCOPY),
+	XDP_FEATURE(NETDEV_XDP_ACT_HW_OFFLOAD),
+	XDP_FEATURE(NETDEV_XDP_ACT_RX_SG),
+	XDP_FEATURE(NETDEV_XDP_ACT_NDO_XMIT_SG),
+	{NULL, 0}
+};
+#undef XDP_FEATURE
+
 static struct prog_option load_options[] = {
 	DEFINE_OPTION("mode", OPT_ENUM, struct loadopt, mode,
 		      .short_opt = 'm',
@@ -391,9 +405,10 @@ static struct prog_option features_options[] = {
 	END_OPTIONS
 };
 
-#define CHECK_XDP_FEATURE(f)	(feature_flags & (f) ? "yes" : "no")
 static int iface_print_xdp_features(const struct iface *iface)
 {
+	const struct flag_val *flag;
+	__u64 checked_flags = 0;
 	__u64 feature_flags;
 	int err;
 
@@ -408,25 +423,16 @@ static int iface_print_xdp_features(const struct iface *iface)
 		return err;
 	}
 
-	/* NETDEV_XDP features are defined in <linux/netdev.h> kernel header */
-	printf("NETDEV_XDP_ACT_BASIC:\t\t%s\n",
-	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_BASIC));
-	printf("NETDEV_XDP_ACT_REDIRECT:\t%s\n",
-	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_REDIRECT));
-	printf("NETDEV_XDP_ACT_NDO_XMIT:\t%s\n",
-	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_NDO_XMIT));
-	printf("NETDEV_XDP_ACT_XSK_ZEROCOPY:\t%s\n",
-	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_XSK_ZEROCOPY));
-	printf("NETDEV_XDP_ACT_HW_OFFLOAD:\t%s\n",
-	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_HW_OFFLOAD));
-	printf("NETDEV_XDP_ACT_RX_SG:\t\t%s\n",
-	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_RX_SG));
-	printf("NETDEV_XDP_ACT_NDO_XMIT_SG:\t%s\n",
-	       CHECK_XDP_FEATURE(NETDEV_XDP_ACT_NDO_XMIT_SG));
+	for (flag = &xdp_feature_flags[0]; flag->flagstring; flag++) {
+		printf("%s:%s%s\n", flag->flagstring,
+		       (strlen(flag->flagstring) < 23 ? "\t\t" : "\t"),
+		       (feature_flags & flag->flagval ? "yes" : "no"));
+		checked_flags |= flag->flagval;
+	}
 
-	if (feature_flags & ~NETDEV_XDP_ACT_MASK)
+	if (feature_flags & ~checked_flags)
 		pr_debug("unknown reported xdp features: 0x%lx\n",
-			 (unsigned long)feature_flags & ~NETDEV_XDP_ACT_MASK);
+			 (unsigned long)(feature_flags & ~checked_flags));
 
 	return 0;
 }

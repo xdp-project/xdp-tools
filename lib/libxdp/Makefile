@@ -41,12 +41,14 @@ endif
 
 all: $(STATIC_LIBS) $(SHARED_LIBS) $(XDP_OBJS) $(PC_FILE) check man build_tests
 
+.PHONY: clean
 clean:
 	$(Q)rm -f $(STATIC_LIBS) $(STATIC_OBJS) $(SHARED_LIBS) $(SHARED_OBJS) $(XDP_OBJS) $(PC_FILE) $(MAN_OBJ) $(TEMPLATED_SOURCES) *.ll
 	$(Q)for d in $(SHARED_OBJDIR) $(STATIC_OBJDIR); do \
 		[ -d "$$d" ] && rmdir "$$d"; done || true
 	$(Q)$(MAKE) -C $(TEST_DIR) clean
 
+.PHONY: install
 install: all
 	$(Q)install -d -m 0755 $(DESTDIR)$(HDRDIR)
 	$(Q)install -d -m 0755 $(DESTDIR)$(LIBDIR)
@@ -58,6 +60,7 @@ install: all
 	$(Q)install -m 0644 $(XDP_OBJS) $(DESTDIR)$(BPF_OBJECT_DIR)
 	$(if $(MAN_FILES),$(Q)install -m 0755 -d $(DESTDIR)$(MANDIR)/man3)
 	$(if $(MAN_FILES),$(Q)install -m 0644 $(MAN_FILES) $(DESTDIR)$(MANDIR)/man3)
+	$(Q)$(MAKE) -C $(TEST_DIR) install
 
 
 $(OBJDIR)/libxdp.a: $(STATIC_OBJS)
@@ -144,7 +147,6 @@ else
 man: $(MAN_PAGE)
 $(MAN_OBJ): README.org $(LIBMK)
 	$(Q)$(EMACS) -Q --batch --find-file $< --eval "(progn (require 'ox-man)(org-man-export-to-man))"
-	$(Q)touch -r $< $@
 
 $(MAN_PAGE): $(MAN_OBJ) $(LIBMK)
 	$(QUIET_GEN)MODDATE=$$(git log -1 --pretty="format:%cI" README.org 2>/dev/null); \

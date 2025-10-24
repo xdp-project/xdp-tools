@@ -35,7 +35,7 @@ static int check_link_detach(int ifindex, enum xdp_attach_mode mode) {
 	if (!ifindex)
 		return -EINVAL;
 
-	obj_prog = bpf_object__open("xdp_pass.o");
+	obj_prog = open_bpf_file("xdp_pass.o", NULL);
 	if (!obj_prog) {
 		ret = -errno;
 		goto out;
@@ -119,7 +119,7 @@ int main(int argc, char **argv)
 
 	ret = check_link_detach(ifindex, XDP_MODE_SKB);
 	if (ret) {
-		fprintf(stderr, "Failed to detach XDP prog from ifindex %d mode %s: %s\n", 
+		fprintf(stderr, "Failed to detach XDP prog from ifindex %d mode %s: %s\n",
 			ifindex, "XDP_MODE_SKB", strerror(-ret));
 		return ret;
 	}
