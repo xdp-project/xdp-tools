@@ -347,10 +347,12 @@ static const struct udpopt {
 	__u16 threads;
 	__u16 interval;
 	__u16 pkt_size;
+	__u8 hop_limit;
 } defaults_udp = {
 	.interval = 1,
 	.threads = 1,
 	.pkt_size = 64,
+	.hop_limit = 1,
 };
 
 static struct udp_packet *prepare_udp_pkt(const struct udpopt *cfg)
@@ -380,6 +382,7 @@ static struct udp_packet *prepare_udp_pkt(const struct udpopt *cfg)
 
 	payload_len = cfg->pkt_size - offsetof(struct udp_packet, udp);
 	pkt->iph.payload_len = bpf_htons(payload_len);
+	pkt->iph.hop_limit = cfg->hop_limit;
 	pkt->udp.len = bpf_htons(payload_len);
 
 	memcpy(pkt->eth.h_source, &src_mac, sizeof(src_mac));
@@ -460,6 +463,10 @@ static struct prog_option udp_options[] = {
 		      .short_opt = 'I',
 		      .metavar = "<s>",
 		      .help = "Output statistics with this interval"),
+	DEFINE_OPTION("hop-limit", OPT_U8, struct udpopt, hop_limit,
+		      .short_opt = 'l',
+		      .metavar = "<hops>",
+		      .help = "Hop limit to set in the IP header. Default 1."),
 	DEFINE_OPTION("interface", OPT_IFNAME, struct udpopt, iface,
 		      .positional = true,
 		      .metavar = "<ifname>",

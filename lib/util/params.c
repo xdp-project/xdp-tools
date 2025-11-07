@@ -105,6 +105,19 @@ static int handle_u32_multi(char *optarg, void *tgt, struct prog_option *opt)
 	return 0;
 }
 
+static int handle_u8(char *optarg, void *tgt, __unused struct prog_option *opt)
+{
+	__u8 *opt_set = tgt;
+	unsigned long val;
+
+	errno = 0;
+	val = strtoul(optarg, NULL, 10);
+	if (errno || val > 0xff)
+		return -EINVAL;
+	*opt_set = val;
+	return 0;
+}
+
 static int handle_u16(char *optarg, void *tgt, __unused struct prog_option *opt)
 {
 	__u16 *opt_set = tgt;
@@ -359,6 +372,7 @@ static const struct opthandler {
 			 {handle_bool},
 			 {handle_flags},
 			 {handle_string},
+			 {handle_u8},
 			 {handle_u16},
 			 {handle_u32},
 			 {handle_u32_multi},
