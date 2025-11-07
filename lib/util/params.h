@@ -16,6 +16,7 @@ enum option_type {
 	OPT_BOOL,
 	OPT_FLAGS,
 	OPT_STRING,
+	OPT_U8,
 	OPT_U16,
 	OPT_U32,
 	OPT_U32_MULTI,
