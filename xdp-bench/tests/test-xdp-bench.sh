@@ -112,6 +112,7 @@ test_redirect_map_egress()
     if is_progmap_supported; then
         check_run $XDP_BENCH redirect-map btest0 btest1 -X -vv
         check_run $XDP_BENCH redirect-map btest0 btest1 -X -A forward -vv
+        check_run $XDP_BENCH redirect-map btest0 btest1 -X -A drop -vv
     fi
     ip link del dev btest0
 }
@@ -140,6 +141,7 @@ test_redirect_multi_egress()
 
     check_run $XDP_BENCH redirect-multi btest0 btest1 btest2 btest3 -X -vv
     check_run $XDP_BENCH redirect-multi btest0 btest1 btest2 btest3 -X -A forward -vv
+    check_run $XDP_BENCH redirect-multi btest0 btest1 btest2 btest3 -X -A drop -vv
 
     ip link del dev btest0
     ip link del dev btest2

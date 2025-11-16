@@ -1,4 +1,4 @@
-.TH "xdp-bench" "8" "NOVEMBER 19, 2024" "V1.5.8" "A simple XDP benchmarking tool"
+.TH "xdp-bench" "8" "DECEMBER 14, 2025" "V1.5.8" "A simple XDP benchmarking tool"
 .SH "NAME"
 XDP-bench \- a simple XDP benchmarking tool
 .SH "SYNOPSIS"
@@ -522,6 +522,7 @@ Set egress program to load:
 .RS
 .nf
 \fCforward	- Update the packet data so its source MAC address matches the one of the destination interface.
+drop		- Drop packet.
 \fP
 .fi
 .RE
@@ -590,6 +591,7 @@ Set egress program to load:
 .RS
 .nf
 \fCforward	- Update the packet data so its source MAC address matches the one of the destination interface.
+drop		- Drop packet.
 \fP
 .fi
 .RE

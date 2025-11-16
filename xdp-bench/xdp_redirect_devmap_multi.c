@@ -72,6 +72,8 @@ egress_prog_multi(struct xdp_redirect_devmap_multi *skel,
 		  enum devmap_egress_action action)
 {
 	switch (action) {
+	case DEVMAP_EGRESS_DROP:
+		return skel->progs.xdp_redirect_devmap_egress_drop;
 	case DEVMAP_EGRESS_NONE:
 	case DEVMAP_EGRESS_FORWARD:
 	default:

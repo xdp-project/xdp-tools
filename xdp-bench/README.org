@@ -457,6 +457,7 @@ Set egress program to load:
 
 #+begin_src sh
  forward	- Update the packet data so its source MAC address matches the one of the destination interface.
+ drop		- Drop packet.
 #+end_src
 
 The default for this option is =forward=.
@@ -517,6 +518,7 @@ Set egress program to load:
 
 #+begin_src sh
  forward	- Update the packet data so its source MAC address matches the one of the destination interface.
+ drop		- Drop packet.
 #+end_src
 
 The default for this option is =forward=.

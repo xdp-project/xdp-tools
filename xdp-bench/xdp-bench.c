@@ -70,6 +70,7 @@ struct enum_val cpumap_program_modes[] = {
 
 struct enum_val devmap_egress_actions[] = {
        {"forward", DEVMAP_EGRESS_FORWARD },
+       {"drop", DEVMAP_EGRESS_DROP },
        {NULL, 0}
 };
 
