@@ -449,8 +449,17 @@ The supported options are:
 ** -X, --load-egress
 Load a program in the devmap entry used for redirection, so that it is invoked
 after the packet is redirected to the target device, before it is transmitted
-out of the output interface. The remote program will update the packet data so
-its source MAC address matches the one of the destination interface.
+out of the output interface. The program can be selected via the =egress-mode=
+option.
+
+** -A, --egress-mode <MODE>
+Set egress program to load:
+
+#+begin_src sh
+ forward	- Update the packet data so its source MAC address matches the one of the destination interface.
+#+end_src
+
+The default for this option is =forward=.
 
 ** -i, --interval <SECONDS>
 Set the polling interval for collecting all statistics and displaying them to
@@ -500,8 +509,17 @@ The supported options are:
 ** -X, --load-egress
 Load a program in the devmap entry used for redirection, so that it is invoked
 after the packet is redirected to the target device, before it is transmitted
-out of the output interface. The remote program will update the packet data so
-its source MAC address matches the one of the destination interface.
+out of the output interface. The program can be selected via the =egress-mode=
+option.
+
+** -A, --egress-mode <MODE>
+Set egress program to load:
+
+#+begin_src sh
+ forward	- Update the packet data so its source MAC address matches the one of the destination interface.
+#+end_src
+
+The default for this option is =forward=.
 
 ** -i, --interval <SECONDS>
 Set the polling interval for collecting all statistics and displaying them to

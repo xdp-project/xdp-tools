@@ -68,6 +68,10 @@ struct enum_val cpumap_program_modes[] = {
        {NULL, 0}
 };
 
+struct enum_val devmap_egress_actions[] = {
+       {"forward", DEVMAP_EGRESS_FORWARD },
+       {NULL, 0}
+};
 
 struct prog_option basic_options[] = {
 	DEFINE_OPTION("packet-operation", OPT_ENUM, struct basic_opts, program_mode,
@@ -194,6 +198,11 @@ struct prog_option redirect_devmap_options[] = {
 	DEFINE_OPTION("load-egress", OPT_BOOL, struct devmap_opts, load_egress,
 		      .short_opt = 'X',
 		      .help = "Load an egress program into the devmap"),
+	DEFINE_OPTION("egress-action", OPT_ENUM, struct devmap_opts, egress_action,
+		      .short_opt = 'A',
+		      .typearg = devmap_egress_actions,
+		      .metavar = "<action>",
+		      .help = "Egress program <action>. Default is forward"),
 	DEFINE_OPTION("interval", OPT_U32, struct devmap_opts, interval,
 		      .short_opt = 'i',
 		      .metavar = "<seconds>",
@@ -226,6 +235,11 @@ struct prog_option redirect_devmap_multi_options[] = {
 	DEFINE_OPTION("load-egress", OPT_BOOL, struct devmap_multi_opts, load_egress,
 		      .short_opt = 'X',
 		      .help = "Load an egress program into the devmap"),
+	DEFINE_OPTION("egress-action", OPT_ENUM, struct devmap_multi_opts, egress_action,
+		      .short_opt = 'A',
+		      .typearg = devmap_egress_actions,
+		      .metavar = "<action>",
+		      .help = "Egress program <action>. Default is forward"),
 	DEFINE_OPTION("interval", OPT_U32, struct devmap_multi_opts, interval,
 		      .short_opt = 'i',
 		      .metavar = "<seconds>",

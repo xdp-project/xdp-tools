@@ -67,6 +67,17 @@ static int update_mac_map(struct bpf_map *map)
 const struct devmap_multi_opts defaults_redirect_devmap_multi = { .mode = XDP_MODE_NATIVE,
 								  .interval = 2 };
 
+static struct bpf_program *
+egress_prog_multi(struct xdp_redirect_devmap_multi *skel,
+		  enum devmap_egress_action action)
+{
+	switch (action) {
+	case DEVMAP_EGRESS_NONE:
+	case DEVMAP_EGRESS_FORWARD:
+	default:
+		return skel->progs.xdp_devmap_prog;
+	}
+}
 
 int do_redirect_devmap_multi(const void *cfg, __unused const char *pin_root_path)
 {
@@ -95,6 +106,11 @@ int do_redirect_devmap_multi(const void *cfg, __unused const char *pin_root_path
 	if (opt->stats)
 		mask |= SAMPLE_REDIRECT_CNT;
 
+	if (!opt->load_egress && opt->egress_action != DEVMAP_EGRESS_NONE) {
+		pr_warn("egress-action option was set without load-egress\n");
+		goto end;
+	}
+
 restart:
 	skel = xdp_redirect_devmap_multi__open();
 	if (!skel) {
@@ -112,7 +128,7 @@ restart:
 
 	if (tried) {
 		forward_map = skel->maps.forward_map_general;
-		bpf_program__set_autoload(skel->progs.xdp_devmap_prog, false);
+		bpf_program__set_autoload(egress_prog_multi(skel, opt->egress_action), false);
 #ifdef HAVE_LIBBPF_BPF_MAP__SET_AUTOCREATE
 		bpf_map__set_autocreate(skel->maps.forward_map_native, false);
 #else
@@ -182,8 +198,12 @@ restart:
 		 * egress devmap program if exist
 		 */
 		devmap_val.ifindex = iface->ifindex;
-		if (opt->load_egress)
-			devmap_val.bpf_prog.fd = bpf_program__fd(skel->progs.xdp_devmap_prog);
+		if (opt->load_egress) {
+			struct bpf_program *prog = egress_prog_multi(skel, opt->egress_action);
+
+			devmap_val.bpf_prog.fd = bpf_program__fd(prog);
+		}
+
 		ret = bpf_map_update_elem(bpf_map__fd(forward_map), &iface->ifindex, &devmap_val, 0);
 		if (ret < 0) {
 			pr_warn("Failed to update devmap value: %s\n",

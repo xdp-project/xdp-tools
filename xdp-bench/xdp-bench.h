@@ -48,10 +48,16 @@ struct redirect_opts {
 	struct iface iface_out;
 };
 
+enum devmap_egress_action {
+	DEVMAP_EGRESS_NONE,
+	DEVMAP_EGRESS_FORWARD,
+};
+
 struct devmap_opts {
 	bool stats;
 	bool extended;
 	bool load_egress;
+	enum devmap_egress_action egress_action;
 	__u32 interval;
 	enum xdp_attach_mode mode;
 	struct iface iface_in;
@@ -62,6 +68,7 @@ struct devmap_multi_opts {
 	bool stats;
 	bool extended;
 	bool load_egress;
+	enum devmap_egress_action egress_action;
 	__u32 interval;
 	enum xdp_attach_mode mode;
 	struct iface *ifaces;
