@@ -513,8 +513,21 @@ The supported options are:
 .PP
 Load a program in the devmap entry used for redirection, so that it is invoked
 after the packet is redirected to the target device, before it is transmitted
-out of the output interface. The remote program will update the packet data so
-its source MAC address matches the one of the destination interface.
+out of the output interface. The program can be selected via the \fIegress\-mode\fP
+option.
+.SS "-A, --egress-mode <MODE>"
+.PP
+Set egress program to load:
+
+.RS
+.nf
+\fCforward	- Update the packet data so its source MAC address matches the one of the destination interface.
+\fP
+.fi
+.RE
+
+.PP
+The default for this option is \fIforward\fP.
 .SS "-i, --interval <SECONDS>"
 .PP
 Set the polling interval for collecting all statistics and displaying them to
@@ -568,8 +581,21 @@ The supported options are:
 .PP
 Load a program in the devmap entry used for redirection, so that it is invoked
 after the packet is redirected to the target device, before it is transmitted
-out of the output interface. The remote program will update the packet data so
-its source MAC address matches the one of the destination interface.
+out of the output interface. The program can be selected via the \fIegress\-mode\fP
+option.
+.SS "-A, --egress-mode <MODE>"
+.PP
+Set egress program to load:
+
+.RS
+.nf
+\fCforward	- Update the packet data so its source MAC address matches the one of the destination interface.
+\fP
+.fi
+.RE
+
+.PP
+The default for this option is \fIforward\fP.
 .SS "-i, --interval <SECONDS>"
 .PP
 Set the polling interval for collecting all statistics and displaying them to
