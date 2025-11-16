@@ -74,4 +74,10 @@ int xdp_devmap_prog(struct xdp_md *ctx)
 	return XDP_PASS;
 }
 
+SEC("xdp/devmap")
+int xdp_redirect_devmap_egress_drop(struct xdp_md *ctx)
+{
+	return XDP_DROP;
+}
+
 char _license[] SEC("license") = "GPL";

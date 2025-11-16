@@ -51,6 +51,7 @@ struct redirect_opts {
 enum devmap_egress_action {
 	DEVMAP_EGRESS_NONE,
 	DEVMAP_EGRESS_FORWARD,
+	DEVMAP_EGRESS_DROP,
 };
 
 struct devmap_opts {
