@@ -448,6 +448,7 @@ static const struct helprinter {
 	{NULL},
 	{NULL},
 	{NULL},
+	{NULL},
 	{print_help_enum},
 	{NULL}
 };
