@@ -21,7 +21,8 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 		"       redirect-cpu   - XDP CPU redirect using BPF_MAP_TYPE_CPUMAP\n"
 		"       redirect-map   - XDP redirect using BPF_MAP_TYPE_DEVMAP\n"
 		"       redirect-multi - XDP multi-redirect using BPF_MAP_TYPE_DEVMAP and the BPF_F_BROADCAST flag\n"
-		"       xsk            - AF_XDP socket-based benchmarks (from xdpsock)\n"
+		"       xsk-drop       - AF_XDP socket-based drop\n"
+		"       xsk-tx         - AF_XDP socket-based hairpin forwarding\n"
 		"       help           - show this help message\n"
 		"\n"
 		"Use 'xdp-bench COMMAND --help' to see options for each command\n");
@@ -407,8 +408,16 @@ static const struct prog_command cmds[] = {
 	DEFINE_COMMAND_NAME(
 		"redirect-multi", redirect_devmap_multi,
 		"XDP multi-redirect using BPF_MAP_TYPE_DEVMAP and the BPF_F_BROADCAST flag"),
-	DEFINE_COMMAND_NAME("xsk", xsk,
-			    "AF_XDP socket-based benchmarks (from xdpsock)"),
+	{ .name = "xsk-drop",
+	  .func = do_xsk_drop,
+	  .options = xsk_options,
+	  .default_cfg = &defaults_xsk,
+	  .doc = "AF_XDP-based packet drop" },
+	{ .name = "xsk-tx",
+	  .func = do_xsk_tx,
+	  .options = xsk_options,
+	  .default_cfg = &defaults_xsk,
+	  .doc = "AF_XDP-based transmit back out an interface (hairpin forwarding)" },
 	{ .name = "help", .func = do_help, .no_cfg = true },
 	END_COMMANDS
 };
