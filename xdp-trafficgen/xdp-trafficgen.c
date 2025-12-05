@@ -38,6 +38,7 @@
 #include "util.h"
 #include "xdp_sample.h"
 #include "xdp-trafficgen.h"
+#include "xdpsock.h"
 
 #include "xdp_trafficgen.skel.h"
 
@@ -54,6 +55,13 @@ static int mask = SAMPLE_DEVMAP_XMIT_CNT_MULTI | SAMPLE_DROP_OK;
 DEFINE_SAMPLE_INIT(xdp_trafficgen);
 
 static bool status_exited = false;
+
+struct enum_val xdp_modes[] = {
+       {"native", XDP_MODE_NATIVE},
+       {"skb", XDP_MODE_SKB},
+       {"hw", XDP_MODE_HW},
+       {NULL, 0}
+};
 
 static const char *driver_pass_list[] = {
 	"bnxt",
@@ -610,6 +618,200 @@ out:
         return err;
 }
 
+const struct xsk_opts defaults_xsk_udp = {
+	.attach_mode = XDP_MODE_NATIVE,
+	.interval = 1,
+	.retries = 3,
+	.frame_size = 4096,
+	.batch_size = 64,
+	.tx_pkt_size = 64,
+	.sched_policy = XSK_SCHED_OTHER,
+	.clock = XSK_CLOCK_MONOTONIC,
+	.vlan_id = 1,
+	.vlan_pri = 0,
+};
+
+struct enum_val xsk_program_modes[] = {
+       {"rxdrop", XSK_RXDROP},
+       {"swap-macs", XSK_SWAP_MACS},
+       {NULL, 0}
+};
+
+struct enum_val xsk_copy_modes[] = {
+       {"auto", XSK_COPY_AUTO},
+       {"copy", XSK_COPY_COPY},
+       {"zero-copy", XSK_COPY_ZEROCOPY},
+       {NULL, 0}
+};
+
+struct enum_val xsk_clocks[] = {
+       {"MONOTONIC", XSK_CLOCK_MONOTONIC},
+       {"REALTIME", XSK_CLOCK_REALTIME},
+       {"TAI", XSK_CLOCK_TAI},
+       {"BOOTTIME", XSK_CLOCK_BOOTTIME},
+       {NULL, 0}
+};
+
+struct enum_val xsk_sched_policies[] = {
+       {"SCHED_OTHER", XSK_SCHED_OTHER},
+       {"SCHED_FIFO", XSK_SCHED_FIFO},
+       {NULL, 0}
+};
+
+
+struct prog_option xsk_udp_options[] = {
+	DEFINE_OPTION("dst-mac", OPT_MACADDR, struct xsk_opts, dst_mac,
+		      .short_opt = 'm', .metavar = "<mac addr>",
+		      .help = "Destination MAC address of generated packets"),
+	DEFINE_OPTION("src-mac", OPT_MACADDR, struct xsk_opts, src_mac,
+		      .short_opt = 'M', .metavar = "<mac addr>",
+		      .help = "Source MAC address of generated packets"),
+	DEFINE_OPTION("timestamp", OPT_BOOL, struct xsk_opts, timestamp,
+		      .short_opt = 'y',
+		      .help = "Add timestamp to packets"),
+	DEFINE_OPTION("vlan-tag", OPT_BOOL, struct xsk_opts, vlan_tag,
+		      .short_opt = 'V',
+		      .help = "Add vlan tag to packets"),
+	DEFINE_OPTION("vlan-id", OPT_U16, struct xsk_opts, vlan_id,
+		      .short_opt = 'J',
+		      .metavar = "<id>",
+		      .help = "VLAN ID to insert into VLAN tag (with -V). Default 1."),
+	DEFINE_OPTION("vlan-pri", OPT_U16, struct xsk_opts, vlan_pri,
+		      .short_opt = 'K',
+		      .metavar = "<pri>",
+		      .help = "VLAN PRI to insert into VLAN tag (with -V). Default 0"),
+	DEFINE_OPTION("fill-pattern", OPT_U32, struct xsk_opts, pkt_fill_pattern,
+		      .short_opt = 'P',
+		      .metavar = "<pattern>", .hex = true,
+		      .help = "Fill pattern (u32 hex value)"),
+	DEFINE_OPTION("tx-cycle-time", OPT_U64, struct xsk_opts, tx_cycle_us,
+		      .short_opt = 'T',
+		      .metavar = "<us>",
+		      .help = "TX cycle time (usec)."),
+
+
+	DEFINE_OPTION("queue", OPT_U32, struct xsk_opts, queue_idx,
+		      .short_opt = 'q',
+		      .metavar = "<queue>",
+		      .help = "Queue index to use (default 0)"),
+	DEFINE_OPTION("interval", OPT_U32, struct xsk_opts, interval,
+		      .short_opt = 'i',
+		      .metavar = "<seconds>",
+		      .help = "Statistics update interval (default 1)"),
+	DEFINE_OPTION("retries", OPT_U32, struct xsk_opts, retries,
+		      .short_opt = 'O',
+		      .metavar = "<number>",
+		      .help = "Number of time-out retries per 1s interval (default 3)"),
+	DEFINE_OPTION("frame-size", OPT_U32, struct xsk_opts, frame_size,
+		      .short_opt = 'f',
+		      .metavar = "<size>",
+		      .help = "Data frame size (must be a power of two in aligned mode); default 4096"),
+	DEFINE_OPTION("pkt-size", OPT_U16, struct xsk_opts, tx_pkt_size,
+		      .short_opt = 's',
+		      .metavar = "<size>",
+		      .help = "Packet size of transmitted packets; default 64"),
+	DEFINE_OPTION("duration", OPT_U32, struct xsk_opts, duration,
+		      .short_opt = 'd',
+		      .metavar = "<seconds>",
+		      .help = "Duration to run; default 0 (forever)"),
+	DEFINE_OPTION("pkt-count", OPT_U32, struct xsk_opts, pkt_count,
+		      .short_opt = 'c',
+		      .metavar = "<number>",
+		      .help = "Number of packets to send before exiting; default 0 (forever)"),
+	DEFINE_OPTION("batch-size", OPT_U32, struct xsk_opts, batch_size,
+		      .short_opt = 'b',
+		      .metavar = "<packets>",
+		      .help = "Batch size for receive loop; default 64"),
+	DEFINE_OPTION("irq-string", OPT_STRING, struct xsk_opts, irq_string,
+		      .short_opt = 'I',
+		      .metavar = "<irq-string>",
+		      .help = "Display driver interrupt statistics for interface associated with <irq-string>"),
+	DEFINE_OPTION("poll", OPT_BOOL, struct xsk_opts, use_poll,
+		      .short_opt = 'p',
+		      .help = "Use poll syscall"),
+	DEFINE_OPTION("no-need-wakeup", OPT_BOOL, struct xsk_opts, no_need_wakeup,
+		      .help = "Turn off use of driver need wakeup flag"),
+	DEFINE_OPTION("unaligned", OPT_BOOL, struct xsk_opts, unaligned,
+		      .short_opt = 'u',
+		      .help = "Enable unaligned chunk placement"),
+	DEFINE_OPTION("shared-umem", OPT_BOOL, struct xsk_opts, shared_umem,
+		      .help = "Enable XDP_SHARED_UMEM across multiple sockets"),
+	DEFINE_OPTION("extra-stats", OPT_BOOL, struct xsk_opts, extra_stats,
+		      .short_opt = 'x',
+		      .help = "Display extra statistics"),
+	DEFINE_OPTION("quiet", OPT_BOOL, struct xsk_opts, quiet,
+		      .short_opt = 'Q',
+		      .help = "Do not display any statistics"),
+	DEFINE_OPTION("app-stats", OPT_BOOL, struct xsk_opts, app_stats,
+		      .short_opt = 'a',
+		      .help = "Display application (syscall) statistics"),
+	DEFINE_OPTION("copy_mode", OPT_ENUM, struct xsk_opts, copy_mode,
+		      .short_opt = 'C',
+		      .typearg = xsk_copy_modes,
+		      .metavar = "<mode>",
+		      .help = "Use <mode> for copying data packets to userspace; default auto"),
+	DEFINE_OPTION("clock", OPT_ENUM, struct xsk_opts, clock,
+		      .short_opt = 'w',
+		      .typearg = xsk_clocks,
+		      .metavar = "<clock>",
+		      .help = "Clock name to use; default MONOTONIC"),
+	DEFINE_OPTION("policy", OPT_ENUM, struct xsk_opts, sched_policy,
+		      .short_opt = 'W',
+		      .typearg = xsk_sched_policies,
+		      .metavar = "<policy>",
+		      .help = "Scheduler policy; default SCHED_OTHER"),
+	DEFINE_OPTION("schpri", OPT_U32, struct xsk_opts, sched_prio,
+		      .short_opt = 'U',
+		      .metavar = "<priority>",
+		      .help = "Scheduler priority; default 0"),
+	DEFINE_OPTION("attach-mode", OPT_ENUM, struct xsk_opts, attach_mode,
+		      .short_opt = 'A',
+		      .typearg = xdp_modes,
+		      .metavar = "<mode>",
+		      .help = "Load XDP program in <mode>; default native"),
+	DEFINE_OPTION("dev", OPT_IFNAME, struct xsk_opts, iface,
+		      .positional = true,
+		      .metavar = "<ifname>",
+		      .required = true,
+		      .help = "Load on device <ifname>"),
+	END_OPTIONS
+};
+
+static int do_xsk_udp(const void *cfg, __unused const char *pin_root_path)
+{
+	const struct xsk_opts *opt = cfg;
+	struct xsk_ctx *ctx;
+	pthread_t pt;
+	int ret;
+
+	ret = xsk_validate_opts(opt);
+	if (ret)
+		return ret;
+
+	ctx = xsk_ctx__create(opt, XSK_BENCH_TXONLY);
+	ret = libxdp_get_error(ctx);
+	if (ret)
+		return ret;
+
+	pr_info("Transmitting on %s (ifindex %d)\n",
+	       opt->iface.ifname, opt->iface.ifindex);
+
+	if (!opt->quiet) {
+		ret = xsk_start_poller_thread(ctx, &pt);
+		if (ret)
+			goto out;
+	}
+
+	xsk_tx_only_all(ctx);
+
+	if (!opt->quiet)
+		pthread_join(pt, NULL);
+
+out:
+	xsk_ctx__destroy(ctx);
+	return ret;
+}
+
 struct tcp_packet {
 	struct ethhdr eth;
 	struct ipv6hdr iph;
@@ -695,13 +897,6 @@ static void prepare_tcp_pkt(const struct tcp_flowkey *fkey,
 	pr_debug("TCP packet:\n");
 	hexdump_data(&pkt_tcp, sizeof(pkt_tcp));
 }
-
-struct enum_val xdp_modes[] = {
-       {"native", XDP_MODE_NATIVE},
-       {"skb", XDP_MODE_SKB},
-       {"hw", XDP_MODE_HW},
-       {NULL, 0}
-};
 
 static const struct tcpopt {
 	__u32 num_pkts;
@@ -1087,6 +1282,7 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 		"\n"
 		"COMMAND can be one of:\n"
 		"       udp         - run in UDP mode\n"
+		"       xsk-udp     - run in UDP mode (using AF_XDP sockets)\n"
 		"       tcp         - run in TCP mode\n"
 		"       probe       - probe kernel support\n"
 		"       help        - show this help message\n"
@@ -1097,6 +1293,7 @@ int do_help(__unused const void *cfg, __unused const char *pin_root_path)
 
 static const struct prog_command cmds[] = {
 	DEFINE_COMMAND(udp, "Run in UDP mode"),
+	DEFINE_COMMAND_NAME("xsk-udp", xsk_udp, "Run in UDP mode (using AF_XDP sockets)"),
 	DEFINE_COMMAND(tcp, "Run in TCP mode"),
 	DEFINE_COMMAND(probe, "Probe kernel support"),
 	{ .name = "help", .func = do_help, .no_cfg = true },
@@ -1105,6 +1302,8 @@ static const struct prog_command cmds[] = {
 
 union all_opts {
 	struct udpopt udp;
+	struct tcpopt tcp;
+	struct xsk_opts xsk;
 };
 
 int main(int argc, char **argv)
