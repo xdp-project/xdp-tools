@@ -74,7 +74,7 @@ static int handle_u32(char *optarg, void *tgt, __unused struct prog_option *opt)
 	unsigned long val;
 
 	errno = 0;
-	val = strtoul(optarg, NULL, 10);
+	val = strtoul(optarg, NULL, opt->hex ? 16 : 10);
 	if (errno || val > 0xffffffff)
 		return -EINVAL;
 
@@ -111,7 +111,7 @@ static int handle_u8(char *optarg, void *tgt, __unused struct prog_option *opt)
 	unsigned long val;
 
 	errno = 0;
-	val = strtoul(optarg, NULL, 10);
+	val = strtoul(optarg, NULL, opt->hex ? 16 : 10);
 	if (errno || val > 0xff)
 		return -EINVAL;
 	*opt_set = val;
@@ -124,7 +124,7 @@ static int handle_u16(char *optarg, void *tgt, __unused struct prog_option *opt)
 	unsigned long val;
 
 	errno = 0;
-	val = strtoul(optarg, NULL, 10);
+	val = strtoul(optarg, NULL, opt->hex ? 16 : 10);
 	if (errno || val > 0xffff)
 		return -EINVAL;
 	*opt_set = val;

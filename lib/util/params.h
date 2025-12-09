@@ -42,6 +42,7 @@ struct prog_option {
 	bool required;
 	bool positional;
 	bool hidden;
+	bool hex;
 	unsigned int min_num;
 	unsigned int max_num;
 	unsigned int num_set;
