@@ -552,7 +552,7 @@ static int prog_options_to_options(struct prog_option *poptions,
 	int num = 0, num_cmn = 0, n_sopt = VERSION_SHORT_OPT + 1;
 	struct option *new_options, *nopt;
 	struct prog_option *opt;
-	char buf[100], *c = buf;
+	char buf[100], *c = buf, *i;
 
 	struct option common_opts[] = {
 	       {"help", no_argument, NULL, 'h'},
@@ -583,6 +583,13 @@ static int prog_options_to_options(struct prog_option *poptions,
 		if (opt->positional)
 			continue;
 		if (opt->short_opt) {
+			for (i = buf; i < c; i++) {
+				if (*i == opt->short_opt) {
+					pr_warn("Duplicate option char: %c\n",
+						opt->short_opt);
+					goto err;
+				}
+			}
 			*(c++) = opt->short_opt;
 			if (opt_needs_arg(opt))
 				*(c++) = ':';
@@ -693,7 +700,7 @@ int parse_cmdline_args(int argc, char **argv, struct prog_option *poptions,
 	char *optstring;
 
 	if (prog_options_to_options(poptions, &long_options, &optstring)) {
-		pr_warn("Unable to malloc()\n");
+		pr_warn("Error preparing options\n");
 		return -ENOMEM;
 	}
 
