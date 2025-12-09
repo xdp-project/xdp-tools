@@ -20,6 +20,7 @@ enum option_type {
 	OPT_U16,
 	OPT_U32,
 	OPT_U32_MULTI,
+	OPT_U64,
 	OPT_MACADDR,
 	OPT_IFNAME,
 	OPT_IFNAME_MULTI,

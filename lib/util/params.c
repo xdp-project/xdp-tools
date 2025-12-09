@@ -68,6 +68,32 @@ static int handle_multistring(char *optarg, void *tgt, __unused struct prog_opti
 	return 0;
 }
 
+static int handle_u8(char *optarg, void *tgt, __unused struct prog_option *opt)
+{
+	__u8 *opt_set = tgt;
+	unsigned long val;
+
+	errno = 0;
+	val = strtoul(optarg, NULL, opt->hex ? 16 : 10);
+	if (errno || val > 0xff)
+		return -EINVAL;
+	*opt_set = val;
+	return 0;
+}
+
+static int handle_u16(char *optarg, void *tgt, __unused struct prog_option *opt)
+{
+	__u16 *opt_set = tgt;
+	unsigned long val;
+
+	errno = 0;
+	val = strtoul(optarg, NULL, opt->hex ? 16 : 10);
+	if (errno || val > 0xffff)
+		return -EINVAL;
+	*opt_set = val;
+	return 0;
+}
+
 static int handle_u32(char *optarg, void *tgt, __unused struct prog_option *opt)
 {
 	__u32 *opt_set = tgt;
@@ -105,28 +131,16 @@ static int handle_u32_multi(char *optarg, void *tgt, struct prog_option *opt)
 	return 0;
 }
 
-static int handle_u8(char *optarg, void *tgt, __unused struct prog_option *opt)
+static int handle_u64(char *optarg, void *tgt, __unused struct prog_option *opt)
 {
-	__u8 *opt_set = tgt;
-	unsigned long val;
+	__u64 *opt_set = tgt;
+	unsigned long long val;
 
 	errno = 0;
-	val = strtoul(optarg, NULL, opt->hex ? 16 : 10);
-	if (errno || val > 0xff)
+	val = strtoull(optarg, NULL, opt->hex ? 16 : 10);
+	if (errno)
 		return -EINVAL;
-	*opt_set = val;
-	return 0;
-}
 
-static int handle_u16(char *optarg, void *tgt, __unused struct prog_option *opt)
-{
-	__u16 *opt_set = tgt;
-	unsigned long val;
-
-	errno = 0;
-	val = strtoul(optarg, NULL, opt->hex ? 16 : 10);
-	if (errno || val > 0xffff)
-		return -EINVAL;
 	*opt_set = val;
 	return 0;
 }
@@ -376,6 +390,7 @@ static const struct opthandler {
 			 {handle_u16},
 			 {handle_u32},
 			 {handle_u32_multi},
+			 {handle_u64},
 			 {handle_macaddr},
 			 {handle_ifname},
 			 {handle_ifname_multi},
@@ -440,6 +455,7 @@ static const struct helprinter {
 	{NULL},
 	{NULL},
 	{print_help_flags},
+	{NULL},
 	{NULL},
 	{NULL},
 	{NULL},
