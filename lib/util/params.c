@@ -720,7 +720,7 @@ int parse_cmdline_args(int argc, char **argv, struct prog_option *poptions,
 			goto out;
 		default:
 			if (set_opt(cfg, poptions, opt, optarg)) {
-				usage(prog, doc, poptions, full_help);
+				usage(usage_cmd, doc, poptions, full_help);
 				err = EXIT_FAILURE;
 				goto out;
 			}
@@ -748,7 +748,7 @@ int parse_cmdline_args(int argc, char **argv, struct prog_option *poptions,
 			else
 				pr_warn("Missing required option '--%s'\n",
 					opt_iter->name);
-			usage(prog, doc, poptions, full_help);
+			usage(usage_cmd, doc, poptions, full_help);
 			err = EXIT_FAILURE;
 			goto out;
 		}
