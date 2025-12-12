@@ -34,6 +34,12 @@ struct enum_val xdp_modes[] = {
        {NULL, 0}
 };
 
+struct enum_val hook_types[] = {
+       {"xdp", HOOK_XDP},
+       {"tc", HOOK_TC},
+       {NULL, 0}
+ };
+
 struct enum_val basic_program_modes[] = {
        {"no-touch", BASIC_NO_TOUCH},
        {"read-data", BASIC_READ_DATA},
@@ -86,6 +92,11 @@ struct prog_option basic_options[] = {
 	DEFINE_OPTION("rxq-stats", OPT_BOOL, struct basic_opts, rxq_stats,
 		      .short_opt = 'r',
 		      .help = "Collect per-RXQ drop statistics"),
+	DEFINE_OPTION("hook", OPT_ENUM, struct basic_opts, hook,
+		      .short_opt = 'H',
+		      .metavar = "<type>",
+		      .typearg = hook_types,
+		      .help = "Mechanism to use for redirection; default xdp. Use 'tc' for TC-based redirect."),
 	DEFINE_OPTION("interval", OPT_U32, struct basic_opts, interval,
 		      .short_opt = 'i',
 		      .metavar = "<seconds>",
@@ -112,6 +123,9 @@ struct prog_option redirect_basic_options[] = {
                       .metavar = "<mode>",
                       .typearg = basic_load_modes,
 		      .help = "How to load (and store) data; default dpa"),
+	DEFINE_OPTION("program-mode", OPT_ENUM, struct redirect_opts, program_mode,
+		      .typearg = basic_program_modes,
+		      .hidden = true),
 	DEFINE_OPTION("interval", OPT_U32, struct redirect_opts, interval,
 		      .short_opt = 'i',
 		      .metavar = "<seconds>",
@@ -119,6 +133,11 @@ struct prog_option redirect_basic_options[] = {
 	DEFINE_OPTION("stats", OPT_BOOL, struct redirect_opts, stats,
 		      .short_opt = 's',
 		      .help = "Enable statistics for transmitted packets (not just errors)"),
+	DEFINE_OPTION("hook", OPT_ENUM, struct redirect_opts, hook,
+		      .short_opt = 'H',
+		      .metavar = "<type>",
+		      .typearg = hook_types,
+		      .help = "Mechanism to use for redirection; default xdp. Use 'tc' for TC-based redirect."),
 	DEFINE_OPTION("extended", OPT_BOOL, struct redirect_opts, extended,
 		      .short_opt = 'e',
 		      .help = "Start running in extended output mode (C^\\ to toggle)"),
@@ -263,12 +282,15 @@ static const struct prog_command cmds[] = {
 	  .default_cfg = &defaults_pass,
 	  .doc = "Pass all packets to the network stack" },
 	{ .name = "tx",
-	  .func = do_tx,
+	  .func = do_tx_dispatch,
 	  .options = basic_options,
 	  .default_cfg = &defaults_tx,
 	  .doc = "Transmit packets back out an interface (hairpin forwarding)" },
-	DEFINE_COMMAND_NAME("redirect", redirect_basic,
-			    "XDP redirect using the bpf_redirect() helper"),
+	{ .name = "redirect",
+	  .func = do_redirect_dispatch,
+	  .options = redirect_basic_options,
+	  .default_cfg = &defaults_redirect_basic,
+	  .doc = "Redirect packets using XDP or TC" },
 	DEFINE_COMMAND_NAME("redirect-cpu", redirect_cpumap,
 			    "XDP CPU redirect using BPF_MAP_TYPE_CPUMAP"),
 	DEFINE_COMMAND_NAME("redirect-map", redirect_devmap,
@@ -282,10 +304,49 @@ static const struct prog_command cmds[] = {
 
 union all_opts {
 	struct basic_opts basic;
+	struct redirect_opts redirect;
 	struct cpumap_opts cpumap;
 	struct devmap_opts devmap;
 	struct devmap_multi_opts devmap_multi;
 };
+
+const struct redirect_opts defaults_redirect_basic = {
+	.hook = HOOK_XDP,
+	.mode = XDP_MODE_NATIVE,
+	.interval = 2,
+	.program_mode = BASIC_SWAP_MACS
+};
+
+int do_tx_dispatch(const void *cfg, const char *pin_root_path)
+{
+	const struct basic_opts *opt = cfg;
+
+	if (opt->hook == HOOK_TC) {
+		// Set out interface to same as in
+		const struct redirect_opts r_opts = {
+			.extended = opt->extended,
+			.interval = opt->interval,
+			.mode = opt->mode,
+			.program_mode = opt->program_mode,
+			.load_mode = opt->load_mode,
+			.hook = opt->hook,
+			.stats = opt->rxq_stats,
+			.iface_in = opt->iface_in,
+			.iface_out = opt->iface_in,
+		};
+		return do_tc_redirect_basic(&r_opts, pin_root_path);
+	}
+	return do_tx(cfg, pin_root_path);
+}
+
+int do_redirect_dispatch(const void *cfg, const char *pin_root_path)
+{
+	const struct redirect_opts *opt = cfg;
+
+	if (opt->hook == HOOK_TC)
+		return do_tc_redirect_basic(cfg, pin_root_path);
+	return do_redirect_basic(cfg, pin_root_path);
+}
 
 int main(int argc, char **argv)
 {

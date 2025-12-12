@@ -1,6 +1,6 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 XDP_BENCH=${XDP_BENCH:-./xdp-bench}
-ALL_TESTS="test_drop test_pass test_tx test_xdp_load_bytes test_rxq_stats test_redirect test_redirect_cpu test_redirect_map test_redirect_map_egress test_redirect_multi test_redirect_multi_egress"
+ALL_TESTS="test_drop test_pass test_tx test_xdp_load_bytes test_rxq_stats test_redirect test_redirect_tc test_redirect_cpu test_redirect_map test_redirect_map_egress test_redirect_multi test_redirect_multi_egress"
 
 test_basic()
 {
@@ -26,6 +26,15 @@ test_pass()
 test_tx()
 {
     test_basic tx
+    
+    # Test TX with TC hook (hairpin forwarding using TC)
+    export XDP_SAMPLE_IMMEDIATE_EXIT=1
+    check_run $XDP_BENCH tx $NS -H tc -vv
+    check_run $XDP_BENCH tx $NS -H tc -p no-touch -vv
+    check_run $XDP_BENCH tx $NS -H tc -p read-data -vv
+    check_run $XDP_BENCH tx $NS -H tc -p parse-ip -vv
+    check_run $XDP_BENCH tx $NS -H tc -p swap-macs -vv
+    check_run $XDP_BENCH tx $NS -H tc -e -vv
 }
 
 test_xdp_load_bytes()
@@ -67,6 +76,18 @@ test_redirect()
     check_run $XDP_BENCH redirect btest0 btest1 -s -vv
     check_run $XDP_BENCH redirect btest0 btest1 -m skb -vv
     check_run $XDP_BENCH redirect btest0 btest1 -e -vv
+    ip link del dev btest0
+}
+
+test_redirect_tc()
+{
+    export XDP_SAMPLE_IMMEDIATE_EXIT=1
+    check_run ip link add dev btest0 type veth peer name btest1
+    
+    # Test basic TC redirect functionality (similar to XDP redirect but using TC hook)
+    check_run $XDP_BENCH redirect btest0 btest1 -H tc -vv
+    check_run $XDP_BENCH redirect btest0 btest1 -H tc -s -vv
+    check_run $XDP_BENCH redirect btest0 btest1 -H tc -e -vv    
     ip link del dev btest0
 }
 
