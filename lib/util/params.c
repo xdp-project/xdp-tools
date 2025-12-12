@@ -768,18 +768,22 @@ int dispatch_commands(const char *argv0, int argc, char **argv,
 	int ret = EXIT_FAILURE, err, len;
 	char pin_root_path[PATH_MAX];
 	char usagebuf[100];
+	int candidates = 0;
 	void *cfg;
 
 	for (c = cmds; c->name; c++) {
 		if (is_prefix(argv0, c->name)) {
 			cmd = c;
-			break;
+			candidates++;
+			if (!strcmp(argv0, c->name))
+				break;
 		}
 	}
 
-	if (!cmd) {
-		pr_warn("Command '%s' is unknown, try '%s help'.\n",
-			argv0, prog_name);
+	if (!cmd || (candidates > 1 && strcmp(argv0, cmd->name))) {
+		pr_warn("Command '%s' is %s, try '%s help'.\n", argv0,
+			cmd ? "ambiguous" : "unknown",
+			prog_name);
 		return EXIT_FAILURE;
 	}
 
