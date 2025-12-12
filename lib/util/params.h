@@ -20,6 +20,7 @@ enum option_type {
 	OPT_U16,
 	OPT_U32,
 	OPT_U32_MULTI,
+	OPT_U64,
 	OPT_MACADDR,
 	OPT_IFNAME,
 	OPT_IFNAME_MULTI,
@@ -42,6 +43,7 @@ struct prog_option {
 	bool required;
 	bool positional;
 	bool hidden;
+	bool hex;
 	unsigned int min_num;
 	unsigned int max_num;
 	unsigned int num_set;
