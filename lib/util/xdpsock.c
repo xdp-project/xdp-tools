@@ -12,19 +12,23 @@
 #include <linux/ip.h>
 #include <linux/limits.h>
 #include <linux/udp.h>
+#include <locale.h>
 #include <arpa/inet.h>
 #include <net/ethernet.h>
 #include <netinet/ether.h>
 #include <net/if.h>
 #include <poll.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
+#include <sys/signalfd.h>
 #include <sys/socket.h>
+#include <sys/timerfd.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <time.h>
@@ -362,6 +366,16 @@ static void dump_driver_stats(struct xsk_ctx *ctx, long dt)
 	}
 }
 
+static void dump_end_stats(struct xsk_ctx *ctx)
+{
+	unsigned int i;
+	for (i = 0; i < ctx->num_socks && ctx->xsks[i]; i++) {
+		printf("Total:\nRX: %14lu pkts\nTX: %14lu pkts\n",
+		       ctx->xsks[i]->ring_stats.rx_npkts,
+		       ctx->xsks[i]->ring_stats.tx_npkts);
+	}
+}
+
 static void dump_stats(struct xsk_ctx *ctx)
 {
 	unsigned long now = get_nsecs(ctx->opt.clock);
@@ -410,7 +424,7 @@ static void dump_stats(struct xsk_ctx *ctx)
 		ctx->xsks[i]->ring_stats.prev_rx_npkts = ctx->xsks[i]->ring_stats.rx_npkts;
 		ctx->xsks[i]->ring_stats.prev_tx_npkts = ctx->xsks[i]->ring_stats.tx_npkts;
 
-		if (ctx->opt.extra_stats) {
+		if (ctx->extra_stats) {
 			if (!xsk_get_xdp_stats(xsk_socket__fd(ctx->xsks[i]->xsk), ctx->xsks[i])) {
 				dropped_pps = (ctx->xsks[i]->ring_stats.rx_dropped_npkts -
 						ctx->xsks[i]->ring_stats.prev_rx_dropped_npkts) *
@@ -479,15 +493,85 @@ static bool is_benchmark_done(struct xsk_ctx *ctx)
 	return ctx->benchmark_done;
 }
 
-static void *poller(void *arg)
+static int signal_cb(struct xsk_ctx *ctx)
 {
-	struct xsk_ctx *ctx = arg;
-	while (!is_benchmark_done(ctx)) {
-		sleep(ctx->opt.interval);
-		dump_stats(ctx);
+	struct signalfd_siginfo si;
+	int r;
+
+	r = read(ctx->signal_fd, &si, sizeof(si));
+	if (r < 0)
+		return -errno;
+
+	switch (si.ssi_signo) {
+	case SIGQUIT:
+		ctx->extra_stats = !ctx->extra_stats;
+		printf("\n");
+		break;
+	default:
+		printf("\n");
+		return 1;
 	}
 
-	return NULL;
+	return 0;
+}
+
+int xsk_stats_poller(struct xsk_ctx *ctx)
+{
+	struct timespec ts = { ctx->opt.interval, 0 };
+	struct itimerspec its = { ts, ts };
+	struct pollfd pfd[2] = {};
+	int timerfd, ret = 0;
+	__u64 t;
+
+	setlocale(LC_NUMERIC, "en_US.UTF-8");
+
+	timerfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+	if (timerfd < 0)
+		return -errno;
+
+	if (timerfd_settime(timerfd, 0, &its, NULL)) {
+		ret = -errno;
+		goto out;
+	}
+
+	pfd[0].fd = ctx->signal_fd;
+	pfd[0].events = POLLIN;
+
+	pfd[1].fd = timerfd;
+	pfd[1].events = POLLIN;
+
+	while (!is_benchmark_done(ctx)) {
+		ret = poll(pfd, 2, -1);
+		if (ret < 0) {
+			if (errno == EINTR)
+				continue;
+			else
+				goto out;
+		}
+
+		if (pfd[0].revents & POLLIN) {
+			ret = signal_cb(ctx);
+			if (ret) {
+				dump_stats(ctx);
+				break;
+			}
+		}
+
+		if (pfd[1].revents & POLLIN) {
+			ret = read(timerfd, &t, sizeof(t));
+			if (ret < 0) {
+				ret = -errno;
+				goto out;
+			}
+			if (!ctx->opt.quiet)
+				dump_stats(ctx);
+		}
+	}
+	ret = 0;
+out:
+	ctx->benchmark_done = true;
+	close(timerfd);
+	return ret;
 }
 
 void xsk_ctx__destroy(struct xsk_ctx *ctx)
@@ -495,15 +579,18 @@ void xsk_ctx__destroy(struct xsk_ctx *ctx)
 	struct xsk_umem *umem = ctx->xsks[0]->umem->umem;
 	unsigned int i;
 
-	dump_stats(ctx);
+	dump_end_stats(ctx);
 	for (i = 0; i < ctx->num_socks; i++)
 		xsk_socket__delete(ctx->xsks[i]->xsk);
 	(void)xsk_umem__delete(umem);
 
-	if (ctx->xdp_prog)
+	if (ctx->xdp_prog) {
 		xdp_program__detach(ctx->xdp_prog, ctx->opt.iface.ifindex,
 				    ctx->opt.attach_mode, 0);
+		xdp_program__close(ctx->xdp_prog);
+	}
 
+	close(ctx->signal_fd);
 	munmap(ctx->bufs, NUM_FRAMES * ctx->opt.frame_size);
 	free(ctx);
 }
@@ -1098,8 +1185,9 @@ static int rx_drop(struct xsk_socket_info *xsk, __u32 batch_size, bool busy_poll
 	return 0;
 }
 
-void xsk_rx_drop_all(struct xsk_ctx *ctx)
+static void *xsk_rx_drop_all(void *arg)
 {
+	struct xsk_ctx *ctx = arg;
 	struct pollfd fds[MAX_SOCKS] = {};
 	unsigned int i;
 	int ret;
@@ -1124,6 +1212,7 @@ void xsk_rx_drop_all(struct xsk_ctx *ctx)
 		if (ctx->benchmark_done)
 			break;
 	}
+	return NULL;
 }
 
 static int tx_only(struct xsk_ctx *ctx, struct xsk_socket_info *xsk, __u32 *frame_nb,
@@ -1217,8 +1306,9 @@ static void complete_tx_only_all(struct xsk_ctx *ctx)
 	} while (pending && ctx->retries-- > 0);
 }
 
-int xsk_tx_only_all(struct xsk_ctx *ctx)
+static void *xsk_tx_only_all(void *arg)
 {
+	struct xsk_ctx *ctx = arg;
 	struct pollfd fds[MAX_SOCKS] = {};
 	__u32 frame_nb[MAX_SOCKS] = {};
 	unsigned long next_tx_ns = 0;
@@ -1268,7 +1358,7 @@ int xsk_tx_only_all(struct xsk_ctx *ctx)
 				if (err != EINTR)
 					pr_warn("clock_nanosleep failed. Err:%d errno:%d\n",
 						err, errno);
-				return err;
+				return ERR_PTR(err);
 			}
 
 			/* Measure periodic Tx scheduling variance */
@@ -1300,7 +1390,8 @@ int xsk_tx_only_all(struct xsk_ctx *ctx)
 
 	if (ctx->opt.pkt_count)
 		complete_tx_only_all(ctx);
-	return 0;
+
+	return NULL;
 }
 
 static int l2fwd(struct xsk_ctx *ctx, struct xsk_socket_info *xsk)
@@ -1375,8 +1466,9 @@ static int l2fwd(struct xsk_ctx *ctx, struct xsk_socket_info *xsk)
 	return 0;
 }
 
-void xsk_l2fwd_all(struct xsk_ctx *ctx)
+void *xsk_l2fwd_all(void *arg)
 {
+	struct xsk_ctx *ctx = arg;
 	struct pollfd fds[MAX_SOCKS] = {};
 	unsigned int i;
 	int ret;
@@ -1399,6 +1491,7 @@ void xsk_l2fwd_all(struct xsk_ctx *ctx)
 		if (ctx->benchmark_done)
 			break;
 	}
+	return NULL;
 }
 
 static struct xdp_program *load_xdp_program(struct xsk_ctx *ctx,
@@ -1516,6 +1609,7 @@ struct xsk_ctx *xsk_ctx__create(const struct xsk_opts *opt, enum xsk_benchmark_t
 	bool rx = false, tx = false;
 	struct xsk_ctx *ctx;
 	int ret = -ENOMEM;
+	sigset_t st;
 	void *bufs;
 
 	switch (bench) {
@@ -1618,6 +1712,22 @@ struct xsk_ctx *xsk_ctx__create(const struct xsk_opts *opt, enum xsk_benchmark_t
 		ctx->xdp_prog = xdp_prog;
 	}
 
+	sigemptyset(&st);
+	sigaddset(&st, SIGQUIT);
+	sigaddset(&st, SIGINT);
+	sigaddset(&st, SIGTERM);
+
+	if (sigprocmask(SIG_BLOCK, &st, NULL) < 0) {
+		ret = -errno;
+		goto err;
+	}
+
+	ctx->signal_fd = signalfd(-1, &st, SFD_CLOEXEC | SFD_NONBLOCK);
+	if (ctx->signal_fd < 0) {
+		ret = -errno;
+		goto err;
+	}
+
 	ctx->bufs = bufs;
 	ctx->umem = umem;
 	ctx->bench = bench;
@@ -1627,9 +1737,15 @@ struct xsk_ctx *xsk_ctx__create(const struct xsk_opts *opt, enum xsk_benchmark_t
 	ctx->poll_timeout = POLL_TIMEOUT;
 	ctx->duration = opt->duration * NSEC_PER_SEC;
 	ctx->retries = opt->retries;
+	ctx->extra_stats = opt->extra_stats;
 	return ctx;
 
 err:
+	if (ctx->xdp_prog) {
+		xdp_program__detach(ctx->xdp_prog, ctx->opt.iface.ifindex,
+				    ctx->opt.attach_mode, 0);
+		xdp_program__close(ctx->xdp_prog);
+	}
 	for (i = 0; i < ctx->num_socks; i++) {
 		xsk_socket__delete(ctx->xsks[i]->xsk);
 		free(ctx->xsks[i]);
@@ -1640,9 +1756,18 @@ err:
 	return ERR_PTR(ret);
 }
 
-int xsk_start_poller_thread(struct xsk_ctx *ctx, pthread_t *pt)
+int xsk_start_bench(struct xsk_ctx *ctx, pthread_t *pt)
 {
-	return pthread_create(pt, NULL, poller, ctx);
+	switch (ctx->bench) {
+	case XSK_BENCH_RXDROP:
+		return pthread_create(pt, NULL, xsk_rx_drop_all, ctx);
+	case XSK_BENCH_L2FWD:
+		return pthread_create(pt, NULL, xsk_l2fwd_all, ctx);
+	case XSK_BENCH_TXONLY:
+		return pthread_create(pt, NULL, xsk_tx_only_all, ctx);
+	default:
+		return -EINVAL;
+	}
 }
 
 int xsk_validate_opts(const struct xsk_opts *opt)

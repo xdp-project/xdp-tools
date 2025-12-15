@@ -796,16 +796,12 @@ static int do_xsk_udp(const void *cfg, __unused const char *pin_root_path)
 	pr_info("Transmitting on %s (ifindex %d)\n",
 	       opt->iface.ifname, opt->iface.ifindex);
 
-	if (!opt->quiet) {
-		ret = xsk_start_poller_thread(ctx, &pt);
-		if (ret)
-			goto out;
-	}
+	ret = xsk_start_bench(ctx, &pt);
+	if (ret)
+		goto out;
 
-	xsk_tx_only_all(ctx);
-
-	if (!opt->quiet)
-		pthread_join(pt, NULL);
+	ret = xsk_stats_poller(ctx);
+	pthread_join(pt, NULL);
 
 out:
 	xsk_ctx__destroy(ctx);
