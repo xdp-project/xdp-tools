@@ -15,7 +15,7 @@
 
 const struct xsk_opts defaults_xsk = {
 	.attach_mode = XDP_MODE_NATIVE,
-	.interval = 1,
+	.interval = 2,
 	.retries = 3,
 	.frame_size = 4096,
 	.batch_size = 64,
@@ -41,19 +41,12 @@ static int do_xsk(const struct xsk_opts *opt,
 	if (ret)
 		return ret;
 
-	if (!opt->quiet) {
-		ret = xsk_start_poller_thread(ctx, &pt);
-		if (ret)
-			goto out;
-	}
+	ret = xsk_start_bench(ctx, &pt);
+	if (ret)
+		goto out;
 
-	if (bench == XSK_BENCH_RXDROP)
-		xsk_rx_drop_all(ctx);
-	else if (bench == XSK_BENCH_L2FWD)
-		xsk_l2fwd_all(ctx);
-
-	if (!opt->quiet)
-		pthread_join(pt, NULL);
+	ret = xsk_stats_poller(ctx);
+	pthread_join(pt, NULL);
 
 out:
 	xsk_ctx__destroy(ctx);
