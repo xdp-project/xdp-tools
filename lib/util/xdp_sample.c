@@ -1559,21 +1559,26 @@ static int sample_timer_cb(int timerfd, struct stats_record **rec,
 	return print_stats(rec, prev);
 }
 
-int sample_run(unsigned int interval, void (*post_cb)(void *), void *ctx)
+bool sample_immediate_exit(void)
 {
-	struct timespec ts = { interval, 0 };
-	struct itimerspec its = { ts, ts };
-	struct stats_record *rec, *prev;
-	struct pollfd pfd[2] = {};
-	bool imm_exit = false;
 	const char *envval;
-	int timerfd, ret;
 
 	envval = secure_getenv("XDP_SAMPLE_IMMEDIATE_EXIT");
 	if (envval && envval[0] == '1' && envval[1] == '\0') {
 		pr_debug("XDP_SAMPLE_IMMEDIATE_EXIT envvar set, exiting immediately after setup\n");
-		imm_exit = true;
+		return true;
 	}
+	return false;
+}
+
+int sample_run(unsigned int interval, void (*post_cb)(void *), void *ctx)
+{
+	bool imm_exit = sample_immediate_exit();
+	struct timespec ts = { interval, 0 };
+	struct itimerspec its = { ts, ts };
+	struct stats_record *rec, *prev;
+	struct pollfd pfd[2] = {};
+	int timerfd, ret;
 
 	if (!interval) {
 		pr_warn("Incorrect interval 0\n");
