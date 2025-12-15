@@ -169,34 +169,6 @@ static unsigned long get_nsecs(clockid_t clock)
 	return ts.tv_sec * 1000000000UL + ts.tv_nsec;
 }
 
-static void print_benchmark(const struct xsk_ctx *ctx, bool running)
-{
-	const char *bench_str = "INVALID";
-
-	if (ctx->bench == XSK_BENCH_RXDROP)
-		bench_str = "rxdrop";
-	else if (ctx->bench == XSK_BENCH_TXONLY)
-		bench_str = "txonly";
-	else if (ctx->bench == XSK_BENCH_L2FWD)
-		bench_str = "l2fwd";
-
-	printf("%s:%d %s ", ctx->opt.iface.ifname, ctx->opt.queue_idx, bench_str);
-	if (ctx->opt.attach_mode == XDP_MODE_SKB)
-		printf("xdp-skb ");
-	else if (ctx->opt.attach_mode == XDP_MODE_NATIVE)
-		printf("xdp-drv ");
-	else
-		printf("	");
-
-	if (ctx->opt.use_poll)
-		printf("poll() ");
-
-	if (running) {
-		printf("running...");
-		fflush(stdout);
-	}
-}
-
 static int xsk_get_xdp_stats(int fd, struct xsk_socket_info *xsk)
 {
 	struct xdp_statistics stats;
@@ -221,52 +193,37 @@ static int xsk_get_xdp_stats(int fd, struct xsk_socket_info *xsk)
 	return -EINVAL;
 }
 
-static void dump_app_stats(const struct xsk_ctx *ctx, long dt)
+static void dump_app_stats(const struct xsk_ctx *ctx, long dt, unsigned int i)
 {
-	unsigned int i;
+#define PPS(_now, _prev) ((_now - _prev) * 1000000000. / dt)
 
-	for (i = 0; i < ctx->num_socks && ctx->xsks[i]; i++) {
-		char *fmt = "%-18s %'-14.0f %'-14lu\n";
-		double rx_empty_polls_ps, fill_fail_polls_ps, copy_tx_sendtos_ps,
-				tx_wakeup_sendtos_ps, opt_polls_ps;
+	char *fmt = "  %-18s %'14.0f calls/s\n";
+	double rx_empty_polls_ps, fill_fail_polls_ps, copy_tx_sendtos_ps,
+		tx_wakeup_sendtos_ps, opt_polls_ps;
 
-		rx_empty_polls_ps = (ctx->xsks[i]->app_stats.rx_empty_polls -
-					ctx->xsks[i]->app_stats.prev_rx_empty_polls) * 1000000000. / dt;
-		fill_fail_polls_ps = (ctx->xsks[i]->app_stats.fill_fail_polls -
-					ctx->xsks[i]->app_stats.prev_fill_fail_polls) * 1000000000. / dt;
-		copy_tx_sendtos_ps = (ctx->xsks[i]->app_stats.copy_tx_sendtos -
-					ctx->xsks[i]->app_stats.prev_copy_tx_sendtos) * 1000000000. / dt;
-		tx_wakeup_sendtos_ps = (ctx->xsks[i]->app_stats.tx_wakeup_sendtos -
-					ctx->xsks[i]->app_stats.prev_tx_wakeup_sendtos)
-										* 1000000000. / dt;
-		opt_polls_ps = (ctx->xsks[i]->app_stats.opt_polls -
-					ctx->xsks[i]->app_stats.prev_opt_polls) * 1000000000. / dt;
+	rx_empty_polls_ps    = PPS(ctx->xsks[i]->app_stats.rx_empty_polls,
+				   ctx->xsks[i]->app_stats.prev_rx_empty_polls);
+	fill_fail_polls_ps   = PPS(ctx->xsks[i]->app_stats.fill_fail_polls,
+				   ctx->xsks[i]->app_stats.prev_fill_fail_polls);
+	copy_tx_sendtos_ps   = PPS(ctx->xsks[i]->app_stats.copy_tx_sendtos,
+				   ctx->xsks[i]->app_stats.prev_copy_tx_sendtos);
+	tx_wakeup_sendtos_ps = PPS(ctx->xsks[i]->app_stats.tx_wakeup_sendtos,
+				   ctx->xsks[i]->app_stats.prev_tx_wakeup_sendtos);
+	opt_polls_ps	     = PPS(ctx->xsks[i]->app_stats.opt_polls,
+				   ctx->xsks[i]->app_stats.prev_opt_polls);
 
-		printf("\n%-18s %-14s %-14s\n", "", "calls/s", "count");
-		printf(fmt, "rx empty polls", rx_empty_polls_ps, ctx->xsks[i]->app_stats.rx_empty_polls);
-		printf(fmt, "fill fail polls", fill_fail_polls_ps,
-							ctx->xsks[i]->app_stats.fill_fail_polls);
-		printf(fmt, "copy tx sendtos", copy_tx_sendtos_ps,
-							ctx->xsks[i]->app_stats.copy_tx_sendtos);
-		printf(fmt, "tx wakeup sendtos", tx_wakeup_sendtos_ps,
-							ctx->xsks[i]->app_stats.tx_wakeup_sendtos);
-		printf(fmt, "opt polls", opt_polls_ps, ctx->xsks[i]->app_stats.opt_polls);
+	printf(fmt, "RX empty polls", rx_empty_polls_ps);
+	printf(fmt, "Till fail polls", fill_fail_polls_ps);
+	printf(fmt, "Copy tx sendtos", copy_tx_sendtos_ps);
+	printf(fmt, "TX wakeup sendtos", tx_wakeup_sendtos_ps);
+	printf(fmt, "Opt polls", opt_polls_ps);
 
-		ctx->xsks[i]->app_stats.prev_rx_empty_polls = ctx->xsks[i]->app_stats.rx_empty_polls;
-		ctx->xsks[i]->app_stats.prev_fill_fail_polls = ctx->xsks[i]->app_stats.fill_fail_polls;
-		ctx->xsks[i]->app_stats.prev_copy_tx_sendtos = ctx->xsks[i]->app_stats.copy_tx_sendtos;
-		ctx->xsks[i]->app_stats.prev_tx_wakeup_sendtos = ctx->xsks[i]->app_stats.tx_wakeup_sendtos;
-		ctx->xsks[i]->app_stats.prev_opt_polls = ctx->xsks[i]->app_stats.opt_polls;
-	}
-
-	if (ctx->tx_cycle_ns) {
-		printf("\n%-18s %-10s %-10s %-10s %-10s %-10s\n",
-		       "", "period", "min", "ave", "max", "cycle");
-		printf("%-18s %-10lu %-10lu %-10lu %-10lu %-10lu\n",
-		       "Cyclic TX", ctx->tx_cycle_ns, ctx->tx_cycle_diff_min,
-		       (long)(ctx->tx_cycle_diff_ave / ctx->tx_cycle_cnt),
-		       ctx->tx_cycle_diff_max, ctx->tx_cycle_cnt);
-	}
+	ctx->xsks[i]->app_stats.prev_rx_empty_polls = ctx->xsks[i]->app_stats.rx_empty_polls;
+	ctx->xsks[i]->app_stats.prev_fill_fail_polls = ctx->xsks[i]->app_stats.fill_fail_polls;
+	ctx->xsks[i]->app_stats.prev_copy_tx_sendtos = ctx->xsks[i]->app_stats.copy_tx_sendtos;
+	ctx->xsks[i]->app_stats.prev_tx_wakeup_sendtos = ctx->xsks[i]->app_stats.tx_wakeup_sendtos;
+	ctx->xsks[i]->app_stats.prev_opt_polls = ctx->xsks[i]->app_stats.opt_polls;
+#undef PPS
 }
 
 static bool get_interrupt_number(struct xsk_ctx *ctx, const char *irq_string)
@@ -343,10 +300,11 @@ static int get_irqs(const struct xsk_ctx *ctx)
 
 static void dump_driver_stats(struct xsk_ctx *ctx, long dt)
 {
+#define PPS(_now, _prev) ((_now - _prev) * 1000000000. / dt)
 	unsigned int i;
 
 	for (i = 0; i < ctx->num_socks && ctx->xsks[i]; i++) {
-		char *fmt = "%-18s %'-14.0f %'-14lu\n";
+		char *fmt = " %-18s %'14.0f intrs/s\n";
 		double intrs_ps;
 		int n_ints = get_irqs(ctx);
 
@@ -356,107 +314,181 @@ static void dump_driver_stats(struct xsk_ctx *ctx, long dt)
 		}
 		ctx->xsks[i]->drv_stats.intrs = n_ints - ctx->irqs_at_init;
 
-		intrs_ps = (ctx->xsks[i]->drv_stats.intrs - ctx->xsks[i]->drv_stats.prev_intrs) *
-			 1000000000. / dt;
+		intrs_ps = PPS(ctx->xsks[i]->drv_stats.intrs, ctx->xsks[i]->drv_stats.prev_intrs);
 
-		printf("\n%-18s %-14s %-14s\n", "", "intrs/s", "count");
-		printf(fmt, "irqs", intrs_ps, ctx->xsks[i]->drv_stats.intrs);
+		printf(fmt, "IRQs", intrs_ps);
 
 		ctx->xsks[i]->drv_stats.prev_intrs = ctx->xsks[i]->drv_stats.intrs;
+		break;
 	}
+#undef PPS
 }
 
 static void dump_end_stats(struct xsk_ctx *ctx)
 {
+	__u64 total_rx_f = 0, total_tx_f = 0, total_rx = 0, total_tx = 0;
 	unsigned int i;
+
 	for (i = 0; i < ctx->num_socks && ctx->xsks[i]; i++) {
-		printf("Total:\nRX: %14lu pkts\nTX: %14lu pkts\n",
-		       ctx->xsks[i]->ring_stats.rx_npkts,
-		       ctx->xsks[i]->ring_stats.tx_npkts);
+		total_rx += ctx->xsks[i]->ring_stats.rx_npkts;
+		total_tx += ctx->xsks[i]->ring_stats.tx_npkts;
+		total_rx_f += ctx->xsks[i]->ring_stats.rx_frags;
+		total_tx_f += ctx->xsks[i]->ring_stats.tx_frags;
+	}
+
+	printf("\nTotals:\n");
+	if (ctx->rx) {
+		printf(" %-18s %'14llu pkts", "RX", total_rx);
+		if (ctx->opt.frags)
+			printf(" %'14llu frags", total_rx_f);
+		printf("\n");
+	}
+	if (ctx->tx) {
+		printf(" %-18s %'14llu pkts", "TX", total_tx);
+		if (ctx->opt.frags)
+			printf(" %'14llu frags", total_tx_f);
+		printf("\n");
+	}
+
+	if (ctx->irq_no)
+		printf(" %-18s %'14lu intrs", "IRQs", ctx->xsks[0]->drv_stats.intrs);
+
+	for (i = 0; i < ctx->num_socks && ctx->xsks[i]; i++) {
+		char *fmt = "  %-18s %'14lu pkts\n";
+		printf("\n sock%d:\n", i);
+		if (ctx->rx) {
+			printf("  %-18s %'14lu pkts", "RX", ctx->xsks[i]->ring_stats.rx_npkts);
+			if (ctx->opt.frags)
+				printf(" %'14lu frags", ctx->xsks[i]->ring_stats.rx_frags);
+			printf("\n");
+		}
+		if (ctx->tx) {
+			printf("  %-18s %'14lu pkts", "TX", ctx->xsks[i]->ring_stats.tx_npkts);
+			if (ctx->opt.frags)
+				printf(" %'14lu frags", ctx->xsks[i]->ring_stats.tx_frags);
+			printf("\n");
+		}
+
+		if (ctx->extra_stats) {
+			printf("\n");
+			printf(fmt, "RX dropped", ctx->xsks[i]->ring_stats.rx_dropped_npkts);
+			printf(fmt, "RX invalid", ctx->xsks[i]->ring_stats.rx_invalid_npkts);
+			printf(fmt, "TX invalid", ctx->xsks[i]->ring_stats.tx_invalid_npkts);
+			printf(fmt, "RX queue full", ctx->xsks[i]->ring_stats.rx_full_npkts);
+			printf(fmt, "Fill ring empty", ctx->xsks[i]->ring_stats.rx_fill_empty_npkts);
+			printf(fmt, "TX ring empty", ctx->xsks[i]->ring_stats.tx_empty_npkts);
+		}
+
+
+		if (ctx->opt.app_stats) {
+			printf("\n");
+			char *fmt = "  %-18s %'14lu calls\n";
+			printf(fmt, "RX empty polls", ctx->xsks[i]->app_stats.rx_empty_polls);
+			printf(fmt, "Till fail polls", ctx->xsks[i]->app_stats.fill_fail_polls);
+			printf(fmt, "Copy tx sendtos", ctx->xsks[i]->app_stats.copy_tx_sendtos);
+			printf(fmt, "TX wakeup sendtos", ctx->xsks[i]->app_stats.tx_wakeup_sendtos);
+			printf(fmt, "Opt polls", ctx->xsks[i]->app_stats.opt_polls);
+		}
 	}
 }
 
 static void dump_stats(struct xsk_ctx *ctx)
 {
+	__u64 total_rx_f = 0, prev_total_rx_f = 0, total_tx_f = 0, prev_total_tx_f = 0;
+	__u64 total_rx = 0, prev_total_rx = 0, total_tx = 0, prev_total_tx = 0;
 	unsigned long now = get_nsecs(ctx->opt.clock);
 	long dt = now - ctx->prev_time;
 	unsigned int i;
+#define PPS(_now, _prev) ((_now - _prev) * 1000000000. / dt)
 
 	ctx->prev_time = now;
 
 	for (i = 0; i < ctx->num_socks && ctx->xsks[i]; i++) {
-		char *fmt = "%-18s %'-14.0f %'-14lu\n";
-		double rx_pps, tx_pps, dropped_pps, rx_invalid_pps, full_pps, fill_empty_pps,
+		total_rx += ctx->xsks[i]->ring_stats.rx_npkts;
+		total_tx += ctx->xsks[i]->ring_stats.tx_npkts;
+		total_rx_f += ctx->xsks[i]->ring_stats.rx_frags;
+		total_tx_f += ctx->xsks[i]->ring_stats.tx_frags;
+		prev_total_rx += ctx->xsks[i]->ring_stats.prev_rx_npkts;
+		prev_total_tx += ctx->xsks[i]->ring_stats.prev_tx_npkts;
+		prev_total_rx_f += ctx->xsks[i]->ring_stats.prev_rx_frags;
+		prev_total_tx_f += ctx->xsks[i]->ring_stats.prev_tx_frags;
+	}
+	printf("%s:%d", ctx->opt.iface.ifname, ctx->opt.queue_idx);
+	if (ctx->rx) {
+		printf(" %'14.0f rx/s", PPS(total_rx, prev_total_rx));
+		if (ctx->opt.frags)
+			printf(" %'14.0f rx frag/s", PPS(total_rx_f, prev_total_rx_f));
+	}
+	if (ctx->tx) {
+		printf(" %'14.0f xmit/s", PPS(total_tx, prev_total_tx));
+		if (ctx->opt.frags)
+			printf(" %'14.0f xmit frag/s", PPS(total_tx_f, prev_total_tx_f));
+	}
+	printf("\n");
+
+	if (ctx->irq_no)
+		dump_driver_stats(ctx, dt);
+
+	for (i = 0; i < ctx->num_socks && ctx->xsks[i]; i++) {
+		char *fmt =   "  %-18s %'14.0f %-6s\n";
+		char *fmt_2 = "  %-18s %'14.0f %-6s %'14.0f %-6s\n";
+		double rx_pps, rx_fps, tx_pps, tx_fps, dropped_pps,
+			rx_invalid_pps, full_pps, fill_empty_pps,
 			tx_invalid_pps, tx_empty_pps;
+		__u64 rx_npkts = ctx->xsks[i]->ring_stats.rx_npkts;
+		__u64 rx_frags = ctx->xsks[i]->ring_stats.rx_frags;
+		__u64 tx_npkts = ctx->xsks[i]->ring_stats.tx_npkts;
+		__u64 tx_frags = ctx->xsks[i]->ring_stats.tx_frags;
 
-		rx_pps = (ctx->xsks[i]->ring_stats.rx_npkts - ctx->xsks[i]->ring_stats.prev_rx_npkts) *
-			 1000000000. / dt;
-		tx_pps = (ctx->xsks[i]->ring_stats.tx_npkts - ctx->xsks[i]->ring_stats.prev_tx_npkts) *
-			 1000000000. / dt;
+		rx_fps = PPS(rx_frags, ctx->xsks[i]->ring_stats.prev_rx_frags);
+		tx_fps = PPS(tx_frags, ctx->xsks[i]->ring_stats.prev_tx_frags);
 
-		printf("\n sock%d@", i);
-		print_benchmark(ctx, false);
-		printf("\n");
+		rx_pps = PPS(rx_npkts, ctx->xsks[i]->ring_stats.prev_rx_npkts);
+		tx_pps = PPS(tx_npkts, ctx->xsks[i]->ring_stats.prev_tx_npkts);
 
-		if (ctx->opt.frags) {
-			__u64 rx_frags = ctx->xsks[i]->ring_stats.rx_frags;
-			__u64 tx_frags = ctx->xsks[i]->ring_stats.tx_frags;
-			double rx_fps = (rx_frags - ctx->xsks[i]->ring_stats.prev_rx_frags) *
-				1000000000. / dt;
-			double tx_fps = (tx_frags - ctx->xsks[i]->ring_stats.prev_tx_frags) *
-				1000000000. / dt;
-			char *ffmt = "%-18s %'-14.0f %'-14lu %'-14.0f %'-14lu\n";
+		ctx->xsks[i]->ring_stats.prev_rx_frags = rx_frags;
+		ctx->xsks[i]->ring_stats.prev_tx_frags = tx_frags;
+		ctx->xsks[i]->ring_stats.prev_rx_npkts = rx_npkts;
+		ctx->xsks[i]->ring_stats.prev_tx_npkts = tx_npkts;
 
-			printf("%-18s %-14s %-14s %-14s %-14s %-14.2f\n", "", "pps", "pkts",
-					"fps", "frags", dt / 1000000000.);
-			printf(ffmt, "rx", rx_pps, ctx->xsks[i]->ring_stats.rx_npkts, rx_fps, rx_frags);
-			printf(ffmt, "tx", tx_pps, ctx->xsks[i]->ring_stats.tx_npkts, tx_fps, tx_frags);
-			ctx->xsks[i]->ring_stats.prev_rx_frags = rx_frags;
-			ctx->xsks[i]->ring_stats.prev_tx_frags = tx_frags;
-		} else {
+		if (ctx->num_socks > 1 || ctx->extra_stats || ctx->opt.app_stats) {
+			printf(" sock%-14d", i);
 
-			printf("%-18s %-14s %-14s %-14.2f\n", "", "pps", "pkts",
-					dt / 1000000000.);
-			printf(fmt, "rx", rx_pps, ctx->xsks[i]->ring_stats.rx_npkts);
-			printf(fmt, "tx", tx_pps, ctx->xsks[i]->ring_stats.tx_npkts);
+			if (ctx->rx) {
+				printf(" %'14.0f rx/s  ", rx_pps);
+				if (ctx->opt.frags)
+					printf(" %'14.0f rx frag/s", rx_fps);
+			}
+			if (ctx->tx) {
+				printf(" %'14.0f xmit/s", tx_pps);
+				if (ctx->opt.frags)
+					printf(" %'14.0f xmit frag/s", tx_fps);
+			}
+
+			printf("\n");
 		}
-
-		ctx->xsks[i]->ring_stats.prev_rx_npkts = ctx->xsks[i]->ring_stats.rx_npkts;
-		ctx->xsks[i]->ring_stats.prev_tx_npkts = ctx->xsks[i]->ring_stats.tx_npkts;
 
 		if (ctx->extra_stats) {
 			if (!xsk_get_xdp_stats(xsk_socket__fd(ctx->xsks[i]->xsk), ctx->xsks[i])) {
-				dropped_pps = (ctx->xsks[i]->ring_stats.rx_dropped_npkts -
-						ctx->xsks[i]->ring_stats.prev_rx_dropped_npkts) *
-							1000000000. / dt;
-				rx_invalid_pps = (ctx->xsks[i]->ring_stats.rx_invalid_npkts -
-						ctx->xsks[i]->ring_stats.prev_rx_invalid_npkts) *
-							1000000000. / dt;
-				tx_invalid_pps = (ctx->xsks[i]->ring_stats.tx_invalid_npkts -
-						ctx->xsks[i]->ring_stats.prev_tx_invalid_npkts) *
-							1000000000. / dt;
-				full_pps = (ctx->xsks[i]->ring_stats.rx_full_npkts -
-						ctx->xsks[i]->ring_stats.prev_rx_full_npkts) *
-							1000000000. / dt;
-				fill_empty_pps = (ctx->xsks[i]->ring_stats.rx_fill_empty_npkts -
-						ctx->xsks[i]->ring_stats.prev_rx_fill_empty_npkts) *
-							1000000000. / dt;
-				tx_empty_pps = (ctx->xsks[i]->ring_stats.tx_empty_npkts -
-						ctx->xsks[i]->ring_stats.prev_tx_empty_npkts) *
-							1000000000. / dt;
+				dropped_pps    = PPS(ctx->xsks[i]->ring_stats.rx_dropped_npkts,
+						     ctx->xsks[i]->ring_stats.prev_rx_dropped_npkts);
+				rx_invalid_pps = PPS(ctx->xsks[i]->ring_stats.rx_invalid_npkts,
+						     ctx->xsks[i]->ring_stats.prev_rx_invalid_npkts);
+				tx_invalid_pps = PPS(ctx->xsks[i]->ring_stats.tx_invalid_npkts,
+						     ctx->xsks[i]->ring_stats.prev_tx_invalid_npkts);
+				full_pps       = PPS(ctx->xsks[i]->ring_stats.rx_full_npkts,
+						     ctx->xsks[i]->ring_stats.prev_rx_full_npkts);
+				fill_empty_pps = PPS(ctx->xsks[i]->ring_stats.rx_fill_empty_npkts,
+						     ctx->xsks[i]->ring_stats.prev_rx_fill_empty_npkts);
+				tx_empty_pps   = PPS(ctx->xsks[i]->ring_stats.tx_empty_npkts,
+						     ctx->xsks[i]->ring_stats.prev_tx_empty_npkts);
 
-				printf(fmt, "rx dropped", dropped_pps,
-				       ctx->xsks[i]->ring_stats.rx_dropped_npkts);
-				printf(fmt, "rx invalid", rx_invalid_pps,
-				       ctx->xsks[i]->ring_stats.rx_invalid_npkts);
-				printf(fmt, "tx invalid", tx_invalid_pps,
-				       ctx->xsks[i]->ring_stats.tx_invalid_npkts);
-				printf(fmt, "rx queue full", full_pps,
-				       ctx->xsks[i]->ring_stats.rx_full_npkts);
-				printf(fmt, "fill ring empty", fill_empty_pps,
-				       ctx->xsks[i]->ring_stats.rx_fill_empty_npkts);
-				printf(fmt, "tx ring empty", tx_empty_pps,
-				       ctx->xsks[i]->ring_stats.tx_empty_npkts);
+				printf(fmt,   "Dropped",         dropped_pps,    "pkt/s");
+				printf(fmt_2, "Invalid",         rx_invalid_pps, "rx/s",
+				                                 tx_invalid_pps, "tx/s");
+				printf(fmt,   "Queue full",      full_pps,       "rx/s");
+				printf(fmt,   "Fill ring empty", fill_empty_pps, "pkt/s");
+				printf(fmt,   "TX ring empty",   tx_empty_pps,   "pkt/s");
 
 				ctx->xsks[i]->ring_stats.prev_rx_dropped_npkts =
 					ctx->xsks[i]->ring_stats.rx_dropped_npkts;
@@ -471,15 +503,22 @@ static void dump_stats(struct xsk_ctx *ctx)
 				ctx->xsks[i]->ring_stats.prev_tx_empty_npkts =
 					ctx->xsks[i]->ring_stats.tx_empty_npkts;
 			} else {
-				printf("%-15s\n", "Error retrieving extra stats");
+				printf("%-18s\n", "Error retrieving extra stats");
 			}
 		}
-	}
+		if (ctx->opt.app_stats) {
+			printf("\n");
+			dump_app_stats(ctx, dt, i);
+		}
 
-	if (ctx->opt.app_stats)
-		dump_app_stats(ctx, dt);
-	if (ctx->irq_no)
-		dump_driver_stats(ctx, dt);
+	}
+#undef PPS
+	if (ctx->opt.app_stats &&ctx->tx_cycle_ns) {
+		printf(" %-18s period:%-10lu min:%-10lu ave:%-10lu max:%-10lu cycle:%-10lu\n",
+		       "Cyclic TX", ctx->tx_cycle_ns, ctx->tx_cycle_diff_min,
+		       (long)(ctx->tx_cycle_diff_ave / ctx->tx_cycle_cnt),
+		       ctx->tx_cycle_diff_max, ctx->tx_cycle_cnt);
+	}
 }
 
 static bool is_benchmark_done(struct xsk_ctx *ctx)
@@ -1738,6 +1777,8 @@ struct xsk_ctx *xsk_ctx__create(const struct xsk_opts *opt, enum xsk_benchmark_t
 	ctx->duration = opt->duration * NSEC_PER_SEC;
 	ctx->retries = opt->retries;
 	ctx->extra_stats = opt->extra_stats;
+	ctx->rx = rx;
+	ctx->tx = tx;
 	return ctx;
 
 err:

@@ -116,6 +116,8 @@ struct xsk_ctx {
 	struct xsk_socket_info *xsks[MAX_SOCKS];
 	__u8 pkt_data[MAX_PKT_SIZE];
 	enum xsk_benchmark_type bench;
+	bool rx;
+	bool tx;
 };
 
 int xsk_validate_opts(const struct xsk_opts *opt);

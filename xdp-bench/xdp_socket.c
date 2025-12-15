@@ -12,6 +12,7 @@
 
 #include "logging.h"
 #include "xdp-bench.h"
+#include "xdp_sample.h"
 
 const struct xsk_opts defaults_xsk = {
 	.attach_mode = XDP_MODE_NATIVE,
@@ -40,6 +41,10 @@ static int do_xsk(const struct xsk_opts *opt,
 	ret = libxdp_get_error(ctx);
 	if (ret)
 		return ret;
+
+	pr_info("%s packets on %s (ifindex %d; queue %d; driver %s) using AF_XDP sockets\n",
+		bench == XSK_BENCH_RXDROP ? "Dropping" : "Hairpinning",
+		opt->iface.ifname, opt->iface.ifindex, opt->queue_idx, get_driver_name(opt->iface.ifindex));
 
 	ret = xsk_start_bench(ctx, &pt);
 	if (ret)
