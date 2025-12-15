@@ -41,6 +41,7 @@
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 #include "xdpsock.h"
+#include "xdp_sample.h"
 #include "logging.h"
 #include "util.h"
 
@@ -529,6 +530,10 @@ static bool is_benchmark_done(struct xsk_ctx *ctx)
 		if (dt >= ctx->duration)
 			ctx->benchmark_done = true;
 	}
+
+	if (sample_immediate_exit())
+		ctx->benchmark_done = true;
+
 	return ctx->benchmark_done;
 }
 
