@@ -1241,7 +1241,7 @@ static void *xsk_rx_drop_all(void *arg)
 		fds[i].events = POLLIN;
 	}
 
-	for (;;) {
+	while (!ctx->benchmark_done) {
 		if (ctx->opt.use_poll) {
 			for (i = 0; i < ctx->num_socks; i++)
 				ctx->xsks[i]->app_stats.opt_polls++;
@@ -1252,9 +1252,6 @@ static void *xsk_rx_drop_all(void *arg)
 
 		for (i = 0; i < ctx->num_socks; i++)
 			rx_drop(ctx->xsks[i], ctx->opt.batch_size, ctx->opt.busy_poll);
-
-		if (ctx->benchmark_done)
-			break;
 	}
 	return NULL;
 }
@@ -1375,7 +1372,8 @@ static void *xsk_tx_only_all(void *arg)
 		ctx->tx_cycle_diff_ave = 0.0;
 	}
 
-	while ((ctx->opt.pkt_count && pkt_cnt < ctx->opt.pkt_count) || !ctx->opt.pkt_count) {
+	while (!ctx->benchmark_done &&
+	       ((ctx->opt.pkt_count && pkt_cnt < ctx->opt.pkt_count) || !ctx->opt.pkt_count)) {
 		int batch_size = get_batch_size(ctx, pkt_cnt);
 		unsigned long tx_ns = 0;
 		struct timespec next;
@@ -1424,9 +1422,6 @@ static void *xsk_tx_only_all(void *arg)
 			tx_cnt += tx_only(ctx, ctx->xsks[i], &frame_nb[i], batch_size, tx_ns);
 
 		pkt_cnt += tx_cnt;
-
-		if (ctx->benchmark_done)
-			break;
 
 		if (ctx->tx_cycle_ns)
 			next_tx_ns += ctx->tx_cycle_ns;
@@ -1517,7 +1512,7 @@ void *xsk_l2fwd_all(void *arg)
 	unsigned int i;
 	int ret;
 
-	for (;;) {
+	while (!ctx->benchmark_done) {
 		if (ctx->opt.use_poll) {
 			for (i = 0; i < ctx->num_socks; i++) {
 				fds[i].fd = xsk_socket__fd(ctx->xsks[i]->xsk);
@@ -1531,9 +1526,6 @@ void *xsk_l2fwd_all(void *arg)
 
 		for (i = 0; i < ctx->num_socks; i++)
 			l2fwd(ctx, ctx->xsks[i]);
-
-		if (ctx->benchmark_done)
-			break;
 	}
 	return NULL;
 }
