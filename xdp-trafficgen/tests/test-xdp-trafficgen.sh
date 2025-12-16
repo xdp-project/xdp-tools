@@ -1,6 +1,6 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 XDP_TRAFFICGEN=${XDP_TRAFFICGEN:-./xdp-trafficgen}
-ALL_TESTS="test_udp test_tcp test_no_support"
+ALL_TESTS="test_udp test_tcp test_no_support test_xsk_udp"
 
 PIDS=""
 
@@ -27,6 +27,61 @@ test_udp()
 
     check_run $XDP_TRAFFICGEN udp $NS -n 1
 }
+
+test_xsk_one()
+{
+    action=$1
+    shift
+
+    export XDP_SAMPLE_IMMEDIATE_EXIT=1
+    check_run ip link add dev btest0 type veth peer name btest1
+    check_run $XDP_TRAFFICGEN $action btest0 "$@" -vv
+    ip link del dev btest0
+}
+
+test_xsk_udp()
+{
+    local action
+    local res
+    local hugepg
+
+    action=xsk-udp
+
+    test_xsk_one $action
+    test_xsk_one $action --no-need-wakeup
+    test_xsk_one $action --shared-umem
+    test_xsk_one $action -M aa:bb:cc:dd:ee:ff
+    test_xsk_one $action -P 0x12345678
+    test_xsk_one $action -Q
+    test_xsk_one $action -T 1000
+    test_xsk_one $action -V
+    test_xsk_one $action -W SCHED_FIFO -U 50
+    test_xsk_one $action -b 32
+    test_xsk_one $action -c 1
+    test_xsk_one $action -c copy
+    test_xsk_one $action -d 1
+    test_xsk_one $action -f 2048
+    test_xsk_one $action -m aa:bb:cc:dd:ee:ff
+    test_xsk_one $action -p
+    test_xsk_one $action -q 0
+    test_xsk_one $action -s 1024
+    hugepg=$(cat /proc/sys/vm/nr_hugepages)
+    if [ "$hugepg" -lt "8" ]; then
+        echo 8 > /proc/sys/vm/nr_hugepages
+        res=$?
+    else
+        res=0
+    fi
+    if [ "$res" = "0" ]; then
+        test_xsk_one $action -u
+        echo $hugepg > /proc/sys/vm/nr_hugepages
+    fi
+    test_xsk_one $action -w BOOTTIME
+    test_xsk_one $action -w MONOTONIC
+    test_xsk_one $action -x -a
+    test_xsk_one $action -y
+}
+
 
 test_tcp()
 {
