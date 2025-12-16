@@ -1,6 +1,6 @@
 XDP_LOADER=${XDP_LOADER:-./xdp-loader}
 XDP_BENCH=${XDP_BENCH:-./xdp-bench}
-ALL_TESTS="test_drop test_pass test_tx test_xdp_load_bytes test_rxq_stats test_redirect test_redirect_cpu test_redirect_map test_redirect_map_egress test_redirect_multi test_redirect_multi_egress"
+ALL_TESTS="test_drop test_pass test_tx test_xdp_load_bytes test_rxq_stats test_redirect test_redirect_cpu test_redirect_map test_redirect_map_egress test_redirect_multi test_redirect_multi_egress test_xsk_drop test_xsk_tx"
 
 test_basic()
 {
@@ -145,6 +145,64 @@ test_redirect_multi_egress()
 
     ip link del dev btest0
     ip link del dev btest2
+}
+
+test_xsk_one()
+{
+    action=$1
+    shift
+
+    export XDP_SAMPLE_IMMEDIATE_EXIT=1
+    check_run ip link add dev btest0 type veth peer name btest1
+    check_run $XDP_BENCH $action btest0 "$@"
+    ip link del dev btest0
+}
+
+test_xsk()
+{
+    local action
+    local res
+    local hugepg
+
+    action=$1
+
+    test_xsk_one $action
+    is_xsk_busy_poll_supported && test_xsk_one $action -B
+    test_xsk_one $action -C copy
+    test_xsk_one $action -F
+    test_xsk_one $action -M
+    test_xsk_one $action -Q
+    test_xsk_one $action -W SCHED_FIFO -U 50
+    test_xsk_one $action -b 32
+    test_xsk_one $action -d 1
+    test_xsk_one $action -f 2048
+    test_xsk_one $action -m
+    test_xsk_one $action -p
+    test_xsk_one $action -q 0
+    hugepg=$(cat /proc/sys/vm/nr_hugepages)
+    if [ "$hugepg" -lt "8" ]; then
+        echo 8 > /proc/sys/vm/nr_hugepages
+        res=$?
+    else
+        res=0
+    fi
+    if [ "$res" = "0" ]; then
+        test_xsk_one $action -u
+        echo $hugepg > /proc/sys/vm/nr_hugepages
+    fi
+    test_xsk_one $action -w BOOTTIME
+    test_xsk_one $action -w MONOTONIC
+    test_xsk_one $action -x -a
+}
+
+test_xsk_drop()
+{
+    test_xsk xsk-drop
+}
+
+test_xsk_tx()
+{
+    test_xsk xsk-tx
 }
 
 cleanup_tests()
