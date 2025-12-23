@@ -68,13 +68,39 @@ static int handle_multistring(char *optarg, void *tgt, __unused struct prog_opti
 	return 0;
 }
 
+static int handle_u8(char *optarg, void *tgt, __unused struct prog_option *opt)
+{
+	__u8 *opt_set = tgt;
+	unsigned long val;
+
+	errno = 0;
+	val = strtoul(optarg, NULL, opt->hex ? 16 : 10);
+	if (errno || val > 0xff)
+		return -EINVAL;
+	*opt_set = val;
+	return 0;
+}
+
+static int handle_u16(char *optarg, void *tgt, __unused struct prog_option *opt)
+{
+	__u16 *opt_set = tgt;
+	unsigned long val;
+
+	errno = 0;
+	val = strtoul(optarg, NULL, opt->hex ? 16 : 10);
+	if (errno || val > 0xffff)
+		return -EINVAL;
+	*opt_set = val;
+	return 0;
+}
+
 static int handle_u32(char *optarg, void *tgt, __unused struct prog_option *opt)
 {
 	__u32 *opt_set = tgt;
 	unsigned long val;
 
 	errno = 0;
-	val = strtoul(optarg, NULL, 10);
+	val = strtoul(optarg, NULL, opt->hex ? 16 : 10);
 	if (errno || val > 0xffffffff)
 		return -EINVAL;
 
@@ -105,28 +131,16 @@ static int handle_u32_multi(char *optarg, void *tgt, struct prog_option *opt)
 	return 0;
 }
 
-static int handle_u8(char *optarg, void *tgt, __unused struct prog_option *opt)
+static int handle_u64(char *optarg, void *tgt, __unused struct prog_option *opt)
 {
-	__u8 *opt_set = tgt;
-	unsigned long val;
+	__u64 *opt_set = tgt;
+	unsigned long long val;
 
 	errno = 0;
-	val = strtoul(optarg, NULL, 10);
-	if (errno || val > 0xff)
+	val = strtoull(optarg, NULL, opt->hex ? 16 : 10);
+	if (errno)
 		return -EINVAL;
-	*opt_set = val;
-	return 0;
-}
 
-static int handle_u16(char *optarg, void *tgt, __unused struct prog_option *opt)
-{
-	__u16 *opt_set = tgt;
-	unsigned long val;
-
-	errno = 0;
-	val = strtoul(optarg, NULL, 10);
-	if (errno || val > 0xffff)
-		return -EINVAL;
 	*opt_set = val;
 	return 0;
 }
@@ -376,6 +390,7 @@ static const struct opthandler {
 			 {handle_u16},
 			 {handle_u32},
 			 {handle_u32_multi},
+			 {handle_u64},
 			 {handle_macaddr},
 			 {handle_ifname},
 			 {handle_ifname_multi},
@@ -440,6 +455,7 @@ static const struct helprinter {
 	{NULL},
 	{NULL},
 	{print_help_flags},
+	{NULL},
 	{NULL},
 	{NULL},
 	{NULL},
@@ -552,7 +568,7 @@ static int prog_options_to_options(struct prog_option *poptions,
 	int num = 0, num_cmn = 0, n_sopt = VERSION_SHORT_OPT + 1;
 	struct option *new_options, *nopt;
 	struct prog_option *opt;
-	char buf[100], *c = buf;
+	char buf[100], *c = buf, *i;
 
 	struct option common_opts[] = {
 	       {"help", no_argument, NULL, 'h'},
@@ -583,6 +599,13 @@ static int prog_options_to_options(struct prog_option *poptions,
 		if (opt->positional)
 			continue;
 		if (opt->short_opt) {
+			for (i = buf; i < c; i++) {
+				if (*i == opt->short_opt) {
+					pr_warn("Duplicate option char: %c\n",
+						opt->short_opt);
+					goto err;
+				}
+			}
 			*(c++) = opt->short_opt;
 			if (opt_needs_arg(opt))
 				*(c++) = ':';
@@ -693,7 +716,7 @@ int parse_cmdline_args(int argc, char **argv, struct prog_option *poptions,
 	char *optstring;
 
 	if (prog_options_to_options(poptions, &long_options, &optstring)) {
-		pr_warn("Unable to malloc()\n");
+		pr_warn("Error preparing options\n");
 		return -ENOMEM;
 	}
 
@@ -720,7 +743,7 @@ int parse_cmdline_args(int argc, char **argv, struct prog_option *poptions,
 			goto out;
 		default:
 			if (set_opt(cfg, poptions, opt, optarg)) {
-				usage(prog, doc, poptions, full_help);
+				usage(usage_cmd, doc, poptions, full_help);
 				err = EXIT_FAILURE;
 				goto out;
 			}
@@ -748,7 +771,7 @@ int parse_cmdline_args(int argc, char **argv, struct prog_option *poptions,
 			else
 				pr_warn("Missing required option '--%s'\n",
 					opt_iter->name);
-			usage(prog, doc, poptions, full_help);
+			usage(usage_cmd, doc, poptions, full_help);
 			err = EXIT_FAILURE;
 			goto out;
 		}
@@ -768,18 +791,22 @@ int dispatch_commands(const char *argv0, int argc, char **argv,
 	int ret = EXIT_FAILURE, err, len;
 	char pin_root_path[PATH_MAX];
 	char usagebuf[100];
+	int candidates = 0;
 	void *cfg;
 
 	for (c = cmds; c->name; c++) {
 		if (is_prefix(argv0, c->name)) {
 			cmd = c;
-			break;
+			candidates++;
+			if (!strcmp(argv0, c->name))
+				break;
 		}
 	}
 
-	if (!cmd) {
-		pr_warn("Command '%s' is unknown, try '%s help'.\n",
-			argv0, prog_name);
+	if (!cmd || (candidates > 1 && strcmp(argv0, cmd->name))) {
+		pr_warn("Command '%s' is %s, try '%s help'.\n", argv0,
+			cmd ? "ambiguous" : "unknown",
+			prog_name);
 		return EXIT_FAILURE;
 	}
 

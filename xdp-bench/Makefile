@@ -12,7 +12,7 @@ MAN_PAGE := xdp-bench.8
 TEST_FILE := tests/test-xdp-bench.sh
 USER_TARGETS := xdp-bench
 USER_EXTRA_C := xdp_redirect_basic.c xdp_redirect_cpumap.c xdp_redirect_devmap.c \
-		xdp_redirect_devmap_multi.c xdp_basic.c
+		xdp_redirect_devmap_multi.c xdp_basic.c xdp_socket.c
 EXTRA_USER_DEPS := xdp-bench.h
 
 LIB_DIR       = ../lib
