@@ -30,8 +30,8 @@ static int mask = SAMPLE_RX_CNT | SAMPLE_REDIRECT_ERR_CNT |
 
 DEFINE_SAMPLE_INIT(xdp_redirect_basic);
 
-const struct redirect_opts defaults_redirect_basic = { .mode = XDP_MODE_NATIVE,
-						    .interval = 2 };
+// const struct redirect_opts defaults_redirect_basic = { .mode = XDP_MODE_NATIVE,
+// 						    .interval = 2 };
 
 int do_redirect_basic(const void *cfg, __unused const char *pin_root_path)
 {
