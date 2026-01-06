@@ -3,6 +3,7 @@
 
 #include <errno.h>
 #include <getopt.h>
+#include <inttypes.h>
 #include <libgen.h>
 #include <linux/bpf.h>
 #include <linux/err.h>
@@ -339,15 +340,15 @@ static void dump_end_stats(struct xsk_ctx *ctx)
 
 	printf("\nTotals:\n");
 	if (ctx->rx) {
-		printf(" %-18s %'14llu pkts", "RX", total_rx);
+		printf(" %-18s %'14" PRIu64 " pkts", "RX", (uint64_t)total_rx);
 		if (ctx->opt.frags)
-			printf(" %'14llu frags", total_rx_f);
+			printf(" %'14" PRIu64 " frags", (uint64_t)total_rx_f);
 		printf("\n");
 	}
 	if (ctx->tx) {
-		printf(" %-18s %'14llu pkts", "TX", total_tx);
+		printf(" %-18s %'14" PRIu64 " pkts", "TX", (uint64_t)total_tx);
 		if (ctx->opt.frags)
-			printf(" %'14llu frags", total_tx_f);
+			printf(" %'14" PRIu64 " frags", (uint64_t)total_tx_f);
 		printf("\n");
 	}
 
@@ -663,7 +664,7 @@ static void hex_dump(void *pkt, size_t length, __u64 addr)
 	if (!DEBUG_HEXDUMP)
 		return;
 
-	sprintf(buf, "addr=%llu", addr);
+	sprintf(buf, "addr=%" PRIu64, (uint64_t)addr);
 	printf("length = %zu\n", length);
 	printf("%s | ", buf);
 	while (length-- > 0) {
