@@ -236,7 +236,7 @@ static int xsk_create_umem_rings(struct xsk_umem *umem, int fd,
 				 struct xsk_ring_cons *comp)
 {
 	struct xdp_mmap_offsets off;
-	void *map;
+	void *map_f, *map_c;
 	int err;
 
 	err = setsockopt(fd, SOL_XDP, XDP_UMEM_FILL_RING,
@@ -255,39 +255,39 @@ static int xsk_create_umem_rings(struct xsk_umem *umem, int fd,
 	if (err)
 		return -errno;
 
-	map = mmap(NULL, off.fr.desc + umem->config.fill_size * sizeof(__u64),
-		   PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, fd,
-		   XDP_UMEM_PGOFF_FILL_RING);
-	if (map == MAP_FAILED)
+	map_f = mmap(NULL, off.fr.desc + umem->config.fill_size * sizeof(__u64),
+                     PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, fd,
+                     XDP_UMEM_PGOFF_FILL_RING);
+	if (map_f == MAP_FAILED)
 		return -errno;
 
 	fill->mask = umem->config.fill_size - 1;
 	fill->size = umem->config.fill_size;
-	fill->producer = map + off.fr.producer;
-	fill->consumer = map + off.fr.consumer;
-	fill->flags = map + off.fr.flags;
-	fill->ring = map + off.fr.desc;
+	fill->producer = map_f + off.fr.producer;
+	fill->consumer = map_f + off.fr.consumer;
+	fill->flags = map_f + off.fr.flags;
+	fill->ring = map_f + off.fr.desc;
 	fill->cached_cons = umem->config.fill_size;
 
-	map = mmap(NULL, off.cr.desc + umem->config.comp_size * sizeof(__u64),
-		   PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, fd,
-		   XDP_UMEM_PGOFF_COMPLETION_RING);
-	if (map == MAP_FAILED) {
+	map_c = mmap(NULL, off.cr.desc + umem->config.comp_size * sizeof(__u64),
+                     PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, fd,
+                     XDP_UMEM_PGOFF_COMPLETION_RING);
+	if (map_c == MAP_FAILED) {
 		err = -errno;
 		goto out_mmap;
 	}
 
 	comp->mask = umem->config.comp_size - 1;
 	comp->size = umem->config.comp_size;
-	comp->producer = map + off.cr.producer;
-	comp->consumer = map + off.cr.consumer;
-	comp->flags = map + off.cr.flags;
-	comp->ring = map + off.cr.desc;
+	comp->producer = map_c + off.cr.producer;
+	comp->consumer = map_c + off.cr.consumer;
+	comp->flags = map_c + off.cr.flags;
+	comp->ring = map_c + off.cr.desc;
 
 	return 0;
 
 out_mmap:
-	munmap(map, off.fr.desc + umem->config.fill_size * sizeof(__u64));
+	munmap(map_f, off.fr.desc + umem->config.fill_size * sizeof(__u64));
 	return err;
 }
 
