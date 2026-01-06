@@ -15,17 +15,18 @@
 #include "logging.h"
 #include "util.h"
 #include "xdp_sample.h"
+#include "xdpsock.h"
 #include "compat.h"
 
 
 #define PROG_NAME "test-tool"
 
 struct enum_val xdp_modes[] = {
-       {"native", XDP_MODE_NATIVE},
-       {"skb", XDP_MODE_SKB},
-       {"hw", XDP_MODE_HW},
-       {"unspecified", XDP_MODE_UNSPEC},
-       {NULL, 0}
+	{"native", XDP_MODE_NATIVE},
+	{"skb", XDP_MODE_SKB},
+	{"hw", XDP_MODE_HW},
+	{"unspecified", XDP_MODE_UNSPEC},
+	{NULL, 0}
 };
 
 
@@ -186,12 +187,14 @@ static struct prog_option load_options[] = {
 enum probe_action {
         PROBE_CPUMAP_PROGRAM,
         PROBE_XDP_LOAD_BYTES,
+        PROBE_XSK_BUSY_POLL,
 };
 
 struct enum_val probe_actions[] = {
-       {"cpumap-prog", PROBE_CPUMAP_PROGRAM},
-       {"xdp-load-bytes", PROBE_XDP_LOAD_BYTES},
-       {NULL, 0}
+	{"cpumap-prog", PROBE_CPUMAP_PROGRAM},
+	{"xdp-load-bytes", PROBE_XDP_LOAD_BYTES},
+	{"xsk-busy-poll", PROBE_XSK_BUSY_POLL},
+	{NULL, 0}
 };
 
 static const struct probeopt {
@@ -200,8 +203,8 @@ static const struct probeopt {
 
 int do_probe(const void *cfg, __unused const char *pin_root_path)
 {
-        const struct probeopt *opt = cfg;
-        bool res = false;
+	const struct probeopt *opt = cfg;
+	bool res = false;
 
 	switch (opt->action) {
 	case PROBE_CPUMAP_PROGRAM:
@@ -214,15 +217,18 @@ int do_probe(const void *cfg, __unused const char *pin_root_path)
 		res = sample_probe_xdp_load_bytes();
 #endif
 		break;
-        default:
-                return EXIT_FAILURE;
+	case PROBE_XSK_BUSY_POLL:
+		res = xsk_probe_busy_poll();
+		break;
+	default:
+		return EXIT_FAILURE;
 	}
 
         pr_debug("Probing for %s: %s\n",
                  probe_actions[opt->action].name,
                  res ? "Supported" : "Unsupported");
 
-        return res ? EXIT_SUCCESS : EXIT_FAILURE;
+	return res ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 

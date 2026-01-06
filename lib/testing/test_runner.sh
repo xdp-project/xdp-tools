@@ -121,6 +121,11 @@ is_progmap_supported()
     fi
 }
 
+is_xsk_busy_poll_supported()
+{
+    $TEST_PROG_DIR/test-tool probe xsk-busy-poll
+}
+
 skip_if_missing_veth_rxq()
 {
     if ! ethtool -l $NS >/dev/null 2>&1; then
