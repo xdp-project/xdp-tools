@@ -1557,6 +1557,12 @@ static struct xdp_program *load_xdp_program(struct xsk_ctx *ctx,
 		goto err;
 	}
 
+	/* we can't set this from the program section because libbpf won't let
+         * us turn it back off if we do. So set it here to allow the automatic
+         * logic for turning off the flag in libxdp to work
+         */
+        xdp_program__set_xdp_frags_support(xdp_prog, true);
+
 	err = xdp_program__attach(xdp_prog, opt->iface.ifindex, opt->attach_mode, 0);
 	if (err) {
 		libxdp_strerror(err, errmsg, sizeof(errmsg));

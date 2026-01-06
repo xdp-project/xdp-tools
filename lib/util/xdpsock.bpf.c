@@ -17,7 +17,7 @@ struct {
 int num_socks = 0;
 static unsigned int rr;
 
-SEC("xdp.frags")
+SEC("xdp")
 int xdp_sock_prog(struct xdp_md *ctx)
 {
 	rr = (rr + 1) & (num_socks - 1);
