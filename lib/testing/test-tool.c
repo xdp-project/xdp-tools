@@ -218,7 +218,9 @@ int do_probe(const void *cfg, __unused const char *pin_root_path)
 #endif
 		break;
 	case PROBE_XSK_BUSY_POLL:
+#ifdef HAVE_BPFTOOL
 		res = xsk_probe_busy_poll();
+#endif
 		break;
 	default:
 		return EXIT_FAILURE;
