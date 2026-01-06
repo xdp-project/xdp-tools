@@ -126,5 +126,6 @@ struct xsk_ctx *xsk_ctx__create(const struct xsk_opts *opt,
 void xsk_ctx__destroy(struct xsk_ctx *ctx);
 int xsk_stats_poller(struct xsk_ctx *ctx);
 int xsk_start_bench(struct xsk_ctx *ctx, pthread_t *pt);
+bool xsk_probe_busy_poll(void);
 
 #endif /* XDPSOCK_H */

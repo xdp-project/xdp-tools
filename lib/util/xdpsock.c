@@ -1605,26 +1605,78 @@ err:
 	return ERR_PTR(err);
 }
 
-static int apply_busy_poll_opts(struct xsk_socket_info *xsk, __u32 batch_size)
+static int apply_busy_poll_opts(struct xsk_socket *xsk, __u32 batch_size)
 {
 	int sock_opt;
 
 	sock_opt = 1;
-	if (setsockopt(xsk_socket__fd(xsk->xsk), SOL_SOCKET, SO_PREFER_BUSY_POLL,
+	if (setsockopt(xsk_socket__fd(xsk), SOL_SOCKET, SO_PREFER_BUSY_POLL,
 		       (void *)&sock_opt, sizeof(sock_opt)) < 0)
 		return -errno;
 
 	sock_opt = 20;
-	if (setsockopt(xsk_socket__fd(xsk->xsk), SOL_SOCKET, SO_BUSY_POLL,
+	if (setsockopt(xsk_socket__fd(xsk), SOL_SOCKET, SO_BUSY_POLL,
 		       (void *)&sock_opt, sizeof(sock_opt)) < 0)
 		return -errno;
 
 	sock_opt = batch_size;
-	if (setsockopt(xsk_socket__fd(xsk->xsk), SOL_SOCKET, SO_BUSY_POLL_BUDGET,
+	if (setsockopt(xsk_socket__fd(xsk), SOL_SOCKET, SO_BUSY_POLL_BUDGET,
 		       (void *)&sock_opt, sizeof(sock_opt)) < 0)
 		return -errno;
 
 	return 0;
+}
+
+bool xsk_probe_busy_poll(void)
+{
+	struct xsk_socket_config cfg = {
+		.libxdp_flags = XSK_LIBXDP_FLAGS__INHIBIT_PROG_LOAD,
+		.rx_size = XSK_RING_CONS__DEFAULT_NUM_DESCS,
+	};
+	unsigned int mmap_flags = 0, umem_flags = 0;
+	__u32 frame_size = 4096, batch_size = 64;
+	struct xsk_umem_info *umem = NULL;
+	struct xsk_socket *xsk = NULL;
+	struct xsk_ring_cons rx;
+	void *bufs;
+	int ret;
+
+	bufs = mmap(NULL, NUM_FRAMES * frame_size,
+		    PROT_READ | PROT_WRITE,
+		    MAP_PRIVATE | MAP_ANONYMOUS | mmap_flags, -1, 0);
+	if (bufs == MAP_FAILED) {
+		ret = -errno;
+		pr_debug("Failed to mmap: %d\n", ret);
+		goto out;
+	}
+
+	umem = xsk_configure_umem(bufs, NUM_FRAMES * frame_size,
+				  frame_size, umem_flags);
+	if (IS_ERR(umem)) {
+		ret = PTR_ERR(umem);
+		pr_debug("Failed to configure umem: %d\n", ret);
+		umem = NULL;
+		goto out;
+	}
+
+	ret = xsk_socket__create(&xsk, "lo", 0, umem->umem, &rx, NULL, &cfg);
+	if (ret) {
+		pr_debug("Failed to create socket: %d\n", ret);
+		goto out;
+	}
+
+	ret = apply_busy_poll_opts(xsk, batch_size);
+	pr_debug("Apply busy poll opts returned %d\n", ret);
+
+out:
+	xsk_socket__delete(xsk);
+	if (umem) {
+		xsk_umem__delete(umem->umem);
+		free(umem);
+	}
+	munmap(bufs, NUM_FRAMES * frame_size);
+
+	return !ret;
 }
 
 static int xsk_set_sched_priority(enum xsk_sched_policy sched_policy,
@@ -1713,7 +1765,7 @@ struct xsk_ctx *xsk_ctx__create(const struct xsk_opts *opt, enum xsk_benchmark_t
 
 	if (opt->busy_poll) {
 		for (i = 0; i < num_xsks; i++) {
-			ret = apply_busy_poll_opts(ctx->xsks[i], opt->batch_size);
+			ret = apply_busy_poll_opts(ctx->xsks[i]->xsk, opt->batch_size);
 			if (ret) {
 				pr_warn("ERROR: Couldn't apply busy poll options: %s\n",
 					strerror(-ret));
