@@ -10,7 +10,6 @@ TOOL_NAME := xdp-trafficgen
 USER_TARGETS := xdp-trafficgen
 MAN_PAGE := xdp-trafficgen.8
 EXTRA_DEPS := xdp-trafficgen.h
-USER_LIBS     = -lpthread
 TEST_FILE := tests/test-xdp-trafficgen.sh
 
 LIB_DIR = ../lib
