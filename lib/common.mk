@@ -24,7 +24,7 @@ MAN_FILES := $(MAN_PAGE)
 # Expect this is defined by including Makefile, but define if not
 LIB_DIR ?= ../lib
 LDLIBS ?= $(USER_LIBS)
-LDLIBS += -lm
+LDLIBS += -lm -lpthread
 
 include $(LIB_DIR)/defines.mk
 include $(LIB_DIR)/libxdp/libxdp.mk
