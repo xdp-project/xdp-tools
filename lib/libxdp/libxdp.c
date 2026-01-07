@@ -1663,18 +1663,6 @@ struct xdp_program *xdp_program__clone(struct xdp_program *prog, unsigned int fl
 					    prog->prog_name, true);
 }
 
-static const char *get_bpf_flag_name(__u32 flag)
-{
-	switch (flag) {
-	case BPF_F_XDP_DEV_BOUND_ONLY:
-		return "BPF_F_XDP_DEV_BOUND_ONLY";
-	case BPF_F_XDP_HAS_FRAGS:
-		return "BPF_F_XDP_HAS_FRAGS";
-	default:
-		return NULL;
-	}
-}
-
 #ifndef HAVE_LIBBPF_BPF_PROGRAM__FLAGS
 static bool kernel_has_frags_support(void)
 {
@@ -1687,7 +1675,25 @@ static bool kernel_has_dev_bound(void)
 	pr_debug("Can't bind to device with old version of libbpf that doesn't support setting program flags.\n");
 	return false;
 }
+
+static int xdp_program__set_xdp_dev_bound(__unused struct xdp_program *prog,
+					  __unused unsigned int ifindex)
+{
+	return libxdp_err(-EOPNOTSUPP);
+}
 #else
+static const char *get_bpf_flag_name(__u32 flag)
+{
+	switch (flag) {
+	case BPF_F_XDP_DEV_BOUND_ONLY:
+		return "BPF_F_XDP_DEV_BOUND_ONLY";
+	case BPF_F_XDP_HAS_FRAGS:
+		return "BPF_F_XDP_HAS_FRAGS";
+	default:
+		return NULL;
+	}
+}
+
 static bool kernel_has_bpf_flag(__u32 flag)
 {
 	struct xdp_program *test_prog;
@@ -1726,7 +1732,6 @@ static bool kernel_has_dev_bound(void)
 {
 	return kernel_has_bpf_flag(BPF_F_XDP_DEV_BOUND_ONLY);
 }
-#endif // HAVE_LIBBPF_BPF_PROGRAM__FLAGS
 
 static int xdp_program__set_xdp_dev_bound(struct xdp_program *prog,
 					  unsigned int ifindex)
@@ -1756,6 +1761,7 @@ static int xdp_program__set_xdp_dev_bound(struct xdp_program *prog,
 
 	return 0;
 }
+#endif // HAVE_LIBBPF_BPF_PROGRAM__FLAGS
 
 static int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
 				      enum xdp_attach_mode mode,
