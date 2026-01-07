@@ -32,6 +32,14 @@
 #define DISPATCHER_V1_FILE "xdp_dispatcher_v1.o"
 #define DISPATCHER_V2_FILE "xdp_dispatcher_v2.o"
 
+#ifndef HAVE_LIBBPF_BPF_OBJECT__NEXT_MAP
+static struct bpf_map *bpf_object__next_map(const struct bpf_object *obj,
+					    const struct bpf_map *map)
+{
+	return bpf_map__next(map, obj);
+}
+#endif
+
 static void print_test_result(const char *func, int ret)
 {
 	fflush(stderr);

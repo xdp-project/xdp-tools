@@ -339,6 +339,7 @@ out:
 
 static bool check_devbound_compat(void)
 {
+#ifdef HAVE_LIBBPF_BPF_PROGRAM__FLAGS
 	struct xdp_program *test_prog;
 	struct bpf_program *prog;
 	struct bpf_object *obj;
@@ -370,6 +371,9 @@ static bool check_devbound_compat(void)
 out:
 	xdp_program__close(test_prog);
 	return ret;
+#else
+        return -EOPNOTSUPP;
+#endif
 }
 
 static void usage(char *progname)
