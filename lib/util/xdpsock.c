@@ -1884,7 +1884,7 @@ int xsk_validate_opts(const struct xsk_opts *opt)
 		return -EINVAL;
 	}
 	if (opt->timestamp && opt->tx_pkt_size < PKTGEN_SIZE_MIN(opt)) {
-		pr_warn("TX packet size %d less than minimum %lu bytes when timestamps are enabled\n",
+		pr_warn("TX packet size %d less than minimum %zu bytes when timestamps are enabled\n",
 			opt->tx_pkt_size, PKTGEN_SIZE_MIN(opt));
 		return -EINVAL;
 	}
