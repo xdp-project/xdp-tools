@@ -166,8 +166,13 @@ struct xsk_socket_info {
 static unsigned long get_nsecs(clockid_t clock)
 {
 	struct timespec ts;
+	int res;
 
-	clock_gettime(clock, &ts);
+	res = clock_gettime(clock, &ts);
+	if (res < 0) {
+		pr_warn("Error with gettimeofday! (%i)\n", res);
+		return UINT64_MAX;
+	}
 	return ts.tv_sec * 1000000000UL + ts.tv_nsec;
 }
 
@@ -1144,8 +1149,9 @@ static inline int complete_tx_l2fwd(struct xsk_socket_info *xsk,
 				return ret;
 			if (busy_poll || xsk_ring_prod__needs_wakeup(&umem->fq)) {
 				xsk->app_stats.fill_fail_polls++;
-				recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL,
-					 NULL);
+				if (recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0,
+					     MSG_DONTWAIT, NULL, NULL) < 0)
+					return -errno;
 			}
 			ret = xsk_ring_prod__reserve(&umem->fq, rcvd, &idx_fq);
 		}
@@ -1192,7 +1198,9 @@ static int rx_drop(struct xsk_socket_info *xsk, __u32 batch_size, bool busy_poll
 	if (!rcvd) {
 		if (busy_poll || xsk_ring_prod__needs_wakeup(&xsk->umem->fq)) {
 			xsk->app_stats.rx_empty_polls++;
-			recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
+			if (recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0,
+				     MSG_DONTWAIT, NULL, NULL) < 0)
+				return -errno;
 		}
 		return 0;
 	}
@@ -1203,7 +1211,9 @@ static int rx_drop(struct xsk_socket_info *xsk, __u32 batch_size, bool busy_poll
 			return ret;
 		if (busy_poll || xsk_ring_prod__needs_wakeup(&xsk->umem->fq)) {
 			xsk->app_stats.fill_fail_polls++;
-			recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
+			if (recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0,
+				     MSG_DONTWAIT, NULL, NULL) < 0)
+				return -errno;
 		}
 		ret = xsk_ring_prod__reserve(&xsk->umem->fq, rcvd, &idx_fq);
 	}
@@ -1447,7 +1457,9 @@ static int l2fwd(struct xsk_ctx *ctx, struct xsk_socket_info *xsk)
 	if (!rcvd) {
 		if (ctx->opt.busy_poll || xsk_ring_prod__needs_wakeup(&xsk->umem->fq)) {
 			xsk->app_stats.rx_empty_polls++;
-			recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
+			if (recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0,
+				     MSG_DONTWAIT, NULL, NULL) < 0)
+				return -errno;
 		}
 		return 0;
 	}
