@@ -308,26 +308,26 @@ static int get_irqs(const struct xsk_ctx *ctx)
 static void dump_driver_stats(struct xsk_ctx *ctx, long dt)
 {
 #define PPS(_now, _prev) ((_now - _prev) * 1000000000. / dt)
-	unsigned int i;
+	char *fmt = " %-18s %'14.0f intrs/s\n";
+	unsigned int i = 0;
+	double intrs_ps;
+	int n_ints;
 
-	for (i = 0; i < ctx->num_socks && ctx->xsks[i]; i++) {
-		char *fmt = " %-18s %'14.0f intrs/s\n";
-		double intrs_ps;
-		int n_ints = get_irqs(ctx);
+	if (i >= ctx->num_socks || !ctx->xsks[i])
+		return;
 
-		if (n_ints < 0) {
-			printf("error getting intr info for intr %i\n", ctx->irq_no);
-			return;
-		}
-		ctx->xsks[i]->drv_stats.intrs = n_ints - ctx->irqs_at_init;
-
-		intrs_ps = PPS(ctx->xsks[i]->drv_stats.intrs, ctx->xsks[i]->drv_stats.prev_intrs);
-
-		printf(fmt, "IRQs", intrs_ps);
-
-		ctx->xsks[i]->drv_stats.prev_intrs = ctx->xsks[i]->drv_stats.intrs;
-		break;
+	n_ints = get_irqs(ctx);
+	if (n_ints < 0) {
+		printf("error getting intr info for intr %i\n", ctx->irq_no);
+		return;
 	}
+	ctx->xsks[i]->drv_stats.intrs = n_ints - ctx->irqs_at_init;
+
+	intrs_ps = PPS(ctx->xsks[i]->drv_stats.intrs, ctx->xsks[i]->drv_stats.prev_intrs);
+
+	printf(fmt, "IRQs", intrs_ps);
+
+	ctx->xsks[i]->drv_stats.prev_intrs = ctx->xsks[i]->drv_stats.intrs;
 #undef PPS
 }
 
