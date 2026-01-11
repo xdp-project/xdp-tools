@@ -86,7 +86,7 @@ struct xsk_opts {
 };
 
 struct xsk_ctx {
-	const struct xsk_opts opt;
+	struct xsk_opts opt;
 
 	unsigned long prev_time;
 	long tx_cycle_diff_min;
