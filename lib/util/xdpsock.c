@@ -68,7 +68,7 @@
 #define SO_BUSY_POLL_BUDGET     70
 #endif
 
-#define NUM_FRAMES (4 * 1024)
+#define NUM_FRAMES (4 * 1024UL)
 #define IS_EOP_DESC(options) (!((options) & XDP_PKT_CONTD))
 
 #define DEBUG_HEXDUMP 0
@@ -832,7 +832,7 @@ __wsum csum_tcpudp_nofold(__be32 saddr, __be32 daddr,
 #ifdef __BIG_ENDIAN__
 	s += proto + len;
 #else
-	s += (proto + len) << 8;
+	s += ((unsigned long long)proto + len) << 8;
 #endif
 	return (__wsum)from64to32(s);
 }
@@ -966,7 +966,7 @@ static void gen_eth_frames(struct xsk_ctx *ctx, struct xsk_umem_info *umem, __u3
 	unsigned int i;
 
 	for (i = 0; i < NUM_FRAMES; i++) {
-		__u64 addr = i * frame_size;
+		__u64 addr = (__u64)i * frame_size;
 
 		if (!len) {
 			len = PKT_SIZE(&ctx->opt);
