@@ -72,9 +72,16 @@ The functions that open a BPF object or file need the function name of the XDP
 program as well as the file name or object, since an ELF file can contain
 multiple XDP programs. The \fIxdp_program__find_file()\fP function takes a filename
 without a path, and will look for the object in \fILIBXDP_OBJECT_PATH\fP which
-defaults to \fI/usr/lib/bpf\fP (or \fI/usr/lib64/bpf\fP on systems using a split library
-path). This is convenient for applications shipping pre-compiled eBPF object
-files.
+defaults to \fI/usr/lib/bpf\fP (alternatively \fI/usr/lib64/bpf\fP or \fI/usr/local/lib/bpf\fP,
+depending on which \fIPREFIX\fP libxdp was compiled with). This is convenient
+for applications shipping pre-compiled eBPF object files.
+
+.PP
+When libxdp is compiled with the DEBUG flag, it will additionally look
+for BPF object files in the current directory, before checking the
+system-wide directory. This can be convenient during development to avoid
+older versions of a BPF program being loaded. However, it should not be used in
+production, as the shadowing of system BPF programs can be a security issue.
 
 .PP
 The \fIxdp_program__attach()\fP function will attach the program to an interface,
