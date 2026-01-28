@@ -74,6 +74,7 @@ static const char *driver_pass_list[] = {
 	"ixgbe",
 	"octeontx2",
 	"stmmac",
+	"mlx5_core",
 };
 
 static bool driver_needs_xdp_pass(const struct iface *iface)
