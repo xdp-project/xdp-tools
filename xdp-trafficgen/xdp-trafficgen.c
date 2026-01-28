@@ -555,6 +555,7 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 			pr_warn("Couldn't load xdp_pass program\n");
 			goto out;
 		}
+		xdp_program__set_xdp_frags_support(pass_prog, true);
 	}
 
 	err = xdp_trafficgen__load(skel);
@@ -1026,6 +1027,7 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 		pr_warn("Couldn't open XDP program: %s\n", strerror(-err));
 		goto out;
 	}
+	xdp_program__set_xdp_frags_support(ifindex_prog, true);
 
 	opts.prog_name = "xdp_redirect_send_tcp";
 	test_prog = xdp_program__create(&opts);
