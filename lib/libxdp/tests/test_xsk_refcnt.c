@@ -112,7 +112,7 @@ static struct xsk_umem_info *xsk_configure_umem(void *buffer, u64 size)
 	if (!umem)
 		exit(EXIT_FAILURE);
 
-	DECLARE_LIBXDP_OPTS(xsk_umem_opts, opts, 
+	DECLARE_LIBXDP_OPTS(xsk_umem_opts, opts,
 		.size = size,
 	);
 	umem->umem = xsk_umem__create_opts(buffer, &umem->fq, &umem->cq, &opts);
@@ -135,7 +135,7 @@ static struct xsk_socket_info *xsk_configure_socket(struct xsk_umem_info *umem,
 
 	xsk->umem = umem;
 	rxr = &xsk->rx;
-	DECLARE_LIBXDP_OPTS(xsk_socket_opts, opts, 
+	DECLARE_LIBXDP_OPTS(xsk_socket_opts, opts,
 		.rx = rxr,
 		.rx_size = XSK_RING_CONS__DEFAULT_NUM_DESCS,
 	);
@@ -214,7 +214,7 @@ static bool check_run_event(struct xsk_test_event *event, int *refcnt)
 {
 	pthread_t threads[MAX_NUM_QUEUES];
 	bool prog_attached, prog_needed;
-	u8 thread_num = 0, i;
+	u32 thread_num = 0, i;
 	int ret;
 
 	update_reference_refcnt(event, refcnt);
@@ -252,7 +252,7 @@ static bool check_run_test(struct xsk_test *test)
 {
 	bool test_ok = false;
 	int refcnt = 0;
-	u8 i = 0;
+	u32 i = 0;
 
 	for (i = 0; i < test->num_events; i++) {
 		if (!check_run_event(&test->events[i], &refcnt)) {
