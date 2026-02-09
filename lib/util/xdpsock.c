@@ -1036,8 +1036,8 @@ static int xsk_populate_fill_ring(struct xsk_umem_info *umem, __u32 frame_size)
 		return -ret;
 
 	for (i = 0; i < XSK_RING_PROD__DEFAULT_NUM_DESCS * 2; i++)
-		*xsk_ring_prod__fill_addr(&umem->fq, idx++) =
-			i * frame_size;
+		*xsk_ring_prod__fill_addr(&umem->fq, idx++) = (__u64)i * frame_size;
+
 	xsk_ring_prod__submit(&umem->fq, XSK_RING_PROD__DEFAULT_NUM_DESCS * 2);
 
 	return 0;
@@ -1291,7 +1291,7 @@ static int tx_only(struct xsk_ctx *ctx, struct xsk_socket_info *xsk, __u32 *fram
 		do {
 			struct xdp_desc *tx_desc = xsk_ring_prod__tx_desc(&xsk->tx,
 									  idx + i);
-			tx_desc->addr = *frame_nb * ctx->opt.frame_size;
+			tx_desc->addr = (__u64)*frame_nb * ctx->opt.frame_size;
 			if (len > ctx->opt.frame_size) {
 				tx_desc->len = ctx->opt.frame_size;
 				tx_desc->options = XDP_PKT_CONTD;
