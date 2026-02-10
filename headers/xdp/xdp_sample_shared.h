@@ -2,18 +2,16 @@
 #ifndef _XDP_SAMPLE_SHARED_H
 #define _XDP_SAMPLE_SHARED_H
 
-#include <stddef.h>
-
 struct datarec {
-	size_t processed;
-	size_t dropped;
-	size_t issue;
+	unsigned long long processed;
+	unsigned long long dropped;
+	unsigned long long issue;
 	union {
-		size_t xdp_pass;
-		size_t info;
+		unsigned long long xdp_pass;
+		unsigned long long info;
 	};
-	size_t xdp_drop;
-	size_t xdp_redirect;
+	unsigned long long xdp_drop;
+	unsigned long long xdp_redirect;
 } __attribute__((aligned(64)));
 
 #endif
