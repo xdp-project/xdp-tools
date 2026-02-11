@@ -1140,29 +1140,37 @@ static inline int complete_tx_l2fwd(struct xsk_socket_info *xsk,
 	/* re-add completed Tx buffers */
 	rcvd = xsk_ring_cons__peek(&umem->cq, ndescs, &idx_cq);
 	if (rcvd > 0) {
-		unsigned int i;
-		int ret;
+		unsigned int i, slots;
 
-		ret = xsk_ring_prod__reserve(&umem->fq, rcvd, &idx_fq);
-		while (ret != (int)rcvd) {
-			if (ret < 0)
-				return ret;
+		slots = xsk_ring_prod__reserve(&umem->fq, rcvd, &idx_fq);
+		if (slots < rcvd) {
 			if (busy_poll || xsk_ring_prod__needs_wakeup(&umem->fq)) {
 				xsk->app_stats.fill_fail_polls++;
 				if (recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0,
 					     MSG_DONTWAIT, NULL, NULL) < 0)
 					return -errno;
 			}
-			ret = xsk_ring_prod__reserve(&umem->fq, rcvd, &idx_fq);
+			slots = xsk_ring_prod__reserve(&umem->fq, rcvd, &idx_fq);
 		}
 
-		for (i = 0; i < rcvd; i++)
+		for (i = 0; i < rcvd; i++) {
+			if (!slots) {
+				/* couldn't reserve the full number of slots above, try
+				 * reserving one at a time while processing, aborting if
+				 * this fails
+				 */
+				slots = xsk_ring_prod__reserve(&umem->fq, 1, &idx_fq);
+				if (!slots)
+					break;
+			}
+			slots--;
 			*xsk_ring_prod__fill_addr(&umem->fq, idx_fq++) =
 				*xsk_ring_cons__comp_addr(&umem->cq, idx_cq++);
+		}
 
-		xsk_ring_prod__submit(&xsk->umem->fq, rcvd);
-		xsk_ring_cons__release(&xsk->umem->cq, rcvd);
-		xsk->outstanding_tx -= rcvd;
+		xsk_ring_prod__submit(&xsk->umem->fq, i);
+		xsk_ring_cons__release(&xsk->umem->cq, i);
+		xsk->outstanding_tx -= i;
 	}
 	return 0;
 }
@@ -1190,9 +1198,8 @@ static inline void complete_tx_only(struct xsk_socket_info *xsk,
 
 static int rx_drop(struct xsk_socket_info *xsk, __u32 batch_size, bool busy_poll)
 {
-	unsigned int rcvd, i, eop_cnt = 0;
+	unsigned int rcvd, slots, i, eop_cnt = 0;
 	__u32 idx_rx = 0, idx_fq = 0;
-	int ret;
 
 	rcvd = xsk_ring_cons__peek(&xsk->rx, batch_size, &idx_rx);
 	if (!rcvd) {
@@ -1205,37 +1212,45 @@ static int rx_drop(struct xsk_socket_info *xsk, __u32 batch_size, bool busy_poll
 		return 0;
 	}
 
-	ret = xsk_ring_prod__reserve(&xsk->umem->fq, rcvd, &idx_fq);
-	while ((unsigned int)ret != rcvd) {
-		if (ret < 0)
-			return ret;
+	slots = xsk_ring_prod__reserve(&xsk->umem->fq, rcvd, &idx_fq);
+	if (slots < rcvd) {
 		if (busy_poll || xsk_ring_prod__needs_wakeup(&xsk->umem->fq)) {
 			xsk->app_stats.fill_fail_polls++;
 			if (recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0,
 				     MSG_DONTWAIT, NULL, NULL) < 0)
 				return -errno;
 		}
-		ret = xsk_ring_prod__reserve(&xsk->umem->fq, rcvd, &idx_fq);
+		slots = xsk_ring_prod__reserve(&xsk->umem->fq, rcvd, &idx_fq);
 	}
 
 	for (i = 0; i < rcvd; i++) {
-		const struct xdp_desc *desc = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx++);
+		const struct xdp_desc *desc = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx + i);
 		__u64 addr = desc->addr;
 		__u32 len = desc->len;
 		__u64 orig = xsk_umem__extract_addr(addr);
-		eop_cnt += IS_EOP_DESC(desc->options);
 
 		addr = xsk_umem__add_offset_to_addr(addr);
 		char *pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
 
+		if (!slots) {
+			/* couldn't reserve the full number of slots above, try
+			 * reserving one at a time while processing, aborting if
+			 * this fails
+			 */
+			slots = xsk_ring_prod__reserve(&xsk->umem->fq, 1, &idx_fq);
+			if (!slots)
+				break;
+		}
+		slots--;
 		hex_dump(pkt, len, addr);
 		*xsk_ring_prod__fill_addr(&xsk->umem->fq, idx_fq++) = orig;
+		eop_cnt += IS_EOP_DESC(desc->options);
 	}
 
-	xsk_ring_prod__submit(&xsk->umem->fq, rcvd);
-	xsk_ring_cons__release(&xsk->rx, rcvd);
+	xsk_ring_prod__submit(&xsk->umem->fq, i);
+	xsk_ring_cons__release(&xsk->rx, i);
 	xsk->ring_stats.rx_npkts += eop_cnt;
-	xsk->ring_stats.rx_frags += rcvd;
+	xsk->ring_stats.rx_frags += i;
 
 	return 0;
 }
