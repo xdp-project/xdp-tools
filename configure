@@ -63,7 +63,7 @@ check_toolchain()
     : ${CLANG=clang}
     : ${M4=m4}
     : ${EMACS=emacs}
-    : ${BPFTOOL=bpftool}
+    : ${BPFTOOL=$(whereis -b bpftool | awk '{print $2}')}
     : ${READELF=readelf}
     : ${ARCH_INCLUDES=}
     : ${ARCH_NAME=}
@@ -111,9 +111,9 @@ check_toolchain()
 
     if command -v $BPFTOOL &>/dev/null && $BPFTOOL gen help 2>&1 | grep 'gen skeleton.*name' > /dev/null; then
         bpftool_version=$($BPFTOOL version | head -n 1)
-	echo "using $bpftool_version"
+	    echo "using $bpftool_version"
     else
-	echo "bpftool not found or doesn't support skeleton generation; not building all tools"
+	    echo "bpftool not found or doesn't support skeleton generation; not building all tools"
         BPFTOOL=
     fi
 
