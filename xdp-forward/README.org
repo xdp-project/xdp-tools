@@ -164,6 +164,33 @@ EOF
 #xdp-forward load -f flowtable n0 n1
 #+end_src
 
+
+* VLAN support
+Vlan support adds ~4% overhead for packet processing. Therefore, it's disabled
+by default. To enable it, compilation flags are required, based on desired mode.
+
+** Userspace mode
+This can be enabled by compiling =xdp-forward= with the =-DVLANS_USERSPACE= flag:
+
+#+begin_src sh
+VLANS_USERSPACE=1 make
+#+end_src
+
+In this mode, userspace program will query netlink for VLAN devices on top of
+defined physical interfaces. This is then provided to the XDP program via
+BPF map, which is not updated during runtime. Which means, that if VLAN interface
+is changed, these changes are not propagated to the =xdp-forward=.
+
+** Kernel mode
+This mode requires specific kernel patch, that extends FIB lookup to support
+VLANS. This is not yet upstream, therefore this mode needs to be manually enabled
+by compilation vlag =-DVLANS_PATCHED=:
+
+#+begin_src sh
+VLANs_PATCHED=1 make
+#+end_src
+
+
 * SEE ALSO
 =libxdp(3)= for details on the XDP loading semantics and kernel compatibility
 requirements.
