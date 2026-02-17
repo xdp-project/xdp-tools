@@ -35,6 +35,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <sched.h>
+#include <limits.h>
 
 #include <xdp/xsk.h>
 #include <xdp/libxdp.h>
@@ -171,7 +172,7 @@ static unsigned long get_nsecs(clockid_t clock)
 	res = clock_gettime(clock, &ts);
 	if (res < 0) {
 		pr_warn("Error with gettimeofday! (%i)\n", res);
-		return UINT64_MAX;
+		return ULONG_MAX;
 	}
 	return ts.tv_sec * 1000000000UL + ts.tv_nsec;
 }
