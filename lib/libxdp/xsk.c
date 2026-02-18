@@ -418,8 +418,7 @@ static int xsk_init_xsk_struct(struct xsk_socket *xsk, int ifindex)
 	}
 
 	ctx->ifindex = ifindex;
-	memcpy(ctx->ifname, ifname, IFNAMSIZ -1);
-	ctx->ifname[IFNAMSIZ - 1] = 0;
+	safe_strncpy(ctx->ifname, ifname, sizeof(ctx->ifname));
 
 	xsk->ctx = ctx;
 
@@ -482,8 +481,7 @@ static int xsk_get_max_queues(char *ifname)
 		return -errno;
 
 	ifr.ifr_data = (void *)&channels;
-	memcpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
-	ifr.ifr_name[IFNAMSIZ - 1] = '\0';
+	safe_strncpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
 	err = ioctl(fd, SIOCETHTOOL, &ifr);
 	if (err && errno != EOPNOTSUPP) {
 		ret = -errno;
@@ -995,8 +993,7 @@ static struct xsk_ctx *xsk_create_ctx(struct xsk_socket *xsk,
 	ctx->refcount = 1;
 	ctx->umem = umem;
 	ctx->queue_id = queue_id;
-	memcpy(ctx->ifname, ifname, IFNAMSIZ - 1);
-	ctx->ifname[IFNAMSIZ - 1] = '\0';
+	safe_strncpy(ctx->ifname, ifname, sizeof(ctx->ifname));
 
 	ctx->fill = fill;
 	ctx->comp = comp;
