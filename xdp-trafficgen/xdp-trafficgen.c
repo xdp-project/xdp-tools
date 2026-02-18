@@ -747,7 +747,7 @@ struct prog_option xsk_udp_options[] = {
 	DEFINE_OPTION("app-stats", OPT_BOOL, struct xsk_opts, app_stats,
 		      .short_opt = 'a',
 		      .help = "Display application (syscall) statistics"),
-	DEFINE_OPTION("copy_mode", OPT_ENUM, struct xsk_opts, copy_mode,
+	DEFINE_OPTION("copy-mode", OPT_ENUM, struct xsk_opts, copy_mode,
 		      .short_opt = 'C',
 		      .typearg = xsk_copy_modes,
 		      .metavar = "<mode>",

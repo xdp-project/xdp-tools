@@ -347,7 +347,7 @@ struct prog_option xsk_options[] = {
 	DEFINE_OPTION("frags", OPT_BOOL, struct xsk_opts, frags,
 		      .short_opt = 'F',
 		      .help = "Enable frags (multi-buffer) support"),
-	DEFINE_OPTION("copy_mode", OPT_ENUM, struct xsk_opts, copy_mode,
+	DEFINE_OPTION("copy-mode", OPT_ENUM, struct xsk_opts, copy_mode,
 		      .short_opt = 'C',
 		      .typearg = xsk_copy_modes,
 		      .metavar = "<mode>",
