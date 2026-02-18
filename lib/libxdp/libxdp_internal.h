@@ -14,6 +14,21 @@
 
 #define __printf(a, b) __attribute__((format(printf, a, b)))
 
+#pragma GCC diagnostic push
+#if !defined(__clang__) && (__GNUC__ > 7)
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
+#endif
+__attribute__((unused))
+static inline char *safe_strncpy(char *dst, const char *src, size_t size)
+{
+        if (!size)
+                return dst;
+        strncpy(dst, src, size - 1);
+        dst[size - 1] = '\0';
+        return dst;
+}
+#pragma GCC diagnostic pop
+
 static inline int try_snprintf(char *buf, size_t buf_len, const char *format, ...)
 {
 	va_list args;
