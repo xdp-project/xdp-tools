@@ -54,7 +54,7 @@ all: $(USER_TARGETS) $(STATIC_LINK_TARGETS) $(BPF_OBJS)
 
 .PHONY: clean
 clean::
-	$(Q)rm -f $(USER_TARGETS) $(USER_OBJ)
+	$(Q)rm -f $(USER_TARGETS) $(USER_OBJ) $(STATIC_LINK_TARGETS) $(BPF_OBJS)
 
 .PHONY: install
 install: all

@@ -72,6 +72,7 @@ distclean: clobber
 clean: check_submodule
 	@for i in $(SUBDIRS); \
 	do $(MAKE) -C $$i clean; done
+	rm -f config.mk
 
 install: all
 	@for i in $(SUBDIRS); \
