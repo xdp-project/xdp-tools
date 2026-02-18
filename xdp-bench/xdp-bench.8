@@ -36,6 +36,8 @@ COMMAND can be one of:
        redirect-cpu   - XDP CPU redirect using BPF_MAP_TYPE_CPUMAP
        redirect-map   - XDP redirect using BPF_MAP_TYPE_DEVMAP
        redirect-multi - XDP multi-redirect using BPF_MAP_TYPE_DEVMAP and the BPF_F_BROADCAST flag
+       xsk-drop       - AF_XDP socket-based drop
+       xsk-tx         - AF_XDP socket-based hairpin forwarding
 \fP
 .fi
 .RE
@@ -617,6 +619,136 @@ Selects the XDP program mode (native or skb). Note that native XDP mode is the
 default, and loading the redirect program in skb manner is neither performant,
 nor recommended. However, this option is useful if the interface driver lacks
 native XDP support, or when simply testing the tool.
+.SS "-v, --verbose"
+.PP
+Enable verbose logging. Supply twice to enable verbose logging from the
+underlying \fIlibxdp\fP and \fIlibbpf\fP libraries.
+.SS "--version"
+.PP
+Show the application version and exit.
+.SS "-h, --help"
+.PP
+Display a summary of the available options
+.SH "The XSK-DROP and XSK-TX commands"
+.PP
+In these modes, xdp-bench drops or mirrors incoming packets (like when using the
+\fIdrop\fP or \fItx\fP commands), but using an \fIAF_XDP\fP socket that passes the packets
+directly from the XDP hook to userspace. These modes can be used to test and
+benchmark \fIAF_XDP\fP sockets. The two commands differ only in the action taken -
+the syntax and options are otherwise identical.
+
+.PP
+The code for these commands are derived from the \fIxdpsock\fP utility previously
+part of the kernel sources, and more recently the bpf-examples repository. The
+\fIxsk\-drop\fP command corresponds to the \fI\-\-rxdrop\fP option of \fIxdpsock\fP, and the
+\fIxsk\-tx\fP command corresponds to the \fI\-\-l2fwd\fP command of \fIxdpsock\fP.
+
+.PP
+The syntax and options for the two commands are identical:
+
+.PP
+\fIxdp\-bench xsk\-drop [options] <ifname>\fP
+
+.PP
+or
+
+.PP
+\fIxdp\-bench xsk\-tx [options] <ifname>\fP
+
+.PP
+The supported options are:
+.SS "-q, --queue <queue>"
+.PP
+Select the hardware receive queue to use for the test. The \fIAF_XDP\fP socket is
+bound to this queue, which means that \fIxdp\-bench\fP will process all packets
+arriving on it. The default is to use queue 0.
+.SS "-i, --interval <seconds>"
+.PP
+Set the polling interval for collecting all statistics and displaying them to
+the output. The default interval is 2 seconds.
+.SS "-f, --frame-size <size>"
+.PP
+Set the size of the memory frames used to receive packets. Incoming packets will
+always use a memory chunk of this size, regardless of the size of the packet on
+the wire. The size must be a power of two, unless the \fI\-\-unaligned\fP flag is
+used. The default is 4096 bytes (which corresponds to the page size on most
+systems).
+.SS "-d, --duration <seconds>"
+.PP
+Set the test duration, in seconds. The default is 0 (run forever).
+.SS "-b, --batch-size <packets>"
+.PP
+Set the batch size for the receive loop. This is the maximum number of packets
+processed at once each time the loop runs. The default is 64 packets.
+.SS "-I, --irq-string <irq-string>"
+.PP
+Enable printing of interrupt statistics for the interrupt number associated with
+\fIirq\-string\fP in /proc/interrupts. The string is used to find a matching IRQ
+number by simple substring matching. No default (which means no IRQ statistics
+are printed).
+.SS "-p, --poll"
+.PP
+Use the \fIpoll()\fP system call to get notifications for new packets, instead of
+running in a loop constantly checking for new packets.
+.SS "-m, --no-need-wakeup"
+.PP
+Don't set the \fIXDP_USE_NEED_WAKEUP\fP flag when binding the \fIAF_XDP\fP socket. The
+flag is set by default, and causes the kernel driver to occasionally go to sleep
+and yield the CPU to the userspace application when receiving packets.
+.SS "-u, --unaligned"
+.PP
+Support receiving unaligned packets, i.e., packets that are not aligned to the
+beginning of a data frame. When set, \fIxdp\-bench\fP will enable huge pages for the
+userspace memory buffer used to receive packets. Setting this option enables
+frame sizes that are not a power of two (see the \fI\-\-frame\-size\fP option).
+.SS "-M, --shared-umem"
+.PP
+Enable shared userspace memory across multiple \fIAF_XDP\fP sockets. When this
+option is set, \fIxdp\-bench\fP will create four sockets that share the same
+userspace memory buffer, and packets will be sent to each socket in a
+round-robin fashion.
+.SS "-x, --extra-stats"
+.PP
+Print extra packet statistics at each output interval.
+.SS "-Q, --quiet"
+.PP
+Don't print any statistics at each output interval.
+.SS "-a, --app-stats"
+.PP
+Print additional application-level statistics at each output interval.
+.SS "-B, --busy-poll"
+.PP
+Set the \fISO_PREFER_BUSY_POLL\fP socket option, which enables the application to
+busy-poll without IRQs ever being enabled on the hardware queue being processed.
+To make use of this option, the \fInapi_defer_hard_irqs\fP and \fIgro_flush_timeout\fP
+sysctls should be set for the interface in question. For more information, see
+\fIhttps://docs.kernel.org/networking/napi.html#software-irq-coalescing\fP.
+.SS "-F, --frags"
+.PP
+Enable XDP fragments. This makes it possible to receive packets that are larger
+than the system page size, and requires kernel and driver support.
+.SS "-C, --copy-mode <mode>"
+.PP
+Select the copying mode for the packets. Set to one of \fIauto\fP, \fIcopy\fP, or
+\fIzero\-copy\fP. The default is \fIauto\fP, which lets the kernel pick. Using zero-copy
+requires kernel and driver support, and can only be used when attaching the XDP
+program in native mode (see \fI\-\-attach\-mode\fP).
+.SS "-w, --clock <clock>"
+.PP
+Choose the clock that will be used for all timer events in the application. The
+valid values are MONOTONIC, REALTIME, TAI and BOOTTIME, and the default is
+MONOTONIC.
+.SS "-W, --policy <policy>"
+.PP
+Set the scheduler policy for the application before running. Valid values are
+\fISCHED_OTHER\fP and \fISCHED_FIFO\fP, and the default is \fISCHED_OTHER\fP.
+.SS "-U, --schpri <priority>"
+.PP
+Set the scheduler priority when using \fISCHED_FIFO\fP. Defaults to 0.
+.SS "-A, --attach-mode <mode>"
+.PP
+Set the XDP program attach mode (native or skb). The default is native mode.
+Note that zero-copy can only be used in native mode.
 .SS "-v, --verbose"
 .PP
 Enable verbose logging. Supply twice to enable verbose logging from the

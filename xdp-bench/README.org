@@ -39,6 +39,8 @@ COMMAND can be one of:
        redirect-cpu   - XDP CPU redirect using BPF_MAP_TYPE_CPUMAP
        redirect-map   - XDP redirect using BPF_MAP_TYPE_DEVMAP
        redirect-multi - XDP multi-redirect using BPF_MAP_TYPE_DEVMAP and the BPF_F_BROADCAST flag
+       xsk-drop       - AF_XDP socket-based drop
+       xsk-tx         - AF_XDP socket-based hairpin forwarding
 #+end_src
 
 Each command, and its options are explained below. Or use =xdp-bench COMMAND
@@ -552,6 +554,131 @@ Show the application version and exit.
 ** -h, --help
 Display a summary of the available options
 
+
+* The XSK-DROP and XSK-TX commands
+In these modes, xdp-bench drops or mirrors incoming packets (like when using the
+=drop= or =tx= commands), but using an =AF_XDP= socket that passes the packets
+directly from the XDP hook to userspace. These modes can be used to test and
+benchmark =AF_XDP= sockets. The two commands differ only in the action taken -
+the syntax and options are otherwise identical.
+
+The code for these commands are derived from the =xdpsock= utility previously
+part of the kernel sources, and more recently the bpf-examples repository. The
+=xsk-drop= command corresponds to the =--rxdrop= option of =xdpsock=, and the
+=xsk-tx= command corresponds to the =--l2fwd= command of =xdpsock=.
+
+The syntax and options for the two commands are identical:
+
+=xdp-bench xsk-drop [options] <ifname>=
+
+or
+
+=xdp-bench xsk-tx [options] <ifname>=
+
+The supported options are:
+
+
+** -q, --queue <queue>
+Select the hardware receive queue to use for the test. The =AF_XDP= socket is
+bound to this queue, which means that =xdp-bench= will process all packets
+arriving on it. The default is to use queue 0.
+
+** -i, --interval <seconds>
+Set the polling interval for collecting all statistics and displaying them to
+the output. The default interval is 2 seconds.
+
+** -f, --frame-size <size>
+Set the size of the memory frames used to receive packets. Incoming packets will
+always use a memory chunk of this size, regardless of the size of the packet on
+the wire. The size must be a power of two, unless the =--unaligned= flag is
+used. The default is 4096 bytes (which corresponds to the page size on most
+systems).
+
+** -d, --duration <seconds>
+Set the test duration, in seconds. The default is 0 (run forever).
+
+** -b, --batch-size <packets>
+Set the batch size for the receive loop. This is the maximum number of packets
+processed at once each time the loop runs. The default is 64 packets.
+
+** -I, --irq-string <irq-string>
+Enable printing of interrupt statistics for the interrupt number associated with
+=irq-string= in /proc/interrupts. The string is used to find a matching IRQ
+number by simple substring matching. No default (which means no IRQ statistics
+are printed).
+
+** -p, --poll
+Use the =poll()= system call to get notifications for new packets, instead of
+running in a loop constantly checking for new packets.
+
+** -m, --no-need-wakeup
+Don't set the =XDP_USE_NEED_WAKEUP= flag when binding the =AF_XDP= socket. The
+flag is set by default, and causes the kernel driver to occasionally go to sleep
+and yield the CPU to the userspace application when receiving packets.
+
+** -u, --unaligned
+Support receiving unaligned packets, i.e., packets that are not aligned to the
+beginning of a data frame. When set, =xdp-bench= will enable huge pages for the
+userspace memory buffer used to receive packets. Setting this option enables
+frame sizes that are not a power of two (see the =--frame-size= option).
+
+** -M, --shared-umem
+Enable shared userspace memory across multiple =AF_XDP= sockets. When this
+option is set, =xdp-bench= will create four sockets that share the same
+userspace memory buffer, and packets will be sent to each socket in a
+round-robin fashion.
+
+** -x, --extra-stats
+Print extra packet statistics at each output interval.
+
+** -Q, --quiet
+Don't print any statistics at each output interval.
+
+** -a, --app-stats
+Print additional application-level statistics at each output interval.
+
+** -B, --busy-poll
+Set the =SO_PREFER_BUSY_POLL= socket option, which enables the application to
+busy-poll without IRQs ever being enabled on the hardware queue being processed.
+To make use of this option, the =napi_defer_hard_irqs= and =gro_flush_timeout=
+sysctls should be set for the interface in question. For more information, see
+https://docs.kernel.org/networking/napi.html#software-irq-coalescing.
+
+** -F, --frags
+Enable XDP fragments. This makes it possible to receive packets that are larger
+than the system page size, and requires kernel and driver support.
+
+** -C, --copy-mode <mode>
+Select the copying mode for the packets. Set to one of =auto=, =copy=, or
+=zero-copy=. The default is =auto=, which lets the kernel pick. Using zero-copy
+requires kernel and driver support, and can only be used when attaching the XDP
+program in native mode (see =--attach-mode=).
+
+** -w, --clock <clock>
+Choose the clock that will be used for all timer events in the application. The
+valid values are MONOTONIC, REALTIME, TAI and BOOTTIME, and the default is
+MONOTONIC.
+
+** -W, --policy <policy>
+Set the scheduler policy for the application before running. Valid values are
+=SCHED_OTHER= and =SCHED_FIFO=, and the default is =SCHED_OTHER=.
+
+** -U, --schpri <priority>
+Set the scheduler priority when using =SCHED_FIFO=. Defaults to 0.
+
+** -A, --attach-mode <mode>
+Set the XDP program attach mode (native or skb). The default is native mode.
+Note that zero-copy can only be used in native mode.
+
+** -v, --verbose
+Enable verbose logging. Supply twice to enable verbose logging from the
+underlying =libxdp= and =libbpf= libraries.
+
+** --version
+Show the application version and exit.
+
+** -h, --help
+Display a summary of the available options
 
 * Output Format Description
 
