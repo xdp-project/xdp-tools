@@ -781,22 +781,31 @@ struct prog_option xsk_udp_options[] = {
 
 static int do_xsk_udp(const void *cfg, __unused const char *pin_root_path)
 {
-	const struct xsk_opts *opt = cfg;
+	const struct xsk_opts *orig_opt = cfg;
+	struct xsk_opts opt;
 	struct xsk_ctx *ctx;
 	pthread_t pt;
 	int ret;
 
-	ret = xsk_validate_opts(opt);
+	memcpy(&opt, orig_opt, sizeof(opt));
+
+	ret = xsk_validate_opts(&opt);
 	if (ret)
 		return ret;
 
-	ctx = xsk_ctx__create(opt, XSK_BENCH_TXONLY);
+	if (macaddr_is_null(&opt.src_mac)) {
+		ret = get_mac_addr(opt.iface.ifindex, &opt.src_mac);
+		if (ret)
+			return ret;
+	}
+
+	ctx = xsk_ctx__create(&opt, XSK_BENCH_TXONLY);
 	ret = libxdp_get_error(ctx);
 	if (ret)
 		return ret;
 
 	pr_info("Transmitting on %s (ifindex %d)\n",
-	       opt->iface.ifname, opt->iface.ifindex);
+	       opt.iface.ifname, opt.iface.ifindex);
 
 	ret = xsk_start_bench(ctx, &pt);
 	if (ret)
