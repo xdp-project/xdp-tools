@@ -1,4 +1,4 @@
-.TH "xdp-trafficgen" "8" "FEBRUARY 19, 2026" "V1.6.1" "An XDP-based traffic generator"
+.TH "xdp-trafficgen" "8" "FEBRUARY 19, 2026" "V1.6.2" "An XDP-based traffic generator"
 .SH "NAME"
 XDP-trafficgen \- an XDP-based traffic generator
 .SH "SYNOPSIS"
@@ -94,9 +94,9 @@ the default, is 66 bytes.
 Older versions of \fIxdp\-trafficgen\fP failed to account for the four-byte ethernet
 checksum that is added at the end of packet, which meant that 64 was allowed
 (and the default) for size, even though this really generated 68-byte packets on
-the wire. To be able to fix this bug without breaking existing users, a value of
-64 will be clamped to the actual minimum value of 66 instead of producing an
-error.
+the wire. To be able to fix this bug without breaking existing users, values of
+64 or 65 will be clamped to the actual minimum value of 66 with a warning,
+instead of producing an error.
 .SS "-t, --threads <threads>"
 .PP
 Number of simultaneous threads to transmit from. Each thread will be pinned to a
