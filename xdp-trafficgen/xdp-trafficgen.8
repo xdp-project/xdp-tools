@@ -1,4 +1,4 @@
-.TH "xdp-trafficgen" "8" "AUGUST  8, 2025" "V1.6.1" "An XDP-based traffic generator"
+.TH "xdp-trafficgen" "8" "FEBRUARY 19, 2026" "V1.6.1" "An XDP-based traffic generator"
 .SH "NAME"
 XDP-trafficgen \- an XDP-based traffic generator
 .SH "SYNOPSIS"
@@ -86,8 +86,17 @@ Number of packets to send before exiting. If not supplied, \fIxdp\-trafficgen\fP
 keep sending packets until interrupted.
 .SS "-s, --pkt-size <bytes>"
 .PP
-Size of each UDP packet being sent, including the Ethernet header. The minimum
-size, which is also the default, is 64 bytes.
+Size of each UDP packet being sent, including the Ethernet header and checksum.
+Since \fIxdp\-trafficgen\fP generates IPv6 traffic, the minimum size, which is also
+the default, is 66 bytes.
+
+.PP
+Older versions of \fIxdp\-trafficgen\fP failed to account for the four-byte ethernet
+checksum that is added at the end of packet, which meant that 64 was allowed
+(and the default) for size, even though this really generated 68-byte packets on
+the wire. To be able to fix this bug without breaking existing users, a value of
+64 will be clamped to the actual minimum value of 66 instead of producing an
+error.
 .SS "-t, --threads <threads>"
 .PP
 Number of simultaneous threads to transmit from. Each thread will be pinned to a
