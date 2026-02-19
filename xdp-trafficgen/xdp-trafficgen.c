@@ -49,6 +49,7 @@
 #endif
 
 #define IFINDEX_LO 1
+#define ETH_FCS_SIZE 4
 
 static int mask = SAMPLE_DEVMAP_XMIT_CNT_MULTI | SAMPLE_DROP_OK;
 
@@ -137,8 +138,7 @@ struct udp_packet {
 	struct ethhdr eth;
 	struct ipv6hdr iph;
 	struct udphdr udp;
-	__u8 payload[64 - sizeof(struct udphdr)
-		     - sizeof(struct ethhdr) - sizeof(struct ipv6hdr)];
+	__u8 payload[];
 } __attribute__((__packed__));
 
 static struct udp_packet pkt_udp = {
@@ -360,15 +360,15 @@ static const struct udpopt {
 } defaults_udp = {
 	.interval = 1,
 	.threads = 1,
-	.pkt_size = 64,
+	.pkt_size = 66,
 	.hop_limit = 1,
 };
 
-static struct udp_packet *prepare_udp_pkt(const struct udpopt *cfg)
+static struct udp_packet *prepare_udp_pkt(const struct udpopt *cfg, __u16 *ret_pkt_size)
 {
+	__u16 payload_len, pkt_size = cfg->pkt_size - ETH_FCS_SIZE;
 	struct mac_addr src_mac = cfg->src_mac;
 	struct udp_packet *pkt = NULL;
-	__u16 payload_len;
 	int err;
 
 	if (macaddr_is_null(&src_mac)) {
@@ -377,19 +377,26 @@ static struct udp_packet *prepare_udp_pkt(const struct udpopt *cfg)
 			goto err;
 	}
 
-	if (cfg->pkt_size < sizeof(*pkt)) {
-		pr_warn("Minimum packet size is %zu bytes\n", sizeof(*pkt));
-		goto err;
+	if (pkt_size < sizeof(*pkt)) {
+		if (pkt_size >= 60) {
+			/* For backwards compatibility with old code that didn't
+			 * take the 4-byte FCS into account
+			 */
+			pr_warn("Clamping %u-byte packet size to %zu bytes\n", cfg->pkt_size, sizeof(*pkt) + ETH_FCS_SIZE);
+			pkt_size = sizeof(*pkt);
+		} else {
+			pr_warn("Minimum packet size is %zu bytes\n", sizeof(*pkt) + ETH_FCS_SIZE);
+			goto err;
+		}
 	}
 
-
-	pkt = calloc(1, cfg->pkt_size);
+	pkt = calloc(1, pkt_size);
 	if (!pkt)
 		goto err;
 
 	memcpy(pkt, &pkt_udp, sizeof(*pkt));
 
-	payload_len = cfg->pkt_size - offsetof(struct udp_packet, udp);
+	payload_len = pkt_size - offsetof(struct udp_packet, udp);
 	pkt->iph.payload_len = bpf_htons(payload_len);
 	pkt->iph.hop_limit = cfg->hop_limit;
 	pkt->udp.len = bpf_htons(payload_len);
@@ -419,6 +426,7 @@ static struct udp_packet *prepare_udp_pkt(const struct udpopt *cfg)
 	if (cfg->dst_port)
 		pkt->udp.dest = bpf_htons(cfg->dst_port);
 	pkt->udp.check = calc_udp_cksum(pkt);
+	*ret_pkt_size = pkt_size;
 
 	return pkt;
 
@@ -491,7 +499,6 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 
 	DECLARE_LIBXDP_OPTS(xdp_program_opts, opts);
 	struct thread_config *t = NULL, tcfg = {
-		.pkt_size = cfg->pkt_size,
 		.num_pkts = cfg->num_pkts,
 	};
 	struct trafficgen_state bpf_state = {};
@@ -499,6 +506,7 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 	struct udp_packet *payload = NULL;
 	pthread_t *runner_threads = NULL;
 	int err = 0, i;
+	__u16 pkt_size;
 	char buf[100];
 	__u32 key = 0;
 
@@ -506,12 +514,13 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 	if (err)
 		return err;
 
-	payload = prepare_udp_pkt(cfg);
+	payload = prepare_udp_pkt(cfg, &pkt_size);
 	if (!payload) {
 		err = -ENOMEM;
 		goto out;
 	}
 	tcfg.pkt = payload;
+	tcfg.pkt_size = pkt_size;
 
 	skel = xdp_trafficgen__open();
 	if (!skel) {

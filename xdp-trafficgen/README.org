@@ -84,8 +84,16 @@ Number of packets to send before exiting. If not supplied, =xdp-trafficgen= will
 keep sending packets until interrupted.
 
 ** -s, --pkt-size <bytes>
-Size of each UDP packet being sent, including the Ethernet header. The minimum
-size, which is also the default, is 64 bytes.
+Size of each UDP packet being sent, including the Ethernet header and checksum.
+Since =xdp-trafficgen= generates IPv6 traffic, the minimum size, which is also
+the default, is 66 bytes.
+
+Older versions of =xdp-trafficgen= failed to account for the four-byte ethernet
+checksum that is added at the end of packet, which meant that 64 was allowed
+(and the default) for size, even though this really generated 68-byte packets on
+the wire. To be able to fix this bug without breaking existing users, values of
+64 or 65 will be clamped to the actual minimum value of 66 with a warning,
+instead of producing an error.
 
 ** -t, --threads <threads>
 Number of simultaneous threads to transmit from. Each thread will be pinned to a
