@@ -22,6 +22,7 @@ The syntax for running xdp-trafficgen is:
 
 COMMAND can be one of:
        udp         - run in UDP mode
+       xsk-udp     - run in UDP mode (using AF_XDP sockets)
        tcp         - run in TCP mode
        probe       - probe kernel support
 \fP
@@ -100,6 +101,167 @@ Enable verbose logging (-vv: more verbose).
 .SS "--version"
 .PP
 Display version information and exit.
+.SS "-h, --help"
+.PP
+Display a summary of the available options
+.SH "The XSK-UDP command"
+.PP
+The \fIxsk\-udp\fP command also generates UDP traffic, but does so using an \fIAF_XDP\fP
+socket generates the traffic in userspace. This can be used to test and
+benchmark \fIAF_XDP\fP sockets for transmitting.
+
+.PP
+The code for this commands is derived from the \fIxdpsock\fP utility previously part
+of the kernel sources, and more recently the bpf-examples repository. This
+command corresponds to the \fI\-\-txonly\fP option of \fIxdpsock\fP.
+
+.PP
+The syntax for this command is:
+
+.PP
+\fIxdp\-trafficgen xsk\-udp [options] <ifname>\fP
+
+.PP
+The supported options are:
+.SS "-m, --dst-mac <mac addr>"
+.PP
+Set the destination MAC address of generated packets. The default is to generate
+packets with an all-zero destination MAC.
+.SS "-M, --src-mac <mac addr>"
+.PP
+Set the source MAC address of the generated packets. The default is to use the
+MAC address of the interface packets are transmitted on.
+.SS "-y, --timestamp"
+.PP
+Add a timestamp to each packet, using the same header format used by the kernel
+\fIpktgen\fP utility.
+.SS "-V, --vlan-tag"
+.PP
+Add a vlan tag to packets, using the ID and PRI specified using the \fI\-\-vlan\-id\fP
+and \fI\-\-vlan\-pri\fP options.
+.SS "-J, --vlan-id"
+.PP
+Set the vlan ID used for packets. Only has an effect when the \fI\-\-vlan\-tag\fP
+option is set. Default: 1.
+.SS "-K, --vlan-pri"
+.PP
+Set the vlan PRI used for packets. Only has an effect when the \fI\-\-vlan\-tag\fP
+option is set. Default: 0.
+.SS "-P, --fill-pattern <pattern>"
+.PP
+Use this pattern to fill the packet data. The data pattern is specified as a
+32-bit hex value, and defaults to 0.
+.SS "-T, --tx-cycle-time <us>"
+.PP
+Specify an interval between packet bursts, in microseconds. Each interval, a
+burst of \fI\-\-batch\-size\fP packets are sent. The default is 0 (send packets as fast
+as possible).
+.SS "-q, --queue <queue>"
+.PP
+Select the hardware receive queue to use for the test. The \fIAF_XDP\fP socket is
+bound to this queue, which means that \fIxdp\-trafficgen\fP will process all packets
+arriving on it. The default is to use queue 0.
+.SS "-i, --interval <seconds>"
+.PP
+Set the polling interval for collecting all statistics and displaying them to
+the output. The default interval is 2 seconds.
+.SS "-O, --retries <number>"
+.PP
+Set the maximum number retries when completing the last packets of a test run.
+When ending a test run, \fIxdp\-trafficgen\fP will try to release the last packet
+ring descriptors before exiting, retrying this many times with a 1-second
+interval in-between. This is only used when \fI\-\-pkt\-count\fP is set.
+.SS "-f, --frame-size <size>"
+.PP
+Set the size of the memory frames used to transmit packets. Packets will always
+use a memory chunk of this size, regardless of the size of the packet on the
+wire. The size must be a power of two, unless the \fI\-\-unaligned\fP flag is used.
+The default is 4096 bytes (which corresponds to the page size on most systems).
+.SS "-s, --pkt-size <size>"
+.PP
+Set the size of the packets being transmitted. This must be between 64 and 9728
+bytes, and defaults to 64.
+.SS "-d, --duration <seconds>"
+.PP
+Set the test duration, in seconds. The default is 0 (run forever, or until
+\fI\-\-pkt\-count\fP packets have been sent).
+.SS "-c, --pkt-count <number>"
+.PP
+Set the total number of packets to transmit before exiting. The default is 0
+(which means run forever, or until \fI\-\-duration\fP is reached).
+.SS "-b, --batch-size <packets>"
+.PP
+Set the batch size for the packet processing loop. This is the number of packets
+sent at once each time the loop runs. The default is 64 packets. See also
+\fI\-\-tx\-cycle\-time\fP.
+.SS "-I, --irq-string <irq-string>"
+.PP
+Enable printing of interrupt statistics for the interrupt number associated with
+\fIirq\-string\fP in /proc/interrupts. The string is used to find a matching IRQ
+number by simple substring matching. No default (which means no IRQ statistics
+are printed).
+.SS "-p, --poll"
+.PP
+Use the \fIpoll()\fP system call to get notifications for when a socket is ready to
+transmit new packets, instead of running in a loop constantly attempting to
+transmit.
+.SS "-m, --no-need-wakeup"
+.PP
+Don't set the \fIXDP_USE_NEED_WAKEUP\fP flag when binding the \fIAF_XDP\fP socket. The
+flag is set by default, and causes the kernel driver to occasionally go to sleep
+and yield the CPU to the userspace application when processing packets.
+.SS "-u, --unaligned"
+.PP
+Support sending unaligned packets, i.e., packets that are not aligned to the
+beginning of a data frame. When set, \fIxdp\-trafficgen\fP will enable huge pages for
+the userspace memory buffer used to hold the packet data being transmitted.
+Setting this option enables frame sizes that are not a power of two (see the
+\fI\-\-frame\-size\fP option).
+.SS "-M, --shared-umem"
+.PP
+Enable shared userspace memory across multiple \fIAF_XDP\fP sockets. When this
+option is set, \fIxdp\-trafficgen\fP will create four sockets that share the same
+userspace memory buffer, and packets will be sent on each socket in a
+round-robin fashion.
+.SS "-x, --extra-stats"
+.PP
+Print extra packet statistics at each output interval.
+.SS "-Q, --quiet"
+.PP
+Don't print any statistics at each output interval.
+.SS "-a, --app-stats"
+.PP
+Print additional application-level statistics at each output interval.
+.SS "-C, --copy-mode <mode>"
+.PP
+Select the copying mode for the packets. Set to one of \fIauto\fP, \fIcopy\fP, or
+\fIzero\-copy\fP. The default is \fIauto\fP, which lets the kernel pick. Using zero-copy
+requires kernel and driver support, and can only be used when attaching the XDP
+program in native mode (see \fI\-\-attach\-mode\fP).
+.SS "-w, --clock <clock>"
+.PP
+Choose the clock that will be used for all timer events in the application. The
+valid values are MONOTONIC, REALTIME, TAI and BOOTTIME, and the default is
+MONOTONIC.
+.SS "-W, --policy <policy>"
+.PP
+Set the scheduler policy for the application before running. Valid values are
+\fISCHED_OTHER\fP and \fISCHED_FIFO\fP, and the default is \fISCHED_OTHER\fP.
+.SS "-U, --schpri <priority>"
+.PP
+Set the scheduler priority when using \fISCHED_FIFO\fP. Defaults to 0.
+.SS "-A, --attach-mode <mode>"
+.PP
+Set the XDP program attach mode (native or skb) of the XDP program that
+\fIxdp\-trafficgen\fP attaches to the interface to enable XDP support. The default is
+native mode. Note that zero-copy can only be used in native mode.
+.SS "-v, --verbose"
+.PP
+Enable verbose logging. Supply twice to enable verbose logging from the
+underlying \fIlibxdp\fP and \fIlibbpf\fP libraries.
+.SS "--version"
+.PP
+Show the application version and exit.
 .SS "-h, --help"
 .PP
 Display a summary of the available options
