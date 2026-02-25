@@ -1463,7 +1463,7 @@ static void *xsk_tx_only_all(void *arg)
 static int l2fwd(struct xsk_ctx *ctx, struct xsk_socket_info *xsk)
 {
 	__u32 idx_rx = 0, idx_tx = 0, frags_done = 0;
-	unsigned int rcvd, i, eop_cnt = 0;
+	unsigned int rcvd, i, eop_cnt = 0, slots;
 	static __u32 nb_frags;
 	int ret;
 
@@ -1480,10 +1480,8 @@ static int l2fwd(struct xsk_ctx *ctx, struct xsk_socket_info *xsk)
 		return 0;
 	}
 
-	ret = xsk_ring_prod__reserve(&xsk->tx, rcvd, &idx_tx);
-	while ((unsigned int)ret != rcvd) {
-		if (ret < 0)
-			return ret;
+	slots = xsk_ring_prod__reserve(&xsk->tx, rcvd, &idx_tx);
+	if (slots < rcvd) {
 		complete_tx_l2fwd(xsk, ctx->opt.batch_size, ctx->opt.busy_poll);
 		if (ctx->opt.busy_poll || xsk_ring_prod__needs_wakeup(&xsk->tx)) {
 			xsk->app_stats.tx_wakeup_sendtos++;
@@ -1491,11 +1489,11 @@ static int l2fwd(struct xsk_ctx *ctx, struct xsk_socket_info *xsk)
 			if (ret)
 				return ret;
 		}
-		ret = xsk_ring_prod__reserve(&xsk->tx, rcvd, &idx_tx);
+		slots = xsk_ring_prod__reserve(&xsk->tx, rcvd, &idx_tx);
 	}
 
 	for (i = 0; i < rcvd; i++) {
-		const struct xdp_desc *desc = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx++);
+		const struct xdp_desc *desc = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx + i);
 		bool eop = IS_EOP_DESC(desc->options);
 		__u64 addr = desc->addr;
 		__u32 len = desc->len;
@@ -1503,6 +1501,17 @@ static int l2fwd(struct xsk_ctx *ctx, struct xsk_socket_info *xsk)
 
 		addr = xsk_umem__add_offset_to_addr(addr);
 		char *pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
+
+		if (!slots) {
+			/* couldn't reserve the full number of slots above, try
+			 * reserving one at a time while processing, aborting if
+			 * this fails
+			 */
+			slots = xsk_ring_prod__reserve(&xsk->tx, 1, &idx_tx);
+			if (!slots)
+				break;
+		}
+		slots--;
 
 		if (!nb_frags++)
 			swap_mac_addresses(pkt);
@@ -1527,8 +1536,8 @@ static int l2fwd(struct xsk_ctx *ctx, struct xsk_socket_info *xsk)
 
 	xsk->ring_stats.rx_npkts += eop_cnt;
 	xsk->ring_stats.tx_npkts += eop_cnt;
-	xsk->ring_stats.rx_frags += rcvd;
-	xsk->ring_stats.tx_frags += rcvd;
+	xsk->ring_stats.rx_frags += i;
+	xsk->ring_stats.tx_frags += i;
 	xsk->outstanding_tx += frags_done;
 
 	return 0;
