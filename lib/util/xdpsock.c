@@ -1034,7 +1034,7 @@ static int xsk_populate_fill_ring(struct xsk_umem_info *umem, __u32 frame_size)
 	ret = xsk_ring_prod__reserve(&umem->fq,
 				     XSK_RING_PROD__DEFAULT_NUM_DESCS * 2, &idx);
 	if (ret != XSK_RING_PROD__DEFAULT_NUM_DESCS * 2)
-		return -ret;
+		return -ENOMEM;
 
 	for (i = 0; i < XSK_RING_PROD__DEFAULT_NUM_DESCS * 2; i++)
 		*xsk_ring_prod__fill_addr(&umem->fq, idx++) = (__u64)i * frame_size;
