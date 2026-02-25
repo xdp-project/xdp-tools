@@ -76,6 +76,7 @@ static const char *driver_pass_list[] = {
 	"octeontx2",
 	"stmmac",
 	"mlx5_core",
+	"bonding",
 };
 
 static bool driver_needs_xdp_pass(const struct iface *iface)
@@ -105,6 +106,9 @@ static bool driver_needs_xdp_pass(const struct iface *iface)
 			return true;
 		}
 	}
+
+	pr_debug("Driver %s on interface %s does NOT need an xdp_pass program\n",
+		 name, iface->ifname);
 
 	return false;
 }
