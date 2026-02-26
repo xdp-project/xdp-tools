@@ -493,6 +493,7 @@ static __always_inline int xdp_flowtable_flags(struct xdp_md *ctx,
 	struct flow_offload *flow;
 	struct flow_ports *ports;
 	unsigned long flags;
+	__u8 xmit_type;
 
 	if (eth + 1 > data_end)
 		return XDP_PASS;
@@ -567,10 +568,11 @@ static __always_inline int xdp_flowtable_flags(struct xdp_md *ctx,
 	if (bpf_core_read(&flags, sizeof(flags), &flow->flags))
 		return XDP_PASS;
 
-	if (tuplehash->tuple.xmit_type != FLOW_OFFLOAD_XMIT_NEIGH)
+	xmit_type = BPF_CORE_READ_BITFIELD_PROBED(tuplehash, tuple.xmit_type);
+	if (xmit_type != FLOW_OFFLOAD_XMIT_NEIGH)
 		return XDP_PASS;
 
-	dir = tuplehash->tuple.dir;
+	dir = BPF_CORE_READ_BITFIELD_PROBED(tuplehash, tuple.dir);
 	if (dir >= FLOW_OFFLOAD_DIR_MAX)
 		return XDP_PASS;
 
