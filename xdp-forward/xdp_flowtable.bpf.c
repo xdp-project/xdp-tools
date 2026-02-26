@@ -561,6 +561,30 @@ xdp_flowtable_route_lookup(struct xdp_md *ctx,
 	return 0;
 }
 
+/* This function is required to keep the code backward compatible with older
+ * kernel where flow_offload_tuple struct size is different.
+ */
+static __always_inline struct flow_offload *
+xdp_flowtable_get_flow_from_tuplehash(struct flow_offload_tuple_rhash *tuplehash,
+				      enum flow_offload_tuple_dir dir)
+{
+	struct flow_offload_tuple_rhash *tuplehash_ptr;
+
+	switch (dir) {
+	case FLOW_OFFLOAD_DIR_ORIGINAL:
+		tuplehash_ptr = tuplehash;
+		break;
+	case FLOW_OFFLOAD_DIR_REPLY:
+		tuplehash_ptr = (void *)tuplehash -
+				bpf_core_type_size(struct flow_offload_tuple_rhash);
+		break;
+	default:
+		return NULL;
+	}
+
+	return  container_of(tuplehash_ptr, struct flow_offload, tuplehash);
+}
+
 static __always_inline int xdp_flowtable_flags(struct xdp_md *ctx,
 					       __u32 fib_flags)
 {
@@ -647,16 +671,19 @@ static __always_inline int xdp_flowtable_flags(struct xdp_md *ctx,
 	if (!tuplehash)
 		return XDP_PASS;
 
-	flow = container_of(tuplehash, struct flow_offload, tuplehash);
+	dir = BPF_CORE_READ_BITFIELD_PROBED(tuplehash, tuple.dir);
+	if (dir >= FLOW_OFFLOAD_DIR_MAX)
+		return XDP_PASS;
+
+	flow = xdp_flowtable_get_flow_from_tuplehash(tuplehash, dir);
+	if (!flow)
+		return XDP_PASS;
+
 	if (bpf_core_read(&flags, sizeof(flags), &flow->flags))
 		return XDP_PASS;
 
 	xmit_type = BPF_CORE_READ_BITFIELD_PROBED(tuplehash, tuple.xmit_type);
 	if (xmit_type != FLOW_OFFLOAD_XMIT_NEIGH)
-		return XDP_PASS;
-
-	dir = BPF_CORE_READ_BITFIELD_PROBED(tuplehash, tuple.dir);
-	if (dir >= FLOW_OFFLOAD_DIR_MAX)
 		return XDP_PASS;
 
 	if (xdp_flowtable_route_lookup(ctx, flow, &tuple, dir, flags,
