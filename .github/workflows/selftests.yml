@@ -15,6 +15,7 @@ jobs:
     strategy:
       matrix:
         KERNEL_VERSION:
+          - "6.19.9-300.fc44"
           - "6.18.0-65.fc44"
           - "6.17.11-200.fc42"
           - "6.16.7-200.fc42"
