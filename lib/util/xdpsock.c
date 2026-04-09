@@ -1148,8 +1148,10 @@ static inline int complete_tx_l2fwd(struct xsk_socket_info *xsk,
 			if (busy_poll || xsk_ring_prod__needs_wakeup(&umem->fq)) {
 				xsk->app_stats.fill_fail_polls++;
 				if (recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0,
-					     MSG_DONTWAIT, NULL, NULL) < 0)
+					     MSG_DONTWAIT, NULL, NULL) < 0) {
+					xsk_ring_cons__cancel(&umem->cq, rcvd);
 					return -errno;
+				}
 			}
 			slots = xsk_ring_prod__reserve(&umem->fq, rcvd, &idx_fq);
 		}
@@ -1170,6 +1172,8 @@ static inline int complete_tx_l2fwd(struct xsk_socket_info *xsk,
 		}
 
 		xsk_ring_prod__submit(&xsk->umem->fq, i);
+		if (i < rcvd)
+			xsk_ring_cons__cancel(&umem->cq, rcvd - i);
 		xsk_ring_cons__release(&xsk->umem->cq, i);
 		xsk->outstanding_tx -= i;
 	}
@@ -1218,8 +1222,10 @@ static int rx_drop(struct xsk_socket_info *xsk, __u32 batch_size, bool busy_poll
 		if (busy_poll || xsk_ring_prod__needs_wakeup(&xsk->umem->fq)) {
 			xsk->app_stats.fill_fail_polls++;
 			if (recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0,
-				     MSG_DONTWAIT, NULL, NULL) < 0)
+				     MSG_DONTWAIT, NULL, NULL) < 0) {
+				xsk_ring_cons__cancel(&xsk->rx, rcvd);
 				return -errno;
+			}
 		}
 		slots = xsk_ring_prod__reserve(&xsk->umem->fq, rcvd, &idx_fq);
 	}
@@ -1249,6 +1255,8 @@ static int rx_drop(struct xsk_socket_info *xsk, __u32 batch_size, bool busy_poll
 	}
 
 	xsk_ring_prod__submit(&xsk->umem->fq, i);
+	if (i < rcvd)
+		xsk_ring_cons__cancel(&xsk->rx, rcvd - i);
 	xsk_ring_cons__release(&xsk->rx, i);
 	xsk->ring_stats.rx_npkts += eop_cnt;
 	xsk->ring_stats.rx_frags += i;
@@ -1486,8 +1494,10 @@ static int l2fwd(struct xsk_ctx *ctx, struct xsk_socket_info *xsk)
 		if (ctx->opt.busy_poll || xsk_ring_prod__needs_wakeup(&xsk->tx)) {
 			xsk->app_stats.tx_wakeup_sendtos++;
 			ret = kick_tx(xsk);
-			if (ret)
+			if (ret) {
+				xsk_ring_cons__cancel(&xsk->rx, rcvd);
 				return ret;
+			}
 		}
 		slots = xsk_ring_prod__reserve(&xsk->tx, rcvd, &idx_tx);
 	}
@@ -1532,6 +1542,8 @@ static int l2fwd(struct xsk_ctx *ctx, struct xsk_socket_info *xsk)
 	}
 
 	xsk_ring_prod__submit(&xsk->tx, frags_done);
+	if (i < rcvd)
+		xsk_ring_cons__cancel(&xsk->rx, rcvd - i);
 	xsk_ring_cons__release(&xsk->rx, frags_done);
 
 	xsk->ring_stats.rx_npkts += eop_cnt;
