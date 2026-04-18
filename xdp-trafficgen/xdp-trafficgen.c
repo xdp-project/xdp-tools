@@ -6,7 +6,6 @@
 #include <string.h>
 #include <signal.h>
 #include <errno.h>
-#include <stdbool.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <pthread.h>

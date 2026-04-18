@@ -13,7 +13,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <bpf/bpf.h>
-#include <stdbool.h>
 #include <arpa/inet.h>
 #include <bpf/libbpf.h>
 #include <sys/sysinfo.h>
