@@ -1,7 +1,6 @@
 #ifndef _LINUX_NETFILTER_H
 #define _LINUX_NETFILTER_H
 
-#include <stdbool.h>
 #include <linux/types.h>
 #include <bpf/bpf_helpers.h>
 #include <xdp/parsing_helpers.h>

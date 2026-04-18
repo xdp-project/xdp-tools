@@ -23,7 +23,6 @@ static const char *__doc_err_only__=
 #include <string.h>
 #include <unistd.h>
 #include <bpf/bpf.h>
-#include <stdbool.h>
 #include <bpf/libbpf.h>
 #include <sys/resource.h>
 
