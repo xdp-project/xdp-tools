@@ -15,7 +15,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <bpf/bpf.h>
-#include <stdbool.h>
 #include <inttypes.h>
 #include <sys/mman.h>
 #include <arpa/inet.h>

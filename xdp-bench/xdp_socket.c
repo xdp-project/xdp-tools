@@ -2,7 +2,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <bpf/bpf.h>
-#include <stdbool.h>
 #include <linux/bpf.h>
 #include <pthread.h>
 #include <bpf/libbpf.h>

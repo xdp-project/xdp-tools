@@ -4,7 +4,6 @@
 #define __PARAMS_H
 
 #include <getopt.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <linux/in.h>
 #include <linux/in6.h>
