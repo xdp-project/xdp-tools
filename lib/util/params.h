@@ -8,7 +8,9 @@
 #include <stdlib.h>
 #include <linux/in.h>
 #include <linux/in6.h>
-#include <linux/if_ether.h>
+#ifndef ETH_ALEN
+#define ETH_ALEN 6
+#endif
 #include <bpf/libbpf.h>
 
 enum option_type {
