@@ -7,8 +7,7 @@
 #define XDPSOCK_H_
 
 #include <linux/if_xdp.h>
-#include <stdbool.h>
-#include <netinet/ether.h>
+#include <linux/if_ether.h>
 #include <time.h>
 #include <sched.h>
 #include <xdp/libxdp.h>

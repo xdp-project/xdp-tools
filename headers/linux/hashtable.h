@@ -9,7 +9,6 @@
 
 #include <math.h>
 #include <stdint.h>
-#include <stdbool.h>
 #include <linux/hlist.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
