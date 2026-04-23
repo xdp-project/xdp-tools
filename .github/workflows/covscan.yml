@@ -15,7 +15,7 @@ jobs:
       CLANG: clang-19
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
