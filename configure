@@ -58,7 +58,7 @@ check_toolchain()
     local bpftool_version
 
     : ${PKG_CONFIG:=pkg-config}
-    : ${CC=gcc}
+    : ${CC=cc}
     : ${OBJCOPY=objcopy}
     : ${CLANG=clang}
     : ${M4=m4}
