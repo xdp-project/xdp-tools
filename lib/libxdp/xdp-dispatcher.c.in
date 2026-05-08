@@ -59,7 +59,7 @@ SEC("xdp")
 int xdp_dispatcher(struct xdp_md *ctx)
 {
         __u8 num_progs_enabled = conf.num_progs_enabled;
-        int ret;
+        int ret = XDP_PASS;
 forloop(`i', `0', NUM_PROGS,
 `
         if (num_progs_enabled < incr(i))
@@ -75,7 +75,7 @@ forloop(`i', `0', NUM_PROGS,
                 goto out;
         ret = compat_test(ctx);
 out:
-        return XDP_PASS;
+        return ret;
 }
 
 SEC("xdp")
