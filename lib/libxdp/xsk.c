@@ -1336,6 +1336,10 @@ static void xsk_release_xdp_prog(struct xsk_socket *xsk)
 	if (value < 0)
 		pr_warn("Error occurred when decrementing xsk XDP prog refcount: %s, please detach program yourself\n",
 			strerror(-value));
+
+	close(ctx->refcnt_map_fd);
+	ctx->refcnt_map_fd = -ENOENT;
+
 	if (value)
 		goto out;
 
