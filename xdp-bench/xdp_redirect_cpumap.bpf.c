@@ -174,7 +174,7 @@ __u16 get_port_ipv6_tcp(struct xdp_md *ctx, __u64 nh_off, bool src)
 
 	if (ip6h + 1 > data_end)
 		return 0;
-	if (!(ip6h->nexthdr == IPPROTO_UDP))
+	if (!(ip6h->nexthdr == IPPROTO_TCP))
 		return 0;
 
 	tcph = (void *)(ip6h + 1);
