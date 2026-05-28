@@ -2329,6 +2329,12 @@ static int check_dispatcher_version(struct xdp_multiprog *mp,
 	{
 		struct xdp_dispatcher_config_v1 *config = (void *)buf;
 
+		if (map_info.value_size < sizeof(*config)) {
+			pr_warn("Dispatcher v1 map size %u < expected %zu\n",
+				map_info.value_size, sizeof(*config));
+			err = -EINVAL;
+			goto out;
+		}
 		for (i = 0; i < MAX_DISPATCHER_ACTIONS; i++) {
 			mp->config.chain_call_actions[i] =
 				config->chain_call_actions[i];
@@ -2341,6 +2347,12 @@ static int check_dispatcher_version(struct xdp_multiprog *mp,
 	{
 		struct xdp_dispatcher_config_v2 *config = (void *)buf;
 
+		if (map_info.value_size < sizeof(*config)) {
+			pr_warn("Dispatcher v2 map size %u < expected %zu\n",
+				map_info.value_size, sizeof(*config));
+			err = -EINVAL;
+			goto out;
+		}
 		for (i = 0; i < MAX_DISPATCHER_ACTIONS; i++) {
 			mp->config.chain_call_actions[i] = config->chain_call_actions[i];
 			mp->config.run_prios[i] = config->run_prios[i];
@@ -2368,6 +2380,14 @@ static int check_dispatcher_version(struct xdp_multiprog *mp,
 		err = -EOPNOTSUPP;
 		goto out;
 	}
+
+	if (mp->config.num_progs_enabled > MAX_DISPATCHER_ACTIONS) {
+		pr_warn("Dispatcher num_progs_enabled %u exceeds max %u\n",
+			mp->config.num_progs_enabled, MAX_DISPATCHER_ACTIONS);
+		err = -EINVAL;
+		goto out;
+	}
+
 	pr_debug("Verified XDP dispatcher version %d <= %d\n",
 		 version, XDP_DISPATCHER_VERSION);
 
