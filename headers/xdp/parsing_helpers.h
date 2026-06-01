@@ -26,6 +26,9 @@
 #include <linux/in.h>
 #include <bpf/bpf_endian.h>
 
+#define IP_MF				0x2000	/* "More Fragments" */
+#define IP_OFFSET			0x1fff	/* "Fragment Offset" */
+
 /* Header cursor to keep track of current parsing position */
 struct hdr_cursor {
 	void *pos;
@@ -132,7 +135,8 @@ static __always_inline int parse_ethhdr(struct hdr_cursor *nh, void *data_end,
 
 static __always_inline int skip_ip6hdrext(struct hdr_cursor *nh,
 					  void *data_end,
-					  __u8 next_hdr_type)
+					  __u8 next_hdr_type,
+					  __u8 frags_ok)
 {
 	for (int i = 0; i < IPV6_EXT_MAX_CHAIN; ++i) {
 		struct ipv6_opt_hdr *hdr = nh->pos;
@@ -153,6 +157,8 @@ static __always_inline int skip_ip6hdrext(struct hdr_cursor *nh,
 			next_hdr_type = hdr->nexthdr;
 			break;
 		case IPPROTO_FRAGMENT:
+			if (!frags_ok)
+				return -1;
 			nh->pos = (char *)hdr + 8;
 			next_hdr_type = hdr->nexthdr;
 			break;
@@ -165,9 +171,10 @@ static __always_inline int skip_ip6hdrext(struct hdr_cursor *nh,
 	return -1;
 }
 
-static __always_inline int parse_ip6hdr(struct hdr_cursor *nh,
-					void *data_end,
-					struct ipv6hdr **ip6hdr)
+static __always_inline int __parse_ip6hdr(struct hdr_cursor *nh,
+					  void *data_end,
+					  struct ipv6hdr **ip6hdr,
+					  __u8 frags_ok)
 {
 	struct ipv6hdr *ip6h = nh->pos;
 
@@ -181,12 +188,20 @@ static __always_inline int parse_ip6hdr(struct hdr_cursor *nh,
 	nh->pos = ip6h + 1;
 	*ip6hdr = ip6h;
 
-	return skip_ip6hdrext(nh, data_end, ip6h->nexthdr);
+	return skip_ip6hdrext(nh, data_end, ip6h->nexthdr, frags_ok);
 }
 
-static __always_inline int parse_iphdr(struct hdr_cursor *nh,
+static __always_inline int parse_ip6hdr(struct hdr_cursor *nh,
+					void *data_end,
+					struct ipv6hdr **ip6hdr)
+{
+	return __parse_ip6hdr(nh, data_end, ip6hdr, 1);
+}
+
+static __always_inline int __parse_iphdr(struct hdr_cursor *nh,
 				       void *data_end,
-				       struct iphdr **iphdr)
+				       struct iphdr **iphdr,
+				       __u8 frags_ok)
 {
 	struct iphdr *iph = nh->pos;
 	int hdrsize;
@@ -200,10 +215,21 @@ static __always_inline int parse_iphdr(struct hdr_cursor *nh,
 	if (nh->pos + hdrsize > data_end)
 		return -1;
 
+	/* ip fragmented traffic */
+	if (!frags_ok && iph->frag_off & bpf_htons(IP_MF | IP_OFFSET))
+		return -1;
+
 	nh->pos += hdrsize;
 	*iphdr = iph;
 
 	return iph->protocol;
+}
+
+static __always_inline int parse_iphdr(struct hdr_cursor *nh,
+				       void *data_end,
+				       struct iphdr **iphdr)
+{
+	return __parse_iphdr(nh, data_end, iphdr, 1);
 }
 
 static __always_inline int parse_arphdr(struct hdr_cursor *nh,
