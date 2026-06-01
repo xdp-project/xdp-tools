@@ -33,52 +33,46 @@ static __always_inline int xdp_fwd_flags(struct xdp_md *ctx, __u32 flags)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
+	struct hdr_cursor nh = { .pos = data };
 	struct bpf_fib_lookup fib_params;
-	struct ethhdr *eth = data;
+	int rc, eth_type, ip_type;
 	struct ipv6hdr *ip6h;
+	struct ethhdr *eth;
 	struct iphdr *iph;
-	__u16 h_proto;
-	__u64 nh_off;
-	int rc;
-
-	nh_off = sizeof(*eth);
-	if (data + nh_off > data_end)
-		return XDP_DROP;
 
 	__builtin_memset(&fib_params, 0, sizeof(fib_params));
 
-	h_proto = eth->h_proto;
-	if (h_proto == bpf_htons(ETH_P_IP)) {
-		iph = data + nh_off;
-
-		if (iph + 1 > data_end)
-			return XDP_DROP;
+	eth_type = parse_ethhdr(&nh, data_end, &eth);
+	if (eth_type == bpf_htons(ETH_P_IP)) {
+		ip_type = parse_iphdr(&nh, data_end, &iph);
+		if (ip_type < 0)
+			return XDP_PASS;
 
 		if (iph->ttl <= 1)
 			return XDP_PASS;
 
 		fib_params.family	= AF_INET;
 		fib_params.tos		= iph->tos;
-		fib_params.l4_protocol	= iph->protocol;
+		fib_params.l4_protocol	= ip_type;
 		fib_params.sport	= 0;
 		fib_params.dport	= 0;
 		fib_params.tot_len	= bpf_ntohs(iph->tot_len);
 		fib_params.ipv4_src	= iph->saddr;
 		fib_params.ipv4_dst	= iph->daddr;
-	} else if (h_proto == bpf_htons(ETH_P_IPV6)) {
+	} else if (eth_type == bpf_htons(ETH_P_IPV6)) {
 		struct in6_addr *src = (struct in6_addr *) fib_params.ipv6_src;
 		struct in6_addr *dst = (struct in6_addr *) fib_params.ipv6_dst;
 
-		ip6h = data + nh_off;
-		if (ip6h + 1 > data_end)
-			return XDP_DROP;
+		ip_type = parse_ip6hdr(&nh, data_end, &ip6h);
+		if (ip_type < 0)
+			return XDP_PASS;
 
 		if (ip6h->hop_limit <= 1)
 			return XDP_PASS;
 
 		fib_params.family	= AF_INET6;
 		fib_params.flowinfo	= *(__be32 *)ip6h & IPV6_FLOWINFO_MASK;
-		fib_params.l4_protocol	= ip6h->nexthdr;
+		fib_params.l4_protocol	= ip_type;
 		fib_params.sport	= 0;
 		fib_params.dport	= 0;
 		fib_params.tot_len	= bpf_ntohs(ip6h->payload_len);
@@ -119,9 +113,9 @@ static __always_inline int xdp_fwd_flags(struct xdp_md *ctx, __u32 flags)
 		if (!bpf_map_lookup_elem(&xdp_tx_ports, &fib_params.ifindex))
 			return XDP_PASS;
 
-		if (h_proto == bpf_htons(ETH_P_IP))
+		if (ip_type == bpf_htons(ETH_P_IP))
 			ip_decrease_ttl(iph);
-		else if (h_proto == bpf_htons(ETH_P_IPV6))
+		else if (ip_type == bpf_htons(ETH_P_IPV6))
 			ip6h->hop_limit--;
 
 		__builtin_memcpy(eth->h_dest, fib_params.dmac, ETH_ALEN);
