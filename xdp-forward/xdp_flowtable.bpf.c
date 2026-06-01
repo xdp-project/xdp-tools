@@ -12,8 +12,6 @@
 
 #define IPV6_FLOWINFO_MASK              bpf_htons(0x0FFFFFFF)
 
-#define IP_MF				0x2000	/* "More Fragments" */
-#define IP_OFFSET			0x1fff	/* "Fragment Offset" */
 #define CSUM_MANGLED_0			((__sum16)0xffff)
 
 #define BIT(x)				(1 << (x))
@@ -589,11 +587,12 @@ static __always_inline int xdp_flowtable_flags(struct xdp_md *ctx,
 					       __u32 fib_flags)
 {
 	void *data_end = (void *)(long)ctx->data_end;
+	void *data = (void *)(long)ctx->data;
+	struct hdr_cursor nh = { .pos = data };
 	struct flow_offload_tuple_rhash *tuplehash;
 	struct bpf_fib_lookup tuple = {
 		.ifindex = ctx->ingress_ifindex,
 	};
-	void *data = (void *)(long)ctx->data;
 	struct bpf_flowtable_opts opts = {};
 	enum flow_offload_tuple_dir dir;
 	struct ethhdr *eth = data;
@@ -601,31 +600,27 @@ static __always_inline int xdp_flowtable_flags(struct xdp_md *ctx,
 	struct flow_ports *ports;
 	unsigned long flags;
 	__u8 xmit_type;
+	int eth_type;
 
-	if (eth + 1 > data_end)
-		return XDP_PASS;
-
-	switch (eth->h_proto) {
+	eth_type = parse_ethhdr(&nh, data_end, NULL);
+	switch (eth_type) {
 	case bpf_htons(ETH_P_IP): {
-		struct iphdr *iph = data + sizeof(*eth);
+		struct iphdr *iph;
+		int ip_type;
 
-		ports = (struct flow_ports *)(iph + 1);
+		ip_type = __parse_iphdr(&nh, data_end, &iph, 0);
+		if (ip_type != IPPROTO_TCP && ip_type != IPPROTO_UDP)
+			return XDP_PASS;
+
+		ports = (struct flow_ports *)(nh.pos);
 		if (ports + 1 > data_end)
-			return XDP_PASS;
-
-		/* ip fragmented traffic */
-		if (iph->frag_off & bpf_htons(IP_MF | IP_OFFSET))
-			return XDP_PASS;
-
-		/* ip options */
-		if (iph->ihl * 4 != sizeof(*iph))
 			return XDP_PASS;
 
 		if (iph->ttl <= 1)
 			return XDP_PASS;
 
 		if (xdp_flowtable_check_tcp_state(ports, data_end,
-						  iph->protocol) < 0)
+						  ip_type) < 0)
 			return XDP_PASS;
 
 		tuple.family		= AF_INET;
@@ -641,9 +636,14 @@ static __always_inline int xdp_flowtable_flags(struct xdp_md *ctx,
 	case bpf_htons(ETH_P_IPV6): {
 		struct in6_addr *src = (struct in6_addr *)tuple.ipv6_src;
 		struct in6_addr *dst = (struct in6_addr *)tuple.ipv6_dst;
-		struct ipv6hdr *ip6h = data + sizeof(*eth);
+		struct ipv6hdr *ip6h;
+		int ip_type;
 
-		ports = (struct flow_ports *)(ip6h + 1);
+		ip_type = __parse_ip6hdr(&nh, data_end, &ip6h, 0);
+		if (ip_type != IPPROTO_TCP && ip_type != IPPROTO_UDP)
+			return XDP_PASS;
+
+		ports = (struct flow_ports *)(nh.pos);
 		if (ports + 1 > data_end)
 			return XDP_PASS;
 
