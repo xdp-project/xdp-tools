@@ -106,7 +106,6 @@ static __always_inline int parse_ethhdr(struct hdr_cursor *nh, void *data_end,
 		return -1;
 
 	nh->pos = eth + 1;
-	*ethhdr = eth;
 	vlh = nh->pos;
 	h_proto = eth->h_proto;
 
@@ -126,6 +125,8 @@ static __always_inline int parse_ethhdr(struct hdr_cursor *nh, void *data_end,
 	}
 
 	nh->pos = vlh;
+	if (ethhdr)
+		*ethhdr = eth;
 	return h_proto; /* network-byte-order */
 }
 
