@@ -109,6 +109,13 @@ However, this will also remove the contents of the maps (the filtering rules),
 so this option can be used to keep the maps around so the rules persist until
 =xdp-filter= is loaded again.
 
+Caution: the persisted maps don't record the policy they were created
+under. Reloading =xdp-filter= afterwards under the opposite policy
+(=allow= vs =deny=) reuses the same entries with the new policy's
+semantics, so an allowlist becomes a denylist and vice versa. To
+switch policies safely, unload without =--keep-maps= so the maps are
+cleared, then load fresh under the new policy.
+
 ** -v, --verbose
 Enable debug logging. Specify twice for even more verbosity.
 
