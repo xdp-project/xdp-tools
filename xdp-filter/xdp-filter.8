@@ -1,4 +1,4 @@
-.TH "xdp-filter" "8" "SEPTEMBER  5, 2022" "V1.6.3" "A simple XDP-powered packet filter"
+.TH "xdp-filter" "8" "JUNE  9, 2026" "V1.6.3" "A simple XDP-powered packet filter"
 .SH "NAME"
 xdp-filter \- a simple XDP-powered packet filter
 .SH "SYNOPSIS"
@@ -120,6 +120,14 @@ default, all BPF maps no longer needed by any loaded program are removed.
 However, this will also remove the contents of the maps (the filtering rules),
 so this option can be used to keep the maps around so the rules persist until
 \fIxdp\-filter\fP is loaded again.
+
+.PP
+Caution: the persisted maps don't record the policy they were created
+under. Reloading \fIxdp\-filter\fP afterwards under the opposite policy
+(\fIallow\fP vs \fIdeny\fP) reuses the same entries with the new policy's
+semantics, so an allowlist becomes a denylist and vice versa. To
+switch policies safely, unload without \fI\-\-keep\-maps\fP so the maps are
+cleared, then load fresh under the new policy.
 .SS "-v, --verbose"
 .PP
 Enable debug logging. Specify twice for even more verbosity.
