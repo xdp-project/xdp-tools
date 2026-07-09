@@ -263,8 +263,13 @@ int BPF_PROG(tp_xdp_devmap_xmit_multi, const struct net_device *from_dev,
 	if (!IN_SET(to_match, idx_out))
 		return 0;
 
-	bpf_map_update_elem(&devmap_xmit_cnt_multi, &idx, &empty, BPF_NOEXIST);
 	rec = bpf_map_lookup_elem(&devmap_xmit_cnt_multi, &idx);
+	if (!rec) {
+		/* Defer creation of the entry to when lookup fails. */
+		bpf_map_update_elem(&devmap_xmit_cnt_multi, &idx, &empty, BPF_NOEXIST);
+		rec = bpf_map_lookup_elem(&devmap_xmit_cnt_multi, &idx);
+	}
+
 	if (!rec)
 		return 0;
 
