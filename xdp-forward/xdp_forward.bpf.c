@@ -113,9 +113,9 @@ static __always_inline int xdp_fwd_flags(struct xdp_md *ctx, __u32 flags)
 		if (!bpf_map_lookup_elem(&xdp_tx_ports, &fib_params.ifindex))
 			return XDP_PASS;
 
-		if (ip_type == bpf_htons(ETH_P_IP))
+		if (eth_type == bpf_htons(ETH_P_IP))
 			ip_decrease_ttl(iph);
-		else if (ip_type == bpf_htons(ETH_P_IPV6))
+		else if (eth_type == bpf_htons(ETH_P_IPV6))
 			ip6h->hop_limit--;
 
 		__builtin_memcpy(eth->h_dest, fib_params.dmac, ETH_ALEN);
