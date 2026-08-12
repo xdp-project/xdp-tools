@@ -304,7 +304,7 @@ int  cpumap_round_robin(struct xdp_md *ctx)
 	cpu_idx = *cpu_iterator;
 
 	*cpu_iterator += 1;
-	if (*cpu_iterator == *cpu_max)
+	if (*cpu_iterator >= *cpu_max)
 		*cpu_iterator = 0;
 
 	cpu_selected = bpf_map_lookup_elem(&cpus_available, &cpu_idx);
