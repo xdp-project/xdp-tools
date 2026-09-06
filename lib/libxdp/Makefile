@@ -48,7 +48,7 @@ clean:
 		[ -d "$$d" ] && rmdir "$$d"; done || true
 	$(Q)$(MAKE) -C $(TEST_DIR) clean
 
-.PHONY: install
+.PHONY: install uninstall
 install: all
 	$(Q)install -d -m 0755 $(DESTDIR)$(HDRDIR)
 	$(Q)install -d -m 0755 $(DESTDIR)$(LIBDIR)
@@ -62,6 +62,14 @@ install: all
 	$(if $(MAN_FILES),$(Q)install -m 0644 $(MAN_FILES) $(DESTDIR)$(MANDIR)/man3)
 	$(Q)$(MAKE) -C $(TEST_DIR) install
 
+uninstall:
+	$(MAKE) -C $(TEST_DIR) uninstall
+	rm -f $(addprefix $(DESTDIR)$(HDRDIR)/,$(notdir $(LIB_HEADERS)))
+	rm -f $(DESTDIR)$(LIBDIR)/pkgconfig/$(notdir $(PC_FILE))
+	rm -f $(addprefix $(DESTDIR)$(LIBDIR)/,$(notdir $(SHARED_LIBS) $(STATIC_LIBS)))
+	rm -f $(addprefix $(DESTDIR)$(BPF_OBJECT_DIR)/,$(notdir $(XDP_OBJS)))
+	$(if $(MAN_FILES),rm -f $(addprefix $(DESTDIR)$(MANDIR)/man3/,$(notdir $(MAN_FILES))))
+	-rmdir --ignore-fail-on-non-empty $(DESTDIR)$(HDRDIR)
 
 $(OBJDIR)/libxdp.a: $(STATIC_OBJS)
 	$(QUIET_LINK)$(AR) rcs $@ $^
