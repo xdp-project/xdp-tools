@@ -15,6 +15,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <time.h>
 
 #include <bpf/bpf.h>
 #include <bpf/bpf_endian.h>
@@ -49,6 +50,7 @@
 
 #define IFINDEX_LO 1
 #define ETH_FCS_SIZE 4
+#define TEST_RUN_BATCH_SIZE (1 << 20U)
 
 static int mask = SAMPLE_DEVMAP_XMIT_CNT_MULTI | SAMPLE_DROP_OK;
 
@@ -164,6 +166,7 @@ struct thread_config {
 	size_t pkt_size;
 	__u32 cpu_core_id;
 	__u32 num_pkts;
+	__u32 duration;
 	__u32 batch_size;
 	struct xdp_program *prog;
 };
@@ -179,23 +182,54 @@ static int run_prog(const struct thread_config *cfg, bool *status_var)
 			    .data_size_in = cfg->pkt_size,
 			    .ctx_in = &ctx_in,
 			    .ctx_size_in = sizeof(ctx_in),
-			    .repeat = cfg->num_pkts ?: 1 << 20,
+			    .repeat = cfg->num_pkts && cfg->num_pkts < TEST_RUN_BATCH_SIZE ? cfg->num_pkts : TEST_RUN_BATCH_SIZE,
 			    .flags = BPF_F_TEST_XDP_LIVE_FRAMES,
 			    .batch_size = cfg->batch_size,
 		);
 	__u64 iterations = 0;
 	cpu_set_t cpu_cores;
 	int err;
+	bool duration_expired = false;
+	struct timespec deadline = {};
+	struct timespec now;
 
 	CPU_ZERO(&cpu_cores);
 	CPU_SET(cfg->cpu_core_id, &cpu_cores);
 	pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpu_cores);
+
+	if (cfg->duration) {
+		err = clock_gettime(CLOCK_MONOTONIC, &deadline);
+		if (err)
+			return -errno;
+
+		deadline.tv_sec += cfg->duration;
+	}
+
 	do {
+        if (cfg->num_pkts) {
+                __u64 remaining = cfg->num_pkts - iterations;
+
+                if (remaining < (__u64)opts.repeat)
+                        opts.repeat = (int)remaining;
+        }
+
 		err = xdp_program__test_run(cfg->prog, &opts, 0);
 		if (err)
 			return -errno;
 		iterations += opts.repeat;
-	} while (!*status_var && (!cfg->num_pkts || cfg->num_pkts > iterations));
+
+		if (cfg->duration) {
+			if (clock_gettime(CLOCK_MONOTONIC, &now))
+				return -errno;
+
+			duration_expired =
+					now.tv_sec > deadline.tv_sec ||
+					(now.tv_sec == deadline.tv_sec &&
+					now.tv_nsec >= deadline.tv_nsec);
+		}
+	} while (!*status_var &&
+			!duration_expired &&
+			(!cfg->num_pkts || cfg->num_pkts > iterations));
 
 	return 0;
 #else
@@ -348,6 +382,7 @@ static __be16 calc_udp_cksum(const struct udp_packet *pkt)
 
 static const struct udpopt {
 	__u32 num_pkts;
+	__u32 duration;
 	struct iface iface;
 	struct mac_addr dst_mac;
 	struct mac_addr src_mac;
@@ -471,6 +506,10 @@ static struct prog_option udp_options[] = {
 		      .short_opt = 'n',
 		      .metavar = "<port>",
 		      .help = "Number of packets to send"),
+	DEFINE_OPTION("duration", OPT_U32, struct udpopt, duration,
+              .short_opt = 'D',
+              .metavar = "<seconds>",
+              .help = "Duration to run; default 0 (forever)"),
 	DEFINE_OPTION("pkt-size", OPT_U16, struct udpopt, pkt_size,
 		      .short_opt = 's',
 		      .metavar = "<bytes>",
@@ -503,6 +542,7 @@ int do_udp(const void *opt, __unused const char *pin_root_path)
 	DECLARE_LIBXDP_OPTS(xdp_program_opts, opts);
 	struct thread_config *t = NULL, tcfg = {
 		.num_pkts = cfg->num_pkts,
+		.duration = cfg->duration,
 	};
 	struct trafficgen_state bpf_state = {};
 	struct xdp_trafficgen *skel = NULL;
@@ -919,6 +959,7 @@ static void prepare_tcp_pkt(const struct tcp_flowkey *fkey,
 
 static const struct tcpopt {
 	__u32 num_pkts;
+	__u32 duration;
 	struct iface iface;
 	char *dst_addr;
 	__u16 dst_port;
@@ -941,6 +982,10 @@ static struct prog_option tcp_options[] = {
 		      .short_opt = 'n',
 		      .metavar = "<port>",
 		      .help = "Number of packets to send"),
+	DEFINE_OPTION("duration", OPT_U32, struct tcpopt, duration,
+              .short_opt = 'D',
+              .metavar = "<seconds>",
+              .help = "Duration to run; default 0 (forever)"),
 	DEFINE_OPTION("interval", OPT_U16, struct tcpopt, interval,
 		      .short_opt = 'I',
 		      .metavar = "<s>",
@@ -986,6 +1031,7 @@ int do_tcp(const void *opt, __unused const char *pin_root_path)
 		.pkt = &pkt_tcp,
 		.pkt_size = sizeof(pkt_tcp),
 		.num_pkts = cfg->num_pkts,
+		.duration = cfg->duration,
 	};
 	struct trafficgen_state bpf_state = {};
 	struct xdp_trafficgen *skel = NULL;
