@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <stdio.h>
+#include <stdlib.h>
 #include <errno.h>
 #include <string.h>
 
@@ -13,6 +14,8 @@
 #include "xdp_forward.skel.h"
 #include "xdp_flowtable.skel.h"
 #include "xdp_flowtable_sample.skel.h"
+
+#include "xdp-userspace-vlans.h"
 
 #define MAX_IFACE_NUM 32
 #define PROG_NAME "xdp-forward"
@@ -150,6 +153,9 @@ static int do_load(const void *cfg, __unused const char *pin_root_path)
 	int ret = EXIT_FAILURE;
 	struct iface *iface;
 	void *skel;
+	struct vlan_entry *vlan_entries = NULL;
+	struct bpf_map *vlan_map_obj = NULL;
+	int vlan_count = 0;
 
 	switch (opt->fwd_mode) {
 	case FWD_FIB:
@@ -191,6 +197,23 @@ static int do_load(const void *cfg, __unused const char *pin_root_path)
 		map = xdp_forward_skel->maps.xdp_tx_ports;
 		obj = xdp_forward_skel->obj;
 		skel = (void *)xdp_forward_skel;
+		vlan_map_obj = xdp_forward_skel->maps.vlan_map;
+
+		/* Enumerate VLAN uppers on the configured interfaces before
+		 * the object loads: the count freezes into rodata, so with no
+		 * VLANs configured the verifier removes the VLAN code, leaving
+		 * only the gate check (and the unused map is not created at
+		 * all).
+		 */
+		vlan_count = vlan_collect_entries(opt->ifaces, &vlan_entries);
+		if (vlan_count < 0) {
+			pr_warn("Failed to enumerate VLAN interfaces: %s\n",
+				strerror(-vlan_count));
+			goto end_destroy;
+		}
+		xdp_forward_skel->rodata->vlans_configured = vlan_count;
+		if (!vlan_count)
+			bpf_map__set_autocreate(vlan_map_obj, false);
 	}
 
 	/* Make sure we only load the one XDP program we are interested in */
@@ -243,6 +266,16 @@ static int do_load(const void *cfg, __unused const char *pin_root_path)
 		pr_info("Loaded on interface %s\n", iface->ifname);
 	}
 
+	if (vlan_count > 0) {
+		ret = vlan_populate_map(bpf_map__fd(vlan_map_obj),
+					vlan_entries, vlan_count);
+		if (ret) {
+			pr_warn("Failed to populate VLAN map: %s\n",
+				strerror(-ret));
+			goto end_detach;
+		}
+	}
+
 	ret = EXIT_SUCCESS;
 
 end_destroy:
@@ -251,6 +284,7 @@ end_destroy:
 	else
 		xdp_forward__destroy(skel);
 end:
+	free(vlan_entries);
 	return ret;
 
 end_detach:
