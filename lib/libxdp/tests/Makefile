@@ -56,12 +56,18 @@ all: $(USER_TARGETS) $(STATIC_LINK_TARGETS) $(BPF_OBJS)
 clean::
 	$(Q)rm -f $(USER_TARGETS) $(USER_OBJ) $(STATIC_LINK_TARGETS) $(BPF_OBJS)
 
-.PHONY: install
+.PHONY: install uninstall
 install: all
 	install -m 0755 -d $(DESTDIR)$(SCRIPTSDIR)/tests/libxdp
 	install -m 0644 $(TEST_FILE) $(DESTDIR)$(SCRIPTSDIR)/tests/libxdp
 	install -m 0755 $(USER_TARGETS) $(STATIC_LINK_TARGETS) $(DESTDIR)$(SCRIPTSDIR)/tests/libxdp
 	install -m 0644 $(BPF_OBJS) $(DESTDIR)$(SCRIPTSDIR)/tests/libxdp
+
+uninstall:
+	rm -f $(addprefix $(DESTDIR)$(SCRIPTSDIR)/tests/libxdp/,$(notdir $(TEST_FILE) $(USER_TARGETS) $(STATIC_LINK_TARGETS) $(BPF_OBJS)))
+	-rmdir --ignore-fail-on-non-empty $(DESTDIR)$(SCRIPTSDIR)/tests/libxdp
+	-rmdir --ignore-fail-on-non-empty $(DESTDIR)$(SCRIPTSDIR)/tests
+	-rmdir --ignore-fail-on-non-empty $(DESTDIR)$(SCRIPTSDIR)
 
 $(OBJECT_LIBBPF): $(LIBBPF_SOURCES)
 	$(Q)$(MAKE) -C $(LIB_DIR) libbpf

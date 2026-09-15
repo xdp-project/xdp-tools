@@ -265,10 +265,11 @@ Libxdp provides helper functions for creating and destroying umems and
 sockets as shown below. The first thing that a user generally wants to
 do is to create a umem area. This is the area that will contain all
 packets received and the ones that are going to be sent. After that,
-AF_XDP sockets can be created tied to this umem. These can either be
-sockets that have exclusive ownership of that umem through
-xsk_socket__create() or shared with other sockets using
-xsk_socket__create_shared. There is one option called
+AF_XDP sockets can be created tied to this umem with
+xsk_socket__create_opts(). If neither fill nor comp is set, it behaves
+like xsk_socket__create() and the socket takes exclusive ownership of
+the umem; if both are set, it behaves like xsk_socket__create_shared()
+and the umem is shared with other sockets. There is one option called
 XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD that can be set in the
 libxdp_flags field (also called libbpf_flags for compatibility
 reasons). This will make libxdp not load any XDP program or set and
@@ -278,6 +279,11 @@ If there is already a socket created with socket(AF_XDP, SOCK_RAW, 0)
 not bound and not tied to any umem, file descriptor of this socket can
 be used in param opts of xsk_umem__create_opts(), which is a recommended
 way of umem creation.
+.PP
+In the same way, xsk_socket__create_opts() is the recommended way of socket
+creation: instead of the separate arguments that xsk_socket__create() and
+xsk_socket__create_shared() take, the ring configuration and flags are passed
+in a struct xsk_socket_opts.
 .RS
 .nf
 \fCstruct xsk_umem *xsk_umem__create_opts(void *umem_area,
@@ -294,6 +300,10 @@ int xsk_umem__create_with_fd(struct xsk_umem **umem,
                              struct xsk_ring_prod *fill,
                              struct xsk_ring_cons *comp,
                              const struct xsk_umem_config *config);
+struct xsk_socket *xsk_socket__create_opts(const char *ifname,
+                                           __u32 queue_id,
+                                           struct xsk_umem *umem,
+                                           struct xsk_socket_opts *opts);
 int xsk_socket__create(struct xsk_socket **xsk,
                        const char *ifname, __u32 queue_id,
                        struct xsk_umem *umem,
@@ -344,7 +354,7 @@ int xsk_socket__update_xskmap(struct xsk_socket *xsk, int xsks_map_fd);
 To further reduce required level of privileges, an AF_XDP socket can be created
 beforehand with socket(AF_XDP, SOCK_RAW, 0) and passed to a non-privileged
 process.  This socket can be used in xsk_umem__create_opts() and later in
-xsk_socket__create() with created umem.  xsk_socket__create_shared() would
+xsk_socket__create_opts() with created umem.  xsk_socket__create_shared() would
 still require privileges for AF_XDP socket creation.
 .SS "Data path"
 .PP

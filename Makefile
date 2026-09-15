@@ -23,7 +23,7 @@ UTILS += xdp-bench xdp-forward xdp-monitor xdp-trafficgen
 endif
 
 SUBDIRS := lib $(UTILS)
-.PHONY: check_submodule help clobber distclean clean install test libxdp $(SUBDIRS)
+.PHONY: check_submodule help clobber distclean clean install uninstall test libxdp $(SUBDIRS)
 
 all: $(SUBDIRS)
 
@@ -45,6 +45,7 @@ help:
 	@echo " clean               - remove products of build"
 	@echo " distclean           - remove configuration and build"
 	@echo " install             - install binaries on local machine"
+	@echo " uninstall           - remove installed files"
 	@echo " test                - run test suite"
 	@echo " archive             - create tarball of all sources"
 	@echo ""
@@ -77,6 +78,10 @@ clean: check_submodule
 install: all
 	@for i in $(SUBDIRS); \
 	do $(MAKE) -C $$i install; done
+
+uninstall:
+	@for i in $(UTILS) lib; \
+	do $(MAKE) -C $$i uninstall || exit $$?; done
 
 test: all
 	@for i in lib/libxdp $(UTILS); do \

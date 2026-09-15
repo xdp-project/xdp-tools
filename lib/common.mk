@@ -68,7 +68,7 @@ all: $(USER_TARGETS) $(XDP_OBJ) $(EXTRA_TARGETS) $(TEST_TARGETS) man
 clean::
 	$(Q)rm -f $(USER_TARGETS) $(XDP_OBJ) $(TEST_TARGETS) $(USER_OBJ) $(TEST_OBJ) $(USER_GEN) $(BPF_SKEL_H) *.ll
 
-.PHONY: install
+.PHONY: install uninstall
 install: all install_local
 	install -m 0755 -d $(DESTDIR)$(SBINDIR)
 	install -m 0755 -d $(DESTDIR)$(BPF_OBJECT_DIR)
@@ -83,8 +83,23 @@ install: all install_local
 	$(if $(TEST_FILE_DEPS),install -m 0644 $(TEST_FILE_DEPS) $(DESTDIR)$(SCRIPTSDIR)/tests/$(TOOL_NAME))
 	$(if $(TEST_TARGETS),install -m 0755 $(TEST_TARGETS) $(DESTDIR)$(SCRIPTSDIR))
 
+uninstall: uninstall_local
+	$(if $(USER_TARGETS),rm -f $(addprefix $(DESTDIR)$(SBINDIR)/,$(notdir $(USER_TARGETS))))
+	$(if $(XDP_OBJ_INSTALL),rm -f $(addprefix $(DESTDIR)$(BPF_OBJECT_DIR)/,$(notdir $(XDP_OBJ_INSTALL))))
+	$(if $(MAN_FILES),rm -f $(addprefix $(DESTDIR)$(MANDIR)/man8/,$(notdir $(MAN_FILES))))
+	$(if $(SCRIPTS_FILES),rm -f $(addprefix $(DESTDIR)$(SCRIPTSDIR)/,$(notdir $(SCRIPTS_FILES))))
+	$(if $(TEST_FILE),rm -f $(addprefix $(DESTDIR)$(SCRIPTSDIR)/tests/$(TOOL_NAME)/,$(notdir $(TEST_FILE))))
+	$(if $(TEST_FILE_DEPS),rm -f $(addprefix $(DESTDIR)$(SCRIPTSDIR)/tests/$(TOOL_NAME)/,$(notdir $(TEST_FILE_DEPS))))
+	$(if $(TEST_TARGETS),rm -f $(addprefix $(DESTDIR)$(SCRIPTSDIR)/,$(notdir $(TEST_TARGETS))))
+	-$(if $(TEST_FILE),rmdir --ignore-fail-on-non-empty $(DESTDIR)$(SCRIPTSDIR)/tests/$(TOOL_NAME))
+	-rmdir --ignore-fail-on-non-empty $(DESTDIR)$(SCRIPTSDIR)/tests
+	-rmdir --ignore-fail-on-non-empty $(DESTDIR)$(SCRIPTSDIR)
+
 .PHONY: install_local
 install_local::
+
+.PHONY: uninstall_local
+uninstall_local::
 
 $(OBJECT_LIBBPF): $(LIBBPF_SOURCES)
 	$(Q)$(MAKE) -C $(LIB_DIR) libbpf

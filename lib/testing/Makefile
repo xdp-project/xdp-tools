@@ -13,3 +13,8 @@ install_local::
 	install -m 0755 -d $(DESTDIR)$(SCRIPTSDIR)
 	install -m 0644 test_config.install.sh $(DESTDIR)$(SCRIPTSDIR)/test_config.sh
 	install -m 0644 $(XDP_OBJ) $(DESTDIR)$(SCRIPTSDIR)/
+
+uninstall_local::
+	rm -f $(DESTDIR)$(SCRIPTSDIR)/test_config.sh
+	rm -f $(addprefix $(DESTDIR)$(SCRIPTSDIR)/,$(notdir $(XDP_OBJ)))
+	-rmdir --ignore-fail-on-non-empty $(DESTDIR)$(SCRIPTSDIR)

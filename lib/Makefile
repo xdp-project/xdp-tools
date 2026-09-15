@@ -24,9 +24,13 @@ clean: libbpf_clean
 	@for i in $(SUBDIRS) libxdp; \
 	do $(MAKE) -C $$i clean; done
 
-.PHONY: install
+.PHONY: install uninstall
 install: libxdp_install
 	$(MAKE) -C testing install
+
+uninstall:
+	$(MAKE) -C testing uninstall
+	$(MAKE) -C libxdp uninstall
 
 .PHONY: libxdp_install
 libxdp_install: libxdp
