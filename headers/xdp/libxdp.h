@@ -150,6 +150,14 @@ bool xdp_multiprog__xdp_dev_bound(const struct xdp_multiprog *mp);
  * @fd
  *	Load from BPF program with fd @fd
  *
+ * @insns, @insns_cnt, @prog_name
+ *	Create from a raw BPF instruction stream of @insns_cnt instructions.
+ *	libxdp synthesises the BTF that the kernel requires to load the program
+ *	as a dispatcher component, so callers that generate bytecode directly
+ *	do not need a BTF-emitting toolchain.
+ *
+ *	@prog_name is required.
+ *
  * When one of these combinations is set, all other members of the opts struct
  * must be zeroed out.
  */
@@ -163,9 +171,11 @@ struct xdp_program_opts {
 	const char *pin_path;
 	__u32 id;
 	int fd;
+	const struct bpf_insn *insns;
+	size_t insns_cnt;
 	size_t :0;
 };
-#define xdp_program_opts__last_field fd
+#define xdp_program_opts__last_field insns_cnt
 
 #define DECLARE_LIBXDP_OPTS DECLARE_LIBBPF_OPTS
 

@@ -153,6 +153,10 @@ static inline void *libxdp_err_ptr(int err, bool ret_null)
 	return ERR_PTR(err);
 }
 
+LIBXDP_HIDE_SYMBOL void *xdp_synthesise_elf(const struct bpf_insn *insns,
+					    size_t insn_cnt,
+					    const char *prog_name,
+					    size_t *out_size);
 LIBXDP_HIDE_SYMBOL int xdp_lock_acquire(void);
 LIBXDP_HIDE_SYMBOL int xdp_lock_release(int lock_fd);
 LIBXDP_HIDE_SYMBOL int xdp_attach_fd(int prog_fd, int old_fd, int ifindex,

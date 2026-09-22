@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 
-USER_TARGETS := test_xsk_refcnt test_xdp_frags test_link_detach test_xsk_umem_flags test_xdp_devbound test_xsk_map_leak
+USER_TARGETS := test_xsk_refcnt test_xdp_frags test_link_detach test_xsk_umem_flags test_xdp_devbound test_xsk_map_leak test_synth_insns
 STATIC_LINK_TARGETS := check_kern_compat test_dispatcher_versions
 BPF_TARGETS := xdp_dispatcher_v1 xdp_dispatcher_v2 xdp_pass
 USER_LIBS := -lpthread
 USER_EXTRA_C := test_utils.c
 
-EXTRA_DEPS += xdp_dispatcher.h
+EXTRA_DEPS += xdp_dispatcher.h ../bpf_instr.h
 EXTRA_USER_DEPS += test_utils.h $(USER_EXTRA_C)
 
 TEST_FILE := ./test-libxdp.sh

@@ -73,6 +73,11 @@ struct xdp_program {
 	__u64 load_time;
 	bool from_external_obj;
 	bool is_frags;
+
+	/* synthesised ELF image backing bpf_obj, if any; libelf references it
+	 * rather than copying, so it has to outlive the bpf_object
+	 */
+	void *synth_elf;
 	unsigned int run_prio;
 	unsigned int chain_call_actions; /* bitmap */
 
@@ -1155,6 +1160,9 @@ void xdp_program__close(struct xdp_program *xdp_prog)
 			btf__free(xdp_prog->btf);
 	}
 
+	/* must come after bpf_object__close(), which still reads the image */
+	free(xdp_prog->synth_elf);
+
 	free(xdp_prog);
 }
 
@@ -1261,6 +1269,56 @@ static struct xdp_program *__xdp_program__open_file(const char *filename,
 	xdp_prog = xdp_program__create_from_obj(obj, section_name, prog_name, false);
 	if (IS_ERR(xdp_prog))
 		bpf_object__close(obj);
+
+	return xdp_prog;
+}
+
+/* Build a program from a raw instruction stream. The kernel will only accept
+ * a dispatcher component as BPF_PROG_TYPE_EXT if it carries BTF describing its
+ * own signature, and BTF cannot be added to a program after it is loaded, so
+ * synthesise the BTF here and wrap everything in an ELF image that libbpf can
+ * open like any other object.
+ */
+static struct xdp_program *xdp_program__from_insns(const struct bpf_insn *insns,
+						   size_t insns_cnt,
+						   const char *prog_name)
+{
+	struct xdp_program *xdp_prog;
+	struct bpf_object *obj;
+	size_t elf_size;
+	void *elf;
+	int err;
+
+	if (!insns || !insns_cnt || !prog_name)
+		return ERR_PTR(-EINVAL);
+
+	elf = xdp_synthesise_elf(insns, insns_cnt, prog_name, &elf_size);
+	if (!elf)
+		return ERR_PTR(-errno);
+
+	obj = bpf_object__open_mem(elf, elf_size, NULL);
+	if (!obj) {
+		err = -errno;
+		pr_warn("Couldn't open synthesised object for program %s: %s\n",
+			prog_name, strerror(-err));
+		free(elf);
+		return ERR_PTR(err);
+	}
+
+	xdp_prog = xdp_program__create_from_obj(obj, NULL, prog_name, false);
+	if (IS_ERR(xdp_prog)) {
+		bpf_object__close(obj);
+		free(elf);
+		return xdp_prog;
+	}
+
+	/* libelf references the image rather than copying it, so hand
+	 * ownership to the xdp_program and free it in xdp_program__close()
+	 */
+	xdp_prog->synth_elf = elf;
+
+	pr_debug("Created program %s from %zu synthesised instructions\n",
+		 prog_name, insns_cnt);
 
 	return xdp_prog;
 }
@@ -1481,8 +1539,10 @@ struct xdp_program *xdp_program__create(struct xdp_program_opts *opts)
 {
 	const char *pin_path, *prog_name, *find_filename, *open_filename;
 	struct bpf_object_open_opts *obj_opts;
+	const struct bpf_insn *insns;
 	struct xdp_program *prog;
 	struct bpf_object *obj;
+	size_t insns_cnt;
 	__u32 id;
 	int fd;
 
@@ -1497,31 +1557,39 @@ struct xdp_program *xdp_program__create(struct xdp_program_opts *opts)
 	pin_path      = OPTS_GET(opts, pin_path, NULL);
 	id            = OPTS_GET(opts, id, 0);
 	fd            = OPTS_GET(opts, fd, 0);
+	insns         = OPTS_GET(opts, insns, NULL);
+	insns_cnt     = OPTS_GET(opts, insns_cnt, 0);
 
 	if (obj) { /* prog_name is optional */
-		if (obj_opts || find_filename || open_filename || pin_path || id || fd)
+		if (obj_opts || find_filename || open_filename || pin_path || id || fd || insns)
 			goto err;
 		prog = xdp_program__create_from_obj(obj, NULL, prog_name, true);
 	} else if (find_filename) { /* prog_name, obj_opts is optional */
-		if (obj || open_filename || pin_path || id || fd)
+		if (obj || open_filename || pin_path || id || fd || insns)
 			goto err;
 		prog = __xdp_program__find_file(find_filename, NULL, prog_name, obj_opts);
 	} else if (open_filename) { /* prog_name, obj_opts is optional */
-		if (obj || find_filename || pin_path || id || fd)
+		if (obj || find_filename || pin_path || id || fd || insns)
 			goto err;
 		prog = __xdp_program__open_file(open_filename, NULL, prog_name, obj_opts);
 	} else if (pin_path) {
-		if (obj || obj_opts || prog_name || find_filename || open_filename || id || fd)
+		if (obj || obj_opts || prog_name || find_filename || open_filename || id || fd || insns)
 			goto err;
 		prog = xdp_program__from_pin(pin_path);
 	} else if (id) {
-		if (obj || obj_opts || prog_name || find_filename || open_filename || pin_path || fd)
+		if (obj || obj_opts || prog_name || find_filename || open_filename || pin_path || fd || insns)
 			goto err;
 		prog = xdp_program__from_id(id);
 	} else if (fd) {
-		if (obj || obj_opts || prog_name || find_filename || open_filename || pin_path || id)
+		if (obj || obj_opts || prog_name || find_filename || open_filename || pin_path || id || insns)
 			goto err;
 		prog = xdp_program__from_fd(fd);
+	} else if (insns) { /* prog_name and insns_cnt are required */
+		if (obj || obj_opts || find_filename || open_filename || pin_path || id || fd)
+			goto err;
+		if (!prog_name || !insns_cnt)
+			goto err;
+		prog = xdp_program__from_insns(insns, insns_cnt, prog_name);
 	} else {
 		goto err;
 	}

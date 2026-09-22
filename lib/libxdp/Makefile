@@ -8,7 +8,7 @@ include $(LIB_DIR)/defines.mk
 OBJDIR ?= .
 SHARED_OBJDIR := $(OBJDIR)/sharedobjs
 STATIC_OBJDIR := $(OBJDIR)/staticobjs
-OBJS := libxdp.o xsk.o
+OBJS := libxdp.o xsk.o xdp_elfgen.o
 XDP_OBJS := xdp-dispatcher.o xsk_def_xdp_prog.o xsk_def_xdp_prog_5.3.o
 EMBEDDED_XDP_OBJS := $(addsuffix .embed.o,$(basename $(XDP_OBJS)))
 SHARED_OBJS := $(addprefix $(SHARED_OBJDIR)/,$(OBJS))

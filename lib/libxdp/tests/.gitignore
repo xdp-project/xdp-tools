@@ -6,3 +6,4 @@ test_xsk_non_privileged
 test_link_detach
 test_xsk_umem_flags
 test_xdp_devbound
+test_synth_insns
