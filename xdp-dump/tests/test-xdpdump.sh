@@ -125,7 +125,7 @@ test_capt_pcap()
 
 version_greater_or_equal()
 {
-    printf '%s\n%s\n' "$2" "$1" | sort -V -C
+    printf '%s\n%s\n' "$2" "$1" | sort -V -c 2>/dev/null
 }
 
 test_capt_pcapng()
