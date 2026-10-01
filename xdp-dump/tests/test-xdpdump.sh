@@ -281,7 +281,7 @@ test_exitentry()
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/xdp_drop.o" || return 1
 
     PID=$(start_tcpdump "$XDPDUMP -i $NS --rx-capture=exit")
-    $PING6 -W 0.1 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
+    timeout 0.1 $PING6 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
     RESULT=$(stop_background "$PID")
     if ! [[ $RESULT =~ $PASS_EXIT_D_REGEX ]]; then
         print_result "IPv6 drop exit packet not received"
@@ -289,7 +289,7 @@ test_exitentry()
     fi
 
     PID=$(start_tcpdump "$XDPDUMP -i $NS --rx-capture=exit,entry")
-    $PING6 -W 0.1 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
+    timeout 0.1 $PING6 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
     RESULT=$(stop_background "$PID")
     if ! [[ $RESULT =~ $PASS_EXIT_D_REGEX && $RESULT =~ $PASS_ENTRY_D_REGEX ]]; then
         print_result "IPv6 drop entry/exit packet not received"
@@ -353,7 +353,8 @@ test_multi_pkt()
     for PKT_SIZE in "${PKT_SIZES[@]}" ; do
 
         PID=$(start_tcpdump "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name --rx-capture=entry,exit")
-        timeout 40 $PING6 -q -W 0.1 -s "$PKT_SIZE" -c 20000 -f "$INSIDE_IP6" || return 1
+        timeout 0.1 $PING6 -q -s "$PKT_SIZE" -c 1 "$INSIDE_IP6" || return 1
+        timeout 40 $PING6 -q -W 1 -s "$PKT_SIZE" -c 20000 -f "$INSIDE_IP6" || return 1
         RESULT=$(stop_background "$PID")
         if ! [[ $RESULT =~ $PASS_ENTRY_REGEX ]]; then
             print_result "IPv6 entry packet not received, $PKT_SIZE"
