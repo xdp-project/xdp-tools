@@ -293,7 +293,7 @@ check_prereq()
         die "This script needs root permissions to run."
     fi
 
-    STATEDIR="$(mktemp -d --tmpdir=${TMPDIR:-/tmp} --suffix=.xdptest)"
+    STATEDIR="$(mktemp -d -t xdptest.XXXXXX)"
     if [ $? -ne 0 ]; then
         die "Unable to create state dir in $TMPDIR"
     fi

@@ -15,7 +15,7 @@ test_link_so()
 {
         [ -n "${CC:-}" ] || return $SKIPPED_TEST
 
-        TMPDIR=$(mktemp --tmpdir -d libxdp-test.XXXXXX)
+        TMPDIR=$(mktemp -d -t libxdp-test.XXXXXX)
         cat >$TMPDIR/libxdptest.c <<EOF
 #include <xdp/libxdp.h>
 int main(int argc, char **argv) {
@@ -34,7 +34,7 @@ test_link_a()
 {
         [ -n "${CC:-}" ] || return $SKIPPED_TEST
 
-        TMPDIR=$(mktemp --tmpdir -d libxdp-test.XXXXXX)
+        TMPDIR=$(mktemp -d -t libxdp-test.XXXXXX)
         cat >$TMPDIR/libxdptest.c <<EOF
 #include <xdp/libxdp.h>
 int main(int argc, char **argv) {
