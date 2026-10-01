@@ -37,6 +37,13 @@ else
     PING6=ping
 fi
 
+# iputils ping accepts fractional -W values, BusyBox only whole seconds.
+if $PING6 -W 0.1 -c 1 ::1 >/dev/null 2>&1; then
+    PING_WAIT_SECS="0.1"
+else
+    PING_WAIT_SECS="1"
+fi
+
 # Odd return value for skipping, as only 0-255 is valid.
 SKIPPED_TEST=249
 
