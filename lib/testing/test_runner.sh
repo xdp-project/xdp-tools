@@ -259,7 +259,7 @@ kill_process_group()
 
     kill -SIGINT -$PID
     for i in $(seq 10); do
-        ps --ppid $PID -p $PID > /dev/null || return 0
+        kill -0 -$PID 2>/dev/null || return 0
         sleep 0.1
     done
     kill -TERM -$PID
