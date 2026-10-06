@@ -50,6 +50,7 @@
 
 #define IFINDEX_LO 1
 #define ETH_FCS_SIZE 4
+#define TEST_RUN_BATCH_SIZE (1 << 20U)
 
 static int mask = SAMPLE_DEVMAP_XMIT_CNT_MULTI | SAMPLE_DROP_OK;
 
@@ -176,12 +177,14 @@ static int run_prog(const struct thread_config *cfg, bool *status_var)
 	struct xdp_md ctx_in = {
 		.data_end = cfg->pkt_size,
 	};
+	int repeat = cfg->num_pkts && cfg->num_pkts < TEST_RUN_BATCH_SIZE ?
+		     cfg->num_pkts : TEST_RUN_BATCH_SIZE;
 	DECLARE_LIBBPF_OPTS(bpf_test_run_opts, opts,
 			    .data_in = cfg->pkt,
 			    .data_size_in = cfg->pkt_size,
 			    .ctx_in = &ctx_in,
 			    .ctx_size_in = sizeof(ctx_in),
-			    .repeat = cfg->num_pkts ?: 1 << 20,
+			    .repeat = repeat,
 			    .flags = BPF_F_TEST_XDP_LIVE_FRAMES,
 			    .batch_size = cfg->batch_size,
 		);
@@ -203,6 +206,13 @@ static int run_prog(const struct thread_config *cfg, bool *status_var)
 	}
 
 	do {
+		if (cfg->num_pkts) {
+			__u64 remaining = cfg->num_pkts - iterations;
+
+			if (remaining < (__u64)opts.repeat)
+				opts.repeat = (int)remaining;
+		}
+
 		err = xdp_program__test_run(cfg->prog, &opts, 0);
 		if (err)
 			return -errno;
