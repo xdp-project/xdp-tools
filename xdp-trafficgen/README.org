@@ -83,6 +83,11 @@ Enable dynamic port mode where the destination port is varied over a range of
 Number of packets to send before exiting. If not supplied, =xdp-trafficgen= will
 keep sending packets until interrupted.
 
+** -D, --duration <seconds>
+Number of seconds to send packets before exiting. A value of 0 (the default)
+disables the time limit. If both =--duration= and =--num-packets= are supplied,
+transmission stops when either limit is reached.
+
 ** -s, --pkt-size <bytes>
 Size of each UDP packet being sent, including the Ethernet header and checksum.
 Since =xdp-trafficgen= generates IPv6 traffic, the minimum size, which is also
@@ -307,6 +312,11 @@ Load ingress XDP program in <mode>; default native (valid values: native,skb,hw)
 ** -n, --num-packets <port>
 Number of packets to send before exiting. If not supplied, =xdp-trafficgen= will
 keep sending packets until interrupted.
+
+** -D, --duration <seconds>
+Number of seconds to send packets before exiting. A value of 0 (the default)
+disables the time limit. If both =--duration= and =--num-packets= are supplied,
+transmission stops when either limit is reached.
 
 ** -I, --interval <s>
 Output transmission statistics with this interval (in seconds).
