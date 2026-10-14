@@ -43,7 +43,13 @@ endif
 DEFINES += -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
 
 CFLAGS += -std=gnu2x -Wextra -Werror $(DEFINES) $(ARCH_INCLUDES)
-BPF_CFLAGS += -std=gnu2x $(DEFINES) $(filter -ffile-prefix-map=%,$(CFLAGS)) $(filter -I%,$(CFLAGS)) $(ARCH_INCLUDES)
+
+BPF_CFLAGS += -std=gnu2x $(DEFINES) $(filter -ffile-prefix-map=%,$(CFLAGS)) \
+	-I$(HEADER_DIR) \
+	$(subst -I,-isystem ,$(filter-out -I$(HEADER_DIR) -I$(LIB_DIR)/util,$(filter -I%,$(CFLAGS))))
+ifeq ($(BPF_FREESTANDING),1)
+BPF_CFLAGS += -nostdlibinc
+endif
 
 CONFIGMK := $(LIB_DIR)/../config.mk
 LIBMK := Makefile $(CONFIGMK) $(LIB_DIR)/defines.mk $(LIB_DIR)/common.mk $(LIB_DIR)/../version.mk
