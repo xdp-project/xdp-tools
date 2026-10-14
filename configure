@@ -66,6 +66,7 @@ check_toolchain()
     : ${BPFTOOL=bpftool}
     : ${READELF=readelf}
     : ${ARCH_INCLUDES=}
+    : ${BPF_SKIP_STD_INCLUDE:=0}
     : ${ARCH_NAME=}
 
     CLANG=$(find_tool clang "$CLANG")
@@ -136,6 +137,7 @@ check_toolchain()
     echo "M4:=${M4}" >>$CONFIG
     echo "EMACS:=${EMACS}" >>$CONFIG
     echo "ARCH_INCLUDES:=$ARCH_INCLUDES" >> $CONFIG
+    echo "BPF_SKIP_STD_INCLUDE:=$BPF_SKIP_STD_INCLUDE" >> $CONFIG
     echo "READELF:=${READELF}" >> $CONFIG
     echo "BPFTOOL:=${BPFTOOL}" >> $CONFIG
     [ -n "$BPFTOOL" ] && echo "HAVE_FEATURES+=BPFTOOL" >>"$CONFIG"
