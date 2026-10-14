@@ -66,6 +66,7 @@ check_toolchain()
     : ${BPFTOOL=bpftool}
     : ${READELF=readelf}
     : ${ARCH_INCLUDES=}
+    : ${BPF_FREESTANDING:=}
     : ${ARCH_NAME=}
 
     CLANG=$(find_tool clang "$CLANG")
@@ -129,6 +130,14 @@ check_toolchain()
         done
     fi
 
+    # If using a non global clang, we avoid giving clang access to system headers.
+    if [ -z "$BPF_FREESTANDING" ]; then
+        case "$CLANG" in
+            clang|clang-[0-9]*) BPF_FREESTANDING=0 ;;
+            *)                  BPF_FREESTANDING=1 ;;
+        esac
+    fi
+
     echo "PKG_CONFIG:=${PKG_CONFIG}" >>$CONFIG
     echo "CC:=${CC}" >>$CONFIG
     echo "OBJCOPY:=${OBJCOPY}" >>$CONFIG
@@ -136,6 +145,7 @@ check_toolchain()
     echo "M4:=${M4}" >>$CONFIG
     echo "EMACS:=${EMACS}" >>$CONFIG
     echo "ARCH_INCLUDES:=$ARCH_INCLUDES" >> $CONFIG
+    echo "BPF_FREESTANDING:=$BPF_FREESTANDING" >> $CONFIG
     echo "READELF:=${READELF}" >> $CONFIG
     echo "BPFTOOL:=${BPFTOOL}" >> $CONFIG
     [ -n "$BPFTOOL" ] && echo "HAVE_FEATURES+=BPFTOOL" >>"$CONFIG"
