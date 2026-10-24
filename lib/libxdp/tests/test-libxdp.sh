@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 
-ALL_TESTS="test_link_so test_link_a test_old_dispatcher test_xdp_devbound test_xdp_frags test_xsk_prog_refcnt_bpffs test_xsk_prog_refcnt_legacy test_xsk_non_privileged test_link_detach test_xsk_umem_flags test_xsk_map_leak"
+ALL_TESTS="test_link_so test_link_a test_kernel_feature_cache test_old_dispatcher test_xdp_devbound test_xdp_frags test_xsk_prog_refcnt_bpffs test_xsk_prog_refcnt_legacy test_xsk_non_privileged test_link_detach test_xsk_umem_flags test_xsk_map_leak"
 
 TESTS_DIR=$(dirname "${BASH_SOURCE[0]}")
 
@@ -21,6 +21,7 @@ test_link_so()
 int main(int argc, char **argv) {
     (void) argc; (void) argv;
     (void) xdp_program__open_file("filename", "section_name", NULL);
+    libxdp_cache_kernel_features();
     return 0;
 }
 EOF
@@ -40,6 +41,7 @@ test_link_a()
 int main(int argc, char **argv) {
     (void) argc; (void) argv;
     (void) xdp_program__open_file("filename", "section_name", NULL);
+    libxdp_cache_kernel_features();
     return 0;
 }
 EOF
@@ -47,6 +49,12 @@ EOF
         retval=$?
         rm -rf "$TMPDIR"
         return $retval
+}
+
+test_kernel_feature_cache()
+{
+        export LIBXDP_OBJECT_PATH="$TESTS_DIR/.."
+        check_run "$TESTS_DIR/test_kernel_feature_cache"
 }
 
 test_refcnt_once()

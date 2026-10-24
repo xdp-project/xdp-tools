@@ -232,6 +232,14 @@ static enum {
 	COMPAT_UNSUPPORTED
 } kernel_compat = COMPAT_UNKNOWN;
 
+/* Set by libxdp_cache_kernel_features() during single-threaded startup. */
+static bool kernel_features_cached;
+static bool cached_kernel_frags_support;
+static bool cached_kernel_dev_bound;
+
+static bool kernel_has_frags_support(void);
+static bool kernel_has_dev_bound(void);
+
 static int xdp_multiprog__attach(struct xdp_multiprog *old_mp,
 				 struct xdp_multiprog *mp,
 				 enum xdp_attach_mode mode);
@@ -1664,13 +1672,13 @@ struct xdp_program *xdp_program__clone(struct xdp_program *prog, unsigned int fl
 }
 
 #ifndef HAVE_LIBBPF_BPF_PROGRAM__FLAGS
-static bool kernel_has_frags_support(void)
+static bool probe_kernel_frags_support(void)
 {
 	pr_debug("Can't support frags with old version of libbpf that doesn't support setting program flags.\n");
 	return false;
 }
 
-static bool kernel_has_dev_bound(void)
+static bool probe_kernel_dev_bound(void)
 {
 	pr_debug("Can't bind to device with old version of libbpf that doesn't support setting program flags.\n");
 	return false;
@@ -1723,12 +1731,12 @@ static bool kernel_has_bpf_flag(__u32 flag)
 	return ret;
 }
 
-static bool kernel_has_frags_support(void)
+static bool probe_kernel_frags_support(void)
 {
 	return kernel_has_bpf_flag(BPF_F_XDP_HAS_FRAGS);
 }
 
-static bool kernel_has_dev_bound(void)
+static bool probe_kernel_dev_bound(void)
 {
 	return kernel_has_bpf_flag(BPF_F_XDP_DEV_BOUND_ONLY);
 }
@@ -1762,6 +1770,32 @@ static int xdp_program__set_xdp_dev_bound(struct xdp_program *prog,
 	return 0;
 }
 #endif // HAVE_LIBBPF_BPF_PROGRAM__FLAGS
+
+static bool kernel_has_frags_support(void)
+{
+	return kernel_features_cached ? cached_kernel_frags_support :
+		probe_kernel_frags_support();
+}
+
+static bool kernel_has_dev_bound(void)
+{
+	return kernel_features_cached ? cached_kernel_dev_bound :
+		probe_kernel_dev_bound();
+}
+
+/*
+ * Probe kernel features ahead of time so applications can choose when the
+ * libbpf diagnostics from unsupported features are emitted.
+ */
+void libxdp_cache_kernel_features(void)
+{
+	if (kernel_features_cached)
+		return;
+
+	cached_kernel_frags_support = probe_kernel_frags_support();
+	cached_kernel_dev_bound = probe_kernel_dev_bound();
+	kernel_features_cached = true;
+}
 
 static int xdp_program__attach_single(struct xdp_program *prog, int ifindex,
 				      enum xdp_attach_mode mode,

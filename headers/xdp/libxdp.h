@@ -44,6 +44,9 @@ typedef int (*libxdp_print_fn_t)(enum libxdp_print_level level,
 
 libxdp_print_fn_t libxdp_set_print(libxdp_print_fn_t fn);
 
+/* Probe and cache kernel feature support during single-threaded startup. */
+void libxdp_cache_kernel_features(void);
+
 
 struct xdp_program;
 struct xdp_multiprog;

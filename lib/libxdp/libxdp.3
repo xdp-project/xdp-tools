@@ -19,6 +19,13 @@ well as reading and writing packets from these sockets.
 .PP
 Some of the functionality provided by libxdp depends on particular kernel
 features; see the "Kernel feature compatibility" section below for details.
+.PP
+Applications that want to control when libbpf reports unsupported XDP feature
+probes can call \fIlibxdp_cache_kernel_features()\fP during single-threaded startup.
+This probes and caches XDP frags and device-bound support, so later dispatcher
+attachments reuse the results instead of repeating the probes. Call it with the
+same privileges that will be used for later attachments, and before starting
+threads that use libxdp.
 .SS "Using libxdp from an application"
 .PP
 Basic usage of libxdp from an application is quite straight forward. The
