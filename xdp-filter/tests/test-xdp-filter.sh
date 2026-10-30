@@ -131,7 +131,7 @@ test_ports_deny()
 
 check_ping6()
 {
-    check_packet "dst $OUTSIDE_IP6" "$PING6 -W 0.1 -c 1 $OUTSIDE_IP6" $1
+    check_packet "dst $OUTSIDE_IP6" "timeout 0.1 $PING6 -c 1 $OUTSIDE_IP6" $1
 }
 
 check_ndisc6()
@@ -175,7 +175,7 @@ test_ipv6_deny()
 
 check_ping4()
 {
-    check_packet "dst $OUTSIDE_IP4" "ping -W 0.1 -c 1 $OUTSIDE_IP4" $1
+    check_packet "dst $OUTSIDE_IP4" "timeout 0.1 ping -c 1 $OUTSIDE_IP4" $1
 }
 
 check_arp()

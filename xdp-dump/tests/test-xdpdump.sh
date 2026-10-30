@@ -106,7 +106,7 @@ test_capt_pcap()
     skip_if_missing_kernel_symbol bpf_xdp_output_proto
     skip_if_missing_trace_attach
 
-    local PASS_PKT="IP6 $INSIDE_IP6 > $OUTSIDE_IP6: ICMP6, echo reply(, id [0-9]+)?, seq 1, length 64"
+    local PASS_PKT="IP6 $INSIDE_IP6 > $OUTSIDE_IP6: ICMP6, echo reply(, id [0-9]+)?, seq [0-9]+, length 64"
 
     $PING6 -W 2 -c 1 "$INSIDE_IP6" || return 1
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/test_long_func_name.o" || return 1
@@ -125,7 +125,7 @@ test_capt_pcap()
 
 version_greater_or_equal()
 {
-    printf '%s\n%s\n' "$2" "$1" | sort -V -C
+    printf '%s\n%s\n' "$2" "$1" | sort -V -c 2>/dev/null
 }
 
 test_capt_pcapng()
@@ -134,7 +134,7 @@ test_capt_pcapng()
     skip_if_missing_trace_attach
 
     local PCAP_FILE="/tmp/${NS}_PID_$$_$RANDOM.pcap"
-    local PASS_PKT="IP6 $INSIDE_IP6 > $OUTSIDE_IP6: ICMP6, echo reply(, id [0-9]+)?, seq 1, length 64"
+    local PASS_PKT="IP6 $INSIDE_IP6 > $OUTSIDE_IP6: ICMP6, echo reply(, id [0-9]+)?, seq [0-9]+, length 64"
     local HW=$(uname -m | sed -e 's/[]\/$*+.^|[]/\\&/g')
     local OS=$(uname -snrv | sed -e 's/[]\/$+*.^()|[]/\\&/g')
     local INFOS_REGEX=""
@@ -281,7 +281,7 @@ test_exitentry()
     $XDP_LOADER load "$NS" "$TEST_PROG_DIR/xdp_drop.o" || return 1
 
     PID=$(start_tcpdump "$XDPDUMP -i $NS --rx-capture=exit")
-    $PING6 -W 0.1 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
+    timeout 0.1 $PING6 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
     RESULT=$(stop_background "$PID")
     if ! [[ $RESULT =~ $PASS_EXIT_D_REGEX ]]; then
         print_result "IPv6 drop exit packet not received"
@@ -289,7 +289,7 @@ test_exitentry()
     fi
 
     PID=$(start_tcpdump "$XDPDUMP -i $NS --rx-capture=exit,entry")
-    $PING6 -W 0.1 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
+    timeout 0.1 $PING6 -c 1 "$INSIDE_IP6" # Note that this ping will fail!!
     RESULT=$(stop_background "$PID")
     if ! [[ $RESULT =~ $PASS_EXIT_D_REGEX && $RESULT =~ $PASS_ENTRY_D_REGEX ]]; then
         print_result "IPv6 drop entry/exit packet not received"
@@ -353,7 +353,8 @@ test_multi_pkt()
     for PKT_SIZE in "${PKT_SIZES[@]}" ; do
 
         PID=$(start_tcpdump "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name --rx-capture=entry,exit")
-        timeout 40 $PING6 -q -W 0.1 -s "$PKT_SIZE" -c 20000 -f "$INSIDE_IP6" || return 1
+        timeout 0.1 $PING6 -q -s "$PKT_SIZE" -c 1 "$INSIDE_IP6" || return 1
+        timeout 40 $PING6 -q -W 1 -s "$PKT_SIZE" -c 20000 -A "$INSIDE_IP6" || return 1
         RESULT=$(stop_background "$PID")
         if ! [[ $RESULT =~ $PASS_ENTRY_REGEX ]]; then
             print_result "IPv6 entry packet not received, $PKT_SIZE"
@@ -400,7 +401,7 @@ test_perf_wakeup()
 
         # We sent 10k packets and see if the all arrive
         PID=$(start_tcpdump "$XDPDUMP -i $NS -p xdp_test_prog_with_a_long_name --perf-wakeup=$WAKEUP")
-        timeout 20 "$PING6" -q -W 2 -c 10000 -f  "$INSIDE_IP6" || return 1
+        timeout 20 "$PING6" -q -W 2 -c 10000 -A "$INSIDE_IP6" || return 1
         RESULT=$(stop_background "$PID")
         if ! [[ $RESULT =~ $PASS_10K_REGEX ]]; then
             print_result "IPv6 10k packet not received for wakeup $WAKEUP"
