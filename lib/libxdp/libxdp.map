@@ -88,3 +88,7 @@ LIBXDP_1.5.0 {
 LIBXDP_1.6.0 {
 		xdp_multiprog__xdp_dev_bound;
 } LIBXDP_1.5.0;
+
+LIBXDP_1.7.0 {
+		xsk_ring_prod__cancel;
+} LIBXDP_1.6.0;

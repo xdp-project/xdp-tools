@@ -132,6 +132,11 @@ XDP_ALWAYS_INLINE __u32 xsk_ring_prod__reserve(struct xsk_ring_prod *prod, __u32
 	return nb;
 }
 
+XDP_ALWAYS_INLINE void xsk_ring_prod__cancel(struct xsk_ring_prod *prod, __u32 nb)
+{
+	prod->cached_prod -= nb;
+}
+
 XDP_ALWAYS_INLINE void xsk_ring_prod__submit(struct xsk_ring_prod *prod, __u32 nb)
 {
 	/* Make sure everything has been written to the ring before indicating
