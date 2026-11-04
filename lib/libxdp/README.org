@@ -358,9 +358,10 @@ consumer rings (Rx and completion). The producer rings use
 xsk_ring_prod functions and consumer rings use xsk_ring_cons
 functions. For producer rings, you start with =reserving= one or more
 slots in a producer ring and then when they have been filled out, you
-=submit= them so that the kernel will act on them. For a consumer
-ring, you =peek= if there are any new packets in the ring and if so
-you can read them from the ring. Once you are done reading them, you
+=submit= them so that the kernel will act on them. Slots that have been
+reserved but not submitted can be returned with the =cancel= operation.
+For a consumer ring, you =peek= if there are any new packets in the ring and if
+so you can read them from the ring. Once you are done reading them, you
 =release= them back to the kernel so it can use them for new
 packets. There is also a =cancel= operation for consumer rings if the
 application does not want to consume all packets received with the
@@ -368,6 +369,7 @@ peek operation.
 
 #+begin_src C
 __u32 xsk_ring_prod__reserve(struct xsk_ring_prod *prod, __u32 nb, __u32 *idx);
+void xsk_ring_prod__cancel(struct xsk_ring_prod *prod, __u32 nb);
 void xsk_ring_prod__submit(struct xsk_ring_prod *prod, __u32 nb);
 __u32 xsk_ring_cons__peek(struct xsk_ring_cons *cons, __u32 nb, __u32 *idx);
 void xsk_ring_cons__cancel(struct xsk_ring_cons *cons, __u32 nb);

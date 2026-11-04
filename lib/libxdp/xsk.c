@@ -124,6 +124,7 @@ extern inline __u32 xsk_prod_nb_free(struct xsk_ring_prod *r, __u32 nb);
 extern inline __u32 xsk_cons_nb_avail(struct xsk_ring_cons *r, __u32 nb);
 extern inline __u32 xsk_ring_prod__reserve(struct xsk_ring_prod *prod, __u32 nb,
 					   __u32 *idx);
+extern inline void xsk_ring_prod__cancel(struct xsk_ring_prod *prod, __u32 nb);
 extern inline void xsk_ring_prod__submit(struct xsk_ring_prod *prod, __u32 nb);
 extern inline __u32 xsk_ring_cons__peek(struct xsk_ring_cons *cons, __u32 nb,
 					__u32 *idx);
