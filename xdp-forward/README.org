@@ -142,6 +142,47 @@ The =direct= mode functions like =full=, except it passes the
 policy routing rules configured will be skipped during the lookup, which can
 improve performance (but won't obey the policy of those rules, obviously).
 
+* VLAN SUPPORT
+
+The =fib= forwarding mode forwards between VLAN (802.1Q) interfaces on
+stock kernels, automatically. The kernel FIB resolves a route through a
+VLAN interface to that interface's ifindex, which XDP cannot transmit
+through. At load time, =xdp-forward load= enumerates the VLAN interfaces
+stacked on the configured physical interfaces via netlink and installs a
+BPF map translating each VLAN ifindex to its underlying physical
+interface and VLAN id. When no such VLAN interfaces exist, the verifier
+removes the VLAN code at load time; only a cheap runtime check remains. The XDP
+program uses this map to redirect through the physical interface,
+rewriting the packet's VLAN encapsulation to match the egress: the tag
+is added, removed or rewritten as needed. Attach to the physical
+interfaces, not the VLAN interfaces.
+
+Limitations:
+
+- The VLAN interface list is a snapshot taken at load time. VLAN
+  interfaces added or removed later are not picked up; re-run
+  =xdp-forward load= after changing them.
+- Only the VLAN id is set on egress; 802.1p priority (PCP) and DEI are
+  not carried over from the ingress tag.
+- Only untagged and single-tagged 802.1Q frames are forwarded in XDP.
+  802.1ad and stacked (QinQ) frames are passed to the network stack,
+  which forwards them normally. 802.1ad VLAN interfaces are not added
+  to the translation map.
+- The program expects tags in-band in the packet. Disable VLAN
+  offload on the attached interfaces:
+  =ethtool -K <dev> rxvlan off txvlan off=. This includes veth, whose
+  peers deliver the outermost tag out of band when tx VLAN offload is
+  enabled (the default).
+- Policy routing that matches on the VLAN interface as incoming
+  interface will not match, since the FIB lookup uses the physical
+  ingress interface. In particular, do not use this with
+  VLAN interfaces in a VRF: tagged ingress gets main-table treatment,
+  which can forward across a VRF boundary the stack would enforce.
+- Ingress VLAN ids are not validated: a tagged frame is routed by its
+  destination even when no local VLAN interface exists for its VID,
+  where the stack would drop it. Stock =xdp-forward= already behaves
+  this way for tagged frames whose destination routes to a TX-port.
+
 * Examples
 
 In order to enable flowtable offloading for tcp and udp traffic between NICs
