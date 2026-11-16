@@ -1694,7 +1694,7 @@ static const char *get_bpf_flag_name(__u32 flag)
 	}
 }
 
-static bool kernel_has_bpf_flag(__u32 flag)
+static bool kernel_probe_bpf_flag(__u32 flag)
 {
 	struct xdp_program *test_prog;
 	bool ret = false;
@@ -1721,6 +1721,41 @@ static bool kernel_has_bpf_flag(__u32 flag)
 	}
 	xdp_program__close(test_prog);
 	return ret;
+}
+
+/* We cache the two flags defined as bits 5 and 6 in the kernel headers */
+#define FEATURE_CACHE_OFFSET  5
+#define FEATURE_CACHE_SIZE    2
+#define FEATURE_PROBED        (1U << 0)
+#define FEATURE_AVAILABLE     (1U << 1)
+static unsigned int feature_cache[FEATURE_CACHE_SIZE];
+
+static bool kernel_has_bpf_flag(__u32 flag) {
+	unsigned int value, slot = __builtin_ctz(flag) - FEATURE_CACHE_OFFSET;
+
+	if (slot >= FEATURE_CACHE_SIZE) {
+		pr_warn("Invalid probe flag %u - please report this as a bug!\n", flag);
+		return false;
+	}
+
+	value = __atomic_load_n(&feature_cache[slot], __ATOMIC_ACQUIRE);
+	if (value & FEATURE_PROBED) {
+		pr_debug("XDP program flag %s cached as %s\n", get_bpf_flag_name(flag),
+			 !!(value & FEATURE_AVAILABLE) ? "supported": "not supported");
+		goto out;
+	}
+
+	value = FEATURE_PROBED;
+	if (kernel_probe_bpf_flag(flag))
+		value |= FEATURE_AVAILABLE;
+
+	/* We assume probing always returns the same result, so we don't bother
+	 * with a cmpxchg() when setting this.
+	 */
+	__atomic_store_n(&feature_cache[slot], value, __ATOMIC_RELEASE);
+
+out:
+	return !!(value & FEATURE_AVAILABLE);
 }
 
 static bool kernel_has_frags_support(void)
