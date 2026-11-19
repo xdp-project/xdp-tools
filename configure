@@ -80,10 +80,17 @@ check_toolchain()
         fi;
     done
 
+    cat >"$TMPDIR/c23test.c" <<EOF
+bool c23_bool = true;
+
+int main(void) {
+    return c23_bool == false;
+}
+EOF
     for compiler in "$CC" "$CLANG"; do
-        c23_err=$($compiler -std=gnu23 -x c -fsyntax-only /dev/null 2>&1)
+        c23_err=$($compiler -std=gnu2x -fsyntax-only "$TMPDIR/c23test.c" 2>&1)
         if [ "$?" -ne "0" ]; then
-            echo "*** ERROR: Compiler '$compiler' does not support C23 (-std=gnu23)"
+            echo "*** ERROR: Compiler '$compiler' does not support C23 boolean keywords"
             [ -n "$DEBUG_CONFIGURE" ] && echo "$c23_err" | sed 's/^/    /'
             exit 1
         fi
