@@ -42,9 +42,9 @@ endif
 
 DEFINES += -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
 
-CFLAGS += -std=gnu23 -Wextra -Werror $(DEFINES) $(ARCH_INCLUDES)
+CFLAGS += -std=gnu2x -Wextra -Werror $(DEFINES) $(ARCH_INCLUDES)
 
-BPF_CFLAGS += -std=gnu23 $(DEFINES) $(filter -ffile-prefix-map=%,$(CFLAGS)) \
+BPF_CFLAGS += -std=gnu2x $(DEFINES) $(filter -ffile-prefix-map=%,$(CFLAGS)) \
 	-I$(HEADER_DIR) \
 	$(subst -I,-isystem ,$(filter-out -I$(HEADER_DIR) -I$(LIB_DIR)/util,$(filter -I%,$(CFLAGS))))
 ifeq ($(BPF_SKIP_STD_INCLUDE),1)
